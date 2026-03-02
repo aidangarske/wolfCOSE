@@ -41,6 +41,15 @@
 #ifdef HAVE_ED25519
     #include <wolfssl/wolfcrypt/ed25519.h>
 #endif
+#ifdef WC_RSA_PSS
+    #include <wolfssl/wolfcrypt/rsa.h>
+#endif
+#ifdef HAVE_ED448
+    #include <wolfssl/wolfcrypt/ed448.h>
+#endif
+#ifdef HAVE_DILITHIUM
+    #include <wolfssl/wolfcrypt/dilithium.h>
+#endif
 #include <wolfssl/wolfcrypt/random.h>
 
 #ifdef __cplusplus
@@ -63,6 +72,7 @@ extern "C" {
 #define WOLFCOSE_E_COSE_DECRYPT_FAIL (-9013)
 #define WOLFCOSE_E_COSE_BAD_HDR     (-9014)
 #define WOLFCOSE_E_COSE_KEY_TYPE    (-9015)
+#define WOLFCOSE_E_COSE_MAC_FAIL    (-9016)
 #define WOLFCOSE_E_CRYPTO           (-9020)
 #define WOLFCOSE_E_UNSUPPORTED      (-9021)
 
@@ -80,6 +90,15 @@ extern "C" {
 #endif
 #ifndef WOLFCOSE_MAX_MAP_ITEMS
     #define WOLFCOSE_MAX_MAP_ITEMS        16
+#endif
+#ifndef WOLFCOSE_MAX_SIG_SZ
+    #if defined(HAVE_DILITHIUM)
+        #define WOLFCOSE_MAX_SIG_SZ  4627
+    #elif defined(WC_RSA_PSS)
+        #define WOLFCOSE_MAX_SIG_SZ  512
+    #else
+        #define WOLFCOSE_MAX_SIG_SZ  132
+    #endif
 #endif
 
 /* ---------------------------------------------------------------------------
@@ -121,6 +140,7 @@ extern "C" {
 /* Tags */
 #define WOLFCOSE_TAG_SIGN1      18u
 #define WOLFCOSE_TAG_ENCRYPT0   16u
+#define WOLFCOSE_TAG_MAC0       17u
 
 /* Header labels */
 #define WOLFCOSE_HDR_ALG         1
@@ -135,18 +155,36 @@ extern "C" {
 #define WOLFCOSE_ALG_ES384      (-35)
 #define WOLFCOSE_ALG_ES512      (-36)
 #define WOLFCOSE_ALG_EDDSA      (-8)
+#define WOLFCOSE_ALG_PS256      (-37)
+#define WOLFCOSE_ALG_PS384      (-38)
+#define WOLFCOSE_ALG_PS512      (-39)
 #define WOLFCOSE_ALG_A128GCM     1
 #define WOLFCOSE_ALG_A192GCM     2
 #define WOLFCOSE_ALG_A256GCM     3
+#define WOLFCOSE_ALG_HMAC256     5
+#define WOLFCOSE_ALG_HMAC384     6
+#define WOLFCOSE_ALG_HMAC512     7
+#define WOLFCOSE_ALG_CHACHA20_POLY1305 24
+/* AES-CCM (RFC 9053 Section 4.2) */
+#define WOLFCOSE_ALG_AES_CCM_16_64_128   10
+#define WOLFCOSE_ALG_AES_CCM_16_64_256   11
+#define WOLFCOSE_ALG_AES_CCM_64_64_128   12
+#define WOLFCOSE_ALG_AES_CCM_64_64_256   13
+#define WOLFCOSE_ALG_AES_CCM_16_128_128  30
+#define WOLFCOSE_ALG_AES_CCM_16_128_256  31
+#define WOLFCOSE_ALG_AES_CCM_64_128_128  32
+#define WOLFCOSE_ALG_AES_CCM_64_128_256  33
 
-/* PQC Algorithm IDs -- reserved, implementation guarded by #ifdef */
-/* #define WOLFCOSE_ALG_ML_DSA_44   (-48) */  /* ML-DSA (Dilithium) Level 2 */
-/* #define WOLFCOSE_ALG_ML_DSA_65   (-49) */  /* ML-DSA Level 3 */
-/* #define WOLFCOSE_ALG_ML_DSA_87   (-50) */  /* ML-DSA Level 5 */
+#ifdef HAVE_DILITHIUM
+#define WOLFCOSE_ALG_ML_DSA_44   (-48)   /* ML-DSA (Dilithium) Level 2 */
+#define WOLFCOSE_ALG_ML_DSA_65   (-49)   /* ML-DSA Level 3 */
+#define WOLFCOSE_ALG_ML_DSA_87   (-50)   /* ML-DSA Level 5 */
+#endif
 
 /* Key types */
 #define WOLFCOSE_KTY_OKP         1
 #define WOLFCOSE_KTY_EC2         2
+#define WOLFCOSE_KTY_RSA         3
 #define WOLFCOSE_KTY_SYMMETRIC   4
 
 /* Curves */
@@ -169,6 +207,11 @@ extern "C" {
 /* AES-GCM constants */
 #define WOLFCOSE_AES_GCM_TAG_SZ  16
 #define WOLFCOSE_AES_GCM_NONCE_SZ 12
+
+/* ChaCha20-Poly1305 constants */
+#define WOLFCOSE_CHACHA_KEY_SZ    32
+#define WOLFCOSE_CHACHA_NONCE_SZ  12
+#define WOLFCOSE_CHACHA_TAG_SZ    16
 
 /* ---------------------------------------------------------------------------
  * Structs
@@ -226,6 +269,12 @@ typedef struct WOLFCOSE_KEY {
 #endif
 #ifdef HAVE_ED25519
         ed25519_key*   ed25519;   /**< Caller-owned */
+#endif
+#ifdef HAVE_ED448
+        ed448_key*     ed448;     /**< Caller-owned */
+#endif
+#ifdef WC_RSA_PSS
+        RsaKey*        rsa;       /**< Caller-owned RSA key */
 #endif
 #ifdef HAVE_DILITHIUM
         dilithium_key* dilithium; /**< PQC future: ML-DSA */
@@ -463,6 +512,19 @@ WOLFCOSE_API int wc_CoseKey_SetEd25519(WOLFCOSE_KEY* key,
                                         ed25519_key* edKey);
 #endif
 
+#ifdef HAVE_ED448
+WOLFCOSE_API int wc_CoseKey_SetEd448(WOLFCOSE_KEY* key, ed448_key* edKey);
+#endif
+
+#ifdef HAVE_DILITHIUM
+WOLFCOSE_API int wc_CoseKey_SetDilithium(WOLFCOSE_KEY* key, int32_t alg,
+                                           dilithium_key* dlKey);
+#endif
+
+#ifdef WC_RSA_PSS
+WOLFCOSE_API int wc_CoseKey_SetRsa(WOLFCOSE_KEY* key, RsaKey* rsaKey);
+#endif
+
 /**
  * \brief Attach a symmetric key to a COSE key structure.
  * \param key      COSE key (must be initialized).
@@ -607,6 +669,58 @@ WOLFCOSE_API int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
     uint8_t* scratch, size_t scratchSz,
     WOLFCOSE_HDR* hdr,
     uint8_t* plaintext, size_t plaintextSz, size_t* plaintextLen);
+
+/* ---------------------------------------------------------------------------
+ * COSE_Mac0 API (RFC 9052 Section 6.2)
+ * --------------------------------------------------------------------------- */
+
+/**
+ * \brief Create a COSE_Mac0 message with HMAC authentication.
+ *
+ * \param key        WOLFCOSE_KEY with symmetric key material.
+ * \param alg        Algorithm (WOLFCOSE_ALG_HMAC256/384/512).
+ * \param kid        Key ID for unprotected headers (NULL if none).
+ * \param kidLen     Key ID length.
+ * \param payload    Payload to authenticate.
+ * \param payloadLen Payload length.
+ * \param extAad     External additional authenticated data (NULL if none).
+ * \param extAadLen  External AAD length.
+ * \param scratch    Working buffer for MAC_structure.
+ * \param scratchSz  Scratch buffer size.
+ * \param out        Output buffer for COSE_Mac0 message.
+ * \param outSz      Output buffer size.
+ * \param outLen     Output: bytes written to out.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseMac0_Create(WOLFCOSE_KEY* key, int32_t alg,
+    const uint8_t* kid, size_t kidLen,
+    const uint8_t* payload, size_t payloadLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    uint8_t* out, size_t outSz, size_t* outLen);
+
+/**
+ * \brief Verify a COSE_Mac0 message and extract the payload.
+ *
+ * \param key        WOLFCOSE_KEY with symmetric key material.
+ * \param in         Input COSE_Mac0 message.
+ * \param inSz       Input message size.
+ * \param extAad     External additional authenticated data (NULL if none).
+ * \param extAadLen  External AAD length.
+ * \param scratch    Working buffer for MAC_structure reconstruction.
+ * \param scratchSz  Scratch buffer size.
+ * \param hdr        Output: parsed COSE headers.
+ * \param payload    Output: zero-copy pointer to payload within in buffer.
+ * \param payloadLen Output: payload length.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ *         WOLFCOSE_E_COSE_MAC_FAIL if MAC verification fails.
+ */
+WOLFCOSE_API int wc_CoseMac0_Verify(WOLFCOSE_KEY* key,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    WOLFCOSE_HDR* hdr,
+    const uint8_t** payload, size_t* payloadLen);
 
 #ifdef __cplusplus
 }

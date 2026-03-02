@@ -62,18 +62,17 @@ tool: $(LIB_A)
 
 # --- Round-trip proof: keygen -> sign -> verify in one command ---
 tool-test: tool
-	./$(TOOL_BIN) keygen -a ES256 -o /tmp/wolfcose_test.key
-	echo "hello wolfCOSE" > /tmp/wolfcose_test.dat
-	./$(TOOL_BIN) sign -k /tmp/wolfcose_test.key -a ES256 \
-	    -i /tmp/wolfcose_test.dat -o /tmp/wolfcose_test.cose
-	./$(TOOL_BIN) verify -k /tmp/wolfcose_test.key \
-	    -i /tmp/wolfcose_test.cose
-	@echo "PASS: round-trip sign/verify"
+	./$(TOOL_BIN) test --all
 
 # --- Lifecycle demo ---
+# Run with: make demo DEMO_ALG=HMAC256 (or ES256, EdDSA, A128GCM, etc.)
 demo: $(LIB_A)
 	$(CC) $(CFLAGS) -o $(DEMO_BIN) $(DEMO_SRC) $(LIB_A) $(LDFLAGS)
+ifdef DEMO_ALG
+	./$(DEMO_BIN) -a $(DEMO_ALG)
+else
 	./$(DEMO_BIN)
+endif
 
 # --- Cleanup ---
 clean:

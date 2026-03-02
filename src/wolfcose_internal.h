@@ -24,8 +24,23 @@
 #include <wolfcose/wolfcose.h>
 #include <wolfssl/wolfcrypt/error-crypt.h>
 #include <wolfssl/wolfcrypt/hash.h>
-#ifdef HAVE_AESGCM
+#if defined(HAVE_AESGCM) || defined(HAVE_AESCCM)
     #include <wolfssl/wolfcrypt/aes.h>
+#endif
+#if !defined(NO_HMAC)
+    #include <wolfssl/wolfcrypt/hmac.h>
+#endif
+#ifdef HAVE_ED448
+    #include <wolfssl/wolfcrypt/ed448.h>
+#endif
+#ifdef HAVE_DILITHIUM
+    #include <wolfssl/wolfcrypt/dilithium.h>
+#endif
+#ifdef WC_RSA_PSS
+    #include <wolfssl/wolfcrypt/rsa.h>
+#endif
+#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+    #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #endif
 
 #ifdef __cplusplus
@@ -172,6 +187,49 @@ WOLFCOSE_LOCAL int wolfCose_CrvToWcCurve(int32_t crv, int* wcCrv);
  * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_COSE_BAD_ALG.
  */
 WOLFCOSE_LOCAL int wolfCose_AesKeyLen(int32_t alg, size_t* keyLen);
+
+/**
+ * \brief Get AEAD key length for any COSE AEAD algorithm.
+ *        Dispatches across AES-GCM, ChaCha20-Poly1305, AES-CCM.
+ * \param alg     COSE algorithm ID.
+ * \param keyLen  Output: key length in bytes.
+ * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_COSE_BAD_ALG.
+ */
+WOLFCOSE_LOCAL int wolfCose_AeadKeyLen(int32_t alg, size_t* keyLen);
+
+/**
+ * \brief Get AEAD nonce length for any COSE AEAD algorithm.
+ * \param alg       COSE algorithm ID.
+ * \param nonceLen  Output: nonce length in bytes.
+ * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_COSE_BAD_ALG.
+ */
+WOLFCOSE_LOCAL int wolfCose_AeadNonceLen(int32_t alg, size_t* nonceLen);
+
+/**
+ * \brief Get AEAD tag length for any COSE AEAD algorithm.
+ * \param alg     COSE algorithm ID.
+ * \param tagLen  Output: tag length in bytes.
+ * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_COSE_BAD_ALG.
+ */
+WOLFCOSE_LOCAL int wolfCose_AeadTagLen(int32_t alg, size_t* tagLen);
+
+#if !defined(NO_HMAC)
+/**
+ * \brief Get HMAC tag size for a COSE HMAC algorithm.
+ * \param alg    COSE algorithm ID (5, 6, or 7).
+ * \param tagSz  Output: tag size in bytes.
+ * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_COSE_BAD_ALG.
+ */
+WOLFCOSE_LOCAL int wolfCose_HmacTagSize(int32_t alg, size_t* tagSz);
+
+/**
+ * \brief Map COSE HMAC algorithm ID to wolfCrypt HMAC type.
+ * \param alg       COSE algorithm ID.
+ * \param hmacType  Output: wolfCrypt hash type for HMAC.
+ * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_COSE_BAD_ALG.
+ */
+WOLFCOSE_LOCAL int wolfCose_HmacType(int32_t alg, int* hmacType);
+#endif /* !NO_HMAC */
 
 #ifdef HAVE_ECC
 /**
