@@ -398,7 +398,6 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
 {
     int ret;
     size_t mapCount;
-    size_t i;
     int64_t label;
     const uint8_t* bstrData;
     size_t bstrLen;
@@ -407,6 +406,7 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
+        size_t i;
         ret = wc_CBOR_DecodeMapStart(ctx, &mapCount);
 
         for (i = 0; i < mapCount && ret == WOLFCOSE_SUCCESS; i++) {

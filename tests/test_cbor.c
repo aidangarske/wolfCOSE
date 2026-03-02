@@ -89,35 +89,35 @@ static void test_cbor_encode_vectors(void)
     /* 24 -> 0x18 0x18 */
     ctx.idx = 0;
     ret = wc_CBOR_EncodeUint(&ctx, 24);
-    { uint8_t exp[] = {0x18, 0x18};
+    { const uint8_t exp[] = {0x18, 0x18};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 2),
                   "uint 24"); }
 
     /* 100 -> 0x18 0x64 */
     ctx.idx = 0;
     ret = wc_CBOR_EncodeUint(&ctx, 100);
-    { uint8_t exp[] = {0x18, 0x64};
+    { const uint8_t exp[] = {0x18, 0x64};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 2),
                   "uint 100"); }
 
     /* 1000 -> 0x19 0x03 0xE8 */
     ctx.idx = 0;
     ret = wc_CBOR_EncodeUint(&ctx, 1000);
-    { uint8_t exp[] = {0x19, 0x03, 0xE8};
+    { const uint8_t exp[] = {0x19, 0x03, 0xE8};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 3),
                   "uint 1000"); }
 
     /* 1000000 -> 0x1A 0x00 0x0F 0x42 0x40 */
     ctx.idx = 0;
     ret = wc_CBOR_EncodeUint(&ctx, 1000000);
-    { uint8_t exp[] = {0x1A, 0x00, 0x0F, 0x42, 0x40};
+    { const uint8_t exp[] = {0x1A, 0x00, 0x0F, 0x42, 0x40};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 5),
                   "uint 1000000"); }
 
     /* 1000000000000 -> 9 bytes */
     ctx.idx = 0;
     ret = wc_CBOR_EncodeUint(&ctx, 1000000000000ULL);
-    { uint8_t exp[] = {0x1B, 0x00, 0x00, 0x00, 0xE8, 0xD4, 0xA5, 0x10, 0x00};
+    { const uint8_t exp[] = {0x1B, 0x00, 0x00, 0x00, 0xE8, 0xD4, 0xA5, 0x10, 0x00};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 9),
                   "uint 1000000000000"); }
 
@@ -130,14 +130,14 @@ static void test_cbor_encode_vectors(void)
     /* -100 -> 0x38 0x63 */
     ctx.idx = 0;
     ret = wc_CBOR_EncodeInt(&ctx, -100);
-    { uint8_t exp[] = {0x38, 0x63};
+    { const uint8_t exp[] = {0x38, 0x63};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 2),
                   "int -100"); }
 
     /* -1000 -> 0x39 0x03 0xE7 */
     ctx.idx = 0;
     ret = wc_CBOR_EncodeInt(&ctx, -1000);
-    { uint8_t exp[] = {0x39, 0x03, 0xE7};
+    { const uint8_t exp[] = {0x39, 0x03, 0xE7};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 3),
                   "int -1000"); }
 
@@ -149,9 +149,9 @@ static void test_cbor_encode_vectors(void)
 
     /* bstr h'01020304' -> 0x44 0x01 0x02 0x03 0x04 */
     ctx.idx = 0;
-    { uint8_t data[] = {0x01, 0x02, 0x03, 0x04};
+    { const uint8_t data[] = {0x01, 0x02, 0x03, 0x04};
+      const uint8_t exp[] = {0x44, 0x01, 0x02, 0x03, 0x04};
       ret = wc_CBOR_EncodeBstr(&ctx, data, 4);
-      uint8_t exp[] = {0x44, 0x01, 0x02, 0x03, 0x04};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 5),
                   "bstr 4 bytes"); }
 
@@ -164,7 +164,7 @@ static void test_cbor_encode_vectors(void)
     /* tstr "IETF" -> 0x64 0x49 0x45 0x54 0x46 */
     ctx.idx = 0;
     ret = wc_CBOR_EncodeTstr(&ctx, (const uint8_t*)"IETF", 4);
-    { uint8_t exp[] = {0x64, 0x49, 0x45, 0x54, 0x46};
+    { const uint8_t exp[] = {0x64, 0x49, 0x45, 0x54, 0x46};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 5),
                   "tstr IETF"); }
 
@@ -180,7 +180,7 @@ static void test_cbor_encode_vectors(void)
     if (ret == 0) ret = wc_CBOR_EncodeUint(&ctx, 1);
     if (ret == 0) ret = wc_CBOR_EncodeUint(&ctx, 2);
     if (ret == 0) ret = wc_CBOR_EncodeUint(&ctx, 3);
-    { uint8_t exp[] = {0x83, 0x01, 0x02, 0x03};
+    { const uint8_t exp[] = {0x83, 0x01, 0x02, 0x03};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 4),
                   "array [1,2,3]"); }
 
@@ -396,8 +396,10 @@ static void test_cbor_roundtrip(void)
     if (ret == 0) ret = wc_CBOR_EncodeArrayStart(&enc, 5);
     if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 42);
     if (ret == 0) ret = wc_CBOR_EncodeInt(&enc, -7);
-    { uint8_t bdata[] = {0xDE, 0xAD, 0xBE, 0xEF};
-      if (ret == 0) ret = wc_CBOR_EncodeBstr(&enc, bdata, 4); }
+    if (ret == 0) {
+        const uint8_t bdata[] = {0xDE, 0xAD, 0xBE, 0xEF};
+        ret = wc_CBOR_EncodeBstr(&enc, bdata, 4);
+    }
     if (ret == 0) ret = wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"hello", 5);
     if (ret == 0) ret = wc_CBOR_EncodeMapStart(&enc, 0);
     TEST_ASSERT(ret == 0, "rt encode complex");
@@ -552,7 +554,6 @@ static void test_cbor_errors(void)
     WOLFCOSE_CBOR_CTX ctx;
     int ret;
     uint64_t uval;
-    int64_t ival;
     const uint8_t* data;
     size_t dataLen;
     size_t count;
@@ -580,7 +581,7 @@ static void test_cbor_errors(void)
 
     /* Buffer too small for bstr data */
     ctx.buf = buf; ctx.bufSz = 3; ctx.idx = 0;
-    { uint8_t d[] = {1, 2, 3, 4};
+    { const uint8_t d[] = {1, 2, 3, 4};
       ret = wc_CBOR_EncodeBstr(&ctx, d, 4); /* head=1 + data=4 > 3 */
       TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "encode bstr overflow"); }
 
@@ -656,12 +657,12 @@ static void test_cbor_errors(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "skip null ctx");
 
     /* DecodeInt with NULL val */
+    /* cppcheck-suppress redundantAssignment */
     ctx.buf = buf; ctx.bufSz = sizeof(buf); ctx.idx = 0;
     buf[0] = 0x00;
     ret = wc_CBOR_DecodeInt(&ctx, NULL);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode int null val");
 
-    (void)ival;
 }
 
 /* ---------------------------------------------------------------------------

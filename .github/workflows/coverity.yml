@@ -1,0 +1,85 @@
+name: Coverity Scan
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverity:
+    name: Coverity Scan
+    runs-on: ubuntu-latest
+
+    # Only run from the original repo, not forks
+    if: github.repository == 'aidangarske/wolfCOSE'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool curl
+
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-coverity-v2
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-curve25519 \
+                    --enable-aesgcm --enable-sha384 --enable-sha512 \
+                    --enable-keygen \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Download Coverity Build Tool
+      run: |
+        wget -q https://scan.coverity.com/download/cxx/linux64 \
+          --post-data "token=${{ secrets.COVERITY_SCAN_TOKEN }}&project=aidangarske%2FwolfCOSE" \
+          -O cov-analysis-linux64.tar.gz
+        mkdir -p cov-analysis-linux64
+        tar xzf cov-analysis-linux64.tar.gz --strip 1 -C cov-analysis-linux64
+
+    - name: Build with cov-build
+      run: |
+        export PATH="$(pwd)/cov-analysis-linux64/bin:$PATH"
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        cov-build --dir cov-int \
+          make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion \
+                       -I./include -I$WOLFSSL_DIR/include" \
+               LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Submit results to Coverity Scan
+      run: |
+        tar czvf wolfcose-cov-int.tgz cov-int
+        curl --form token=${{ secrets.COVERITY_SCAN_TOKEN }} \
+             --form email=${{ secrets.COVERITY_SCAN_EMAIL }} \
+             --form file=@wolfcose-cov-int.tgz \
+             --form version="${{ github.sha }}" \
+             --form description="Scan from ${{ github.ref_name }} (${{ github.event_name }})" \
+             https://scan.coverity.com/builds?project=aidangarske%2FwolfCOSE
+
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverity-build-log
+        path: cov-int/build-log.txt

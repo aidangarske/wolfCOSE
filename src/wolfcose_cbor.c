@@ -46,14 +46,13 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
                               uint64_t val)
 {
     int ret;
-    uint8_t mt;
-    size_t need;
 
     if (ctx == NULL || ctx->buf == NULL) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
-        mt = (uint8_t)(majorType << 5);
+        uint8_t mt = (uint8_t)(majorType << 5);
+        size_t need;
 
         if (val <= 23u) {
             need = 1;
@@ -653,13 +652,13 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
     WOLFCOSE_CBOR_ITEM item;
     /* Stack of remaining items to skip at each nesting level */
     size_t stack[WOLFCOSE_CBOR_MAX_DEPTH];
-    int depth = 0;
-    size_t remaining = 1; /* Start: need to skip 1 item */
 
     if (ctx == NULL) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
+        int depth = 0;
+        size_t remaining = 1; /* Start: need to skip 1 item */
         ret = WOLFCOSE_SUCCESS;
 
         while (remaining > 0u && ret == WOLFCOSE_SUCCESS) {

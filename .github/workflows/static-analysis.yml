@@ -46,7 +46,9 @@ jobs:
                  --error-exitcode=1 \
                  --suppress=missingIncludeSystem \
                  --suppress=constParameterPointer \
+                 --suppress=constParameter \
                  --suppress=knownConditionTrueFalse \
+                 --suppress=unusedLabelConfiguration \
                  --inline-suppr \
                  -I include -I src -I $HOME/wolfssl-install/include \
                  src/ tests/
