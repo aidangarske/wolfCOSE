@@ -53,6 +53,7 @@ jobs:
     - name: Run Coverity Scan
       uses: vapier/coverity-scan-action@v1
       with:
+        project: wolfCOSE
         token: ${{ secrets.COVERITY_SCAN_TOKEN }}
         email: ${{ secrets.COVERITY_SCAN_EMAIL }}
         command: |
