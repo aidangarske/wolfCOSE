@@ -27,7 +27,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y autoconf automake libtool curl
+        sudo apt-get install -y autoconf automake libtool
 
     - name: Cache wolfSSL
       id: cache-wolfssl
@@ -50,36 +50,10 @@ jobs:
         make -j$(nproc)
         make install
 
-    - name: Download Coverity Build Tool
-      run: |
-        wget -q https://scan.coverity.com/download/cxx/linux64 \
-          --post-data "token=${{ secrets.COVERITY_SCAN_TOKEN }}&project=aidangarske%2FwolfCOSE" \
-          -O cov-analysis-linux64.tar.gz
-        mkdir -p cov-analysis-linux64
-        tar xzf cov-analysis-linux64.tar.gz --strip 1 -C cov-analysis-linux64
-
-    - name: Build with cov-build
-      run: |
-        export PATH="$(pwd)/cov-analysis-linux64/bin:$PATH"
-        export WOLFSSL_DIR=$HOME/wolfssl-install
-        cov-build --dir cov-int \
-          make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion \
-                       -I./include -I$WOLFSSL_DIR/include" \
-               LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
-
-    - name: Submit results to Coverity Scan
-      run: |
-        tar czvf wolfcose-cov-int.tgz cov-int
-        curl --form token=${{ secrets.COVERITY_SCAN_TOKEN }} \
-             --form email=${{ secrets.COVERITY_SCAN_EMAIL }} \
-             --form file=@wolfcose-cov-int.tgz \
-             --form version="${{ github.sha }}" \
-             --form description="Scan from ${{ github.ref_name }} (${{ github.event_name }})" \
-             https://scan.coverity.com/builds?project=aidangarske%2FwolfCOSE
-
-    - name: Upload build log
-      if: always()
-      uses: actions/upload-artifact@v4
+    - name: Run Coverity Scan
+      uses: vapier/coverity-scan-action@v1
       with:
-        name: coverity-build-log
-        path: cov-int/build-log.txt
+        token: ${{ secrets.COVERITY_SCAN_TOKEN }}
+        email: ${{ secrets.COVERITY_SCAN_EMAIL }}
+        command: |
+          make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$HOME/wolfssl-install/include" LDFLAGS="-L$HOME/wolfssl-install/lib -lwolfssl"
