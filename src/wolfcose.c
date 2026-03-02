@@ -367,6 +367,10 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
 
         ret = wc_CBOR_DecodeMapStart(&ctx, &mapCount);
 
+        if (ret == WOLFCOSE_SUCCESS && mapCount > WOLFCOSE_MAX_MAP_ITEMS) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+
         for (i = 0; i < mapCount && ret == WOLFCOSE_SUCCESS; i++) {
             ret = wc_CBOR_DecodeInt(&ctx, &label);
             if (ret != WOLFCOSE_SUCCESS) {
@@ -408,6 +412,10 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
     else {
         size_t i;
         ret = wc_CBOR_DecodeMapStart(ctx, &mapCount);
+
+        if (ret == WOLFCOSE_SUCCESS && mapCount > WOLFCOSE_MAX_MAP_ITEMS) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
 
         for (i = 0; i < mapCount && ret == WOLFCOSE_SUCCESS; i++) {
             ret = wc_CBOR_DecodeInt(ctx, &label);
@@ -748,6 +756,10 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
         ctx.idx = 0;
 
         ret = wc_CBOR_DecodeMapStart(&ctx, &mapCount);
+
+        if (ret == WOLFCOSE_SUCCESS && mapCount > WOLFCOSE_MAX_MAP_ITEMS) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
 
         for (i = 0; i < mapCount && ret == WOLFCOSE_SUCCESS; i++) {
             ret = wc_CBOR_DecodeInt(&ctx, &label);

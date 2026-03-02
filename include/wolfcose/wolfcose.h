@@ -78,6 +78,9 @@ extern "C" {
 #ifndef WOLFCOSE_CBOR_MAX_DEPTH
     #define WOLFCOSE_CBOR_MAX_DEPTH        8
 #endif
+#ifndef WOLFCOSE_MAX_MAP_ITEMS
+    #define WOLFCOSE_MAX_MAP_ITEMS        16
+#endif
 
 /* ---------------------------------------------------------------------------
  * CBOR constants (RFC 8949)

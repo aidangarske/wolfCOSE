@@ -674,6 +674,10 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
                     if (depth >= WOLFCOSE_CBOR_MAX_DEPTH) {
                         ret = WOLFCOSE_E_CBOR_DEPTH;
                     }
+                    else if (item.val > ctx->bufSz) {
+                        /* Sanitize: can't have more items than bytes */
+                        ret = WOLFCOSE_E_CBOR_MALFORMED;
+                    }
                     else {
                         stack[depth] = remaining;
                         depth++;
@@ -685,6 +689,10 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
                 if (item.val > 0u) {
                     if (depth >= WOLFCOSE_CBOR_MAX_DEPTH) {
                         ret = WOLFCOSE_E_CBOR_DEPTH;
+                    }
+                    else if (item.val > ctx->bufSz) {
+                        /* Sanitize: can't have more entries than bytes */
+                        ret = WOLFCOSE_E_CBOR_MALFORMED;
                     }
                     else {
                         stack[depth] = remaining;
