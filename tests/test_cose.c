@@ -928,7 +928,7 @@ static void test_cose_encrypt0_aes_ccm(void)
  * COSE_Sign1 RSA-PSS tests
  * --------------------------------------------------------------------------- */
 #ifdef WC_RSA_PSS
-static void test_cose_sign1_ps256(void)
+static void test_cose_sign1_pss(const char* label, int32_t alg)
 {
     WOLFCOSE_KEY signKey;
     RsaKey rsaKey;
@@ -942,7 +942,7 @@ static void test_cose_sign1_ps256(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 PS256]\n");
+    printf("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -951,29 +951,29 @@ static void test_cose_sign1_ps256(void)
     if (ret != 0) { TEST_ASSERT(0, "rsa init"); wc_FreeRng(&rng); return; }
 
     ret = wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng);
-    if (ret != 0) { TEST_ASSERT(0, "rsa keygen"); goto done_ps256; }
+    if (ret != 0) { TEST_ASSERT(0, "rsa keygen"); goto done_pss; }
 
     wc_CoseKey_Init(&signKey);
     wc_CoseKey_SetRsa(&signKey, &rsaKey);
 
     /* Sign */
-    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_PS256,
+    ret = wc_CoseSign1_Sign(&signKey, alg,
         NULL, 0,
         payload, sizeof(payload) - 1,
         NULL, 0,
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ps256 sign");
+    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 pss sign");
 
     /* Verify */
     ret = wc_CoseSign1_Verify(&signKey, out, outLen,
         NULL, 0, scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 ps256 verify");
+    TEST_ASSERT(ret == 0, "sign1 pss verify");
     TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
                 memcmp(decPayload, payload, decPayloadLen) == 0,
-                "sign1 ps256 payload match");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_PS256, "sign1 ps256 hdr alg");
+                "sign1 pss payload match");
+    TEST_ASSERT(hdr.alg == alg, "sign1 pss hdr alg");
 
     /* Wrong key should fail */
     {
@@ -987,12 +987,12 @@ static void test_cose_sign1_ps256(void)
             ret = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, scratch, sizeof(scratch),
                 &hdr, &decPayload, &decPayloadLen);
-            TEST_ASSERT(ret != 0, "sign1 ps256 wrong key fails");
+            TEST_ASSERT(ret != 0, "sign1 pss wrong key fails");
         }
         wc_FreeRsaKey(&rsaWrong);
     }
 
-done_ps256:
+done_pss:
     wc_FreeRsaKey(&rsaKey);
     wc_FreeRng(&rng);
 }
@@ -1002,13 +1002,13 @@ done_ps256:
  * COSE_Sign1 ML-DSA (Dilithium) tests
  * --------------------------------------------------------------------------- */
 #ifdef HAVE_DILITHIUM
-static void test_cose_sign1_ml_dsa_44(void)
+static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
 {
     WOLFCOSE_KEY signKey;
     dilithium_key dlKey;
     WC_RNG rng;
     int ret;
-    uint8_t payload[] = "ML-DSA-44 payload";
+    uint8_t payload[] = "ML-DSA payload";
     uint8_t scratch[8192];
     uint8_t out[8192];
     size_t outLen = 0;
@@ -1016,7 +1016,7 @@ static void test_cose_sign1_ml_dsa_44(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 ML-DSA-44]\n");
+    printf("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -1024,49 +1024,48 @@ static void test_cose_sign1_ml_dsa_44(void)
     ret = wc_dilithium_init(&dlKey);
     if (ret != 0) { TEST_ASSERT(0, "dl init"); wc_FreeRng(&rng); return; }
 
-    ret = wc_dilithium_set_level(&dlKey, 2);
+    ret = wc_dilithium_set_level(&dlKey, level);
     if (ret != 0) { TEST_ASSERT(0, "dl set level"); goto done_mldsa; }
 
     ret = wc_dilithium_make_key(&dlKey, &rng);
     if (ret != 0) { TEST_ASSERT(0, "dl keygen"); goto done_mldsa; }
 
     wc_CoseKey_Init(&signKey);
-    wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    wc_CoseKey_SetDilithium(&signKey, alg, &dlKey);
 
     /* Sign */
-    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44,
+    ret = wc_CoseSign1_Sign(&signKey, alg,
         NULL, 0,
         payload, sizeof(payload) - 1,
         NULL, 0,
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ml-dsa-44 sign");
+    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ml-dsa sign");
 
     /* Verify */
     ret = wc_CoseSign1_Verify(&signKey, out, outLen,
         NULL, 0, scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 ml-dsa-44 verify");
+    TEST_ASSERT(ret == 0, "sign1 ml-dsa verify");
     TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
                 memcmp(decPayload, payload, decPayloadLen) == 0,
-                "sign1 ml-dsa-44 payload match");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ML_DSA_44, "sign1 ml-dsa-44 hdr alg");
+                "sign1 ml-dsa payload match");
+    TEST_ASSERT(hdr.alg == alg, "sign1 ml-dsa hdr alg");
 
     /* Wrong key should fail */
     {
         dilithium_key dlWrong;
         WOLFCOSE_KEY wrongKey;
         wc_dilithium_init(&dlWrong);
-        wc_dilithium_set_level(&dlWrong, 2);
+        wc_dilithium_set_level(&dlWrong, level);
         ret = wc_dilithium_make_key(&dlWrong, &rng);
         if (ret == 0) {
             wc_CoseKey_Init(&wrongKey);
-            wc_CoseKey_SetDilithium(&wrongKey, WOLFCOSE_ALG_ML_DSA_44,
-                                      &dlWrong);
+            wc_CoseKey_SetDilithium(&wrongKey, alg, &dlWrong);
             ret = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, scratch, sizeof(scratch),
                 &hdr, &decPayload, &decPayloadLen);
-            TEST_ASSERT(ret != 0, "sign1 ml-dsa-44 wrong key fails");
+            TEST_ASSERT(ret != 0, "sign1 ml-dsa wrong key fails");
         }
         wc_dilithium_free(&dlWrong);
     }
@@ -1337,11 +1336,15 @@ int test_cose(void)
 #endif
 
 #ifdef WC_RSA_PSS
-    test_cose_sign1_ps256();
+    test_cose_sign1_pss("PS256", WOLFCOSE_ALG_PS256);
+    test_cose_sign1_pss("PS384", WOLFCOSE_ALG_PS384);
+    test_cose_sign1_pss("PS512", WOLFCOSE_ALG_PS512);
 #endif
 
 #ifdef HAVE_DILITHIUM
-    test_cose_sign1_ml_dsa_44();
+    test_cose_sign1_ml_dsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, 2);
+    test_cose_sign1_ml_dsa("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, 3);
+    test_cose_sign1_ml_dsa("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, 5);
 #endif
 
 #if !defined(NO_HMAC)

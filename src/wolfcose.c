@@ -1224,7 +1224,7 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 }
 #endif
                 else {
-                    /* OKP key with no matching curve handler */
+                    ret = WOLFCOSE_E_COSE_BAD_ALG;
                 }
             }
             else
@@ -1500,7 +1500,7 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
         alg == WOLFCOSE_ALG_ML_DSA_87) {
         size_t expectedSigSz;
 
-        if (key->key.dilithium == NULL) {
+        if (key->kty != WOLFCOSE_KTY_OKP || key->key.dilithium == NULL) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
             goto cleanup;
         }
@@ -1845,7 +1845,7 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         alg == WOLFCOSE_ALG_ML_DSA_87) {
         int verified = 0;
 
-        if (key->key.dilithium == NULL) {
+        if (key->kty != WOLFCOSE_KTY_OKP || key->key.dilithium == NULL) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
             goto cleanup;
         }

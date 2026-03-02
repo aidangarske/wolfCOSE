@@ -103,11 +103,14 @@ static int parse_alg(const char* name, int32_t* alg)
     if (strcmp(name, "ES256") == 0) {
         *alg = WOLFCOSE_ALG_ES256;
     }
-    else if (strcmp(name, "EdDSA") == 0) {
+    else if (strcmp(name, "EdDSA") == 0 || strcmp(name, "Ed448") == 0) {
         *alg = WOLFCOSE_ALG_EDDSA;
     }
     else if (strcmp(name, "A128GCM") == 0) {
         *alg = WOLFCOSE_ALG_A128GCM;
+    }
+    else if (strcmp(name, "A192GCM") == 0) {
+        *alg = WOLFCOSE_ALG_A192GCM;
     }
     else if (strcmp(name, "A256GCM") == 0) {
         *alg = WOLFCOSE_ALG_A256GCM;
@@ -115,6 +118,23 @@ static int parse_alg(const char* name, int32_t* alg)
 #ifdef WC_RSA_PSS
     else if (strcmp(name, "PS256") == 0) {
         *alg = WOLFCOSE_ALG_PS256;
+    }
+    else if (strcmp(name, "PS384") == 0) {
+        *alg = WOLFCOSE_ALG_PS384;
+    }
+    else if (strcmp(name, "PS512") == 0) {
+        *alg = WOLFCOSE_ALG_PS512;
+    }
+#endif
+#ifdef HAVE_DILITHIUM
+    else if (strcmp(name, "ML-DSA-44") == 0) {
+        *alg = WOLFCOSE_ALG_ML_DSA_44;
+    }
+    else if (strcmp(name, "ML-DSA-65") == 0) {
+        *alg = WOLFCOSE_ALG_ML_DSA_65;
+    }
+    else if (strcmp(name, "ML-DSA-87") == 0) {
+        *alg = WOLFCOSE_ALG_ML_DSA_87;
     }
 #endif
 #if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
@@ -239,6 +259,65 @@ static int tool_keygen(int32_t alg, const char* outPath)
         wc_CoseKey_SetEd25519(&coseKey, &ed);
         ret = wc_CoseKey_Encode(&coseKey, keyBuf, sizeof(keyBuf), &keyLen);
         wc_ed25519_free(&ed);
+    }
+    else
+#endif
+#ifdef HAVE_ED448
+    if (alg == WOLFCOSE_ALG_EDDSA) {
+        /* Ed448 keygen — reached when Ed25519 is not compiled in */
+        ed448_key ed;
+        wc_ed448_init(&ed);
+        ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &ed);
+        if (ret != 0) {
+            fprintf(stderr, "Ed448 keygen failed: %d\n", ret);
+            wc_ed448_free(&ed);
+            wc_FreeRng(&rng);
+            return EXIT_CRYPTO;
+        }
+        wc_CoseKey_SetEd448(&coseKey, &ed);
+        ret = wc_CoseKey_Encode(&coseKey, keyBuf, sizeof(keyBuf), &keyLen);
+        wc_ed448_free(&ed);
+    }
+    else
+#endif
+#ifdef WC_RSA_PSS
+    if (alg == WOLFCOSE_ALG_PS256 || alg == WOLFCOSE_ALG_PS384 ||
+        alg == WOLFCOSE_ALG_PS512) {
+        RsaKey rsa;
+        wc_InitRsaKey(&rsa, NULL);
+        ret = wc_MakeRsaKey(&rsa, 2048, WC_RSA_EXPONENT, &rng);
+        if (ret != 0) {
+            fprintf(stderr, "RSA keygen failed: %d\n", ret);
+            wc_FreeRsaKey(&rsa);
+            wc_FreeRng(&rng);
+            return EXIT_CRYPTO;
+        }
+        wc_CoseKey_SetRsa(&coseKey, &rsa);
+        ret = wc_CoseKey_Encode(&coseKey, keyBuf, sizeof(keyBuf), &keyLen);
+        wc_FreeRsaKey(&rsa);
+    }
+    else
+#endif
+#ifdef HAVE_DILITHIUM
+    if (alg == WOLFCOSE_ALG_ML_DSA_44 || alg == WOLFCOSE_ALG_ML_DSA_65 ||
+        alg == WOLFCOSE_ALG_ML_DSA_87) {
+        dilithium_key dl;
+        byte level;
+        if (alg == WOLFCOSE_ALG_ML_DSA_44)      level = 2;
+        else if (alg == WOLFCOSE_ALG_ML_DSA_65)  level = 3;
+        else                                      level = 5;
+        wc_dilithium_init(&dl);
+        wc_dilithium_set_level(&dl, level);
+        ret = wc_dilithium_make_key(&dl, &rng);
+        if (ret != 0) {
+            fprintf(stderr, "ML-DSA keygen failed: %d\n", ret);
+            wc_dilithium_free(&dl);
+            wc_FreeRng(&rng);
+            return EXIT_CRYPTO;
+        }
+        wc_CoseKey_SetDilithium(&coseKey, alg, &dl);
+        ret = wc_CoseKey_Encode(&coseKey, keyBuf, sizeof(keyBuf), &keyLen);
+        wc_dilithium_free(&dl);
     }
     else
 #endif
@@ -924,7 +1003,7 @@ done:
 #endif
 
 #ifdef WC_RSA_PSS
-static int test_sign_ps256(void)
+static int test_sign_pss(const char* name, int32_t alg)
 {
     int ret = -1;
     WC_RNG rng;
@@ -939,7 +1018,7 @@ static int test_sign_ps256(void)
     size_t decodedLen;
     int rngInit = 0, rsaInit = 0;
 
-    printf("  %-12s sign/verify ... ", "PS256");
+    printf("  %-12s sign/verify ... ", name);
 
     if (wc_InitRng(&rng) != 0) goto done;
     rngInit = 1;
@@ -950,7 +1029,7 @@ static int test_sign_ps256(void)
     wc_CoseKey_Init(&key);
     wc_CoseKey_SetRsa(&key, &rsa);
 
-    if (wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_PS256, NULL, 0,
+    if (wc_CoseSign1_Sign(&key, alg, NULL, 0,
         payload, sizeof(payload) - 1, NULL, 0,
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng) != 0) goto done;
@@ -997,7 +1076,7 @@ static int test_sign_mldsa(const char* name, int32_t alg, byte level)
     if (wc_dilithium_make_key(&dl, &rng) != 0) goto done;
 
     wc_CoseKey_Init(&key);
-    wc_CoseKey_SetDilithium(&key, level, &dl);
+    wc_CoseKey_SetDilithium(&key, alg, &dl);
 
     if (wc_CoseSign1_Sign(&key, alg, NULL, 0,
         payload, sizeof(payload) - 1, NULL, 0,
@@ -1142,7 +1221,16 @@ static int tool_test(const char* filter)
 #endif
 #ifdef WC_RSA_PSS
     if (all || strcmp(filter, "PS256") == 0) {
-        tests++; if (test_sign_ps256() != 0) failures++;
+        tests++;
+        if (test_sign_pss("PS256", WOLFCOSE_ALG_PS256) != 0) failures++;
+    }
+    if (all || strcmp(filter, "PS384") == 0) {
+        tests++;
+        if (test_sign_pss("PS384", WOLFCOSE_ALG_PS384) != 0) failures++;
+    }
+    if (all || strcmp(filter, "PS512") == 0) {
+        tests++;
+        if (test_sign_pss("PS512", WOLFCOSE_ALG_PS512) != 0) failures++;
     }
 #endif
 #ifdef HAVE_DILITHIUM
