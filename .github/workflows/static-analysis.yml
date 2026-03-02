@@ -98,3 +98,42 @@ jobs:
       with:
         name: scan-build-results
         path: scan-results/
+
+  gcc-analyzer:
+    name: GCC -fanalyzer
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool
+
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-v2
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-curve25519 \
+                    --enable-aesgcm --enable-sha384 --enable-sha512 \
+                    --enable-keygen \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Build with -fanalyzer
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        make CC=gcc CFLAGS="-std=c99 -Os -Wall -Wextra -fanalyzer -Werror -I./include -I$WOLFSSL_DIR/include" \
+             LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
