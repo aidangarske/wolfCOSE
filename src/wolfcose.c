@@ -1492,7 +1492,6 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
         }
         sigSz = (size_t)ret;
         sigPtr = scratch;
-        ret = WOLFCOSE_SUCCESS;
     }
     else
 #endif /* WC_RSA_PSS */
@@ -1530,7 +1529,6 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
             sigPtr = scratch + sigStructLen;
             sigSz = (size_t)dlSigLen;
         }
-        ret = WOLFCOSE_SUCCESS;
     }
     else
 #endif /* HAVE_DILITHIUM */
