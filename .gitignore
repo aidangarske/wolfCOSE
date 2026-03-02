@@ -1,0 +1,15 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.su
+
+# Binaries
+tests/test_wolfcose
+tools/wolfcose_tool
+examples/lifecycle_demo
+
+# Editor / OS
+*.swp
+*~
+.DS_Store
