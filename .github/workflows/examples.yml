@@ -1,0 +1,66 @@
+name: Examples
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lifecycle-demo:
+    name: Lifecycle Demo
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool
+
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-v2
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-curve25519 \
+                    --enable-aesgcm --enable-sha384 --enable-sha512 \
+                    --enable-keygen \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Build wolfCOSE
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -fstack-usage -I./include -I$WOLFSSL_DIR/include" \
+             LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run lifecycle demo
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make demo CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -fstack-usage -I./include -I$WOLFSSL_DIR/include" \
+                  LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Binary size audit
+      run: |
+        echo "=== Object sizes ==="
+        size src/wolfcose_cbor.o src/wolfcose.o
+        echo ""
+        echo "=== Per-function stack usage ==="
+        cat src/*.su

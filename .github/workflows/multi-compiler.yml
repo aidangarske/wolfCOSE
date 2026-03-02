@@ -1,0 +1,71 @@
+name: Multiple Compilers
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiler_test:
+    name: ${{ matrix.cc }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cc: gcc-11
+          - cc: gcc-12
+          - cc: gcc-13
+          - cc: clang-14
+          - cc: clang-15
+          - cc: clang-17
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install compiler and tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ${{ matrix.cc }} autoconf automake libtool
+
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-v2
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-curve25519 \
+                    --enable-aesgcm --enable-sha384 --enable-sha512 \
+                    --enable-keygen \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Build wolfCOSE with ${{ matrix.cc }}
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        make CC=${{ matrix.cc }} \
+             CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Werror -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+             LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run unit tests
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make test CC=${{ matrix.cc }} \
+             CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Werror -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+             LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"

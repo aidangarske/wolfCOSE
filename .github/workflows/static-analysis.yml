@@ -1,0 +1,98 @@
+name: Static Analysis
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  cppcheck:
+    name: cppcheck
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install cppcheck
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cppcheck autoconf automake libtool
+
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-v2
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-curve25519 \
+                    --enable-aesgcm --enable-sha384 --enable-sha512 \
+                    --enable-keygen \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Run cppcheck
+      run: |
+        cppcheck --enable=warning,style,performance,portability \
+                 --error-exitcode=1 \
+                 --suppress=missingIncludeSystem \
+                 --suppress=constParameterPointer \
+                 --suppress=knownConditionTrueFalse \
+                 --inline-suppr \
+                 -I include -I src -I $HOME/wolfssl-install/include \
+                 src/ tests/
+
+  clang-analyzer:
+    name: Clang Static Analyzer
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-tools autoconf automake libtool
+
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-v2
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-curve25519 \
+                    --enable-aesgcm --enable-sha384 --enable-sha512 \
+                    --enable-keygen \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Run scan-build
+      run: |
+        scan-build --status-bugs -o scan-results \
+          make CC=clang CFLAGS="-std=c99 -Os -Wall -Wextra -I./include -I$HOME/wolfssl-install/include" \
+               LDFLAGS="-L$HOME/wolfssl-install/lib -lwolfssl"
+
+    - name: Upload scan-build results
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: scan-build-results
+        path: scan-results/

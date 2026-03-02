@@ -1,0 +1,27 @@
+name: Codespell
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codespell:
+    name: Check for spelling errors
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run codespell
+        uses: codespell-project/actions-codespell@v2.1
+        with:
+          check_filenames: true
+          check_hidden: true
+          ignore_words_list: adin,aNULL,cLen,dout,haveA,inOut,inout,parm,parms,ser,siz,te,Te,bstr,tstr,uint
+          skip: '.git'
