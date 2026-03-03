@@ -69,7 +69,12 @@
 #endif
 
 #ifndef WOLFCOSE_TOOL_MAX_KEY
-    #define WOLFCOSE_TOOL_MAX_KEY  512
+    #ifdef HAVE_DILITHIUM
+        /* ML-DSA-87: pub=2592 + priv=4896 + CBOR overhead */
+        #define WOLFCOSE_TOOL_MAX_KEY  8192
+    #else
+        #define WOLFCOSE_TOOL_MAX_KEY  512
+    #endif
 #endif
 
 #define EXIT_USAGE   1
@@ -212,7 +217,7 @@ static int write_file(const char* path, const uint8_t* buf, size_t len)
 /* ---------------------------------------------------------------------------
  * keygen: generate a COSE key and write to file
  * --------------------------------------------------------------------------- */
-static int tool_keygen(int32_t alg, const char* outPath)
+static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
 {
     int ret;
     WC_RNG rng;
@@ -246,7 +251,7 @@ static int tool_keygen(int32_t alg, const char* outPath)
     else
 #endif
 #ifdef HAVE_ED25519
-    if (alg == WOLFCOSE_ALG_EDDSA) {
+    if (alg == WOLFCOSE_ALG_EDDSA && strcmp(algStr, "Ed448") != 0) {
         ed25519_key ed;
         wc_ed25519_init(&ed);
         ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &ed);
@@ -264,7 +269,6 @@ static int tool_keygen(int32_t alg, const char* outPath)
 #endif
 #ifdef HAVE_ED448
     if (alg == WOLFCOSE_ALG_EDDSA) {
-        /* Ed448 keygen — reached when Ed25519 is not compiled in */
         ed448_key ed;
         wc_ed448_init(&ed);
         ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &ed);
@@ -1388,7 +1392,7 @@ int main(int argc, char* argv[])
             fprintf(stderr, "keygen requires -a <alg> -o <keyfile>\n");
             return EXIT_USAGE;
         }
-        return tool_keygen(alg, outPath);
+        return tool_keygen(alg, algStr, outPath);
     }
     else if (strcmp(cmd, "sign") == 0) {
         if (keyPath == NULL || algStr == NULL || inPath == NULL ||

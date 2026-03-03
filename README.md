@@ -7,7 +7,7 @@ Built for constrained IoT devices, FIPS-bounded deployments, and anywhere you ne
 ## Highlights
 
 - **First C COSE library with post-quantum signing** -- ML-DSA (FIPS 204 / Dilithium) at all three security levels
-- **18 algorithms** across signing, encryption, and MAC -- from classical ECC to post-quantum
+- **26 algorithms** across signing, encryption, and MAC -- from classical ECC to post-quantum
 - **CNSA 2.0 ready** -- ML-DSA-44/65/87 for quantum-resistant digital signatures
 - **Zero dynamic allocation** -- all operations use caller-provided buffers, no `malloc`
 - **Tiny footprint** -- core library is ~15KB `.text`, zero `.data`/`.bss`
@@ -51,9 +51,11 @@ Built for constrained IoT devices, FIPS-bounded deployments, and anywhere you ne
 | AES-CCM-16-64-128 | 10 | `HAVE_AESCCM` | 128-bit key, 8-byte tag |
 | AES-CCM-16-64-256 | 11 | `HAVE_AESCCM` | 256-bit key, 8-byte tag |
 | AES-CCM-64-64-128 | 12 | `HAVE_AESCCM` | 128-bit key, 8-byte tag, short nonce |
+| AES-CCM-64-64-256 | 13 | `HAVE_AESCCM` | 256-bit key, 8-byte tag, short nonce |
 | AES-CCM-16-128-128 | 30 | `HAVE_AESCCM` | 128-bit key, 16-byte tag |
 | AES-CCM-16-128-256 | 31 | `HAVE_AESCCM` | 256-bit key, 16-byte tag |
 | AES-CCM-64-128-128 | 32 | `HAVE_AESCCM` | 128-bit key, 16-byte tag, short nonce |
+| AES-CCM-64-128-256 | 33 | `HAVE_AESCCM` | 256-bit key, 16-byte tag, short nonce |
 
 ### COSE_Mac0 (Message Authentication)
 

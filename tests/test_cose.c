@@ -1295,6 +1295,169 @@ done_aad:
 #endif
 
 /* ---------------------------------------------------------------------------
+ * COSE_Key RSA encode/decode round-trip
+ * --------------------------------------------------------------------------- */
+#ifdef WC_RSA_PSS
+static void test_cose_key_rsa(void)
+{
+    WOLFCOSE_KEY key;
+    RsaKey rsaKey;
+    WC_RNG rng;
+    int ret;
+
+    printf("  [Key RSA]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+
+    ret = wc_InitRsaKey(&rsaKey, NULL);
+    if (ret != 0) { TEST_ASSERT(0, "rsa init"); wc_FreeRng(&rng); return; }
+
+    ret = wc_MakeRsaKey(&rsaKey, 2048, 65537, &rng);
+    TEST_ASSERT(ret == 0, "rsa keygen 2048");
+    if (ret != 0) { wc_FreeRsaKey(&rsaKey); wc_FreeRng(&rng); return; }
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetRsa(&key, &rsaKey);
+    TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_RSA &&
+                key.hasPrivate == 1, "key set rsa");
+
+    /* Encode/decode round-trip */
+    {
+        uint8_t cbuf[1024];
+        size_t cLen = 0;
+        WOLFCOSE_KEY key2;
+        RsaKey rsaKey2;
+
+        ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
+        TEST_ASSERT(ret == 0 && cLen > 0, "key rsa encode");
+
+        wc_InitRsaKey(&rsaKey2, NULL);
+        wc_CoseKey_Init(&key2);
+        key2.key.rsa = &rsaKey2;
+        ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
+        TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_RSA,
+                    "key rsa decode");
+
+        /* Verify decoded key can sign/verify */
+        {
+            uint8_t payload[] = "RSA key round-trip";
+            uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+            uint8_t out[512];
+            size_t outLen = 0;
+            const uint8_t* decPayload = NULL;
+            size_t decPayloadLen = 0;
+            WOLFCOSE_HDR hdr;
+
+            /* Sign with original key */
+            ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_PS256,
+                NULL, 0, payload, sizeof(payload) - 1, NULL, 0,
+                scratch, sizeof(scratch),
+                out, sizeof(out), &outLen, &rng);
+            TEST_ASSERT(ret == 0, "key rsa rt sign");
+
+            /* Verify with decoded key (public only) */
+            ret = wc_CoseSign1_Verify(&key2, out, outLen,
+                NULL, 0, scratch, sizeof(scratch),
+                &hdr, &decPayload, &decPayloadLen);
+            TEST_ASSERT(ret == 0, "key rsa rt verify");
+        }
+
+        wc_FreeRsaKey(&rsaKey2);
+    }
+
+    wc_CoseKey_Free(&key);
+    wc_FreeRsaKey(&rsaKey);
+    wc_FreeRng(&rng);
+}
+#endif /* WC_RSA_PSS */
+
+/* ---------------------------------------------------------------------------
+ * COSE_Key Dilithium encode/decode round-trip
+ * --------------------------------------------------------------------------- */
+#ifdef HAVE_DILITHIUM
+static void test_cose_key_dilithium(const char* label, int32_t alg,
+                                      int level)
+{
+    WOLFCOSE_KEY key;
+    dilithium_key dlKey;
+    WC_RNG rng;
+    int ret;
+
+    printf("  [Key %s]\n", label);
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+
+    ret = wc_dilithium_init(&dlKey);
+    if (ret != 0) { TEST_ASSERT(0, "dl init"); wc_FreeRng(&rng); return; }
+
+    ret = wc_dilithium_set_level(&dlKey, (byte)level);
+    if (ret != 0) {
+        TEST_ASSERT(0, "dl set level");
+        wc_dilithium_free(&dlKey); wc_FreeRng(&rng); return;
+    }
+
+    ret = wc_dilithium_make_key(&dlKey, &rng);
+    TEST_ASSERT(ret == 0, "dl keygen");
+    if (ret != 0) { wc_dilithium_free(&dlKey); wc_FreeRng(&rng); return; }
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetDilithium(&key, alg, &dlKey);
+    TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_OKP, "key set dl");
+
+    /* Encode/decode round-trip */
+    {
+        uint8_t cbuf[8192];
+        size_t cLen = 0;
+        WOLFCOSE_KEY key2;
+        dilithium_key dlKey2;
+
+        ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
+        TEST_ASSERT(ret == 0 && cLen > 0, "key dl encode");
+
+        wc_dilithium_init(&dlKey2);
+        wc_CoseKey_Init(&key2);
+        key2.key.dilithium = &dlKey2;
+        ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
+        TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_OKP &&
+                    key2.crv == key.crv && key2.hasPrivate == 1,
+                    "key dl decode");
+
+        /* Verify decoded key can sign/verify */
+        {
+            uint8_t payload[] = "Dilithium key round-trip";
+            uint8_t scratch[8192];
+            uint8_t out[8192];
+            size_t outLen = 0;
+            const uint8_t* decPayload = NULL;
+            size_t decPayloadLen = 0;
+            WOLFCOSE_HDR hdr;
+
+            /* Sign with original key */
+            ret = wc_CoseSign1_Sign(&key, alg,
+                NULL, 0, payload, sizeof(payload) - 1, NULL, 0,
+                scratch, sizeof(scratch),
+                out, sizeof(out), &outLen, &rng);
+            TEST_ASSERT(ret == 0, "key dl rt sign");
+
+            /* Verify with decoded key */
+            ret = wc_CoseSign1_Verify(&key2, out, outLen,
+                NULL, 0, scratch, sizeof(scratch),
+                &hdr, &decPayload, &decPayloadLen);
+            TEST_ASSERT(ret == 0, "key dl rt verify");
+        }
+
+        wc_dilithium_free(&dlKey2);
+    }
+
+    wc_CoseKey_Free(&key);
+    wc_dilithium_free(&dlKey);
+    wc_FreeRng(&rng);
+}
+#endif /* HAVE_DILITHIUM */
+
+/* ---------------------------------------------------------------------------
  * Entry point
  * --------------------------------------------------------------------------- */
 int test_cose(void)
@@ -1309,6 +1472,14 @@ int test_cose(void)
     test_cose_key_ed25519();
 #endif
     test_cose_key_symmetric();
+#ifdef WC_RSA_PSS
+    test_cose_key_rsa();
+#endif
+#ifdef HAVE_DILITHIUM
+    test_cose_key_dilithium("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, 2);
+    test_cose_key_dilithium("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, 3);
+    test_cose_key_dilithium("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, 5);
+#endif
 
 #ifdef HAVE_ECC
     test_cose_sign1_es256();

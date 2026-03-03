@@ -193,6 +193,10 @@ extern "C" {
 #define WOLFCOSE_CRV_P521        3
 #define WOLFCOSE_CRV_ED25519     6
 #define WOLFCOSE_CRV_ED448       7
+/* Provisional PQC curve IDs (not yet in IANA registry) */
+#define WOLFCOSE_CRV_ML_DSA_44   (-48)
+#define WOLFCOSE_CRV_ML_DSA_65   (-49)
+#define WOLFCOSE_CRV_ML_DSA_87   (-50)
 
 /* COSE_Key map labels */
 #define WOLFCOSE_KEY_LABEL_KTY    1

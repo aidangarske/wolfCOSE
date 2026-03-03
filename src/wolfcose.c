@@ -802,6 +802,9 @@ int wc_CoseKey_SetDilithium(WOLFCOSE_KEY* key, int32_t alg,
     else {
         key->kty = WOLFCOSE_KTY_OKP; /* PQC uses OKP kty per COSE WG */
         key->alg = alg;
+        if (alg == WOLFCOSE_ALG_ML_DSA_44)      key->crv = WOLFCOSE_CRV_ML_DSA_44;
+        else if (alg == WOLFCOSE_ALG_ML_DSA_65)  key->crv = WOLFCOSE_CRV_ML_DSA_65;
+        else                                      key->crv = WOLFCOSE_CRV_ML_DSA_87;
         key->key.dilithium = dlKey;
         key->hasPrivate = 1u; /* assume private after make_key */
         ret = WOLFCOSE_SUCCESS;
@@ -940,6 +943,183 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
         }
         else
 #endif /* HAVE_ECC */
+#ifdef WC_RSA_PSS
+        if (key->kty == WOLFCOSE_KTY_RSA) {
+            /* RFC 8230: {1:3, -1:n_bstr, -2:e_bstr [, -3:d_bstr]} */
+            uint8_t nBuf[512]; /* RSA-4096 modulus max */
+            uint8_t eBuf[8];   /* exponent, typically 3 bytes */
+            word32 nLen = (word32)sizeof(nBuf);
+            word32 eLen = (word32)sizeof(eBuf);
+            size_t mapEntries;
+
+            ret = wc_RsaFlattenPublicKey((RsaKey*)key->key.rsa,
+                                          eBuf, &eLen, nBuf, &nLen);
+            if (ret != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+                goto cleanup;
+            }
+
+            mapEntries = key->hasPrivate ? 4u : 3u;
+            ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
+
+            /* 1: kty */
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeUint(&ctx,
+                                          (uint64_t)WOLFCOSE_KEY_LABEL_KTY);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeUint(&ctx, (uint64_t)key->kty);
+            }
+            /* -1: n (modulus) */
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeInt(&ctx,
+                                         (int64_t)WOLFCOSE_KEY_LABEL_CRV);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeBstr(&ctx, nBuf, (size_t)nLen);
+            }
+            /* -2: e (exponent) */
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeInt(&ctx,
+                                         (int64_t)WOLFCOSE_KEY_LABEL_X);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeBstr(&ctx, eBuf, (size_t)eLen);
+            }
+            /* -3: d (private exponent, optional) */
+            if (ret == WOLFCOSE_SUCCESS && key->hasPrivate) {
+                uint8_t dBuf[512];
+                uint8_t pBuf[256], qBuf[256];
+                word32 dSz = (word32)sizeof(dBuf);
+                word32 nSz2 = (word32)sizeof(nBuf);
+                word32 eSz2 = (word32)sizeof(eBuf);
+                word32 pSz = (word32)sizeof(pBuf);
+                word32 qSz = (word32)sizeof(qBuf);
+
+                ret = wc_RsaExportKey((RsaKey*)key->key.rsa,
+                    eBuf, &eSz2, nBuf, &nSz2,
+                    dBuf, &dSz, pBuf, &pSz, qBuf, &qSz);
+                if (ret != 0) {
+                    ret = WOLFCOSE_E_CRYPTO;
+                }
+                else {
+                    ret = wc_CBOR_EncodeInt(&ctx,
+                                             (int64_t)WOLFCOSE_KEY_LABEL_Y);
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        ret = wc_CBOR_EncodeBstr(&ctx, dBuf, (size_t)dSz);
+                    }
+                }
+                wc_ForceZero(dBuf, sizeof(dBuf));
+                wc_ForceZero(pBuf, sizeof(pBuf));
+                wc_ForceZero(qBuf, sizeof(qBuf));
+            }
+
+            if (ret == WOLFCOSE_SUCCESS) {
+                *outLen = ctx.idx;
+            }
+            wc_ForceZero(nBuf, sizeof(nBuf));
+        }
+        else
+#endif /* WC_RSA_PSS */
+#ifdef HAVE_DILITHIUM
+        if (key->kty == WOLFCOSE_KTY_OKP &&
+            (key->crv == WOLFCOSE_CRV_ML_DSA_44 ||
+             key->crv == WOLFCOSE_CRV_ML_DSA_65 ||
+             key->crv == WOLFCOSE_CRV_ML_DSA_87)) {
+            /* ML-DSA (Dilithium) COSE_Key: OKP with PQC curve.
+             * Keys are large (pub up to 2592B, priv up to 4896B),
+             * so we export directly into the output buffer to
+             * avoid large stack allocations. */
+            size_t dlMapEntries;
+            word32 dlKeyLen;
+            size_t hdrPos;
+
+            dlMapEntries = key->hasPrivate ? 4u : 3u;
+            ret = wc_CBOR_EncodeMapStart(&ctx, dlMapEntries);
+
+            /* 1: kty = OKP (1) */
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeUint(&ctx,
+                                          (uint64_t)WOLFCOSE_KEY_LABEL_KTY);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeUint(&ctx, (uint64_t)key->kty);
+            }
+            /* -1: crv (negative for ML-DSA) */
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeInt(&ctx,
+                                         (int64_t)WOLFCOSE_KEY_LABEL_CRV);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeInt(&ctx, (int64_t)key->crv);
+            }
+            /* -2: x (public key bstr) - direct export into output */
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeInt(&ctx,
+                                         (int64_t)WOLFCOSE_KEY_LABEL_X);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                /* Reserve 3 bytes for CBOR bstr header (2-byte length).
+                 * All Dilithium pub sizes (1312-2592) need this form. */
+                hdrPos = ctx.idx;
+                if (ctx.idx + 3u > ctx.bufSz) {
+                    ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+                }
+                else {
+                    ctx.idx += 3u;
+                    dlKeyLen = (word32)(ctx.bufSz - ctx.idx);
+                    ret = wc_dilithium_export_public(key->key.dilithium,
+                        ctx.buf + ctx.idx, &dlKeyLen);
+                    if (ret != 0) {
+                        ret = WOLFCOSE_E_CRYPTO;
+                    }
+                    else {
+                        /* bstr header: major type 2, AI 25 (2-byte len) */
+                        ctx.buf[hdrPos] = 0x59u;
+                        ctx.buf[hdrPos + 1u] =
+                            (uint8_t)((uint32_t)dlKeyLen >> 8u);
+                        ctx.buf[hdrPos + 2u] =
+                            (uint8_t)((uint32_t)dlKeyLen & 0xFFu);
+                        ctx.idx += (size_t)dlKeyLen;
+                    }
+                }
+            }
+            /* -4: d (private key, optional) - direct export */
+            if (ret == WOLFCOSE_SUCCESS && key->hasPrivate) {
+                ret = wc_CBOR_EncodeInt(&ctx,
+                                         (int64_t)WOLFCOSE_KEY_LABEL_D);
+                if (ret == WOLFCOSE_SUCCESS) {
+                    hdrPos = ctx.idx;
+                    if (ctx.idx + 3u > ctx.bufSz) {
+                        ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+                    }
+                    else {
+                        ctx.idx += 3u;
+                        dlKeyLen = (word32)(ctx.bufSz - ctx.idx);
+                        ret = wc_dilithium_export_private(
+                            key->key.dilithium,
+                            ctx.buf + ctx.idx, &dlKeyLen);
+                        if (ret != 0) {
+                            ret = WOLFCOSE_E_CRYPTO;
+                        }
+                        else {
+                            ctx.buf[hdrPos] = 0x59u;
+                            ctx.buf[hdrPos + 1u] =
+                                (uint8_t)((uint32_t)dlKeyLen >> 8u);
+                            ctx.buf[hdrPos + 2u] =
+                                (uint8_t)((uint32_t)dlKeyLen & 0xFFu);
+                            ctx.idx += (size_t)dlKeyLen;
+                        }
+                    }
+                }
+            }
+
+            if (ret == WOLFCOSE_SUCCESS) {
+                *outLen = ctx.idx;
+            }
+        }
+        else
+#endif /* HAVE_DILITHIUM */
 #if defined(HAVE_ED25519) || defined(HAVE_ED448)
         if (key->kty == WOLFCOSE_KTY_OKP) {
             uint8_t pubBuf[57]; /* Ed448 pub = 57 bytes, Ed25519 = 32 */
@@ -1075,12 +1255,14 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
     uint64_t uval;
     const uint8_t* bstrData;
     size_t bstrLen;
-    const uint8_t* xData = NULL;
+    const uint8_t* xData = NULL;  /* EC2: x coord, RSA: e (exponent) */
     size_t xLen = 0;
-    const uint8_t* yData = NULL;
+    const uint8_t* yData = NULL;  /* EC2: y coord, RSA: d (private exp) */
     size_t yLen = 0;
-    const uint8_t* dData = NULL;
+    const uint8_t* dData = NULL;  /* EC2/OKP: private key */
     size_t dLen = 0;
+    const uint8_t* nData = NULL;  /* RSA: n (modulus) */
+    size_t nLen = 0;
 
     if (key == NULL || in == NULL || inSz == 0u) {
         ret = WOLFCOSE_E_INVALID_ARG;
@@ -1123,9 +1305,9 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 }
             }
             else if (label == WOLFCOSE_KEY_LABEL_CRV) {
-                /* -1: curve for EC2/OKP, or symmetric key bytes */
+                /* -1: crv(uint) for EC2/OKP, k(bstr) for Symmetric,
+                 *     n(bstr) for RSA (RFC 8230) */
                 if (key->kty == WOLFCOSE_KTY_SYMMETRIC) {
-                    /* For symmetric: -1 is the key value */
                     ret = wc_CBOR_DecodeBstr(&ctx, &bstrData, &bstrLen);
                     if (ret == WOLFCOSE_SUCCESS) {
                         key->key.symm.key = bstrData;
@@ -1133,10 +1315,18 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                         key->hasPrivate = 1;
                     }
                 }
+                else if (key->kty == WOLFCOSE_KTY_RSA) {
+                    /* RSA: -1 is n (modulus), bstr */
+                    ret = wc_CBOR_DecodeBstr(&ctx, &nData, &nLen);
+                }
                 else {
-                    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+                    /* EC2/OKP: crv is uint (P-256=1, Ed25519=6, etc.)
+                     * Dilithium: crv is negint (ML-DSA-44=-48, etc.)
+                     * Use DecodeInt to handle both. */
+                    int64_t crvVal;
+                    ret = wc_CBOR_DecodeInt(&ctx, &crvVal);
                     if (ret == WOLFCOSE_SUCCESS) {
-                        key->crv = (int32_t)uval;
+                        key->crv = (int32_t)crvVal;
                     }
                 }
             }
@@ -1186,6 +1376,62 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             }
             else
 #endif
+#ifdef WC_RSA_PSS
+            if (key->kty == WOLFCOSE_KTY_RSA && key->key.rsa != NULL) {
+                /* RFC 8230: -1=n(bstr), -2=e(bstr), -3=d(bstr) */
+                if (nData == NULL || xData == NULL) {
+                    ret = WOLFCOSE_E_COSE_BAD_HDR;
+                }
+                else {
+                    ret = wc_RsaPublicKeyDecodeRaw(nData, (word32)nLen,
+                        xData, (word32)xLen, key->key.rsa);
+                    if (ret != 0) {
+                        ret = WOLFCOSE_E_CRYPTO;
+                    }
+                    else {
+                        key->hasPrivate = (yData != NULL) ? 1u : 0u;
+                    }
+                }
+            }
+            else
+#endif
+#ifdef HAVE_DILITHIUM
+            if (key->kty == WOLFCOSE_KTY_OKP &&
+                key->key.dilithium != NULL &&
+                (key->crv == WOLFCOSE_CRV_ML_DSA_44 ||
+                 key->crv == WOLFCOSE_CRV_ML_DSA_65 ||
+                 key->crv == WOLFCOSE_CRV_ML_DSA_87)) {
+                byte dlLevel;
+                if (key->crv == WOLFCOSE_CRV_ML_DSA_44)      dlLevel = 2;
+                else if (key->crv == WOLFCOSE_CRV_ML_DSA_65)  dlLevel = 3;
+                else                                            dlLevel = 5;
+
+                if (xData == NULL) {
+                    ret = WOLFCOSE_E_COSE_BAD_HDR;
+                }
+                else {
+                    /* Set level before import */
+                    ret = wc_dilithium_set_level(key->key.dilithium,
+                                                  dlLevel);
+                    if (ret != 0) {
+                        ret = WOLFCOSE_E_CRYPTO;
+                    }
+                    else if (dData != NULL) {
+                        ret = wc_dilithium_import_key(
+                            dData, (word32)dLen,
+                            xData, (word32)xLen, key->key.dilithium);
+                        if (ret == 0) { key->hasPrivate = 1; }
+                        else { ret = WOLFCOSE_E_CRYPTO; }
+                    }
+                    else {
+                        ret = wc_dilithium_import_public(
+                            xData, (word32)xLen, key->key.dilithium);
+                        if (ret != 0) { ret = WOLFCOSE_E_CRYPTO; }
+                    }
+                }
+            }
+            else
+#endif /* HAVE_DILITHIUM */
 #if defined(HAVE_ED25519) || defined(HAVE_ED448)
             if (key->kty == WOLFCOSE_KTY_OKP) {
                 if (xData == NULL) {
@@ -1974,6 +2220,19 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
         goto cleanup;
     }
 
+    /* Validate nonce length matches algorithm spec */
+    {
+        size_t expectedNonceLen;
+        ret = wolfCose_AeadNonceLen(alg, &expectedNonceLen);
+        if (ret != WOLFCOSE_SUCCESS) {
+            goto cleanup;
+        }
+        if (ivLen != expectedNonceLen) {
+            ret = WOLFCOSE_E_INVALID_ARG;
+            goto cleanup;
+        }
+    }
+
     /* Encode protected headers */
     ret = wolfCose_EncodeProtectedHdr(alg, protectedBuf,
                                        sizeof(protectedBuf), &protectedLen);
@@ -2261,6 +2520,19 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
     if (hdr->iv == NULL || hdr->ivLen == 0u) {
         ret = WOLFCOSE_E_COSE_BAD_HDR;
         goto cleanup;
+    }
+
+    /* Validate nonce length matches algorithm spec */
+    {
+        size_t expectedNonceLen;
+        ret = wolfCose_AeadNonceLen(alg, &expectedNonceLen);
+        if (ret != WOLFCOSE_SUCCESS) {
+            goto cleanup;
+        }
+        if (hdr->ivLen != expectedNonceLen) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+            goto cleanup;
+        }
     }
 
     /* Build Enc_structure as AAD */

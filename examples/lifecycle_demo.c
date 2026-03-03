@@ -752,8 +752,9 @@ int main(int argc, char* argv[])
     else if (argc != 1) {
         fprintf(stderr,
             "Usage: %s [-a <alg>]\n"
-            "  alg: all, ES256, EdDSA, A128GCM, A256GCM, "
-            "HMAC256, HMAC384, HMAC512, ChaCha20\n", argv[0]);
+            "  alg: all, ES256, EdDSA, PS256, ML-DSA-44, A128GCM,\n"
+            "       A256GCM, HMAC256, HMAC384, HMAC512, ChaCha20,\n"
+            "       AES-CCM\n", argv[0]);
         return 1;
     }
 
