@@ -1722,7 +1722,6 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
         }
         sigSz = (size_t)ret;
         sigPtr = scratch;
-        ret = WOLFCOSE_SUCCESS;
     }
     else
 #endif /* WC_RSA_PSS */
@@ -1815,7 +1814,9 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
         goto cleanup;
     }
 
-    *outLen = outCtx.idx;
+    if (outLen != NULL) {
+        *outLen = outCtx.idx;
+    }
 
 cleanup:
     wc_ForceZero(hashBuf, sizeof(hashBuf));
@@ -2369,7 +2370,9 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
     }
 
     outCtx.idx += ciphertextTotalLen;
-    *outLen = outCtx.idx;
+    if (outLen != NULL) {
+        *outLen = outCtx.idx;
+    }
     ret = WOLFCOSE_SUCCESS;
 
 cleanup:
@@ -2825,7 +2828,9 @@ int wc_CoseMac0_Create(WOLFCOSE_KEY* key, int32_t alg,
         goto cleanup;
     }
 
-    *outLen = outCtx.idx;
+    if (outLen != NULL) {
+        *outLen = outCtx.idx;
+    }
 
 cleanup:
     if (hmacInited) {
