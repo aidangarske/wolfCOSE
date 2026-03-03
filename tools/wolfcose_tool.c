@@ -395,7 +395,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
 /* ---------------------------------------------------------------------------
  * sign: COSE_Sign1 sign
  * --------------------------------------------------------------------------- */
-static int tool_sign(const char* keyPath, int32_t alg,
+static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
                       const char* inPath, const char* outPath)
 {
     int ret;
@@ -418,7 +418,8 @@ static int tool_sign(const char* keyPath, int32_t alg,
     wc_CoseKey_Init(&coseKey);
 
 #ifdef HAVE_ECC
-    if (alg == WOLFCOSE_ALG_ES256) {
+    if (alg == WOLFCOSE_ALG_ES256 || alg == WOLFCOSE_ALG_ES384 ||
+        alg == WOLFCOSE_ALG_ES512) {
         ecc_key ecc;
         wc_ecc_init(&ecc);
         coseKey.key.ecc = &ecc;
@@ -446,7 +447,7 @@ static int tool_sign(const char* keyPath, int32_t alg,
     else
 #endif
 #ifdef HAVE_ED25519
-    if (alg == WOLFCOSE_ALG_EDDSA) {
+    if (alg == WOLFCOSE_ALG_EDDSA && strcmp(algStr, "Ed448") != 0) {
         ed25519_key ed;
         wc_ed25519_init(&ed);
         coseKey.key.ed25519 = &ed;
@@ -470,6 +471,92 @@ static int tool_sign(const char* keyPath, int32_t alg,
 
         wc_FreeRng(&rng);
         wc_ed25519_free(&ed);
+    }
+    else
+#endif
+#ifdef HAVE_ED448
+    if (alg == WOLFCOSE_ALG_EDDSA && strcmp(algStr, "Ed448") == 0) {
+        ed448_key ed;
+        wc_ed448_init(&ed);
+        coseKey.key.ed448 = &ed;
+        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        if (ret != 0) {
+            fprintf(stderr, "Key decode failed: %d\n", ret);
+            wc_ed448_free(&ed);
+            return EXIT_CRYPTO;
+        }
+
+        ret = wc_InitRng(&rng);
+        if (ret != 0) {
+            wc_ed448_free(&ed);
+            return EXIT_CRYPTO;
+        }
+
+        ret = wc_CoseSign1_Sign(&coseKey, alg, NULL, 0,
+            msgBuf, msgLen, NULL, 0,
+            scratch, sizeof(scratch),
+            outBuf, sizeof(outBuf), &outLen, &rng);
+
+        wc_FreeRng(&rng);
+        wc_ed448_free(&ed);
+    }
+    else
+#endif
+#ifdef WC_RSA_PSS
+    if (alg == WOLFCOSE_ALG_PS256 || alg == WOLFCOSE_ALG_PS384 ||
+        alg == WOLFCOSE_ALG_PS512) {
+        RsaKey rsa;
+        wc_InitRsaKey(&rsa, NULL);
+        coseKey.key.rsa = &rsa;
+        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        if (ret != 0) {
+            fprintf(stderr, "Key decode failed: %d\n", ret);
+            wc_FreeRsaKey(&rsa);
+            return EXIT_CRYPTO;
+        }
+
+        ret = wc_InitRng(&rng);
+        if (ret != 0) {
+            wc_FreeRsaKey(&rsa);
+            return EXIT_CRYPTO;
+        }
+
+        ret = wc_CoseSign1_Sign(&coseKey, alg, NULL, 0,
+            msgBuf, msgLen, NULL, 0,
+            scratch, sizeof(scratch),
+            outBuf, sizeof(outBuf), &outLen, &rng);
+
+        wc_FreeRng(&rng);
+        wc_FreeRsaKey(&rsa);
+    }
+    else
+#endif
+#ifdef HAVE_DILITHIUM
+    if (alg == WOLFCOSE_ALG_ML_DSA_44 || alg == WOLFCOSE_ALG_ML_DSA_65 ||
+        alg == WOLFCOSE_ALG_ML_DSA_87) {
+        dilithium_key dl;
+        wc_dilithium_init(&dl);
+        coseKey.key.dilithium = &dl;
+        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        if (ret != 0) {
+            fprintf(stderr, "Key decode failed: %d\n", ret);
+            wc_dilithium_free(&dl);
+            return EXIT_CRYPTO;
+        }
+
+        ret = wc_InitRng(&rng);
+        if (ret != 0) {
+            wc_dilithium_free(&dl);
+            return EXIT_CRYPTO;
+        }
+
+        ret = wc_CoseSign1_Sign(&coseKey, alg, NULL, 0,
+            msgBuf, msgLen, NULL, 0,
+            scratch, sizeof(scratch),
+            outBuf, sizeof(outBuf), &outLen, &rng);
+
+        wc_FreeRng(&rng);
+        wc_dilithium_free(&dl);
     }
     else
 #endif
@@ -513,9 +600,10 @@ static int tool_verify(const char* keyPath, const char* inPath)
     ret = read_file(inPath, msgBuf, sizeof(msgBuf), &msgLen);
     if (ret != 0) return ret;
 
+    /* Decode key to determine kty, then dispatch to correct wolfCrypt
+     * key type. OKP keys need crv to distinguish Ed25519/Ed448/Dilithium. */
     wc_CoseKey_Init(&coseKey);
 
-    /* Try ECC first, then Ed25519 */
 #ifdef HAVE_ECC
     {
         ecc_key ecc;
@@ -533,6 +621,24 @@ static int tool_verify(const char* keyPath, const char* inPath)
     }
 #endif
 
+#ifdef WC_RSA_PSS
+    {
+        RsaKey rsa;
+        wc_CoseKey_Init(&coseKey);
+        wc_InitRsaKey(&rsa, NULL);
+        coseKey.key.rsa = &rsa;
+        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_RSA) {
+            ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
+                NULL, 0, scratch, sizeof(scratch),
+                &hdr, &payload, &payloadLen);
+            wc_FreeRsaKey(&rsa);
+            goto verify_done;
+        }
+        wc_FreeRsaKey(&rsa);
+    }
+#endif
+
 #ifdef HAVE_ED25519
     {
         ed25519_key ed;
@@ -540,7 +646,8 @@ static int tool_verify(const char* keyPath, const char* inPath)
         wc_ed25519_init(&ed);
         coseKey.key.ed25519 = &ed;
         ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
-        if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_OKP) {
+        if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_OKP &&
+            coseKey.crv == WOLFCOSE_CRV_ED25519) {
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
                 NULL, 0, scratch, sizeof(scratch),
                 &hdr, &payload, &payloadLen);
@@ -548,6 +655,46 @@ static int tool_verify(const char* keyPath, const char* inPath)
             goto verify_done;
         }
         wc_ed25519_free(&ed);
+    }
+#endif
+
+#ifdef HAVE_ED448
+    {
+        ed448_key ed;
+        wc_CoseKey_Init(&coseKey);
+        wc_ed448_init(&ed);
+        coseKey.key.ed448 = &ed;
+        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_OKP &&
+            coseKey.crv == WOLFCOSE_CRV_ED448) {
+            ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
+                NULL, 0, scratch, sizeof(scratch),
+                &hdr, &payload, &payloadLen);
+            wc_ed448_free(&ed);
+            goto verify_done;
+        }
+        wc_ed448_free(&ed);
+    }
+#endif
+
+#ifdef HAVE_DILITHIUM
+    {
+        dilithium_key dl;
+        wc_CoseKey_Init(&coseKey);
+        wc_dilithium_init(&dl);
+        coseKey.key.dilithium = &dl;
+        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_OKP &&
+            (coseKey.crv == WOLFCOSE_CRV_ML_DSA_44 ||
+             coseKey.crv == WOLFCOSE_CRV_ML_DSA_65 ||
+             coseKey.crv == WOLFCOSE_CRV_ML_DSA_87)) {
+            ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
+                NULL, 0, scratch, sizeof(scratch),
+                &hdr, &payload, &payloadLen);
+            wc_dilithium_free(&dl);
+            goto verify_done;
+        }
+        wc_dilithium_free(&dl);
     }
 #endif
 
@@ -600,8 +747,17 @@ static int tool_enc(const char* keyPath, int32_t alg,
     }
 
     /* Determine nonce length for algorithm */
-    if (alg == WOLFCOSE_ALG_AES_CCM_16_128_128) {
-        ivLen = 13;
+    if (alg == WOLFCOSE_ALG_AES_CCM_16_64_128  ||
+        alg == WOLFCOSE_ALG_AES_CCM_16_64_256  ||
+        alg == WOLFCOSE_ALG_AES_CCM_16_128_128 ||
+        alg == WOLFCOSE_ALG_AES_CCM_16_128_256) {
+        ivLen = 13; /* CCM-16: L=2, nonce=13 */
+    }
+    else if (alg == WOLFCOSE_ALG_AES_CCM_64_64_128  ||
+             alg == WOLFCOSE_ALG_AES_CCM_64_64_256  ||
+             alg == WOLFCOSE_ALG_AES_CCM_64_128_128 ||
+             alg == WOLFCOSE_ALG_AES_CCM_64_128_256) {
+        ivLen = 7;  /* CCM-64: L=8, nonce=7 */
     }
     else {
         ivLen = 12; /* GCM and ChaCha20 */
@@ -1401,7 +1557,7 @@ int main(int argc, char* argv[])
                     "sign requires -k <key> -a <alg> -i <input> -o <output>\n");
             return EXIT_USAGE;
         }
-        return tool_sign(keyPath, alg, inPath, outPath);
+        return tool_sign(keyPath, alg, algStr, inPath, outPath);
     }
     else if (strcmp(cmd, "verify") == 0) {
         if (keyPath == NULL || inPath == NULL) {

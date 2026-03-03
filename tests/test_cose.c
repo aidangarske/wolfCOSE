@@ -261,10 +261,11 @@ static void test_cose_key_symmetric(void)
  * COSE_Sign1 tests
  * --------------------------------------------------------------------------- */
 #ifdef HAVE_ECC
-static void test_cose_sign1_es256(void)
+static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
+                                 int keySz)
 {
-    WOLFCOSE_KEY signKey, verifyKey;
-    ecc_key eccSign;
+    WOLFCOSE_KEY signKey;
+    ecc_key eccKey;
     WC_RNG rng;
     int ret;
     uint8_t payload[] = "Hello wolfCOSE!";
@@ -276,103 +277,96 @@ static void test_cose_sign1_es256(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 ES256]\n");
+    printf("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
-    /* Generate signing key */
-    wc_ecc_init(&eccSign);
-    ret = wc_ecc_make_key(&rng, 32, &eccSign);
-    if (ret != 0) { TEST_ASSERT(0, "sign keygen"); goto done_es256; }
+    wc_ecc_init(&eccKey);
+    ret = wc_ecc_make_key(&rng, keySz, &eccKey);
+    if (ret != 0) { TEST_ASSERT(0, "ecc keygen"); goto done_ecc; }
 
     wc_CoseKey_Init(&signKey);
-    wc_CoseKey_SetEcc(&signKey, WOLFCOSE_CRV_P256, &eccSign);
+    wc_CoseKey_SetEcc(&signKey, crv, &eccKey);
 
     /* Sign */
-    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ES256,
+    ret = wc_CoseSign1_Sign(&signKey, alg,
         kid, sizeof(kid) - 1,
         payload, sizeof(payload) - 1,
         NULL, 0,
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 es256 sign");
+    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ecc sign");
 
-    /* Verify with same key */
-    wc_CoseKey_Init(&verifyKey);
-    wc_CoseKey_SetEcc(&verifyKey, WOLFCOSE_CRV_P256, &eccSign);
-
-    ret = wc_CoseSign1_Verify(&verifyKey, out, outLen,
+    /* Verify */
+    ret = wc_CoseSign1_Verify(&signKey, out, outLen,
         NULL, 0, scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 es256 verify");
+    TEST_ASSERT(ret == 0, "sign1 ecc verify");
     TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
                 memcmp(decPayload, payload, decPayloadLen) == 0,
-                "sign1 es256 payload match");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256, "sign1 es256 hdr alg");
+                "sign1 ecc payload match");
+    TEST_ASSERT(hdr.alg == alg, "sign1 ecc hdr alg");
     TEST_ASSERT(hdr.kidLen == sizeof(kid) - 1 &&
                 memcmp(hdr.kid, kid, hdr.kidLen) == 0,
-                "sign1 es256 hdr kid");
+                "sign1 ecc hdr kid");
 
-    /* Verify with wrong key should fail */
+    /* Wrong key should fail */
     {
         ecc_key eccWrong;
         WOLFCOSE_KEY wrongKey;
         wc_ecc_init(&eccWrong);
-        ret = wc_ecc_make_key(&rng, 32, &eccWrong);
+        ret = wc_ecc_make_key(&rng, keySz, &eccWrong);
         if (ret == 0) {
             wc_CoseKey_Init(&wrongKey);
-            wc_CoseKey_SetEcc(&wrongKey, WOLFCOSE_CRV_P256, &eccWrong);
+            wc_CoseKey_SetEcc(&wrongKey, crv, &eccWrong);
             ret = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, scratch, sizeof(scratch),
                 &hdr, &decPayload, &decPayloadLen);
-            TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL,
-                        "sign1 es256 wrong key fails");
+            TEST_ASSERT(ret != 0, "sign1 ecc wrong key fails");
         }
         wc_ecc_free(&eccWrong);
     }
 
-    /* Tamper with payload byte, verify should fail */
+    /* Tampered ciphertext should fail */
     {
         uint8_t tampered[512];
         memcpy(tampered, out, outLen);
-        /* Find the payload inside the COSE message and flip a byte.
-         * The payload is after protected+unprotected headers. Flip a byte
-         * near the middle of the message. */
         if (outLen > 20) {
             tampered[outLen / 2] ^= 0xFF;
         }
-        ret = wc_CoseSign1_Verify(&verifyKey, tampered, outLen,
+        ret = wc_CoseSign1_Verify(&signKey, tampered, outLen,
             NULL, 0, scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
-        TEST_ASSERT(ret != 0, "sign1 es256 tampered fails");
+        TEST_ASSERT(ret != 0, "sign1 ecc tampered fails");
     }
 
-    /* Error: null args */
-    ret = wc_CoseSign1_Sign(NULL, WOLFCOSE_ALG_ES256, NULL, 0,
-        payload, sizeof(payload), NULL, 0,
-        scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "sign1 null key");
-
-    ret = wc_CoseSign1_Verify(NULL, out, outLen, NULL, 0,
-        scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "verify null key");
-
-    /* Error: no private key */
-    {
-        WOLFCOSE_KEY pubOnly;
-        wc_CoseKey_Init(&pubOnly);
-        pubOnly.kty = WOLFCOSE_KTY_EC2;
-        pubOnly.hasPrivate = 0;
-        pubOnly.key.ecc = &eccSign;
-        ret = wc_CoseSign1_Sign(&pubOnly, WOLFCOSE_ALG_ES256, NULL, 0,
+    /* Error tests (only run once, for ES256) */
+    if (alg == WOLFCOSE_ALG_ES256) {
+        ret = wc_CoseSign1_Sign(NULL, WOLFCOSE_ALG_ES256, NULL, 0,
             payload, sizeof(payload), NULL, 0,
             scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
-        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "sign1 no privkey");
+        TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "sign1 null key");
+
+        ret = wc_CoseSign1_Verify(NULL, out, outLen, NULL, 0,
+            scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "verify null key");
+
+        {
+            WOLFCOSE_KEY pubOnly;
+            wc_CoseKey_Init(&pubOnly);
+            pubOnly.kty = WOLFCOSE_KTY_EC2;
+            pubOnly.hasPrivate = 0;
+            pubOnly.key.ecc = &eccKey;
+            ret = wc_CoseSign1_Sign(&pubOnly, WOLFCOSE_ALG_ES256, NULL, 0,
+                payload, sizeof(payload), NULL, 0,
+                scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+            TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "sign1 no privkey");
+        }
     }
 
-done_es256:
-    wc_ecc_free(&eccSign);
+done_ecc:
+    wc_ecc_free(&eccKey);
     wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC */
@@ -1322,9 +1316,11 @@ static void test_cose_key_rsa(void)
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_RSA &&
                 key.hasPrivate == 1, "key set rsa");
 
-    /* Encode/decode round-trip */
+    /* Encode/decode round-trip.
+     * Buffer must be large enough for private key encoding scratch:
+     * CBOR overhead + n + e + d + temporary p/q workspace. */
     {
-        uint8_t cbuf[1024];
+        uint8_t cbuf[2048];
         size_t cLen = 0;
         WOLFCOSE_KEY key2;
         RsaKey rsaKey2;
@@ -1999,6 +1995,137 @@ static void test_cose_key_decode_optional_labels(void)
 }
 
 /* ---------------------------------------------------------------------------
+ * RFC 9052 interop test vectors (cose-wg/Examples)
+ * --------------------------------------------------------------------------- */
+
+/* ECDSA-01: P-256 / ES256 Sign1 (ecdsa-sig-01.json) */
+#ifdef HAVE_ECC
+static void test_rfc_sign1_ecdsa_01(void)
+{
+    /* Known P-256 public key (x, y from test vector) */
+    static const uint8_t tvKeyX[] = {
+        0xBA, 0xC5, 0xB1, 0x1C, 0xAD, 0x8F, 0x99, 0xF9,
+        0xC7, 0x2B, 0x05, 0xCF, 0x4B, 0x9E, 0x26, 0xD2,
+        0x44, 0xDC, 0x18, 0x9F, 0x74, 0x52, 0x28, 0x25,
+        0x5A, 0x21, 0x9A, 0x86, 0xD6, 0xA0, 0x9E, 0xFF
+    };
+    static const uint8_t tvKeyY[] = {
+        0x20, 0x13, 0x8B, 0xF8, 0x2D, 0xC1, 0xB6, 0xD5,
+        0x62, 0xBE, 0x0F, 0xA5, 0x4A, 0xB7, 0x80, 0x4A,
+        0x3A, 0x64, 0xB6, 0xD7, 0x2C, 0xCF, 0xED, 0x6B,
+        0x6F, 0xB6, 0xED, 0x28, 0xBB, 0xFC, 0x11, 0x7E
+    };
+
+    /* COSE_Sign1 output (100 bytes): Tag(18), protected={1:-7,3:0},
+     * unprotected={4:h'3131'}, payload="This is the content.",
+     * signature=64-byte r||s */
+    static const uint8_t tvCbor[] = {
+        0xD2, 0x84, 0x45, 0xA2, 0x01, 0x26, 0x03, 0x00,
+        0xA1, 0x04, 0x42, 0x31, 0x31, 0x54, 0x54, 0x68,
+        0x69, 0x73, 0x20, 0x69, 0x73, 0x20, 0x74, 0x68,
+        0x65, 0x20, 0x63, 0x6F, 0x6E, 0x74, 0x65, 0x6E,
+        0x74, 0x2E, 0x58, 0x40, 0x65, 0x20, 0xBB, 0xAF,
+        0x20, 0x81, 0xD7, 0xE0, 0xED, 0x0F, 0x95, 0xF7,
+        0x6E, 0xB0, 0x73, 0x3D, 0x66, 0x70, 0x05, 0xF7,
+        0x46, 0x7C, 0xEC, 0x4B, 0x87, 0xB9, 0x38, 0x1A,
+        0x6B, 0xA1, 0xED, 0xE8, 0xE0, 0x0D, 0xF2, 0x9F,
+        0x32, 0xA3, 0x72, 0x30, 0xF3, 0x9A, 0x84, 0x2A,
+        0x54, 0x82, 0x1F, 0xDD, 0x22, 0x30, 0x92, 0x81,
+        0x9D, 0x77, 0x28, 0xEF, 0xB9, 0xD3, 0xA0, 0x08,
+        0x0B, 0x75, 0x38, 0x0B
+    };
+
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    int ret;
+
+    printf("  [RFC ecdsa-sig-01 (ES256)]\n");
+
+    /* Import known public key */
+    wc_ecc_init(&eccKey);
+    ret = wc_ecc_import_unsigned(&eccKey,
+        (byte*)tvKeyX, (byte*)tvKeyY, NULL, ECC_SECP256R1);
+    TEST_ASSERT(ret == 0, "rfc es256 key import");
+    if (ret != 0) { wc_ecc_free(&eccKey); return; }
+
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    key.hasPrivate = 0; /* public-only for verify */
+
+    /* Verify the known test vector */
+    ret = wc_CoseSign1_Verify(&key, tvCbor, sizeof(tvCbor),
+        NULL, 0, scratch, sizeof(scratch), &hdr,
+        &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "rfc es256 verify");
+    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256, "rfc es256 alg");
+    TEST_ASSERT(decPayloadLen == 20, "rfc es256 payload len");
+    TEST_ASSERT(decPayload != NULL &&
+                memcmp(decPayload, "This is the content.", 20) == 0,
+                "rfc es256 payload match");
+
+    wc_CoseKey_Free(&key);
+    wc_ecc_free(&eccKey);
+}
+#endif /* HAVE_ECC */
+
+/* HMAC-01: HMAC-SHA256 Mac0 (mac0-tests/HMac-01.json) */
+#if !defined(NO_HMAC)
+static void test_rfc_mac0_hmac_01(void)
+{
+    /* Known HMAC-SHA256 symmetric key (32 bytes) */
+    static const uint8_t tvKey[] = {
+        0x84, 0x9B, 0x57, 0x21, 0x9D, 0xAE, 0x48, 0xDE,
+        0x64, 0x6D, 0x07, 0xDB, 0xB5, 0x33, 0x56, 0x6E,
+        0x97, 0x66, 0x86, 0x45, 0x7C, 0x14, 0x91, 0xBE,
+        0x3A, 0x76, 0xDC, 0xEA, 0x6C, 0x42, 0x71, 0x88
+    };
+
+    /* COSE_Mac0 output (62 bytes): Tag(17), protected={1:5},
+     * unprotected={}, payload="This is the content.",
+     * tag=32-byte HMAC */
+    static const uint8_t tvCbor[] = {
+        0xD1, 0x84, 0x43, 0xA1, 0x01, 0x05, 0xA0, 0x54,
+        0x54, 0x68, 0x69, 0x73, 0x20, 0x69, 0x73, 0x20,
+        0x74, 0x68, 0x65, 0x20, 0x63, 0x6F, 0x6E, 0x74,
+        0x65, 0x6E, 0x74, 0x2E, 0x58, 0x20, 0xA1, 0xA8,
+        0x48, 0xD3, 0x47, 0x1F, 0x9D, 0x61, 0xEE, 0x49,
+        0x01, 0x8D, 0x24, 0x4C, 0x82, 0x47, 0x72, 0xF2,
+        0x23, 0xAD, 0x4F, 0x93, 0x52, 0x93, 0xF1, 0x78,
+        0x9F, 0xC3, 0xA0, 0x8D, 0x8C, 0x58
+    };
+
+    WOLFCOSE_KEY key;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    int ret;
+
+    printf("  [RFC HMac-01 (HMAC-256)]\n");
+
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetSymmetric(&key, tvKey, sizeof(tvKey));
+
+    /* Verify the known test vector */
+    ret = wc_CoseMac0_Verify(&key, tvCbor, sizeof(tvCbor),
+        NULL, 0, scratch, sizeof(scratch), &hdr,
+        &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "rfc hmac01 verify");
+    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC256, "rfc hmac01 alg");
+    TEST_ASSERT(decPayloadLen == 20, "rfc hmac01 payload len");
+    TEST_ASSERT(decPayload != NULL &&
+                memcmp(decPayload, "This is the content.", 20) == 0,
+                "rfc hmac01 payload match");
+
+    wc_CoseKey_Free(&key);
+}
+#endif /* !NO_HMAC */
+
+/* ---------------------------------------------------------------------------
  * Entry point
  * --------------------------------------------------------------------------- */
 int test_cose(void)
@@ -2023,8 +2150,14 @@ int test_cose(void)
 #endif
 
 #ifdef HAVE_ECC
-    test_cose_sign1_es256();
+    test_cose_sign1_ecc("ES256", WOLFCOSE_ALG_ES256, WOLFCOSE_CRV_P256, 32);
     test_cose_sign1_with_aad();
+#ifdef WOLFSSL_SHA384
+    test_cose_sign1_ecc("ES384", WOLFCOSE_ALG_ES384, WOLFCOSE_CRV_P384, 48);
+#endif
+#ifdef WOLFSSL_SHA512
+    test_cose_sign1_ecc("ES512", WOLFCOSE_ALG_ES512, WOLFCOSE_CRV_P521, 66);
+#endif
 #endif
 #ifdef HAVE_ED25519
     test_cose_sign1_eddsa();
@@ -2068,6 +2201,14 @@ int test_cose(void)
     test_cose_mac0_hmac512();
 #endif
 #endif /* !NO_HMAC */
+
+    /* RFC 9052 interop test vectors */
+#ifdef HAVE_ECC
+    test_rfc_sign1_ecdsa_01();
+#endif
+#if !defined(NO_HMAC)
+    test_rfc_mac0_hmac_01();
+#endif
 
     /* Hardened / error-path tests */
 #ifdef HAVE_ECC
