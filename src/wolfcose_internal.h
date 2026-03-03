@@ -30,15 +30,6 @@
 #if !defined(NO_HMAC)
     #include <wolfssl/wolfcrypt/hmac.h>
 #endif
-#ifdef HAVE_ED448
-    #include <wolfssl/wolfcrypt/ed448.h>
-#endif
-#ifdef HAVE_DILITHIUM
-    #include <wolfssl/wolfcrypt/dilithium.h>
-#endif
-#ifdef WC_RSA_PSS
-    #include <wolfssl/wolfcrypt/rsa.h>
-#endif
 #if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
     #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #endif
@@ -179,14 +170,6 @@ WOLFCOSE_LOCAL int wolfCose_CrvKeySize(int32_t crv, size_t* keySz);
  */
 WOLFCOSE_LOCAL int wolfCose_CrvToWcCurve(int32_t crv, int* wcCrv);
 #endif
-
-/**
- * \brief Get AES key length for a COSE AES-GCM algorithm.
- * \param alg     COSE algorithm ID.
- * \param keyLen  Output: key length in bytes.
- * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_COSE_BAD_ALG.
- */
-WOLFCOSE_LOCAL int wolfCose_AesKeyLen(int32_t alg, size_t* keyLen);
 
 /**
  * \brief Get AEAD key length for any COSE AEAD algorithm.

@@ -1458,6 +1458,547 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
 #endif /* HAVE_DILITHIUM */
 
 /* ---------------------------------------------------------------------------
+ * Hardened / error-path / boundary tests
+ * --------------------------------------------------------------------------- */
+
+#ifdef HAVE_ECC
+static void test_cose_sign1_buffer_too_small(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen;
+    const uint8_t payload[] = "test";
+    int ret;
+
+    printf("  [Sign1 Buffer Errors]\n");
+
+    wc_InitRng(&rng);
+    wc_ecc_init(&eccKey);
+    wc_ecc_make_key(&rng, 32, &eccKey);
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetEcc(&key, WOLFCOSE_ALG_ES256, &eccKey);
+
+    /* scratch too small */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        scratch, 10, out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret != 0, "sign1 scratch too small");
+
+    /* output too small */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, 5, &outLen, &rng);
+    TEST_ASSERT(ret != 0, "sign1 out too small");
+
+    /* NULL scratch */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        NULL, 0, out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret != 0, "sign1 null scratch");
+
+    /* NULL output */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), NULL, 0, &outLen, &rng);
+    TEST_ASSERT(ret != 0, "sign1 null out");
+
+    /* NULL outLen */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), NULL, &rng);
+    TEST_ASSERT(ret != 0, "sign1 null outLen");
+
+    /* bad algorithm */
+    ret = wc_CoseSign1_Sign(&key, 999, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret != 0, "sign1 bad alg");
+
+    /* verify with truncated input */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+    if (ret == 0) {
+        WOLFCOSE_HDR hdr;
+        const uint8_t* dec;
+        size_t decLen;
+        ret = wc_CoseSign1_Verify(&key, out, 3, NULL, 0,
+            scratch, sizeof(scratch), &hdr, &dec, &decLen);
+        TEST_ASSERT(ret != 0, "verify truncated input");
+
+        /* verify with scratch too small */
+        ret = wc_CoseSign1_Verify(&key, out, outLen, NULL, 0,
+            scratch, 10, &hdr, &dec, &decLen);
+        TEST_ASSERT(ret != 0, "verify scratch too small");
+    }
+
+    wc_CoseKey_Free(&key);
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+#endif /* HAVE_ECC */
+
+#ifdef HAVE_AESGCM
+static void test_cose_encrypt0_buffer_errors(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t keyData[16];
+    uint8_t nonce[12];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen;
+    const uint8_t payload[] = "test";
+    int ret;
+
+    printf("  [Encrypt0 Buffer Errors]\n");
+
+    memset(keyData, 0xAA, sizeof(keyData));
+    memset(nonce, 0xBB, sizeof(nonce));
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    /* scratch too small */
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
+        nonce, sizeof(nonce), payload, sizeof(payload), NULL, 0,
+        scratch, 5, out, sizeof(out), &outLen);
+    TEST_ASSERT(ret != 0, "enc0 scratch too small");
+
+    /* output too small */
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
+        nonce, sizeof(nonce), payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, 5, &outLen);
+    TEST_ASSERT(ret != 0, "enc0 out too small");
+
+    /* NULL key */
+    ret = wc_CoseEncrypt0_Encrypt(NULL, WOLFCOSE_ALG_A128GCM,
+        nonce, sizeof(nonce), payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "enc0 null key");
+
+    /* bad alg */
+    ret = wc_CoseEncrypt0_Encrypt(&key, 999,
+        nonce, sizeof(nonce), payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret != 0, "enc0 bad alg");
+
+    /* decrypt truncated */
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
+        nonce, sizeof(nonce), payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    if (ret == 0) {
+        WOLFCOSE_HDR hdr;
+        uint8_t ptBuf[64];
+        size_t ptLen;
+        ret = wc_CoseEncrypt0_Decrypt(&key, out, 3, NULL, 0,
+            scratch, sizeof(scratch), &hdr,
+            ptBuf, sizeof(ptBuf), &ptLen);
+        TEST_ASSERT(ret != 0, "dec0 truncated input");
+    }
+
+    wc_CoseKey_Free(&key);
+}
+#endif /* HAVE_AESGCM */
+
+#if !defined(NO_HMAC)
+static void test_cose_mac0_buffer_errors(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t keyData[32];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen;
+    const uint8_t payload[] = "test";
+    int ret;
+
+    printf("  [Mac0 Buffer Errors]\n");
+
+    memset(keyData, 0xCC, sizeof(keyData));
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    /* scratch too small */
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC256, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        scratch, 5, out, sizeof(out), &outLen);
+    TEST_ASSERT(ret != 0, "mac0 scratch too small");
+
+    /* output too small */
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC256, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, 5, &outLen);
+    TEST_ASSERT(ret != 0, "mac0 out too small");
+
+    /* bad alg */
+    ret = wc_CoseMac0_Create(&key, 999, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret != 0, "mac0 bad alg");
+
+    /* verify truncated */
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC256, NULL, 0,
+        payload, sizeof(payload), NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    if (ret == 0) {
+        WOLFCOSE_HDR hdr;
+        const uint8_t* dec;
+        size_t decLen;
+        ret = wc_CoseMac0_Verify(&key, out, 3, NULL, 0,
+            scratch, sizeof(scratch), &hdr, &dec, &decLen);
+        TEST_ASSERT(ret != 0, "mac0 verify truncated");
+    }
+
+    wc_CoseKey_Free(&key);
+}
+#endif /* !NO_HMAC */
+
+static void test_cose_key_encode_errors(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t buf[512];
+    size_t len;
+    int ret;
+
+    printf("  [Key Encode/Decode Errors]\n");
+
+    /* encode uninitialized key (kty=0) */
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Encode(&key, buf, sizeof(buf), &len);
+    TEST_ASSERT(ret != 0, "encode unknown kty");
+
+    /* encode with buffer too small */
+    key.kty = WOLFCOSE_KTY_SYMMETRIC;
+    key.key.symm.key = (const uint8_t*)"\x01\x02\x03\x04";
+    key.key.symm.keyLen = 4;
+    ret = wc_CoseKey_Encode(&key, buf, 3, &len);
+    TEST_ASSERT(ret != 0, "encode buf too small");
+
+    /* decode empty buffer */
+    ret = wc_CoseKey_Decode(&key, buf, 0);
+    TEST_ASSERT(ret != 0, "decode empty buf");
+
+    /* decode truncated CBOR */
+    buf[0] = 0xA1; /* map(1) but nothing follows */
+    ret = wc_CoseKey_Decode(&key, buf, 1);
+    TEST_ASSERT(ret != 0, "decode truncated cbor");
+
+    /* NULL args */
+    ret = wc_CoseKey_Encode(NULL, buf, sizeof(buf), &len);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "encode null key");
+    ret = wc_CoseKey_Encode(&key, NULL, sizeof(buf), &len);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "encode null buf");
+    ret = wc_CoseKey_Encode(&key, buf, sizeof(buf), NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "encode null len");
+    ret = wc_CoseKey_Decode(NULL, buf, sizeof(buf));
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode null key");
+    ret = wc_CoseKey_Decode(&key, NULL, sizeof(buf));
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode null buf");
+}
+
+#ifdef HAVE_DILITHIUM
+static void test_cose_key_set_dilithium_errors(void)
+{
+    WOLFCOSE_KEY key;
+    dilithium_key dlKey;
+    int ret;
+
+    printf("  [SetDilithium Errors]\n");
+
+    wc_CoseKey_Init(&key);
+    wc_dilithium_init(&dlKey);
+
+    /* NULL args */
+    ret = wc_CoseKey_SetDilithium(NULL, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "set dl null key");
+    ret = wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "set dl null dlkey");
+
+    /* invalid alg */
+    ret = wc_CoseKey_SetDilithium(&key, -99, &dlKey);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "set dl bad alg");
+    ret = wc_CoseKey_SetDilithium(&key, 0, &dlKey);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "set dl zero alg");
+
+    wc_dilithium_free(&dlKey);
+}
+#endif /* HAVE_DILITHIUM */
+
+#ifdef HAVE_ED25519
+static void test_cose_key_ed25519_public_only(void)
+{
+    WOLFCOSE_KEY key, key2;
+    ed25519_key edKey, edKey2;
+    WC_RNG rng;
+    uint8_t buf[256];
+    size_t len;
+    int ret;
+
+    printf("  [Key Ed25519 Public-Only]\n");
+
+    wc_InitRng(&rng);
+    wc_ed25519_init(&edKey);
+    wc_ed25519_init(&edKey2);
+    wc_ed25519_make_key(&rng, 32, &edKey);
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetEd25519(&key, &edKey);
+
+    /* Encode with private */
+    ret = wc_CoseKey_Encode(&key, buf, sizeof(buf), &len);
+    TEST_ASSERT(ret == 0, "ed pub encode");
+
+    /* Decode into fresh key — should have private */
+    wc_CoseKey_Init(&key2);
+    key2.kty = WOLFCOSE_KTY_OKP;
+    key2.key.ed25519 = &edKey2;
+    ret = wc_CoseKey_Decode(&key2, buf, len);
+    TEST_ASSERT(ret == 0, "ed pub decode");
+    TEST_ASSERT(key2.hasPrivate == 1, "ed has priv");
+
+    /* Now export public-only: make a CBOR map without d label */
+    {
+        /* Build a minimal OKP key with only x (public) */
+        uint8_t pubBuf[256];
+        WOLFCOSE_CBOR_CTX enc;
+        uint8_t xBuf[32];
+        word32 xSz = sizeof(xBuf);
+        ed25519_key edKey3;
+
+        wc_ed25519_init(&edKey3);
+        wc_ed25519_export_public(&edKey, xBuf, &xSz);
+
+        enc.buf = pubBuf; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
+        wc_CBOR_EncodeMapStart(&enc, 3);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_ED25519);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_X);
+        wc_CBOR_EncodeBstr(&enc, xBuf, xSz);
+
+        wc_CoseKey_Init(&key2);
+        key2.kty = WOLFCOSE_KTY_OKP;
+        key2.key.ed25519 = &edKey3;
+        ret = wc_CoseKey_Decode(&key2, pubBuf, enc.idx);
+        TEST_ASSERT(ret == 0, "ed pub-only decode");
+        TEST_ASSERT(key2.hasPrivate == 0, "ed pub-only no priv");
+
+        wc_ed25519_free(&edKey3);
+    }
+
+    wc_CoseKey_Free(&key);
+    wc_ed25519_free(&edKey);
+    wc_ed25519_free(&edKey2);
+    wc_FreeRng(&rng);
+}
+#endif /* HAVE_ED25519 */
+
+#ifdef HAVE_ED448
+static void test_cose_key_ed448_public_only(void)
+{
+    WOLFCOSE_KEY key;
+    ed448_key edKey, edKey2;
+    WC_RNG rng;
+    uint8_t pubBuf[256];
+    WOLFCOSE_CBOR_CTX enc;
+    uint8_t xBuf[57];
+    word32 xSz = sizeof(xBuf);
+    int ret;
+
+    printf("  [Key Ed448 Public-Only]\n");
+
+    wc_InitRng(&rng);
+    wc_ed448_init(&edKey);
+    wc_ed448_init(&edKey2);
+    wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edKey);
+    wc_ed448_export_public(&edKey, xBuf, &xSz);
+
+    /* Build a public-only OKP key (no d label) */
+    enc.buf = pubBuf; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 3);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_ED448);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_X);
+    wc_CBOR_EncodeBstr(&enc, xBuf, xSz);
+
+    wc_CoseKey_Init(&key);
+    key.kty = WOLFCOSE_KTY_OKP;
+    key.key.ed448 = &edKey2;
+    ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
+    TEST_ASSERT(ret == 0, "ed448 pub-only decode");
+    TEST_ASSERT(key.hasPrivate == 0, "ed448 pub-only no priv");
+
+    wc_ed448_free(&edKey);
+    wc_ed448_free(&edKey2);
+    wc_FreeRng(&rng);
+}
+#endif /* HAVE_ED448 */
+
+#ifdef HAVE_DILITHIUM
+static void test_cose_key_dilithium_public_only(void)
+{
+    WOLFCOSE_KEY key;
+    dilithium_key dlKey, dlKey2;
+    WC_RNG rng;
+    uint8_t pubBuf[2048];
+    WOLFCOSE_CBOR_CTX enc;
+    uint8_t xBuf[1312]; /* ML-DSA-44 pub key size */
+    word32 xSz = sizeof(xBuf);
+    int ret;
+
+    printf("  [Key ML-DSA-44 Public-Only]\n");
+
+    wc_InitRng(&rng);
+    wc_dilithium_init(&dlKey);
+    wc_dilithium_init(&dlKey2);
+    wc_dilithium_set_level(&dlKey, 2);
+    wc_dilithium_make_key(&dlKey, &rng);
+    wc_dilithium_export_public(&dlKey, xBuf, &xSz);
+
+    /* Build a public-only OKP key (no d label) */
+    enc.buf = pubBuf; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 3);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_CRV_ML_DSA_44);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_X);
+    wc_CBOR_EncodeBstr(&enc, xBuf, (size_t)xSz);
+
+    wc_CoseKey_Init(&key);
+    key.kty = WOLFCOSE_KTY_OKP;
+    key.key.dilithium = &dlKey2;
+    ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
+    TEST_ASSERT(ret == 0, "dl pub-only decode");
+    TEST_ASSERT(key.hasPrivate == 0, "dl pub-only no priv");
+
+    /* Verify with public-only key */
+    {
+        WOLFCOSE_KEY signKey;
+        uint8_t scratch[8192];
+        uint8_t out[8192];
+        size_t outLen;
+        const uint8_t payload[] = "pub-only verify";
+        WOLFCOSE_HDR hdr;
+        const uint8_t* dec;
+        size_t decLen;
+
+        wc_CoseKey_Init(&signKey);
+        wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+
+        ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44, NULL, 0,
+            payload, sizeof(payload), NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "dl pub-only sign");
+
+        ret = wc_CoseSign1_Verify(&key, out, outLen, NULL, 0,
+            scratch, sizeof(scratch), &hdr, &dec, &decLen);
+        TEST_ASSERT(ret == 0, "dl pub-only verify");
+
+        wc_CoseKey_Free(&signKey);
+    }
+
+    wc_CoseKey_Free(&key);
+    wc_dilithium_free(&dlKey);
+    wc_dilithium_free(&dlKey2);
+    wc_FreeRng(&rng);
+}
+#endif /* HAVE_DILITHIUM */
+
+#ifdef HAVE_ECC
+/* Test ECC public-only key decode (no d label) */
+static void test_cose_key_ecc_public_only(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey, eccKey2;
+    WC_RNG rng;
+    uint8_t pubBuf[256];
+    WOLFCOSE_CBOR_CTX enc;
+    uint8_t xBuf[32], yBuf[32];
+    word32 xLen = sizeof(xBuf), yLen = sizeof(yBuf);
+    int ret;
+
+    printf("  [Key ECC Public-Only]\n");
+
+    wc_InitRng(&rng);
+    wc_ecc_init(&eccKey);
+    wc_ecc_init(&eccKey2);
+    wc_ecc_make_key(&rng, 32, &eccKey);
+    wc_ecc_export_public_raw(&eccKey, xBuf, &xLen, yBuf, &yLen);
+
+    /* Build a public-only EC2 key (no d label) */
+    enc.buf = pubBuf; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 4);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_P256);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_X);
+    wc_CBOR_EncodeBstr(&enc, xBuf, (size_t)xLen);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_Y);
+    wc_CBOR_EncodeBstr(&enc, yBuf, (size_t)yLen);
+
+    wc_CoseKey_Init(&key);
+    key.key.ecc = &eccKey2;
+    ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
+    TEST_ASSERT(ret == 0, "ecc pub-only decode");
+    TEST_ASSERT(key.hasPrivate == 0, "ecc pub-only no priv");
+
+    wc_ecc_free(&eccKey);
+    wc_ecc_free(&eccKey2);
+    wc_FreeRng(&rng);
+}
+#endif /* HAVE_ECC */
+
+/* Test COSE_Key decode with kid and alg labels */
+static void test_cose_key_decode_optional_labels(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t buf[128];
+    WOLFCOSE_CBOR_CTX enc;
+    const uint8_t kidVal[] = "sensor-01";
+    const uint8_t symmKey[] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
+    int ret;
+
+    printf("  [Key Decode Optional Labels]\n");
+
+    /* Build a symmetric key with kid(2), alg(3), and an unknown label(99) */
+    enc.buf = buf; enc.bufSz = sizeof(buf); enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 5);
+
+    /* kty = 4 (Symmetric) */
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_SYMMETRIC);
+
+    /* kid = "sensor-01" */
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KID);
+    wc_CBOR_EncodeBstr(&enc, kidVal, sizeof(kidVal) - 1);
+
+    /* alg = 5 (HMAC256) */
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_HMAC256);
+
+    /* -1 = k (symmetric key bytes) */
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+    wc_CBOR_EncodeBstr(&enc, symmKey, sizeof(symmKey));
+
+    /* unknown label 99 = uint 42 (should be skipped) */
+    wc_CBOR_EncodeInt(&enc, 99);
+    wc_CBOR_EncodeUint(&enc, 42);
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == 0, "key decode with labels");
+    TEST_ASSERT(key.kty == WOLFCOSE_KTY_SYMMETRIC, "key decode kty");
+    TEST_ASSERT(key.alg == WOLFCOSE_ALG_HMAC256, "key decode alg");
+    TEST_ASSERT(key.kidLen == sizeof(kidVal) - 1, "key decode kid len");
+    TEST_ASSERT(key.key.symm.keyLen == sizeof(symmKey), "key decode k len");
+}
+
+/* ---------------------------------------------------------------------------
  * Entry point
  * --------------------------------------------------------------------------- */
 int test_cose(void)
@@ -1527,6 +2068,34 @@ int test_cose(void)
     test_cose_mac0_hmac512();
 #endif
 #endif /* !NO_HMAC */
+
+    /* Hardened / error-path tests */
+#ifdef HAVE_ECC
+    test_cose_sign1_buffer_too_small();
+#endif
+#ifdef HAVE_AESGCM
+    test_cose_encrypt0_buffer_errors();
+#endif
+#if !defined(NO_HMAC)
+    test_cose_mac0_buffer_errors();
+#endif
+    test_cose_key_encode_errors();
+    test_cose_key_decode_optional_labels();
+#ifdef HAVE_DILITHIUM
+    test_cose_key_set_dilithium_errors();
+#endif
+#ifdef HAVE_ED25519
+    test_cose_key_ed25519_public_only();
+#endif
+#ifdef HAVE_ED448
+    test_cose_key_ed448_public_only();
+#endif
+#ifdef HAVE_DILITHIUM
+    test_cose_key_dilithium_public_only();
+#endif
+#ifdef HAVE_ECC
+    test_cose_key_ecc_public_only();
+#endif
 
     printf("  COSE: %d failure(s)\n", g_failures);
     return g_failures;

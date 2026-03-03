@@ -28,36 +28,21 @@
 #endif
 
 #include "wolfcose_internal.h"
+/* wolfcose.h (via internal.h) includes ecc.h, ed25519.h, ed448.h,
+ * dilithium.h, rsa.h, random.h.  Only list headers not pulled in. */
 #include <wolfssl/wolfcrypt/hash.h>
 #include <wolfssl/wolfcrypt/error-crypt.h>
-#ifdef HAVE_ECC
-    #include <wolfssl/wolfcrypt/ecc.h>
-#endif
-#ifdef HAVE_ED25519
-    #include <wolfssl/wolfcrypt/ed25519.h>
-#endif
-#ifdef HAVE_ED448
-    #include <wolfssl/wolfcrypt/ed448.h>
-#endif
-#ifdef HAVE_DILITHIUM
-    #include <wolfssl/wolfcrypt/dilithium.h>
-#endif
+#include <wolfssl/wolfcrypt/memory.h>  /* wc_ForceZero, XMEMCPY */
 #if defined(HAVE_AESGCM) || defined(HAVE_AESCCM)
     #include <wolfssl/wolfcrypt/aes.h>
 #endif
 #if !defined(NO_HMAC)
     #include <wolfssl/wolfcrypt/hmac.h>
 #endif
-#ifdef WC_RSA_PSS
-    #include <wolfssl/wolfcrypt/rsa.h>
-#endif
 #if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
     #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #endif
-
 #include <string.h>
-
-#include <wolfssl/wolfcrypt/memory.h>  /* wc_ForceZero */
 
 /* ---------------------------------------------------------------------------
  * Internal helpers: algorithm dispatch
@@ -222,32 +207,6 @@ int wolfCose_CrvToWcCurve(int32_t crv, int* wcCrv)
     return ret;
 }
 #endif
-
-int wolfCose_AesKeyLen(int32_t alg, size_t* keyLen)
-{
-    int ret = WOLFCOSE_SUCCESS;
-
-    if (keyLen == NULL) {
-        ret = WOLFCOSE_E_INVALID_ARG;
-    }
-    else {
-        switch (alg) {
-            case WOLFCOSE_ALG_A128GCM:
-                *keyLen = 16;
-                break;
-            case WOLFCOSE_ALG_A192GCM:
-                *keyLen = 24;
-                break;
-            case WOLFCOSE_ALG_A256GCM:
-                *keyLen = 32;
-                break;
-            default:
-                ret = WOLFCOSE_E_COSE_BAD_ALG;
-                break;
-        }
-    }
-    return ret;
-}
 
 /* ---------------------------------------------------------------------------
  * Internal: AEAD dispatch helpers (AES-GCM, ChaCha20-Poly1305, AES-CCM)
@@ -783,7 +742,7 @@ int wc_CoseKey_SetEd448(WOLFCOSE_KEY* key, ed448_key* edKey)
         key->kty = WOLFCOSE_KTY_OKP;
         key->crv = WOLFCOSE_CRV_ED448;
         key->key.ed448 = edKey;
-        key->hasPrivate = (wc_ed448_size(edKey) > 0) ? 1u : 0u;
+        key->hasPrivate = (edKey->privKeySet != 0) ? 1u : 0u;
         ret = WOLFCOSE_SUCCESS;
     }
     return ret;
@@ -798,6 +757,11 @@ int wc_CoseKey_SetDilithium(WOLFCOSE_KEY* key, int32_t alg,
 
     if (key == NULL || dlKey == NULL) {
         ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if (alg != WOLFCOSE_ALG_ML_DSA_44 &&
+             alg != WOLFCOSE_ALG_ML_DSA_65 &&
+             alg != WOLFCOSE_ALG_ML_DSA_87) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
     else {
         key->kty = WOLFCOSE_KTY_OKP; /* PQC uses OKP kty per COSE WG */
@@ -1018,6 +982,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 *outLen = ctx.idx;
             }
             wc_ForceZero(nBuf, sizeof(nBuf));
+            wc_ForceZero(eBuf, sizeof(eBuf));
         }
         else
 #endif /* WC_RSA_PSS */
@@ -1242,6 +1207,9 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
 
     /* MISRA Rule 15.1 deviation: forward goto to single cleanup label */
 cleanup: /* used by ECC/Ed25519 error paths above */
+    if (ret != WOLFCOSE_SUCCESS && out != NULL) {
+        wc_ForceZero(out, outSz);
+    }
     return ret;
 }
 
@@ -1389,7 +1357,9 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                         ret = WOLFCOSE_E_CRYPTO;
                     }
                     else {
-                        key->hasPrivate = (yData != NULL) ? 1u : 0u;
+                        /* Public key only — full private import from raw
+                         * n,e,d components is not currently supported */
+                        key->hasPrivate = 0u;
                     }
                 }
             }
@@ -1486,6 +1456,34 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 
     return ret;
 }
+
+/* ---------------------------------------------------------------------------
+ * Internal: RSA-PSS hash-to-MGF mapping
+ * --------------------------------------------------------------------------- */
+#ifdef WC_RSA_PSS
+static int wolfCose_HashToMgf(enum wc_HashType hashType, int* mgf)
+{
+    int ret = WOLFCOSE_SUCCESS;
+
+    if (hashType == WC_HASH_TYPE_SHA256) {
+        *mgf = WC_MGF1SHA256;
+    }
+#ifdef WOLFSSL_SHA384
+    else if (hashType == WC_HASH_TYPE_SHA384) {
+        *mgf = WC_MGF1SHA384;
+    }
+#endif
+#ifdef WOLFSSL_SHA512
+    else if (hashType == WC_HASH_TYPE_SHA512) {
+        *mgf = WC_MGF1SHA512;
+    }
+#endif
+    else {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+    return ret;
+}
+#endif
 
 /* ---------------------------------------------------------------------------
  * COSE_Sign1 API
@@ -1707,22 +1705,8 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
             goto cleanup;
         }
 
-        /* Map to MGF */
-        if (hashType == WC_HASH_TYPE_SHA256) {
-            mgf = WC_MGF1SHA256;
-        }
-#ifdef WOLFSSL_SHA384
-        else if (hashType == WC_HASH_TYPE_SHA384) {
-            mgf = WC_MGF1SHA384;
-        }
-#endif
-#ifdef WOLFSSL_SHA512
-        else if (hashType == WC_HASH_TYPE_SHA512) {
-            mgf = WC_MGF1SHA512;
-        }
-#endif
-        else {
-            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        ret = wolfCose_HashToMgf(hashType, &mgf);
+        if (ret != WOLFCOSE_SUCCESS) {
             goto cleanup;
         }
 
@@ -1738,6 +1722,7 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
         }
         sigSz = (size_t)ret;
         sigPtr = scratch;
+        ret = WOLFCOSE_SUCCESS;
     }
     else
 #endif /* WC_RSA_PSS */
@@ -1835,7 +1820,9 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
 cleanup:
     wc_ForceZero(hashBuf, sizeof(hashBuf));
     wc_ForceZero(sigBuf, sizeof(sigBuf));
-    wc_ForceZero(scratch, scratchSz);
+    if (scratch != NULL) {
+        wc_ForceZero(scratch, scratchSz);
+    }
     return ret;
 }
 
@@ -2054,27 +2041,20 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
             goto cleanup;
         }
 
-        /* Map to MGF */
-        if (hashType == WC_HASH_TYPE_SHA256) {
-            mgf = WC_MGF1SHA256;
-        }
-#ifdef WOLFSSL_SHA384
-        else if (hashType == WC_HASH_TYPE_SHA384) {
-            mgf = WC_MGF1SHA384;
-        }
-#endif
-#ifdef WOLFSSL_SHA512
-        else if (hashType == WC_HASH_TYPE_SHA512) {
-            mgf = WC_MGF1SHA512;
-        }
-#endif
-        else {
-            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        ret = wolfCose_HashToMgf(hashType, &mgf);
+        if (ret != WOLFCOSE_SUCCESS) {
             goto cleanup;
         }
 
-        /* scratch is free after hashing — reuse as working buffer */
-        ret = wc_RsaPSS_VerifyCheck(sigData, (word32)sigDataLen,
+        /* Copy sig into scratch — wc_RsaPSS_VerifyCheck modifies its
+         * input buffer in-place; sigData points into the caller's
+         * const COSE message and must not be written to. */
+        if (sigDataLen > scratchSz) {
+            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+            goto cleanup;
+        }
+        XMEMCPY(scratch, sigData, sigDataLen);
+        ret = wc_RsaPSS_VerifyCheck(scratch, (word32)sigDataLen,
                                       scratch, (word32)scratchSz,
                                       hashBuf, (word32)digestSz,
                                       hashType, mgf, key->key.rsa);
@@ -2121,7 +2101,9 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
 
 cleanup:
     wc_ForceZero(hashBuf, sizeof(hashBuf));
-    wc_ForceZero(scratch, scratchSz);
+    if (scratch != NULL) {
+        wc_ForceZero(scratch, scratchSz);
+    }
     return ret;
 }
 
@@ -2396,7 +2378,9 @@ cleanup:
         wc_AesFree(&aes);
     }
 #endif
-    wc_ForceZero(scratch, scratchSz);
+    if (scratch != NULL) {
+        wc_ForceZero(scratch, scratchSz);
+    }
     return ret;
 }
 
@@ -2637,7 +2621,9 @@ cleanup:
         wc_AesFree(&aes);
     }
 #endif
-    wc_ForceZero(scratch, scratchSz);
+    if (scratch != NULL) {
+        wc_ForceZero(scratch, scratchSz);
+    }
     return ret;
 }
 
@@ -2846,7 +2832,9 @@ cleanup:
         wc_HmacFree(&hmac);
     }
     wc_ForceZero(tagBuf, sizeof(tagBuf));
-    wc_ForceZero(scratch, scratchSz);
+    if (scratch != NULL) {
+        wc_ForceZero(scratch, scratchSz);
+    }
     return ret;
 }
 
@@ -3020,7 +3008,9 @@ cleanup:
         wc_HmacFree(&hmac);
     }
     wc_ForceZero(computedTag, sizeof(computedTag));
-    wc_ForceZero(scratch, scratchSz);
+    if (scratch != NULL) {
+        wc_ForceZero(scratch, scratchSz);
+    }
     return ret;
 }
 
