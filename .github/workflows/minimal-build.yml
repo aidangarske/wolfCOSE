@@ -19,23 +19,23 @@ jobs:
       matrix:
         include:
           - name: ECC-only
-            wolfssl_flags: "--enable-ecc --enable-aesgcm --enable-keygen"
-            cache_key: wolfssl-ecc-only-v3
+            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen"
+            cache_key: wolfssl-ecc-only-v4
           - name: EdDSA-only
-            wolfssl_flags: "--enable-ed25519 --enable-curve25519 --enable-aesgcm --enable-sha512 --disable-rsa"
-            cache_key: wolfssl-eddsa-only-v4
+            wolfssl_flags: "--enable-cryptonly --enable-ed25519 --enable-curve25519 --enable-sha512"
+            cache_key: wolfssl-eddsa-only-v5
           - name: Ed448-only
-            wolfssl_flags: "--enable-ed448 --enable-sha512 --disable-rsa --disable-ecc --disable-dh"
-            cache_key: wolfssl-ed448-only-v1
+            wolfssl_flags: "--enable-cryptonly --enable-ed448 --enable-sha512"
+            cache_key: wolfssl-ed448-only-v2
           - name: AEAD-only (no signing)
-            wolfssl_flags: "--enable-aesgcm --enable-aesccm --enable-chacha --enable-poly1305 --disable-rsa --disable-ecc"
-            cache_key: wolfssl-aead-only-v4
+            wolfssl_flags: "--enable-cryptonly --enable-aesgcm --enable-aesccm --enable-chacha --enable-poly1305"
+            cache_key: wolfssl-aead-only-v5
           - name: RSA-PSS-only
-            wolfssl_flags: "--enable-rsapss --enable-keygen --enable-sha384 --enable-sha512 --disable-ecc"
-            cache_key: wolfssl-rsa-only-v4
+            wolfssl_flags: "--enable-cryptonly --enable-rsapss --enable-keygen --enable-sha384 --enable-sha512"
+            cache_key: wolfssl-rsa-only-v5
           - name: PQ (ML-DSA) only
-            wolfssl_flags: "--enable-dilithium --enable-sha512 --disable-rsa --disable-ecc --disable-dh"
-            cache_key: wolfssl-pq-only-v1
+            wolfssl_flags: "--enable-cryptonly --enable-dilithium --enable-sha512"
+            cache_key: wolfssl-pq-only-v2
 
     steps:
     - uses: actions/checkout@v4
