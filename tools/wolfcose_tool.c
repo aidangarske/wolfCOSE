@@ -284,7 +284,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
     }
     else
 #endif
-#ifdef WC_RSA_PSS
+#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
     if (alg == WOLFCOSE_ALG_PS256 || alg == WOLFCOSE_ALG_PS384 ||
         alg == WOLFCOSE_ALG_PS512) {
         RsaKey rsa;
@@ -1162,7 +1162,7 @@ done:
 }
 #endif
 
-#ifdef WC_RSA_PSS
+#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
 static int test_sign_pss(const char* name, int32_t alg)
 {
     int ret = -1;
@@ -1379,7 +1379,7 @@ static int tool_test(const char* filter)
         tests++; if (test_sign_ed448() != 0) failures++;
     }
 #endif
-#ifdef WC_RSA_PSS
+#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
     if (all || strcmp(filter, "PS256") == 0) {
         tests++;
         if (test_sign_pss("PS256", WOLFCOSE_ALG_PS256) != 0) failures++;
