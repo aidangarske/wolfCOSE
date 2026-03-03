@@ -22,14 +22,20 @@ jobs:
             wolfssl_flags: "--enable-ecc --enable-aesgcm --enable-keygen"
             cache_key: wolfssl-ecc-only-v3
           - name: EdDSA-only
-            wolfssl_flags: "--enable-ed25519 --enable-curve25519 --enable-aesgcm --enable-sha512"
-            cache_key: wolfssl-eddsa-only-v3
+            wolfssl_flags: "--enable-ed25519 --enable-curve25519 --enable-aesgcm --enable-sha512 --disable-rsa"
+            cache_key: wolfssl-eddsa-only-v4
+          - name: Ed448-only
+            wolfssl_flags: "--enable-ed448 --enable-sha512 --disable-rsa --disable-ecc --disable-dh"
+            cache_key: wolfssl-ed448-only-v1
           - name: AEAD-only (no signing)
-            wolfssl_flags: "--enable-aesgcm --enable-aesccm --enable-chacha --enable-poly1305"
-            cache_key: wolfssl-aead-only-v3
+            wolfssl_flags: "--enable-aesgcm --enable-aesccm --enable-chacha --enable-poly1305 --disable-rsa --disable-ecc"
+            cache_key: wolfssl-aead-only-v4
           - name: RSA-PSS-only
-            wolfssl_flags: "--enable-rsapss --enable-keygen --enable-sha384 --enable-sha512"
-            cache_key: wolfssl-rsa-only-v3
+            wolfssl_flags: "--enable-rsapss --enable-keygen --enable-sha384 --enable-sha512 --disable-ecc"
+            cache_key: wolfssl-rsa-only-v4
+          - name: PQ (ML-DSA) only
+            wolfssl_flags: "--enable-dilithium --enable-sha512 --disable-rsa --disable-ecc --disable-dh"
+            cache_key: wolfssl-pq-only-v1
 
     steps:
     - uses: actions/checkout@v4

@@ -984,7 +984,6 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                         /* Use output buffer tail for d, then scratch
                          * space for e2/n2/p/q that RsaExportKey requires */
                         word32 dSz, eSz2, nSz2, pSz, qSz;
-                        size_t dOff, scrOff, needed;
                         int rsaEncSz;
 
                         rsaEncSz = wc_RsaEncryptSize((RsaKey*)key->key.rsa);
@@ -992,6 +991,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                             ret = WOLFCOSE_E_CRYPTO;
                         }
                         else {
+                            size_t dOff, scrOff, needed;
                             ctx.idx += 3u;
                             dOff = ctx.idx;
                             /* After d: scratch for e2+n2+p+q */
@@ -1796,7 +1796,6 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
             goto cleanup;
         }
         sigSz = (size_t)ret;
-        ret = WOLFCOSE_SUCCESS;
         sigPtr = scratch;
     }
     else

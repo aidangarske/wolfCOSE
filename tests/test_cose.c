@@ -921,7 +921,7 @@ static void test_cose_encrypt0_aes_ccm(void)
 /* ---------------------------------------------------------------------------
  * COSE_Sign1 RSA-PSS tests
  * --------------------------------------------------------------------------- */
-#ifdef WC_RSA_PSS
+#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
 static void test_cose_sign1_pss(const char* label, int32_t alg)
 {
     WOLFCOSE_KEY signKey;
@@ -990,7 +990,7 @@ done_pss:
     wc_FreeRsaKey(&rsaKey);
     wc_FreeRng(&rng);
 }
-#endif /* WC_RSA_PSS */
+#endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
 /* ---------------------------------------------------------------------------
  * COSE_Sign1 ML-DSA (Dilithium) tests
@@ -1291,7 +1291,7 @@ done_aad:
 /* ---------------------------------------------------------------------------
  * COSE_Key RSA encode/decode round-trip
  * --------------------------------------------------------------------------- */
-#ifdef WC_RSA_PSS
+#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
 static void test_cose_key_rsa(void)
 {
     WOLFCOSE_KEY key;
@@ -1366,7 +1366,7 @@ static void test_cose_key_rsa(void)
     wc_FreeRsaKey(&rsaKey);
     wc_FreeRng(&rng);
 }
-#endif /* WC_RSA_PSS */
+#endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
 /* ---------------------------------------------------------------------------
  * COSE_Key Dilithium encode/decode round-trip
@@ -2140,7 +2140,7 @@ int test_cose(void)
     test_cose_key_ed25519();
 #endif
     test_cose_key_symmetric();
-#ifdef WC_RSA_PSS
+#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
     test_cose_key_rsa();
 #endif
 #ifdef HAVE_DILITHIUM
@@ -2180,7 +2180,7 @@ int test_cose(void)
     test_cose_encrypt0_aes_ccm();
 #endif
 
-#ifdef WC_RSA_PSS
+#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
     test_cose_sign1_pss("PS256", WOLFCOSE_ALG_PS256);
     test_cose_sign1_pss("PS384", WOLFCOSE_ALG_PS384);
     test_cose_sign1_pss("PS512", WOLFCOSE_ALG_PS512);
