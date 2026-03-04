@@ -73,7 +73,7 @@
         /* ML-DSA-87: pub=2592 + priv=4896 + CBOR overhead */
         #define WOLFCOSE_TOOL_MAX_KEY  8192
     #else
-        #define WOLFCOSE_TOOL_MAX_KEY  512
+        #define WOLFCOSE_TOOL_MAX_KEY  1024
     #endif
 #endif
 
@@ -97,9 +97,10 @@ static void usage(void)
         "  info    -i <cose_file>\n"
         "  test    [--all | -a <alg>]   Round-trip self-test\n"
         "\n"
-        "Algorithms: ES256, EdDSA, Ed448, PS256, ML-DSA-44, ML-DSA-65,\n"
-        "            ML-DSA-87, A128GCM, A192GCM, A256GCM, ChaCha20,\n"
-        "            AES-CCM, HMAC256, HMAC384, HMAC512\n");
+        "Algorithms: ES256, EdDSA, Ed448, PS256, PS384, PS512,\n"
+        "            ML-DSA-44, ML-DSA-65, ML-DSA-87,\n"
+        "            A128GCM, A192GCM, A256GCM, ChaCha20, AES-CCM,\n"
+        "            HMAC256, HMAC384, HMAC512\n");
 }
 
 /* Parse algorithm name to COSE algorithm ID */
@@ -108,9 +109,14 @@ static int parse_alg(const char* name, int32_t* alg)
     if (strcmp(name, "ES256") == 0) {
         *alg = WOLFCOSE_ALG_ES256;
     }
-    else if (strcmp(name, "EdDSA") == 0 || strcmp(name, "Ed448") == 0) {
+    else if (strcmp(name, "EdDSA") == 0) {
         *alg = WOLFCOSE_ALG_EDDSA;
     }
+#ifdef HAVE_ED448
+    else if (strcmp(name, "Ed448") == 0) {
+        *alg = WOLFCOSE_ALG_EDDSA;
+    }
+#endif
     else if (strcmp(name, "A128GCM") == 0) {
         *alg = WOLFCOSE_ALG_A128GCM;
     }

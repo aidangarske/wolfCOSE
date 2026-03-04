@@ -57,7 +57,7 @@ jobs:
       run: |
         COVERAGE=$(lcov --summary coverage.info 2>&1 | grep 'lines' | grep -oP '[\d.]+(?=%)')
         echo "Line coverage: ${COVERAGE}%"
-        if [ "$(echo "$COVERAGE < 85" | bc -l)" -eq 1 ]; then
+        if [ "$(awk "BEGIN {print ($COVERAGE < 85)}")" -eq 1 ]; then
           echo "FAIL: Line coverage ${COVERAGE}% is below 85% threshold"
           exit 1
         fi

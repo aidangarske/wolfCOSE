@@ -1475,7 +1475,7 @@ static void test_cose_sign1_buffer_too_small(void)
     wc_ecc_init(&eccKey);
     wc_ecc_make_key(&rng, 32, &eccKey);
     wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_ALG_ES256, &eccKey);
+    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
     /* scratch too small */
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256, NULL, 0,
@@ -1978,7 +1978,7 @@ static void test_cose_key_decode_optional_labels(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_HMAC256);
 
     /* -1 = k (symmetric key bytes) */
-    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_K);
     wc_CBOR_EncodeBstr(&enc, symmKey, sizeof(symmKey));
 
     /* unknown label 99 = uint 42 (should be skipped) */

@@ -34,8 +34,8 @@
  *   ./lifecycle_demo -a HMAC256   Run only HMAC-256
  *   ./lifecycle_demo -a all       Run all available algorithms
  *
- * Goal: prove full COSE security lifecycle in <1KB RAM
- *       (excluding wolfCrypt math internals).
+ * Goal: prove full COSE security lifecycle with minimal RAM
+ *       (ECC/EdDSA/AEAD fit in <1KB; ML-DSA requires larger buffers).
  */
 
 #ifdef HAVE_CONFIG_H

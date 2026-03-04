@@ -60,7 +60,7 @@ test: $(LIB_A)
 tool: $(LIB_A)
 	$(CC) $(CFLAGS) -DWOLFCOSE_BUILD_TOOL -o $(TOOL_BIN) $(TOOL_SRC) $(LIB_A) $(LDFLAGS)
 
-# --- Round-trip proof: keygen -> sign -> verify in one command ---
+# --- Round-trip proof: keygen -> sign -> verify for all algorithms ---
 tool-test: tool
 	./$(TOOL_BIN) test --all
 
