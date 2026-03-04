@@ -1,0 +1,85 @@
+name: Minimal Build
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  minimal:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ECC-only
+            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen"
+            cache_key: wolfssl-ecc-only-v4
+          - name: EdDSA-only
+            wolfssl_flags: "--enable-cryptonly --enable-ed25519 --enable-curve25519 --enable-sha512"
+            cache_key: wolfssl-eddsa-only-v5
+          - name: Ed448-only
+            wolfssl_flags: "--enable-cryptonly --enable-ed448 --enable-sha512"
+            cache_key: wolfssl-ed448-only-v2
+          - name: AEAD-only (no signing)
+            wolfssl_flags: "--enable-cryptonly --enable-aesgcm --enable-aesccm --enable-chacha --enable-poly1305"
+            cache_key: wolfssl-aead-only-v5
+          - name: RSA-PSS-only
+            wolfssl_flags: "--enable-cryptonly --enable-rsapss --enable-keygen --enable-sha384 --enable-sha512"
+            cache_key: wolfssl-rsa-only-v5
+          - name: PQ (ML-DSA) only
+            wolfssl_flags: "--enable-cryptonly --enable-dilithium --enable-sha512"
+            cache_key: wolfssl-pq-only-v2
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool
+
+    - name: Cache wolfSSL (${{ matrix.name }})
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-minimal
+        key: ${{ matrix.cache_key }}
+
+    - name: Build wolfSSL (${{ matrix.name }})
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git wolfssl-minimal-src
+        cd wolfssl-minimal-src
+        ./autogen.sh
+        ./configure ${{ matrix.wolfssl_flags }} \
+                    --prefix=$HOME/wolfssl-minimal
+        make -j$(nproc)
+        make install
+
+    - name: Build wolfCOSE
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-minimal
+        make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+             LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run unit tests
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-minimal
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make test CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+                  LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run tool round-trip test
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-minimal
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make tool-test CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+                       LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"

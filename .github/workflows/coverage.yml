@@ -1,36 +1,33 @@
-name: Coverity Scan
+name: Code Coverage
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  coverity:
-    name: Coverity Scan
+  coverage:
+    name: Line Coverage
     runs-on: ubuntu-latest
-
-    # Only run from the original repo, not forks
-    if: github.repository == 'aidangarske/wolfCOSE'
-
     steps:
     - uses: actions/checkout@v4
 
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y autoconf automake libtool
+        sudo apt-get install -y autoconf automake libtool lcov
 
     - name: Cache wolfSSL
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-coverity-v3
+        key: wolfssl-ubuntu-latest-v3
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -48,11 +45,20 @@ jobs:
         make -j$(nproc)
         make install
 
-    - name: Run Coverity Scan
-      uses: vapier/coverity-scan-action@v1
-      with:
-        project: wolfCOSE
-        token: ${{ secrets.COVERITY_SCAN_TOKEN }}
-        email: ${{ secrets.COVERITY_SCAN_EMAIL }}
-        command: |
-          make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$HOME/wolfssl-install/include" LDFLAGS="-L$HOME/wolfssl-install/lib -lwolfssl"
+    - name: Run coverage
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make coverage CC=gcc \
+          CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+          LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Check coverage threshold
+      run: |
+        COVERAGE=$(lcov --summary coverage.info 2>&1 | grep 'lines' | grep -oP '[\d.]+(?=%)')
+        echo "Line coverage: ${COVERAGE}%"
+        if [ "$(awk "BEGIN {print ($COVERAGE < 85)}")" -eq 1 ]; then
+          echo "FAIL: Line coverage ${COVERAGE}% is below 85% threshold"
+          exit 1
+        fi
+        echo "PASS: Line coverage ${COVERAGE}% meets 85% threshold"

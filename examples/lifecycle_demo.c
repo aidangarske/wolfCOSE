@@ -19,15 +19,23 @@
  */
 
 /**
- * lifecycle_demo.c -- Edge-to-Cloud COSE_Sign1 Lifecycle Demo
+ * lifecycle_demo.c -- Edge-to-Cloud COSE Lifecycle Demo
  *
- * Simulates:
- *   1. Edge Device (Producer): CBOR-encode sensor data, sign with COSE_Sign1
- *   2. Network Transport: copy signed packet to "receive" buffer
- *   3. Cloud Server (Consumer): verify signature, extract payload
+ * Simulates a produce -> transport -> consume lifecycle for all COSE
+ * message types:
  *
- * Goal: prove full COSE security lifecycle in <1KB RAM
- *       (excluding wolfCrypt math internals).
+ *   COSE_Sign1:    ES256, EdDSA, PS256, ML-DSA-44
+ *   COSE_Encrypt0: A128GCM, A256GCM, ChaCha20, AES-CCM
+ *   COSE_Mac0:     HMAC256, HMAC384, HMAC512
+ *
+ * Usage:
+ *   ./lifecycle_demo              Run all available algorithms
+ *   ./lifecycle_demo -a ES256     Run only ES256
+ *   ./lifecycle_demo -a HMAC256   Run only HMAC-256
+ *   ./lifecycle_demo -a all       Run all available algorithms
+ *
+ * Goal: prove full COSE security lifecycle with minimal RAM
+ *       (ECC/EdDSA/AEAD fit in <1KB; ML-DSA requires larger buffers).
  */
 
 #ifdef HAVE_CONFIG_H
@@ -40,7 +48,18 @@
 
 #include <wolfcose/wolfcose.h>
 #include <wolfssl/wolfcrypt/random.h>
-#include <wolfssl/wolfcrypt/ecc.h>
+#ifdef HAVE_ECC
+    #include <wolfssl/wolfcrypt/ecc.h>
+#endif
+#ifdef HAVE_ED25519
+    #include <wolfssl/wolfcrypt/ed25519.h>
+#endif
+#ifdef WC_RSA_PSS
+    #include <wolfssl/wolfcrypt/rsa.h>
+#endif
+#ifdef HAVE_DILITHIUM
+    #include <wolfssl/wolfcrypt/dilithium.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 
@@ -51,50 +70,22 @@
     #define STACK_MARKER()  0
 #endif
 
-/* Static key compiled in -- simulates pre-provisioned secure storage.
- * Real devices use hardware key stores; this is for demo purposes only. */
-static const uint8_t g_eccPrivKey[32] = {
-    0xE0, 0x19, 0xDD, 0xF4, 0x79, 0x87, 0xE8, 0xC1,
-    0x41, 0xC4, 0x86, 0x9F, 0x64, 0x81, 0x50, 0xED,
-    0x0A, 0x5F, 0x08, 0xA3, 0x77, 0x1C, 0x98, 0xA5,
-    0x23, 0xD7, 0x8E, 0xD3, 0x26, 0xDC, 0xE1, 0x14
-};
-
-static const uint8_t g_eccPubX[32] = {
-    0x0A, 0x47, 0x52, 0xC4, 0xE2, 0xA7, 0x6F, 0x22,
-    0x29, 0xD7, 0x38, 0xD8, 0x5D, 0x2D, 0xD1, 0x6E,
-    0xE8, 0x56, 0x9D, 0x60, 0xFB, 0xD3, 0x88, 0x66,
-    0x2C, 0x42, 0x1E, 0xCA, 0xBA, 0x03, 0x9A, 0x43
-};
-
-static const uint8_t g_eccPubY[32] = {
-    0x88, 0x6C, 0xED, 0xC9, 0x31, 0xFA, 0xBA, 0x2A,
-    0x9A, 0x6C, 0xD3, 0xBE, 0xD0, 0x83, 0x69, 0x93,
-    0x03, 0x89, 0xB1, 0x3A, 0xC1, 0xDF, 0x37, 0xE3,
-    0xAB, 0x4E, 0xAB, 0x3F, 0x0D, 0x49, 0xB4, 0x94
-};
-
 static const uint8_t g_kid[] = "edge-sensor-01";
 
 /* ---------------------------------------------------------------------------
- * Producer: edge device
+ * Shared: CBOR-encode sensor payload
  * --------------------------------------------------------------------------- */
-static int edge_device_produce(uint8_t* packet, size_t packetSz,
-                                size_t* packetLen, size_t* payloadUsed)
+static int encode_sensor_payload(uint8_t* payload, size_t payloadSz,
+                                  size_t* payloadLen)
 {
     int ret;
-    uint8_t payload[64];
     WOLFCOSE_CBOR_CTX cbor;
-    WOLFCOSE_KEY coseKey;
-    ecc_key eccKey;
-    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
-    WC_RNG rng;
 
-    /* Step 1: CBOR-encode sensor payload: {"temp": 22, "humidity": 45} */
     cbor.buf = payload;
-    cbor.bufSz = sizeof(payload);
+    cbor.bufSz = payloadSz;
     cbor.idx = 0;
 
+    /* {"temp": 22, "humidity": 45} */
     ret = wc_CBOR_EncodeMapStart(&cbor, 2);
     if (ret == 0) {
         ret = wc_CBOR_EncodeTstr(&cbor, (const uint8_t*)"temp", 4);
@@ -108,182 +99,742 @@ static int edge_device_produce(uint8_t* packet, size_t packetSz,
     if (ret == 0) {
         ret = wc_CBOR_EncodeUint(&cbor, 45);
     }
-    if (ret != 0) {
-        printf("[Producer] CBOR encode failed: %d\n", ret);
-        return ret;
+    if (ret == 0) {
+        *payloadLen = cbor.idx;
     }
-
-    *payloadUsed = cbor.idx;
-    printf("[Producer] Encoded sensor data: %zu bytes CBOR\n", cbor.idx);
-
-    /* Step 2: Import pre-provisioned ECC P-256 key (private + public) */
-    ret = wc_ecc_init(&eccKey);
-    if (ret != 0) {
-        printf("[Producer] ecc_init failed: %d\n", ret);
-        return ret;
-    }
-
-    ret = wc_ecc_import_unsigned(&eccKey,
-        (byte*)g_eccPubX, (byte*)g_eccPubY, (byte*)g_eccPrivKey,
-        ECC_SECP256R1);
-    if (ret != 0) {
-        printf("[Producer] Key import failed: %d\n", ret);
-        wc_ecc_free(&eccKey);
-        return ret;
-    }
-
-    wc_CoseKey_Init(&coseKey);
-    wc_CoseKey_SetEcc(&coseKey, WOLFCOSE_CRV_P256, &eccKey);
-
-    /* Step 3: Sign with COSE_Sign1 */
-    ret = wc_InitRng(&rng);
-    if (ret != 0) {
-        wc_ecc_free(&eccKey);
-        return ret;
-    }
-
-    ret = wc_CoseSign1_Sign(&coseKey, WOLFCOSE_ALG_ES256,
-        g_kid, sizeof(g_kid) - 1,
-        payload, cbor.idx,
-        NULL, 0,
-        scratch, sizeof(scratch),
-        packet, packetSz, packetLen, &rng);
-
-    wc_FreeRng(&rng);
-    wc_ecc_free(&eccKey);
-
-    if (ret != 0) {
-        printf("[Producer] Sign failed: %d\n", ret);
-    }
-    else {
-        printf("[Producer] Signed COSE_Sign1: %zu bytes\n", *packetLen);
-    }
-
     return ret;
 }
 
 /* ---------------------------------------------------------------------------
- * Consumer: cloud server
+ * COSE_Sign1 lifecycle: ES256
  * --------------------------------------------------------------------------- */
-static int cloud_server_consume(const uint8_t* packet, size_t packetLen)
+#ifdef HAVE_ECC
+static int demo_sign1_es256(void)
 {
     int ret;
-    WOLFCOSE_KEY coseKey;
-    ecc_key eccPub;
-    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
-    WOLFCOSE_HDR hdr;
-    const uint8_t* payload = NULL;
+    ecc_key eccKey;
+    WOLFCOSE_KEY signKey, verifyKey;
+    WC_RNG rng;
+    uint8_t payload[64];
     size_t payloadLen = 0;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t packet[512];
+    size_t packetLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
 
-    /* Step 1: Import pre-shared public key (same key pair as producer) */
-    ret = wc_ecc_init(&eccPub);
+    printf("--- COSE_Sign1 ES256 ---\n");
+
+    ret = encode_sensor_payload(payload, sizeof(payload), &payloadLen);
     if (ret != 0) {
-        printf("[Consumer] ecc_init failed: %d\n", ret);
+        printf("  CBOR encode failed: %d\n", ret);
+        return ret;
+    }
+    printf("  [Producer] Sensor payload: %zu bytes\n", payloadLen);
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { return ret; }
+
+    wc_ecc_init(&eccKey);
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    if (ret != 0) {
+        printf("  ECC keygen failed: %d\n", ret);
+        wc_ecc_free(&eccKey);
+        wc_FreeRng(&rng);
         return ret;
     }
 
-    ret = wc_ecc_import_unsigned(&eccPub,
-        (byte*)g_eccPubX, (byte*)g_eccPubY, NULL,
-        ECC_SECP256R1);
+    wc_CoseKey_Init(&signKey);
+    wc_CoseKey_SetEcc(&signKey, WOLFCOSE_CRV_P256, &eccKey);
+
+    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ES256,
+        g_kid, sizeof(g_kid) - 1,
+        payload, payloadLen, NULL, 0,
+        scratch, sizeof(scratch),
+        packet, sizeof(packet), &packetLen, &rng);
     if (ret != 0) {
-        printf("[Consumer] Key import failed: %d\n", ret);
-        wc_ecc_free(&eccPub);
-        return ret;
+        printf("  Sign failed: %d\n", ret);
+        goto done_es256;
     }
+    printf("  [Producer] COSE_Sign1: %zu bytes\n", packetLen);
 
-    wc_CoseKey_Init(&coseKey);
-    wc_CoseKey_SetEcc(&coseKey, WOLFCOSE_CRV_P256, &eccPub);
+    wc_CoseKey_Init(&verifyKey);
+    wc_CoseKey_SetEcc(&verifyKey, WOLFCOSE_CRV_P256, &eccKey);
 
-    /* Step 2: Verify COSE_Sign1 */
-    ret = wc_CoseSign1_Verify(&coseKey, packet, packetLen,
+    ret = wc_CoseSign1_Verify(&verifyKey, packet, packetLen,
         NULL, 0, scratch, sizeof(scratch),
-        &hdr, &payload, &payloadLen);
-
+        &hdr, &decPayload, &decPayloadLen);
     if (ret != 0) {
-        printf("[Consumer] Verification FAILED: %d\n", ret);
-        wc_ecc_free(&eccPub);
+        printf("  Verify FAILED: %d\n", ret);
+    }
+    else {
+        printf("  [Consumer] Verified OK, payload: %zu bytes, alg: %d\n",
+               decPayloadLen, hdr.alg);
+    }
+
+done_es256:
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    return ret;
+}
+#endif /* HAVE_ECC */
+
+/* ---------------------------------------------------------------------------
+ * COSE_Sign1 lifecycle: EdDSA (Ed25519)
+ * --------------------------------------------------------------------------- */
+#ifdef HAVE_ED25519
+static int demo_sign1_eddsa(void)
+{
+    int ret;
+    ed25519_key edKey;
+    WOLFCOSE_KEY signKey;
+    WC_RNG rng;
+    uint8_t payload[64];
+    size_t payloadLen = 0;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t packet[512];
+    size_t packetLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+
+    printf("--- COSE_Sign1 EdDSA (Ed25519) ---\n");
+
+    ret = encode_sensor_payload(payload, sizeof(payload), &payloadLen);
+    if (ret != 0) { return ret; }
+    printf("  [Producer] Sensor payload: %zu bytes\n", payloadLen);
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { return ret; }
+
+    wc_ed25519_init(&edKey);
+    ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
+    if (ret != 0) {
+        printf("  Ed25519 keygen failed: %d\n", ret);
+        wc_ed25519_free(&edKey);
+        wc_FreeRng(&rng);
         return ret;
     }
 
-    printf("[Consumer] Signature verified: OK\n");
+    wc_CoseKey_Init(&signKey);
+    wc_CoseKey_SetEd25519(&signKey, &edKey);
 
-    /* Step 3: Decode CBOR payload */
-    {
-        WOLFCOSE_CBOR_CTX cbor;
-        size_t mapCount;
-        size_t i;
-        const uint8_t* keyStr;
-        size_t keyLen;
-        uint64_t val;
+    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA,
+        g_kid, sizeof(g_kid) - 1,
+        payload, payloadLen, NULL, 0,
+        scratch, sizeof(scratch),
+        packet, sizeof(packet), &packetLen, &rng);
+    if (ret != 0) {
+        printf("  Sign failed: %d\n", ret);
+        goto done_eddsa;
+    }
+    printf("  [Producer] COSE_Sign1: %zu bytes\n", packetLen);
 
-        cbor.buf = (uint8_t*)(uintptr_t)payload;
-        cbor.bufSz = payloadLen;
-        cbor.idx = 0;
-
-        ret = wc_CBOR_DecodeMapStart(&cbor, &mapCount);
-        if (ret == 0) {
-            for (i = 0; i < mapCount && ret == 0; i++) {
-                ret = wc_CBOR_DecodeTstr(&cbor, &keyStr, &keyLen);
-                if (ret != 0) break;
-                ret = wc_CBOR_DecodeUint(&cbor, &val);
-                if (ret != 0) break;
-                printf("[Consumer] Decoded: %.*s=%llu\n",
-                       (int)keyLen, keyStr, (unsigned long long)val);
-            }
-        }
+    ret = wc_CoseSign1_Verify(&signKey, packet, packetLen,
+        NULL, 0, scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    if (ret != 0) {
+        printf("  Verify FAILED: %d\n", ret);
+    }
+    else {
+        printf("  [Consumer] Verified OK, payload: %zu bytes, alg: %d\n",
+               decPayloadLen, hdr.alg);
     }
 
-    wc_ecc_free(&eccPub);
+done_eddsa:
+    wc_ed25519_free(&edKey);
+    wc_FreeRng(&rng);
+    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
     return ret;
+}
+#endif /* HAVE_ED25519 */
+
+/* ---------------------------------------------------------------------------
+ * COSE_Sign1 lifecycle: RSA-PSS (PS256)
+ * --------------------------------------------------------------------------- */
+#ifdef WC_RSA_PSS
+static int demo_sign1_ps256(void)
+{
+    int ret;
+    RsaKey rsaKey;
+    WOLFCOSE_KEY signKey;
+    WC_RNG rng;
+    uint8_t payload[64];
+    size_t payloadLen = 0;
+    uint8_t scratch[1024];
+    uint8_t packet[1024];
+    size_t packetLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+
+    printf("--- COSE_Sign1 PS256 (RSA-PSS) ---\n");
+
+    ret = encode_sensor_payload(payload, sizeof(payload), &payloadLen);
+    if (ret != 0) { return ret; }
+    printf("  [Producer] Sensor payload: %zu bytes\n", payloadLen);
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { return ret; }
+
+    ret = wc_InitRsaKey(&rsaKey, NULL);
+    if (ret != 0) { wc_FreeRng(&rng); return ret; }
+
+    ret = wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng);
+    if (ret != 0) {
+        printf("  RSA keygen failed: %d\n", ret);
+        wc_FreeRsaKey(&rsaKey);
+        wc_FreeRng(&rng);
+        return ret;
+    }
+
+    wc_CoseKey_Init(&signKey);
+    wc_CoseKey_SetRsa(&signKey, &rsaKey);
+
+    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_PS256,
+        g_kid, sizeof(g_kid) - 1,
+        payload, payloadLen, NULL, 0,
+        scratch, sizeof(scratch),
+        packet, sizeof(packet), &packetLen, &rng);
+    if (ret != 0) {
+        printf("  Sign failed: %d\n", ret);
+        goto done_ps256;
+    }
+    printf("  [Producer] COSE_Sign1: %zu bytes\n", packetLen);
+
+    ret = wc_CoseSign1_Verify(&signKey, packet, packetLen,
+        NULL, 0, scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    if (ret != 0) {
+        printf("  Verify FAILED: %d\n", ret);
+    }
+    else {
+        printf("  [Consumer] Verified OK, payload: %zu bytes, alg: %d\n",
+               decPayloadLen, hdr.alg);
+    }
+
+done_ps256:
+    wc_FreeRsaKey(&rsaKey);
+    wc_FreeRng(&rng);
+    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    return ret;
+}
+#endif /* WC_RSA_PSS */
+
+/* ---------------------------------------------------------------------------
+ * COSE_Sign1 lifecycle: ML-DSA-44 (Dilithium)
+ * --------------------------------------------------------------------------- */
+#ifdef HAVE_DILITHIUM
+static int demo_sign1_ml_dsa_44(void)
+{
+    int ret;
+    dilithium_key dlKey;
+    WOLFCOSE_KEY signKey;
+    WC_RNG rng;
+    uint8_t payload[64];
+    size_t payloadLen = 0;
+    uint8_t scratch[8192];
+    uint8_t packet[8192];
+    size_t packetLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+
+    printf("--- COSE_Sign1 ML-DSA-44 (PQC) ---\n");
+
+    ret = encode_sensor_payload(payload, sizeof(payload), &payloadLen);
+    if (ret != 0) { return ret; }
+    printf("  [Producer] Sensor payload: %zu bytes\n", payloadLen);
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { return ret; }
+
+    ret = wc_dilithium_init(&dlKey);
+    if (ret != 0) { wc_FreeRng(&rng); return ret; }
+
+    ret = wc_dilithium_set_level(&dlKey, 2);
+    if (ret != 0) { goto done_mldsa; }
+
+    ret = wc_dilithium_make_key(&dlKey, &rng);
+    if (ret != 0) {
+        printf("  ML-DSA keygen failed: %d\n", ret);
+        goto done_mldsa;
+    }
+
+    wc_CoseKey_Init(&signKey);
+    wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+
+    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44,
+        g_kid, sizeof(g_kid) - 1,
+        payload, payloadLen, NULL, 0,
+        scratch, sizeof(scratch),
+        packet, sizeof(packet), &packetLen, &rng);
+    if (ret != 0) {
+        printf("  Sign failed: %d\n", ret);
+        goto done_mldsa;
+    }
+    printf("  [Producer] COSE_Sign1: %zu bytes\n", packetLen);
+
+    ret = wc_CoseSign1_Verify(&signKey, packet, packetLen,
+        NULL, 0, scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    if (ret != 0) {
+        printf("  Verify FAILED: %d\n", ret);
+    }
+    else {
+        printf("  [Consumer] Verified OK, payload: %zu bytes, alg: %d\n",
+               decPayloadLen, hdr.alg);
+    }
+
+done_mldsa:
+    wc_dilithium_free(&dlKey);
+    wc_FreeRng(&rng);
+    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    return ret;
+}
+#endif /* HAVE_DILITHIUM */
+
+/* ---------------------------------------------------------------------------
+ * COSE_Encrypt0 lifecycle: AES-GCM
+ * --------------------------------------------------------------------------- */
+#ifdef HAVE_AESGCM
+static int demo_encrypt0_aesgcm(int32_t alg)
+{
+    int ret;
+    WOLFCOSE_KEY key;
+    WC_RNG rng;
+    uint8_t payload[64];
+    size_t payloadLen = 0;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t packet[512];
+    size_t packetLen = 0;
+    uint8_t plaintext[256];
+    size_t plaintextLen = 0;
+    WOLFCOSE_HDR hdr;
+    uint8_t iv[WOLFCOSE_AES_GCM_NONCE_SZ];
+    size_t keyLen;
+    uint8_t keyData[32];
+    const char* algName;
+
+    if (alg == WOLFCOSE_ALG_A128GCM) {
+        keyLen = 16;
+        algName = "A128GCM";
+    }
+    else {
+        keyLen = 32;
+        algName = "A256GCM";
+    }
+
+    printf("--- COSE_Encrypt0 %s ---\n", algName);
+
+    ret = encode_sensor_payload(payload, sizeof(payload), &payloadLen);
+    if (ret != 0) { return ret; }
+    printf("  [Producer] Sensor payload: %zu bytes\n", payloadLen);
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { return ret; }
+
+    ret = wc_RNG_GenerateBlock(&rng, keyData, (word32)keyLen);
+    if (ret != 0) { wc_FreeRng(&rng); return ret; }
+
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    if (ret != 0) { wc_FreeRng(&rng); return ret; }
+
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetSymmetric(&key, keyData, keyLen);
+
+    ret = wc_CoseEncrypt0_Encrypt(&key, alg,
+        iv, sizeof(iv),
+        payload, payloadLen, NULL, 0,
+        scratch, sizeof(scratch),
+        packet, sizeof(packet), &packetLen);
+    if (ret != 0) {
+        printf("  Encrypt failed: %d\n", ret);
+        wc_FreeRng(&rng);
+        printf("  Result: FAIL\n\n");
+        return ret;
+    }
+    printf("  [Producer] COSE_Encrypt0: %zu bytes\n", packetLen);
+
+    ret = wc_CoseEncrypt0_Decrypt(&key, packet, packetLen,
+        NULL, 0, scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    if (ret != 0) {
+        printf("  Decrypt FAILED: %d\n", ret);
+    }
+    else {
+        printf("  [Consumer] Decrypted OK, payload: %zu bytes, alg: %d\n",
+               plaintextLen, hdr.alg);
+    }
+
+    wc_FreeRng(&rng);
+    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    return ret;
+}
+#endif /* HAVE_AESGCM */
+
+/* ---------------------------------------------------------------------------
+ * COSE_Encrypt0 lifecycle: ChaCha20-Poly1305
+ * --------------------------------------------------------------------------- */
+#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+static int demo_encrypt0_chacha20(void)
+{
+    int ret;
+    WOLFCOSE_KEY key;
+    WC_RNG rng;
+    uint8_t payload[64];
+    size_t payloadLen = 0;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t packet[512];
+    size_t packetLen = 0;
+    uint8_t plaintext[256];
+    size_t plaintextLen = 0;
+    WOLFCOSE_HDR hdr;
+    uint8_t iv[WOLFCOSE_CHACHA_NONCE_SZ];
+    uint8_t keyData[WOLFCOSE_CHACHA_KEY_SZ];
+
+    printf("--- COSE_Encrypt0 ChaCha20-Poly1305 ---\n");
+
+    ret = encode_sensor_payload(payload, sizeof(payload), &payloadLen);
+    if (ret != 0) { return ret; }
+    printf("  [Producer] Sensor payload: %zu bytes\n", payloadLen);
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { return ret; }
+
+    ret = wc_RNG_GenerateBlock(&rng, keyData, sizeof(keyData));
+    if (ret != 0) { wc_FreeRng(&rng); return ret; }
+
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    if (ret != 0) { wc_FreeRng(&rng); return ret; }
+
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_CHACHA20_POLY1305,
+        iv, sizeof(iv),
+        payload, payloadLen, NULL, 0,
+        scratch, sizeof(scratch),
+        packet, sizeof(packet), &packetLen);
+    if (ret != 0) {
+        printf("  Encrypt failed: %d\n", ret);
+        wc_FreeRng(&rng);
+        printf("  Result: FAIL\n\n");
+        return ret;
+    }
+    printf("  [Producer] COSE_Encrypt0: %zu bytes\n", packetLen);
+
+    ret = wc_CoseEncrypt0_Decrypt(&key, packet, packetLen,
+        NULL, 0, scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    if (ret != 0) {
+        printf("  Decrypt FAILED: %d\n", ret);
+    }
+    else {
+        printf("  [Consumer] Decrypted OK, payload: %zu bytes, alg: %d\n",
+               plaintextLen, hdr.alg);
+    }
+
+    wc_FreeRng(&rng);
+    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    return ret;
+}
+#endif /* HAVE_CHACHA && HAVE_POLY1305 */
+
+/* ---------------------------------------------------------------------------
+ * COSE_Encrypt0 lifecycle: AES-CCM
+ * --------------------------------------------------------------------------- */
+#ifdef HAVE_AESCCM
+static int demo_encrypt0_aes_ccm(void)
+{
+    int ret;
+    WOLFCOSE_KEY key;
+    WC_RNG rng;
+    uint8_t payload[64];
+    size_t payloadLen = 0;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t packet[512];
+    size_t packetLen = 0;
+    uint8_t plaintext[256];
+    size_t plaintextLen = 0;
+    WOLFCOSE_HDR hdr;
+    uint8_t iv[13]; /* nonce=13 for CCM-16 variants */
+    uint8_t keyData[16];
+
+    printf("--- COSE_Encrypt0 AES-CCM-16-128-128 ---\n");
+
+    ret = encode_sensor_payload(payload, sizeof(payload), &payloadLen);
+    if (ret != 0) { return ret; }
+    printf("  [Producer] Sensor payload: %zu bytes\n", payloadLen);
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { return ret; }
+
+    ret = wc_RNG_GenerateBlock(&rng, keyData, sizeof(keyData));
+    if (ret != 0) { wc_FreeRng(&rng); return ret; }
+
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    if (ret != 0) { wc_FreeRng(&rng); return ret; }
+
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_AES_CCM_16_128_128,
+        iv, sizeof(iv),
+        payload, payloadLen, NULL, 0,
+        scratch, sizeof(scratch),
+        packet, sizeof(packet), &packetLen);
+    if (ret != 0) {
+        printf("  Encrypt failed: %d\n", ret);
+        wc_FreeRng(&rng);
+        printf("  Result: FAIL\n\n");
+        return ret;
+    }
+    printf("  [Producer] COSE_Encrypt0: %zu bytes\n", packetLen);
+
+    ret = wc_CoseEncrypt0_Decrypt(&key, packet, packetLen,
+        NULL, 0, scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    if (ret != 0) {
+        printf("  Decrypt FAILED: %d\n", ret);
+    }
+    else {
+        printf("  [Consumer] Decrypted OK, payload: %zu bytes, alg: %d\n",
+               plaintextLen, hdr.alg);
+    }
+
+    wc_FreeRng(&rng);
+    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    return ret;
+}
+#endif /* HAVE_AESCCM */
+
+/* ---------------------------------------------------------------------------
+ * COSE_Mac0 lifecycle: HMAC
+ * --------------------------------------------------------------------------- */
+#if !defined(NO_HMAC)
+static int demo_mac0_hmac(int32_t alg)
+{
+    int ret;
+    WOLFCOSE_KEY key;
+    WC_RNG rng;
+    uint8_t payload[64];
+    size_t payloadLen = 0;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t packet[512];
+    size_t packetLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    size_t keyLen;
+    uint8_t keyData[64];
+    const char* algName;
+
+    if (alg == WOLFCOSE_ALG_HMAC256) {
+        keyLen = 32;
+        algName = "HMAC-256";
+    }
+    else if (alg == WOLFCOSE_ALG_HMAC384) {
+        keyLen = 48;
+        algName = "HMAC-384";
+    }
+    else {
+        keyLen = 64;
+        algName = "HMAC-512";
+    }
+
+    printf("--- COSE_Mac0 %s ---\n", algName);
+
+    ret = encode_sensor_payload(payload, sizeof(payload), &payloadLen);
+    if (ret != 0) { return ret; }
+    printf("  [Producer] Sensor payload: %zu bytes\n", payloadLen);
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { return ret; }
+
+    ret = wc_RNG_GenerateBlock(&rng, keyData, (word32)keyLen);
+    wc_FreeRng(&rng);
+    if (ret != 0) { return ret; }
+
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetSymmetric(&key, keyData, keyLen);
+
+    ret = wc_CoseMac0_Create(&key, alg,
+        g_kid, sizeof(g_kid) - 1,
+        payload, payloadLen, NULL, 0,
+        scratch, sizeof(scratch),
+        packet, sizeof(packet), &packetLen);
+    if (ret != 0) {
+        printf("  MAC create failed: %d\n", ret);
+        printf("  Result: FAIL\n\n");
+        return ret;
+    }
+    printf("  [Producer] COSE_Mac0: %zu bytes\n", packetLen);
+
+    ret = wc_CoseMac0_Verify(&key, packet, packetLen,
+        NULL, 0, scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    if (ret != 0) {
+        printf("  MAC verify FAILED: %d\n", ret);
+    }
+    else {
+        printf("  [Consumer] MAC verified OK, payload: %zu bytes, alg: %d\n",
+               decPayloadLen, hdr.alg);
+    }
+
+    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    return ret;
+}
+#endif /* !NO_HMAC */
+
+/* ---------------------------------------------------------------------------
+ * Algorithm name parser
+ * --------------------------------------------------------------------------- */
+enum {
+    DEMO_ALG_ALL = 0,
+    DEMO_ALG_ES256,
+    DEMO_ALG_EDDSA,
+    DEMO_ALG_PS256,
+    DEMO_ALG_A128GCM,
+    DEMO_ALG_A256GCM,
+    DEMO_ALG_HMAC256,
+    DEMO_ALG_HMAC384,
+    DEMO_ALG_HMAC512,
+    DEMO_ALG_CHACHA20,
+    DEMO_ALG_ML_DSA_44,
+    DEMO_ALG_AES_CCM
+};
+
+static int parse_demo_alg(const char* name)
+{
+    if (name == NULL || strcmp(name, "all") == 0) {
+        return DEMO_ALG_ALL;
+    }
+    if (strcmp(name, "ES256") == 0)   return DEMO_ALG_ES256;
+    if (strcmp(name, "EdDSA") == 0)   return DEMO_ALG_EDDSA;
+    if (strcmp(name, "PS256") == 0)   return DEMO_ALG_PS256;
+    if (strcmp(name, "A128GCM") == 0) return DEMO_ALG_A128GCM;
+    if (strcmp(name, "A256GCM") == 0) return DEMO_ALG_A256GCM;
+    if (strcmp(name, "HMAC256") == 0) return DEMO_ALG_HMAC256;
+    if (strcmp(name, "HMAC384") == 0) return DEMO_ALG_HMAC384;
+    if (strcmp(name, "HMAC512") == 0) return DEMO_ALG_HMAC512;
+    if (strcmp(name, "ChaCha20") == 0) return DEMO_ALG_CHACHA20;
+    if (strcmp(name, "ML-DSA-44") == 0) return DEMO_ALG_ML_DSA_44;
+    if (strcmp(name, "AES-CCM") == 0) return DEMO_ALG_AES_CCM;
+    return -1;
 }
 
 /* ---------------------------------------------------------------------------
  * main
  * --------------------------------------------------------------------------- */
-int main(void)
+int main(int argc, char* argv[])
 {
-    int ret;
-    uint8_t packet[512];
-    size_t packetLen = 0;
-    size_t payloadUsed = 0;
-    size_t stackBefore, stackAfter;
+    int demoAlg = DEMO_ALG_ALL;
+    int failures = 0;
+    int tests = 0;
+
+    /* Parse -a <alg> flag */
+    if (argc == 3 && strcmp(argv[1], "-a") == 0) {
+        demoAlg = parse_demo_alg(argv[2]);
+        if (demoAlg < 0) {
+            fprintf(stderr, "Unknown algorithm: %s\n", argv[2]);
+            fprintf(stderr,
+                "Usage: %s [-a <alg>]\n"
+                "  alg: all, ES256, EdDSA, PS256, ML-DSA-44, A128GCM,\n"
+                "       A256GCM, HMAC256, HMAC384, HMAC512, ChaCha20,\n"
+                "       AES-CCM\n",
+                argv[0]);
+            return 1;
+        }
+    }
+    else if (argc != 1) {
+        fprintf(stderr,
+            "Usage: %s [-a <alg>]\n"
+            "  alg: all, ES256, EdDSA, PS256, ML-DSA-44, A128GCM,\n"
+            "       A256GCM, HMAC256, HMAC384, HMAC512, ChaCha20,\n"
+            "       AES-CCM\n", argv[0]);
+        return 1;
+    }
 
     printf("=== wolfCOSE Lifecycle Demo ===\n\n");
 
-    /* Producer: edge device signs sensor data */
-    stackBefore = STACK_MARKER();
-    ret = edge_device_produce(packet, sizeof(packet), &packetLen,
-                               &payloadUsed);
-    stackAfter = STACK_MARKER();
-    if (ret != 0) {
-        printf("Producer failed: %d\n", ret);
-        return 1;
+    /* COSE_Sign1 demos */
+#ifdef HAVE_ECC
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_ES256) {
+        tests++;
+        if (demo_sign1_es256() != 0) { failures++; }
     }
-    if (stackBefore > stackAfter) {
-        printf("[Producer] Stack used: ~%zu bytes\n",
-               stackBefore - stackAfter);
+#endif
+#ifdef HAVE_ED25519
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_EDDSA) {
+        tests++;
+        if (demo_sign1_eddsa() != 0) { failures++; }
     }
-
-    /* Simulate network transport */
-    printf("\n--- Network transport (%zu bytes) ---\n\n", packetLen);
-
-    /* Consumer: cloud server verifies and extracts */
-    stackBefore = STACK_MARKER();
-    ret = cloud_server_consume(packet, packetLen);
-    stackAfter = STACK_MARKER();
-    if (ret != 0) {
-        printf("Consumer failed: %d\n", ret);
-        return 1;
+#endif
+#ifdef WC_RSA_PSS
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_PS256) {
+        tests++;
+        if (demo_sign1_ps256() != 0) { failures++; }
     }
-    if (stackBefore > stackAfter) {
-        printf("[Consumer] Stack used: ~%zu bytes\n",
-               stackBefore - stackAfter);
+#endif
+#ifdef HAVE_DILITHIUM
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_ML_DSA_44) {
+        tests++;
+        if (demo_sign1_ml_dsa_44() != 0) { failures++; }
     }
+#endif
 
-    printf("\nTotal packet size: %zu bytes\n", packetLen);
-    printf("Payload overhead: %zu bytes (COSE envelope)\n",
-           packetLen - payloadUsed);
-    printf("\n=== Demo complete ===\n");
+    /* COSE_Encrypt0 demos */
+#ifdef HAVE_AESGCM
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_A128GCM) {
+        tests++;
+        if (demo_encrypt0_aesgcm(WOLFCOSE_ALG_A128GCM) != 0) { failures++; }
+    }
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_A256GCM) {
+        tests++;
+        if (demo_encrypt0_aesgcm(WOLFCOSE_ALG_A256GCM) != 0) { failures++; }
+    }
+#endif
+#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_CHACHA20) {
+        tests++;
+        if (demo_encrypt0_chacha20() != 0) { failures++; }
+    }
+#endif
+#ifdef HAVE_AESCCM
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_AES_CCM) {
+        tests++;
+        if (demo_encrypt0_aes_ccm() != 0) { failures++; }
+    }
+#endif
 
-    return 0;
+    /* COSE_Mac0 demos */
+#if !defined(NO_HMAC)
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_HMAC256) {
+        tests++;
+        if (demo_mac0_hmac(WOLFCOSE_ALG_HMAC256) != 0) { failures++; }
+    }
+#ifdef WOLFSSL_SHA384
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_HMAC384) {
+        tests++;
+        if (demo_mac0_hmac(WOLFCOSE_ALG_HMAC384) != 0) { failures++; }
+    }
+#endif
+#ifdef WOLFSSL_SHA512
+    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_HMAC512) {
+        tests++;
+        if (demo_mac0_hmac(WOLFCOSE_ALG_HMAC512) != 0) { failures++; }
+    }
+#endif
+#endif /* !NO_HMAC */
+
+    printf("=== Results: %d/%d passed", tests - failures, tests);
+    if (failures > 0) {
+        printf(" (%d FAILED)", failures);
+    }
+    printf(" ===\n");
+
+    return (failures > 0) ? 1 : 0;
 }

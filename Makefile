@@ -36,7 +36,7 @@ TOOL_BIN  = tools/wolfcose_tool
 DEMO_SRC  = examples/lifecycle_demo.c
 DEMO_BIN  = examples/lifecycle_demo
 
-.PHONY: all shared test tool tool-test demo clean
+.PHONY: all shared test tool tool-test demo coverage clean
 
 # --- Core library ---
 all: $(LIB_A)
@@ -60,22 +60,37 @@ test: $(LIB_A)
 tool: $(LIB_A)
 	$(CC) $(CFLAGS) -DWOLFCOSE_BUILD_TOOL -o $(TOOL_BIN) $(TOOL_SRC) $(LIB_A) $(LDFLAGS)
 
-# --- Round-trip proof: keygen -> sign -> verify in one command ---
+# --- Round-trip proof: keygen -> sign -> verify for all algorithms ---
 tool-test: tool
-	./$(TOOL_BIN) keygen -a ES256 -o /tmp/wolfcose_test.key
-	echo "hello wolfCOSE" > /tmp/wolfcose_test.dat
-	./$(TOOL_BIN) sign -k /tmp/wolfcose_test.key -a ES256 \
-	    -i /tmp/wolfcose_test.dat -o /tmp/wolfcose_test.cose
-	./$(TOOL_BIN) verify -k /tmp/wolfcose_test.key \
-	    -i /tmp/wolfcose_test.cose
-	@echo "PASS: round-trip sign/verify"
+	./$(TOOL_BIN) test --all
 
 # --- Lifecycle demo ---
+# Run with: make demo DEMO_ALG=HMAC256 (or ES256, EdDSA, A128GCM, etc.)
 demo: $(LIB_A)
 	$(CC) $(CFLAGS) -o $(DEMO_BIN) $(DEMO_SRC) $(LIB_A) $(LDFLAGS)
+ifdef DEMO_ALG
+	./$(DEMO_BIN) -a $(DEMO_ALG)
+else
 	./$(DEMO_BIN)
+endif
+
+# --- Code coverage (gcov + lcov) ---
+coverage:
+	$(MAKE) clean
+	$(CC) $(CFLAGS) --coverage -c src/wolfcose_cbor.c -o src/wolfcose_cbor.o
+	$(CC) $(CFLAGS) --coverage -c src/wolfcose.c -o src/wolfcose.o
+	$(AR) rcs $(LIB_A) $(OBJ)
+	$(CC) $(CFLAGS) --coverage -o $(TEST_BIN) $(TEST_SRC) $(LIB_A) $(LDFLAGS)
+	./$(TEST_BIN)
+	lcov --capture --directory src --output-file coverage.info --rc lcov_branch_coverage=1
+	lcov --remove coverage.info '/usr/*' --output-file coverage.info --rc lcov_branch_coverage=1
+	genhtml coverage.info --output-directory coverage_html --branch-coverage
+	@echo "=== Coverage report: coverage_html/index.html ==="
+	@lcov --summary coverage.info --rc lcov_branch_coverage=1
 
 # --- Cleanup ---
 clean:
 	rm -f $(OBJ) $(TEST_BIN) $(TOOL_BIN) $(DEMO_BIN) \
-	    $(LIB_A) $(LIB_SO) src/*.su tests/*.su
+	    $(LIB_A) $(LIB_SO) src/*.su tests/*.su \
+	    src/*.gcda src/*.gcno coverage.info
+	rm -rf coverage_html
