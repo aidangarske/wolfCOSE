@@ -274,7 +274,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
     else
 #endif
 #ifdef HAVE_ED448
-    if (alg == WOLFCOSE_ALG_EDDSA) {
+    if (alg == WOLFCOSE_ALG_EDDSA && strcmp(algStr, "Ed448") == 0) {
         ed448_key ed;
         wc_ed448_init(&ed);
         ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &ed);
