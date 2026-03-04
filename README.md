@@ -324,6 +324,11 @@ wolfCOSE runs the following CI checks on every push and pull request:
 - **Static Analysis** -- cppcheck, Clang analyzer, GCC `-fanalyzer`
 - **Coverity Scan** -- nightly defect analysis
 
+<a href="https://scan.coverity.com/projects/wolfcose">
+  <img alt="Coverity Scan Build Status"
+       src="https://scan.coverity.com/projects/32918/badge.svg"/>
+</a>
+
 ## License
 
 wolfCOSE is free software licensed under the [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html).
