@@ -1,15 +1,3 @@
-<p align="center">
-<div align="center">
-  <a href="https://www.wolfssl.com" target="_blank">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://www.wolfssl.com/files/logo/wolfssl_logo_white_border.png" height="200">
-      <source media="(prefers-color-scheme: light)" srcset="https://www.wolfssl.com/files/logo/wolfssl_logo_white_border.png" height="200">
-      <img alt="Switch logo depending on dark or light mode.">
-    </picture>
-  </a>
-</div>
-</p>
-
 # wolfCOSE
 
 A lightweight, zero-allocation C library implementing [CBOR (RFC 8949)](https://www.rfc-editor.org/rfc/rfc8949) and [COSE (RFC 9052/9053)](https://www.rfc-editor.org/rfc/rfc9052) with [wolfSSL](https://www.wolfssl.com/) as the crypto backend.
