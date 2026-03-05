@@ -5643,7 +5643,7 @@ static void test_cbor_edge_cases(void)
     /* Test bstr boundary (256 bytes) - needs larger buffer */
     {
         uint8_t largeBuf[512];
-        uint8_t bigData[260];
+        uint8_t bigData[260] = {0};
         WOLFCOSE_CBOR_CTX bigCtx;
         bigCtx.buf = largeBuf;
         bigCtx.bufSz = sizeof(largeBuf);

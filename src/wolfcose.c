@@ -5096,7 +5096,6 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         if (ret != 0) {
             return WOLFCOSE_E_CRYPTO;
         }
-        aesInited = 1;
 
         ret = wc_AesGcmSetKey(&aes, encKey, (word32)keyLen);
         if (ret != 0) {
@@ -5113,7 +5112,6 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
                                 AES_BLOCK_SIZE,
                                 scratch, (word32)encStructLen);  /* AAD */
         wc_AesFree(&aes);
-        aesInited = 0;
 
         if (ret != 0) {
             return WOLFCOSE_E_CRYPTO;

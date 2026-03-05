@@ -318,6 +318,10 @@ extern "C" {
 #define WOLFCOSE_ALG_HMAC_256_256  5   /* HMAC w/ SHA-256, 256-bit tag */
 #define WOLFCOSE_ALG_HMAC_384_384  6   /* HMAC w/ SHA-384, 384-bit tag */
 #define WOLFCOSE_ALG_HMAC_512_512  7   /* HMAC w/ SHA-512, 512-bit tag */
+/* Shorter aliases for convenience */
+#define WOLFCOSE_ALG_HMAC256       WOLFCOSE_ALG_HMAC_256_256
+#define WOLFCOSE_ALG_HMAC384       WOLFCOSE_ALG_HMAC_384_384
+#define WOLFCOSE_ALG_HMAC512       WOLFCOSE_ALG_HMAC_512_512
 #define WOLFCOSE_ALG_CHACHA20_POLY1305 24
 /* AES-CCM (RFC 9053 Section 4.2) */
 #define WOLFCOSE_ALG_AES_CCM_16_64_128   10

@@ -57,7 +57,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test tool tool-test demo demos comprehensive scenarios clean
+.PHONY: all shared test coverage tool tool-test demo demos comprehensive scenarios clean
 
 # --- Core library ---
 all: $(LIB_A)
@@ -76,6 +76,15 @@ src/%.o: src/%.c src/wolfcose_internal.h include/wolfcose/wolfcose.h
 test: $(LIB_A)
 	$(CC) $(CFLAGS) -o $(TEST_BIN) $(TEST_SRC) $(LIB_A) $(LDFLAGS)
 	./$(TEST_BIN)
+
+# --- Coverage ---
+coverage: clean
+	$(CC) $(CFLAGS) --coverage -fprofile-arcs -ftest-coverage -c src/wolfcose_cbor.c -o src/wolfcose_cbor.o
+	$(CC) $(CFLAGS) --coverage -fprofile-arcs -ftest-coverage -c src/wolfcose.c -o src/wolfcose.o
+	$(AR) rcs $(LIB_A) $(OBJ)
+	$(CC) $(CFLAGS) --coverage -fprofile-arcs -ftest-coverage -o $(TEST_BIN) $(TEST_SRC) $(LIB_A) $(LDFLAGS)
+	./$(TEST_BIN)
+	gcov src/*.c
 
 # --- CLI Tool (compiled out of core lib) ---
 tool: $(LIB_A)
@@ -145,4 +154,5 @@ clean:
 	rm -f $(OBJ) $(TEST_BIN) $(TOOL_BIN) $(DEMO_BIN) $(ENC_DEMO) $(MAC_DEMO) $(MULTI_DEMO) \
 	    $(SIGN1_DEMO) $(COMP_SIGN) $(COMP_ENCRYPT) $(COMP_MAC) $(COMP_ERRORS) \
 	    $(SCEN_FIRMWARE) $(SCEN_MULTIPARTY) $(SCEN_IOTFLEET) $(SCEN_SENSOR) $(SCEN_BROADCAST) \
-	    $(LIB_A) $(LIB_SO) src/*.su tests/*.su examples/comprehensive/*.su examples/scenarios/*.su
+	    $(LIB_A) $(LIB_SO) src/*.su tests/*.su examples/comprehensive/*.su examples/scenarios/*.su \
+	    src/*.gcno src/*.gcda tests/*.gcno tests/*.gcda *.gcov

@@ -272,7 +272,7 @@ static int wolfCose_CBOR_EncodeBytes(WOLFCOSE_CBOR_CTX* ctx,
         }
         else {
             if (len > 0u && data != NULL) {
-                XMEMCPY(ctx->buf + ctx->idx, data, len);
+                XMEMMOVE(ctx->buf + ctx->idx, data, len);
             }
             ctx->idx += len;
         }

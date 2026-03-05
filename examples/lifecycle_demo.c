@@ -150,7 +150,7 @@ static int demo_sign1_es256(void)
 
     ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ES256,
         g_kid, sizeof(g_kid) - 1,
-        payload, payloadLen, NULL, 0,
+        payload, payloadLen, NULL, 0, NULL, 0,
         scratch, sizeof(scratch),
         packet, sizeof(packet), &packetLen, &rng);
     if (ret != 0) {
@@ -163,7 +163,7 @@ static int demo_sign1_es256(void)
     wc_CoseKey_SetEcc(&verifyKey, WOLFCOSE_CRV_P256, &eccKey);
 
     ret = wc_CoseSign1_Verify(&verifyKey, packet, packetLen,
-        NULL, 0, scratch, sizeof(scratch),
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     if (ret != 0) {
         printf("  Verify FAILED: %d\n", ret);
@@ -223,7 +223,7 @@ static int demo_sign1_eddsa(void)
 
     ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA,
         g_kid, sizeof(g_kid) - 1,
-        payload, payloadLen, NULL, 0,
+        payload, payloadLen, NULL, 0, NULL, 0,
         scratch, sizeof(scratch),
         packet, sizeof(packet), &packetLen, &rng);
     if (ret != 0) {
@@ -233,7 +233,7 @@ static int demo_sign1_eddsa(void)
     printf("  [Producer] COSE_Sign1: %zu bytes\n", packetLen);
 
     ret = wc_CoseSign1_Verify(&signKey, packet, packetLen,
-        NULL, 0, scratch, sizeof(scratch),
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     if (ret != 0) {
         printf("  Verify FAILED: %d\n", ret);
@@ -295,7 +295,7 @@ static int demo_sign1_ps256(void)
 
     ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_PS256,
         g_kid, sizeof(g_kid) - 1,
-        payload, payloadLen, NULL, 0,
+        payload, payloadLen, NULL, 0, NULL, 0,
         scratch, sizeof(scratch),
         packet, sizeof(packet), &packetLen, &rng);
     if (ret != 0) {
@@ -305,7 +305,7 @@ static int demo_sign1_ps256(void)
     printf("  [Producer] COSE_Sign1: %zu bytes\n", packetLen);
 
     ret = wc_CoseSign1_Verify(&signKey, packet, packetLen,
-        NULL, 0, scratch, sizeof(scratch),
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     if (ret != 0) {
         printf("  Verify FAILED: %d\n", ret);
@@ -368,7 +368,7 @@ static int demo_sign1_ml_dsa_44(void)
 
     ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44,
         g_kid, sizeof(g_kid) - 1,
-        payload, payloadLen, NULL, 0,
+        payload, payloadLen, NULL, 0, NULL, 0,
         scratch, sizeof(scratch),
         packet, sizeof(packet), &packetLen, &rng);
     if (ret != 0) {
@@ -378,7 +378,7 @@ static int demo_sign1_ml_dsa_44(void)
     printf("  [Producer] COSE_Sign1: %zu bytes\n", packetLen);
 
     ret = wc_CoseSign1_Verify(&signKey, packet, packetLen,
-        NULL, 0, scratch, sizeof(scratch),
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     if (ret != 0) {
         printf("  Verify FAILED: %d\n", ret);
@@ -447,8 +447,8 @@ static int demo_encrypt0_aesgcm(int32_t alg)
 
     ret = wc_CoseEncrypt0_Encrypt(&key, alg,
         iv, sizeof(iv),
-        payload, payloadLen, NULL, 0,
-        scratch, sizeof(scratch),
+        payload, payloadLen, NULL, 0, NULL,
+        NULL, 0, scratch, sizeof(scratch),
         packet, sizeof(packet), &packetLen);
     if (ret != 0) {
         printf("  Encrypt failed: %d\n", ret);
@@ -459,7 +459,7 @@ static int demo_encrypt0_aesgcm(int32_t alg)
     printf("  [Producer] COSE_Encrypt0: %zu bytes\n", packetLen);
 
     ret = wc_CoseEncrypt0_Decrypt(&key, packet, packetLen,
-        NULL, 0, scratch, sizeof(scratch), &hdr,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
     if (ret != 0) {
         printf("  Decrypt FAILED: %d\n", ret);
@@ -515,8 +515,8 @@ static int demo_encrypt0_chacha20(void)
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_CHACHA20_POLY1305,
         iv, sizeof(iv),
-        payload, payloadLen, NULL, 0,
-        scratch, sizeof(scratch),
+        payload, payloadLen, NULL, 0, NULL,
+        NULL, 0, scratch, sizeof(scratch),
         packet, sizeof(packet), &packetLen);
     if (ret != 0) {
         printf("  Encrypt failed: %d\n", ret);
@@ -527,7 +527,7 @@ static int demo_encrypt0_chacha20(void)
     printf("  [Producer] COSE_Encrypt0: %zu bytes\n", packetLen);
 
     ret = wc_CoseEncrypt0_Decrypt(&key, packet, packetLen,
-        NULL, 0, scratch, sizeof(scratch), &hdr,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
     if (ret != 0) {
         printf("  Decrypt FAILED: %d\n", ret);
@@ -583,8 +583,8 @@ static int demo_encrypt0_aes_ccm(void)
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_AES_CCM_16_128_128,
         iv, sizeof(iv),
-        payload, payloadLen, NULL, 0,
-        scratch, sizeof(scratch),
+        payload, payloadLen, NULL, 0, NULL,
+        NULL, 0, scratch, sizeof(scratch),
         packet, sizeof(packet), &packetLen);
     if (ret != 0) {
         printf("  Encrypt failed: %d\n", ret);
@@ -595,7 +595,7 @@ static int demo_encrypt0_aes_ccm(void)
     printf("  [Producer] COSE_Encrypt0: %zu bytes\n", packetLen);
 
     ret = wc_CoseEncrypt0_Decrypt(&key, packet, packetLen,
-        NULL, 0, scratch, sizeof(scratch), &hdr,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
     if (ret != 0) {
         printf("  Decrypt FAILED: %d\n", ret);
@@ -663,7 +663,7 @@ static int demo_mac0_hmac(int32_t alg)
 
     ret = wc_CoseMac0_Create(&key, alg,
         g_kid, sizeof(g_kid) - 1,
-        payload, payloadLen, NULL, 0,
+        payload, payloadLen, NULL, 0, NULL, 0,
         scratch, sizeof(scratch),
         packet, sizeof(packet), &packetLen);
     if (ret != 0) {
@@ -674,7 +674,7 @@ static int demo_mac0_hmac(int32_t alg)
     printf("  [Producer] COSE_Mac0: %zu bytes\n", packetLen);
 
     ret = wc_CoseMac0_Verify(&key, packet, packetLen,
-        NULL, 0, scratch, sizeof(scratch),
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     if (ret != 0) {
         printf("  MAC verify FAILED: %d\n", ret);

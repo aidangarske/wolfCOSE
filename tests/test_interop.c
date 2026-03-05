@@ -62,47 +62,6 @@ static int g_failures = 0;
 } while (0)
 
 /* ---------------------------------------------------------------------------
- * Test Vector Structures
- * --------------------------------------------------------------------------- */
-
-typedef struct {
-    const char* name;
-    const uint8_t* coseMsg;
-    size_t coseMsgLen;
-    const uint8_t* expectedPayload;
-    size_t expectedPayloadLen;
-    int32_t expectedAlg;
-    /* Key material - for ECC keys as raw coordinates */
-    const uint8_t* keyX;
-    const uint8_t* keyY;
-    const uint8_t* keyD;  /* NULL for verify-only */
-    size_t keyCoordLen;
-    int32_t crv;
-} Sign1TestVector;
-
-typedef struct {
-    const char* name;
-    const uint8_t* coseMsg;
-    size_t coseMsgLen;
-    const uint8_t* expectedPayload;
-    size_t expectedPayloadLen;
-    int32_t expectedAlg;
-    const uint8_t* key;
-    size_t keyLen;
-} Encrypt0TestVector;
-
-typedef struct {
-    const char* name;
-    const uint8_t* coseMsg;
-    size_t coseMsgLen;
-    const uint8_t* expectedPayload;
-    size_t expectedPayloadLen;
-    int32_t expectedAlg;
-    const uint8_t* key;
-    size_t keyLen;
-} Mac0TestVector;
-
-/* ---------------------------------------------------------------------------
  * COSE_Sign1 Test Vectors (RFC 9052 / COSE WG Examples)
  * --------------------------------------------------------------------------- */
 
