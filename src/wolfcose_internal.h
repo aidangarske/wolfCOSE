@@ -171,6 +171,71 @@ WOLFCOSE_LOCAL int wolfCose_CrvKeySize(int32_t crv, size_t* keySz);
 WOLFCOSE_LOCAL int wolfCose_CrvToWcCurve(int32_t crv, int* wcCrv);
 #endif
 
+/* ---------------------------------------------------------------------------
+ * Unified structure builders (RFC 9052 Section 4.4, 5.3, 6.3)
+ *
+ * These shared helpers reduce code size by unifying:
+ * - Sig_structure (Sign1/Sign): ["Signature1"|"Signature", body_prot, [sign_prot,] ext_aad, payload]
+ * - MAC_structure (Mac0/Mac): ["MAC0"|"MAC", body_prot, ext_aad, payload]
+ * - Enc_structure (Encrypt0/Encrypt): ["Encrypt0"|"Encrypt", body_prot, ext_aad]
+ * --------------------------------------------------------------------------- */
+
+/**
+ * \brief Build a ToBeSigned/ToBeMAced structure.
+ *
+ * This unified builder handles both Sig_structure and MAC_structure since they
+ * share the same 4-element format: [context, body_protected, external_aad, payload]
+ *
+ * For multi-signer COSE_Sign, set signProtected non-NULL to create the 5-element
+ * format: [context, body_protected, sign_protected, external_aad, payload]
+ *
+ * \param context         Context string ("Signature1", "Signature", "MAC0", "MAC")
+ * \param contextLen      Length of context string
+ * \param bodyProtected   Serialized protected headers (body-level)
+ * \param bodyProtectedLen Length of body protected headers
+ * \param signProtected   Signer-specific protected headers (NULL for Sign1/Mac0/Mac)
+ * \param signProtectedLen Length of sign protected headers
+ * \param extAad          External AAD (may be NULL)
+ * \param extAadLen       Length of external AAD
+ * \param payload         Payload bytes
+ * \param payloadLen      Length of payload
+ * \param scratch         Output buffer for structure
+ * \param scratchSz       Size of output buffer
+ * \param structLen       Output: bytes written
+ * \return WOLFCOSE_SUCCESS or error code
+ */
+WOLFCOSE_LOCAL int wolfCose_BuildToBeSignedMaced(
+    const char* context, size_t contextLen,
+    const uint8_t* bodyProtected, size_t bodyProtectedLen,
+    const uint8_t* signProtected, size_t signProtectedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    const uint8_t* payload, size_t payloadLen,
+    uint8_t* scratch, size_t scratchSz,
+    size_t* structLen);
+
+/**
+ * \brief Build an Enc_structure for AEAD operations.
+ *
+ * Creates: [context, body_protected, external_aad]
+ *
+ * \param context         Context string ("Encrypt0" or "Encrypt")
+ * \param contextLen      Length of context string
+ * \param bodyProtected   Serialized protected headers
+ * \param bodyProtectedLen Length of protected headers
+ * \param extAad          External AAD (may be NULL)
+ * \param extAadLen       Length of external AAD
+ * \param scratch         Output buffer for structure
+ * \param scratchSz       Size of output buffer
+ * \param structLen       Output: bytes written
+ * \return WOLFCOSE_SUCCESS or error code
+ */
+WOLFCOSE_LOCAL int wolfCose_BuildEncStructure(
+    const char* context, size_t contextLen,
+    const uint8_t* bodyProtected, size_t bodyProtectedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    size_t* structLen);
+
 /**
  * \brief Get AEAD key length for any COSE AEAD algorithm.
  *        Dispatches across AES-GCM, ChaCha20-Poly1305, AES-CCM.

@@ -36,6 +36,15 @@ jobs:
           - name: PQ (ML-DSA) only
             wolfssl_flags: "--enable-cryptonly --enable-dilithium --enable-sha512"
             cache_key: wolfssl-pq-only-v2
+          - name: ECDH-ES (key agreement)
+            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-hkdf"
+            cache_key: wolfssl-ecdh-es-v1
+          - name: AES Key Wrap
+            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-aeskeywrap"
+            cache_key: wolfssl-keywrap-v1
+          - name: MAC-only (HMAC + AES-MAC)
+            wolfssl_flags: "--enable-cryptonly --enable-sha256 --enable-sha384 --enable-sha512 --enable-aescbc"
+            cache_key: wolfssl-mac-only-v1
 
     steps:
     - uses: actions/checkout@v4

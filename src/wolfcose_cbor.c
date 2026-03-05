@@ -221,7 +221,11 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
 
 /* ---------------------------------------------------------------------------
  * Public Encode API
+ *
+ * Guarded by WOLFCOSE_CBOR_ENCODE — can be excluded for decode-only builds.
  * --------------------------------------------------------------------------- */
+
+#if defined(WOLFCOSE_CBOR_ENCODE)
 
 int wc_CBOR_EncodeUint(WOLFCOSE_CBOR_CTX* ctx, uint64_t val)
 {
@@ -385,9 +389,15 @@ int wc_CBOR_EncodeDouble(WOLFCOSE_CBOR_CTX* ctx, double val)
 }
 #endif /* WOLFCOSE_FLOAT */
 
+#endif /* WOLFCOSE_CBOR_ENCODE */
+
 /* ---------------------------------------------------------------------------
  * Public Decode API
+ *
+ * Guarded by WOLFCOSE_CBOR_DECODE — always needed for verify/decrypt builds.
  * --------------------------------------------------------------------------- */
+
+#if defined(WOLFCOSE_CBOR_DECODE)
 
 int wc_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
 {
@@ -622,3 +632,5 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
     }
     return ret;
 }
+
+#endif /* WOLFCOSE_CBOR_DECODE */

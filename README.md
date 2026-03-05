@@ -64,6 +64,42 @@ Built for constrained IoT devices, FIPS-bounded deployments, and anywhere you ne
 | HMAC 256/256 | 5 | `!NO_HMAC` | SHA-256, 32-byte tag |
 | HMAC 384/384 | 6 | `WOLFSSL_SHA384` | SHA-384, 48-byte tag |
 | HMAC 512/512 | 7 | `WOLFSSL_SHA512` | SHA-512, 64-byte tag |
+| AES-MAC-128/64 | 14 | `HAVE_AES_CBC` | 128-bit key, 8-byte tag |
+| AES-MAC-256/64 | 15 | `HAVE_AES_CBC` | 256-bit key, 8-byte tag |
+| AES-MAC-128/128 | 25 | `HAVE_AES_CBC` | 128-bit key, 16-byte tag |
+| AES-MAC-256/128 | 26 | `HAVE_AES_CBC` | 256-bit key, 16-byte tag |
+
+### Key Distribution (COSE_Encrypt / COSE_Mac Multi-Recipient)
+
+| Algorithm | COSE ID | wolfCrypt Guard | Notes |
+|-----------|---------|-----------------|-------|
+| Direct | 0 | always | Pre-shared symmetric key |
+| A128KW | -3 | `HAVE_AES_KEYWRAP` | AES Key Wrap 128-bit |
+| A192KW | -4 | `HAVE_AES_KEYWRAP` | AES Key Wrap 192-bit |
+| A256KW | -5 | `HAVE_AES_KEYWRAP` | AES Key Wrap 256-bit |
+| ECDH-ES+HKDF-256 | -25 | `HAVE_ECC && HAVE_HKDF` | Ephemeral-Static ECDH |
+| ECDH-ES+HKDF-512 | -26 | `HAVE_ECC && HAVE_HKDF` | Ephemeral-Static ECDH |
+
+### Multi-Party Messages
+
+wolfCOSE supports full RFC 9052 multi-party COSE messages:
+
+| Message Type | API | Notes |
+|--------------|-----|-------|
+| COSE_Sign | `wc_CoseSign_Sign()` / `wc_CoseSign_Verify()` | Multiple signers, mixed algorithms |
+| COSE_Encrypt | `wc_CoseEncrypt_Encrypt()` / `wc_CoseEncrypt_Decrypt()` | Multiple recipients, key wrap or ECDH-ES |
+| COSE_Mac | `wc_CoseMac_Create()` / `wc_CoseMac_Verify()` | Multiple recipients |
+
+### Payload Modes
+
+All message types support:
+
+- **Inline payload** -- payload embedded in COSE message
+- **Detached payload** -- payload transmitted separately, not in COSE structure
+
+### External AAD
+
+All message types support external Additional Authenticated Data (AAD) that is authenticated but not included in the COSE message.
 
 ### Key Types
 
@@ -93,16 +129,43 @@ cd wolfssl
             --enable-curve25519 --enable-aesgcm --enable-aesccm \
             --enable-sha384 --enable-sha512 --enable-keygen \
             --enable-rsapss --enable-chacha --enable-poly1305 \
-            --enable-dilithium
+            --enable-dilithium --enable-hkdf --enable-aeskeywrap
 make && sudo make install
 sudo ldconfig
 ```
 
-For a minimal build (ECC + AES-GCM only):
+### Feature-Specific Builds
 
+| Feature | wolfSSL Configure Flags |
+|---------|------------------------|
+| ECC signing (ES256/384/512) | `--enable-ecc --enable-keygen` |
+| EdDSA (Ed25519) | `--enable-ed25519 --enable-curve25519` |
+| EdDSA (Ed448) | `--enable-ed448` |
+| AES-GCM encryption | `--enable-aesgcm` |
+| AES-CCM encryption | `--enable-aesccm` |
+| ChaCha20-Poly1305 | `--enable-chacha --enable-poly1305` |
+| ECDH-ES key agreement | `--enable-ecc --enable-hkdf` |
+| AES Key Wrap | `--enable-aeskeywrap` |
+| RSA-PSS signing | `--enable-rsapss --enable-keygen` |
+| ML-DSA (post-quantum) | `--enable-dilithium` |
+| HMAC (all sizes) | (enabled by default) |
+| AES-MAC | `--enable-aescbc` |
+
+**Minimal build (ECC + AES-GCM only):**
 ```bash
 ./configure --enable-ecc --enable-aesgcm --enable-sha384 \
             --enable-sha512 --enable-keygen
+```
+
+**ECDH-ES + Key Wrap (multi-recipient encryption):**
+```bash
+./configure --enable-ecc --enable-aesgcm --enable-sha384 \
+            --enable-sha512 --enable-keygen --enable-hkdf --enable-aeskeywrap
+```
+
+**Post-quantum only (ML-DSA):**
+```bash
+./configure --enable-dilithium --enable-sha512
 ```
 
 ## Build
@@ -131,6 +194,9 @@ make demo
 | `make tool` | Build CLI tool (`tools/wolfcose_tool`) |
 | `make tool-test` | Round-trip self-test for all 17 algorithms |
 | `make demo` | Build + run lifecycle demo (11 algorithms) |
+| `make demos` | Build + run all basic demos |
+| `make comprehensive` | Build + run comprehensive algorithm tests (~240 tests) |
+| `make scenarios` | Build + run real-world scenario examples |
 | `make clean` | Remove all build artifacts |
 
 ## Project Structure
@@ -141,16 +207,35 @@ include/wolfcose/
   visibility.h          WOLFCOSE_API export macros
 src/
   wolfcose_cbor.c       CBOR encoder/decoder (RFC 8949, no wolfCrypt dep)
-  wolfcose.c            COSE Sign1/Encrypt0/Mac0/Key (RFC 9052/9053, wolfCrypt)
+  wolfcose.c            COSE messages + key management (RFC 9052/9053, wolfCrypt)
   wolfcose_internal.h   Internal helpers (BE macros, header codec, AEAD dispatch)
 tests/
   test_cbor.c           CBOR vectors (RFC 8949 Appendix A) + round-trip
-  test_cose.c           COSE Sign1/Encrypt0/Mac0/Key tests
+  test_cose.c           COSE Sign1/Encrypt0/Mac0/Sign/Encrypt/Mac tests
+  test_interop.c        Interoperability tests with RFC vectors
   test_main.c           Test harness (CI exit codes)
+  vectors/              Test vectors from COSE Working Group
 tools/
   wolfcose_tool.c       CLI: keygen, sign, verify, encrypt, decrypt, mac, info, test
 examples/
-  lifecycle_demo.c      Edge-to-cloud producer/consumer demo (11 algorithms)
+  lifecycle_demo.c      Edge-to-cloud producer/consumer demo
+  sign1_demo.c          COSE_Sign1 all algorithm combinations
+  encrypt0_demo.c       COSE_Encrypt0 all algorithm combinations
+  mac0_demo.c           COSE_Mac0 all algorithm combinations
+  comprehensive/        Comprehensive algorithm matrix tests (CI)
+    sign_all.c          Sign1 + multi-signer tests (~61 tests)
+    encrypt_all.c       Encrypt0 + multi-recipient tests (~23 tests)
+    mac_all.c           Mac0 + multi-recipient tests (~32 tests)
+    errors_all.c        Error handling and edge cases (~19 tests)
+  scenarios/            Real-world scenario examples
+    firmware_update.c   Post-quantum firmware signing with ML-DSA
+    multi_party_approval.c  Dual-signer firmware approval
+    iot_fleet_config.c  Multi-recipient encrypted config push
+    sensor_attestation.c   EAT-style attestation with AAD
+    group_broadcast_mac.c  Multi-recipient MAC broadcast
+docs/
+  API-REFERENCE.md      Complete API documentation
+  MACRO-REFERENCE.md    Configuration macros reference
 ```
 
 The core library is two object files. CBOR-only projects can link just `wolfcose_cbor.o`.
@@ -214,6 +299,29 @@ wc_CoseSign1_Sign(&coseKey, WOLFCOSE_ALG_ML_DSA_44,
     NULL, 0, payload, payloadLen, NULL, 0,
     scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
 ```
+
+### More Examples
+
+See the `examples/` directory for complete working examples:
+- `sign1_demo.c` -- All COSE_Sign1 algorithms (ES256, ES384, ES512, EdDSA)
+- `encrypt0_demo.c` -- All COSE_Encrypt0 algorithms (AES-GCM, ChaCha20, AES-CCM)
+- `mac0_demo.c` -- All COSE_Mac0 algorithms (HMAC, AES-MAC)
+- `lifecycle_demo.c` -- Full edge-to-cloud workflow
+
+**Comprehensive Tests** (`examples/comprehensive/`):
+- `sign_all.c` -- Sign1 and multi-signer matrix tests
+- `encrypt_all.c` -- Encrypt0 and multi-recipient matrix tests
+- `mac_all.c` -- Mac0 and multi-recipient matrix tests
+- `errors_all.c` -- Error handling, tamper detection, edge cases
+
+**Real-World Scenarios** (`examples/scenarios/`):
+- `firmware_update.c` -- Post-quantum ML-DSA firmware signing with detached payload
+- `multi_party_approval.c` -- Dual-control firmware approval (ES256 + ES384)
+- `iot_fleet_config.c` -- Encrypted config push to IoT device fleet
+- `sensor_attestation.c` -- EAT-style attestation with replay protection via AAD
+- `group_broadcast_mac.c` -- Authenticated broadcast to multiple subscribers
+
+See `docs/API-REFERENCE.md` for complete API documentation including multi-recipient encryption with ECDH-ES and AES Key Wrap.
 
 ### CLI Tool
 
@@ -320,6 +428,8 @@ wolfCOSE runs the following CI checks on every push and pull request:
 
 - **Build and Test** -- Ubuntu (latest + 22.04), macOS, with full unit test suite
 - **Multi-Compiler** -- GCC 10/11/12/13/14 and Clang 14/15/16/17/18
+- **Comprehensive Tests** -- ~240 algorithm combination tests (sign/encrypt/mac matrix)
+- **Scenario Examples** -- Real-world workflows (firmware update, attestation, fleet config)
 - **Examples** -- Lifecycle demo (11 algorithms) and tool round-trip (17 algorithms)
 - **Static Analysis** -- cppcheck, Clang analyzer, GCC `-fanalyzer`
 - **Coverity Scan** -- nightly defect analysis
