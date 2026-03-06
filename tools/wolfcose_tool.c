@@ -220,9 +220,7 @@ static int write_file(const char* path, const uint8_t* buf, size_t len)
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * keygen: generate a COSE key and write to file
- * --------------------------------------------------------------------------- */
+/* ----- keygen: generate a COSE key and write to file ----- */
 static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
 {
     int ret;
@@ -398,9 +396,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * sign: COSE_Sign1 sign
- * --------------------------------------------------------------------------- */
+/* ----- sign: COSE_Sign1 sign ----- */
 static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
                       const char* inPath, const char* outPath)
 {
@@ -584,9 +580,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * verify: COSE_Sign1 verify
- * --------------------------------------------------------------------------- */
+/* ----- verify: COSE_Sign1 verify ----- */
 static int tool_verify(const char* keyPath, const char* inPath)
 {
     int ret;
@@ -717,9 +711,7 @@ verify_done:
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * enc: COSE_Encrypt0 encrypt
- * --------------------------------------------------------------------------- */
+/* ----- enc: COSE_Encrypt0 encrypt ----- */
 #if defined(HAVE_AESGCM) || defined(HAVE_AESCCM) || \
     (defined(HAVE_CHACHA) && defined(HAVE_POLY1305))
 static int tool_enc(const char* keyPath, int32_t alg,
@@ -799,9 +791,7 @@ static int tool_enc(const char* keyPath, int32_t alg,
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * dec: COSE_Encrypt0 decrypt
- * --------------------------------------------------------------------------- */
+/* ----- dec: COSE_Encrypt0 decrypt ----- */
 static int tool_dec(const char* keyPath, const char* inPath,
                      const char* outPath)
 {
@@ -847,9 +837,7 @@ static int tool_dec(const char* keyPath, const char* inPath,
 }
 #endif /* HAVE_AESGCM || HAVE_AESCCM || (HAVE_CHACHA && HAVE_POLY1305) */
 
-/* ---------------------------------------------------------------------------
- * mac: COSE_Mac0 create
- * --------------------------------------------------------------------------- */
+/* ----- mac: COSE_Mac0 create ----- */
 #if !defined(NO_HMAC)
 static int tool_mac(const char* keyPath, int32_t alg,
                      const char* inPath, const char* outPath)
@@ -895,9 +883,7 @@ static int tool_mac(const char* keyPath, int32_t alg,
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * macverify: COSE_Mac0 verify
- * --------------------------------------------------------------------------- */
+/* ----- macverify: COSE_Mac0 verify ----- */
 static int tool_macverify(const char* keyPath, const char* inPath)
 {
     int ret;
@@ -938,9 +924,7 @@ static int tool_macverify(const char* keyPath, const char* inPath)
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * info: dump CBOR structure of a COSE message
- * --------------------------------------------------------------------------- */
+/* ----- info: dump CBOR structure of a COSE message ----- */
 static int tool_info(const char* inPath)
 {
     int ret;
@@ -1019,9 +1003,7 @@ static int tool_info(const char* inPath)
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * test: in-memory round-trip self-tests for all algorithms
- * --------------------------------------------------------------------------- */
+/* ----- test: in-memory round-trip self-tests for all algorithms ----- */
 
 /* Sign round-trip: keygen -> sign -> verify -> check payload */
 #ifdef HAVE_ECC
@@ -1488,9 +1470,7 @@ static int tool_test(const char* filter)
     return failures > 0 ? EXIT_CRYPTO : 0;
 }
 
-/* ---------------------------------------------------------------------------
- * main
- * --------------------------------------------------------------------------- */
+/* ----- main ----- */
 int main(int argc, char* argv[])
 {
     const char* cmd;

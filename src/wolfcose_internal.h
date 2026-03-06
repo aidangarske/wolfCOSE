@@ -38,9 +38,7 @@
 extern "C" {
 #endif
 
-/* ---------------------------------------------------------------------------
- * Big-endian load/store macros (bit-shift only, no platform dependencies)
- * --------------------------------------------------------------------------- */
+/* ----- Big-endian load/store macros (bit-shift only, no platform dependencies) ----- */
 
 #define WOLFCOSE_STORE_BE16(buf, val) do {                     \
     (buf)[0] = (uint8_t)(((uint16_t)(val)) >> 8);             \
@@ -85,9 +83,7 @@ extern "C" {
                 ((uint64_t)(buf)[6] << 8)  |                   \
                 ((uint64_t)(buf)[7])))
 
-/* ---------------------------------------------------------------------------
- * Internal CBOR head encode/decode
- * --------------------------------------------------------------------------- */
+/* ----- Internal CBOR head encode/decode ----- */
 
 /**
  * \brief Encode a CBOR initial byte + argument.
@@ -103,9 +99,7 @@ WOLFCOSE_LOCAL int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx,
 WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx,
                                              WOLFCOSE_CBOR_ITEM* item);
 
-/* ---------------------------------------------------------------------------
- * COSE internal helpers
- * --------------------------------------------------------------------------- */
+/* ----- COSE internal helpers ----- */
 
 /**
  * \brief Encode a protected header map: {1: alg} as a bstr.
@@ -171,14 +165,14 @@ WOLFCOSE_LOCAL int wolfCose_CrvKeySize(int32_t crv, size_t* keySz);
 WOLFCOSE_LOCAL int wolfCose_CrvToWcCurve(int32_t crv, int* wcCrv);
 #endif
 
-/* ---------------------------------------------------------------------------
+/* -----
  * Unified structure builders (RFC 9052 Section 4.4, 5.3, 6.3)
  *
  * These shared helpers reduce code size by unifying:
  * - Sig_structure (Sign1/Sign): ["Signature1"|"Signature", body_prot, [sign_prot,] ext_aad, payload]
  * - MAC_structure (Mac0/Mac): ["MAC0"|"MAC", body_prot, ext_aad, payload]
  * - Enc_structure (Encrypt0/Encrypt): ["Encrypt0"|"Encrypt", body_prot, ext_aad]
- * --------------------------------------------------------------------------- */
+ * ----- */
 
 /**
  * \brief Build a ToBeSigned/ToBeMAced structure.

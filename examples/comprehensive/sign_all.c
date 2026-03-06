@@ -1,7 +1,5 @@
 /* sign_all.c
  *
- * Comprehensive COSE_Sign1 and COSE_Sign test coverage.
- *
  * Copyright (C) 2026 wolfSSL Inc.
  *
  * This file is part of wolfCOSE.
@@ -18,6 +16,9 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Comprehensive COSE_Sign1 and COSE_Sign test coverage.
  *
  * Compile-time gates:
  *   WOLFCOSE_EXAMPLE_SIGN_ALL      - Enable this example (default: enabled)
@@ -55,9 +56,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* ---------------------------------------------------------------------------
- * Test Macros
- * --------------------------------------------------------------------------- */
+/* ----- Test Macros ----- */
 #define PRINT_TEST(name) printf("  Testing: %s... ", (name))
 #define CHECK_RESULT(r, name) do {                      \
     if ((r) == 0) {                                     \
@@ -69,9 +68,7 @@
     }                                                   \
 } while (0)
 
-/* ---------------------------------------------------------------------------
- * Helper: Get ECC curve from key size
- * --------------------------------------------------------------------------- */
+/* ----- Helper: Get ECC curve from key size ----- */
 #ifdef HAVE_ECC
 static int crv_from_size(int keySz)
 {
@@ -84,7 +81,7 @@ static int crv_from_size(int keySz)
 }
 #endif
 
-/* ---------------------------------------------------------------------------
+/* -----
  * Sign1 Worker Function
  *
  * Parameters:
@@ -94,7 +91,7 @@ static int crv_from_size(int keySz)
  *   useAad    - 0=no AAD, 1=with external AAD
  *
  * Returns 0 on success, negative error code on failure.
- * --------------------------------------------------------------------------- */
+ * ----- */
 static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
 {
     int ret = 0;
@@ -212,9 +209,7 @@ cleanup:
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * Multi-Signer Worker Function (2 signers)
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Signer Worker Function (2 signers) ----- */
 #if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN)
 static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
                               int detached, int useAad)
@@ -356,9 +351,7 @@ cleanup:
 }
 #endif /* HAVE_ECC && WOLFCOSE_SIGN */
 
-/* ---------------------------------------------------------------------------
- * Multi-Signer Worker Function (3 signers)
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Signer Worker Function (3 signers) ----- */
 #if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN)
 static int test_sign_multi_3(int32_t alg1, int keySz1,
                               int32_t alg2, int keySz2,
@@ -481,9 +474,7 @@ cleanup:
 }
 #endif /* HAVE_ECC && WOLFCOSE_SIGN */
 
-/* ---------------------------------------------------------------------------
- * Multi-Signer Worker Function (4 signers)
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Signer Worker Function (4 signers) ----- */
 #if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN) && defined(HAVE_ED25519)
 static int test_sign_multi_4(int detached, int useAad)
 {
@@ -618,9 +609,7 @@ cleanup:
 }
 #endif /* HAVE_ECC && WOLFCOSE_SIGN && HAVE_ED25519 */
 
-/* ---------------------------------------------------------------------------
- * Sign1 Test Runner (16 tests)
- * --------------------------------------------------------------------------- */
+/* ----- Sign1 Test Runner (16 tests) ----- */
 static int test_sign1_all(void)
 {
     int ret = 0;
@@ -711,9 +700,7 @@ static int test_sign1_all(void)
     return failed;
 }
 
-/* ---------------------------------------------------------------------------
- * Multi-Signer Test Runner (52 tests total)
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Signer Test Runner (52 tests total) ----- */
 #if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN) && \
     !defined(WOLFCOSE_NO_SIGN_ALL_MULTI)
 static int test_sign_multi_all(void)
@@ -952,9 +939,7 @@ static int test_sign_multi_all(void)
 }
 #endif /* HAVE_ECC && WOLFCOSE_SIGN && !WOLFCOSE_NO_SIGN_ALL_MULTI */
 
-/* ---------------------------------------------------------------------------
- * Interop Vector Tests (RFC 9052 Appendix C)
- * --------------------------------------------------------------------------- */
+/* ----- Interop Vector Tests (RFC 9052 Appendix C) ----- */
 #if defined(HAVE_ECC) && !defined(WOLFCOSE_NO_SIGN_ALL_INTEROP)
 static int test_sign1_interop(void)
 {
@@ -1059,9 +1044,7 @@ cleanup:
 }
 #endif /* HAVE_ECC && !WOLFCOSE_NO_SIGN_ALL_INTEROP */
 
-/* ---------------------------------------------------------------------------
- * Main Entry Point
- * --------------------------------------------------------------------------- */
+/* ----- Main Entry Point ----- */
 int main(void)
 {
     int totalFailed = 0;

@@ -72,9 +72,7 @@ static int g_failures = 0;
     }                                                          \
 } while (0)
 
-/* ---------------------------------------------------------------------------
- * COSE Key API tests
- * --------------------------------------------------------------------------- */
+/* ----- COSE Key API tests ----- */
 static void test_cose_key_init(void)
 {
     WOLFCOSE_KEY key;
@@ -257,9 +255,7 @@ static void test_cose_key_symmetric(void)
     wc_CoseKey_Free(&key);
 }
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 tests
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 tests ----- */
 #ifdef HAVE_ECC
 static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
                                  int keySz)
@@ -536,9 +532,7 @@ done_ed448:
 }
 #endif /* HAVE_ED448 */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt0 tests
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt0 tests ----- */
 #ifdef HAVE_AESGCM
 static void test_cose_encrypt0_a128gcm(void)
 {
@@ -745,9 +739,7 @@ static void test_cose_encrypt0_with_aad(void)
 }
 #endif /* HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt0 ChaCha20-Poly1305 tests
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt0 ChaCha20-Poly1305 tests ----- */
 #if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
 static void test_cose_encrypt0_chacha20(void)
 {
@@ -829,9 +821,7 @@ static void test_cose_encrypt0_chacha20(void)
 }
 #endif /* HAVE_CHACHA && HAVE_POLY1305 */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt0 AES-CCM tests
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt0 AES-CCM tests ----- */
 #ifdef HAVE_AESCCM
 static void test_cose_encrypt0_aes_ccm(void)
 {
@@ -943,9 +933,7 @@ static void test_cose_encrypt0_aes_ccm(void)
 }
 #endif /* HAVE_AESCCM */
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 RSA-PSS tests
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 RSA-PSS tests ----- */
 #if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
 static void test_cose_sign1_pss(const char* label, int32_t alg)
 {
@@ -1022,9 +1010,7 @@ done_pss:
 }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 ML-DSA (Dilithium) tests
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 ML-DSA (Dilithium) tests ----- */
 #ifdef HAVE_DILITHIUM
 static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
 {
@@ -1105,9 +1091,7 @@ done_mldsa:
 }
 #endif /* HAVE_DILITHIUM */
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 with external AAD
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 with external AAD ----- */
 #ifdef HAVE_ECC
 static void test_cose_sign1_with_aad(void)
 {
@@ -1170,9 +1154,7 @@ done_aad:
 }
 #endif
 
-/* ---------------------------------------------------------------------------
- * COSE_Key RSA encode/decode round-trip
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Key RSA encode/decode round-trip ----- */
 #if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
 static void test_cose_key_rsa(void)
 {
@@ -1254,9 +1236,7 @@ static void test_cose_key_rsa(void)
 }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
-/* ---------------------------------------------------------------------------
- * COSE_Key Dilithium encode/decode round-trip
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Key Dilithium encode/decode round-trip ----- */
 #ifdef HAVE_DILITHIUM
 static void test_cose_key_dilithium(const char* label, int32_t alg,
                                       int level)
@@ -1343,9 +1323,7 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
 }
 #endif /* HAVE_DILITHIUM */
 
-/* ---------------------------------------------------------------------------
- * COSE_Mac0 tests
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Mac0 tests ----- */
 #ifndef NO_HMAC
 static void test_cose_mac0_hmac256(void)
 {
@@ -1579,9 +1557,7 @@ static void test_cose_mac0_with_aad(void)
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * Hardened / error-path / boundary tests
- * --------------------------------------------------------------------------- */
+/* ----- Hardened / error-path / boundary tests ----- */
 
 #ifdef HAVE_ECC
 static void test_cose_sign1_buffer_too_small(void)
@@ -1662,9 +1638,7 @@ static void test_cose_sign1_buffer_too_small(void)
     wc_FreeRng(&rng);
 }
 
-/* ---------------------------------------------------------------------------
- * Detached Payload tests (RFC 9052 Section 2)
- * --------------------------------------------------------------------------- */
+/* ----- Detached Payload tests (RFC 9052 Section 2) ----- */
 static void test_cose_sign1_detached(void)
 {
     WOLFCOSE_KEY key;
@@ -2198,9 +2172,7 @@ static void test_cose_key_decode_optional_labels(void)
     TEST_ASSERT(key.key.symm.keyLen == sizeof(symmKey), "key decode k len");
 }
 
-/* ---------------------------------------------------------------------------
- * RFC 9052 interop test vectors (cose-wg/Examples)
- * --------------------------------------------------------------------------- */
+/* ----- RFC 9052 interop test vectors (cose-wg/Examples) ----- */
 
 /* ECDSA-01: P-256 / ES256 Sign1 (ecdsa-sig-01.json) */
 #ifdef HAVE_ECC
@@ -2784,9 +2756,7 @@ static void test_cose_mac0_aes_cbc_mac_detached(void)
 }
 #endif /* HAVE_AES_CBC */
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign Multi-Signer Tests (RFC 9052 Section 4.1)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign Multi-Signer Tests (RFC 9052 Section 4.1) ----- */
 #if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
 static void test_cose_sign_multi_signer(void)
 {
@@ -3193,9 +3163,7 @@ static void test_cose_sign_mixed_algorithms(void)
 #endif /* HAVE_ED25519 */
 #endif /* WOLFCOSE_SIGN && HAVE_ECC */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt Multi-Recipient Tests (RFC 9052 Section 5.1)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt Multi-Recipient Tests (RFC 9052 Section 5.1) ----- */
 #if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
 static void test_cose_encrypt_multi_recipient(void)
 {
@@ -4053,9 +4021,7 @@ static void test_cose_encrypt_kw_wrong_keysize(void)
 
 #endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
- * COSE_Mac Multi-Recipient Tests (RFC 9052 Section 6.1)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Mac Multi-Recipient Tests (RFC 9052 Section 6.1) ----- */
 #if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
 static void test_cose_mac_multi_recipient(void)
 {
@@ -4336,9 +4302,7 @@ static void test_cose_mac_detached(void)
 }
 #endif /* WOLFCOSE_MAC && !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * Phase 1: Algorithm Combination Tests
- * --------------------------------------------------------------------------- */
+/* ----- Phase 1: Algorithm Combination Tests ----- */
 #ifdef HAVE_ECC
 static void test_cose_sign1_es384(void)
 {
@@ -4488,10 +4452,10 @@ static void test_cose_encrypt0_a192gcm(void)
 }
 #endif /* HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
+/* -----
  * Phase 3B: Negative Crypto Tests (Tamper Detection)
  * Critical security tests - must detect single-byte tampering
- * --------------------------------------------------------------------------- */
+ * ----- */
 #ifdef HAVE_ECC
 static void test_cose_sign1_tampered_sig_byte(void)
 {
@@ -4861,9 +4825,7 @@ static void test_cose_mac0_truncated_tag(void)
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * Phase 3A: Boundary Condition Tests
- * --------------------------------------------------------------------------- */
+/* ----- Phase 3A: Boundary Condition Tests ----- */
 #ifdef HAVE_ECC
 static void test_cose_empty_payload(void)
 {
@@ -5068,9 +5030,7 @@ done_long_kid:
 }
 #endif /* HAVE_ECC */
 
-/* ---------------------------------------------------------------------------
- * Phase 3E: Buffer Overflow Prevention Tests
- * --------------------------------------------------------------------------- */
+/* ----- Phase 3E: Buffer Overflow Prevention Tests ----- */
 #ifdef HAVE_ECC
 static void test_cose_sign_output_too_small(void)
 {
@@ -5178,9 +5138,7 @@ static void test_cose_encrypt_output_too_small(void)
 }
 #endif /* HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
- * Phase 3C: Malformed CBOR Input Tests
- * --------------------------------------------------------------------------- */
+/* ----- Phase 3C: Malformed CBOR Input Tests ----- */
 #ifdef HAVE_ECC
 static void test_decode_truncated_message(void)
 {
@@ -5280,9 +5238,7 @@ done_wrong_tag:
 }
 #endif /* HAVE_ECC */
 
-/* ---------------------------------------------------------------------------
- * Additional coverage tests
- * --------------------------------------------------------------------------- */
+/* ----- Additional coverage tests ----- */
 
 /* Test bad/unsupported algorithm handling */
 #ifdef HAVE_ECC
@@ -5417,9 +5373,9 @@ static void test_cose_key_ecc_curves(void)
     if (ret == 0) {
         wc_CoseKey_Init(&key);
         ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P384, &eccKey);
-        if (ret == 0) {
-            TEST_ASSERT(ret == 0, "set P-384 key");
+        TEST_ASSERT(ret == 0, "set P-384 key");
 
+        if (ret == 0) {
             ret = wc_CoseKey_Encode(&key, encoded, sizeof(encoded), &encodedLen);
             TEST_ASSERT(ret == 0, "encode P-384");
 
@@ -5442,9 +5398,9 @@ static void test_cose_key_ecc_curves(void)
     if (ret == 0) {
         wc_CoseKey_Init(&key);
         ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P521, &eccKey);
-        if (ret == 0) {
-            TEST_ASSERT(ret == 0, "set P-521 key");
+        TEST_ASSERT(ret == 0, "set P-521 key");
 
+        if (ret == 0) {
             ret = wc_CoseKey_Encode(&key, encoded, sizeof(encoded), &encodedLen);
             TEST_ASSERT(ret == 0, "encode P-521");
 
@@ -5643,7 +5599,7 @@ static void test_cbor_edge_cases(void)
     /* Test bstr boundary (256 bytes) - needs larger buffer */
     {
         uint8_t largeBuf[512];
-        uint8_t bigData[260] = {0};
+        const uint8_t bigData[260] = {0};
         WOLFCOSE_CBOR_CTX bigCtx;
         bigCtx.buf = largeBuf;
         bigCtx.bufSz = sizeof(largeBuf);
@@ -5671,9 +5627,7 @@ static void test_cbor_edge_cases(void)
     TEST_ASSERT(count == 2, "map count 2");
 }
 
-/* ---------------------------------------------------------------------------
- * Entry point
- * --------------------------------------------------------------------------- */
+/* ----- Entry point ----- */
 int test_cose(void)
 {
     g_failures = 0;

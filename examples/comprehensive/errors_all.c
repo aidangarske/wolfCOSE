@@ -1,7 +1,5 @@
 /* errors_all.c
  *
- * Comprehensive error case testing for COSE operations.
- *
  * Copyright (C) 2026 wolfSSL Inc.
  *
  * This file is part of wolfCOSE.
@@ -18,6 +16,9 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Comprehensive error case testing for COSE operations.
  *
  * Compile-time gates:
  *   WOLFCOSE_EXAMPLE_ERRORS_ALL       - Enable this example (default: enabled)
@@ -52,9 +53,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* ---------------------------------------------------------------------------
- * Test Macros
- * --------------------------------------------------------------------------- */
+/* ----- Test Macros ----- */
 #define PRINT_TEST(name) printf("  Testing: %s... ", (name))
 #define CHECK_SHOULD_FAIL(r, name) do {                 \
     if ((r) != 0) {                                     \
@@ -76,9 +75,7 @@
     }                                                   \
 } while (0)
 
-/* ---------------------------------------------------------------------------
- * Sign1 Tamper Tests
- * --------------------------------------------------------------------------- */
+/* ----- Sign1 Tamper Tests ----- */
 #ifdef HAVE_ECC
 static int test_sign1_tamper(int tamperPos)
 {
@@ -157,9 +154,7 @@ cleanup:
 }
 #endif /* HAVE_ECC */
 
-/* ---------------------------------------------------------------------------
- * Encrypt0 Tamper Tests
- * --------------------------------------------------------------------------- */
+/* ----- Encrypt0 Tamper Tests ----- */
 #ifdef HAVE_AESGCM
 static int test_encrypt0_tamper(int tamperPos)
 {
@@ -226,9 +221,7 @@ cleanup:
 }
 #endif /* HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
- * Mac0 Tamper Tests
- * --------------------------------------------------------------------------- */
+/* ----- Mac0 Tamper Tests ----- */
 #ifndef NO_HMAC
 static int test_mac0_tamper(int tamperPos)
 {
@@ -291,9 +284,7 @@ cleanup:
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * Truncated Input Tests
- * --------------------------------------------------------------------------- */
+/* ----- Truncated Input Tests ----- */
 #ifdef HAVE_ECC
 static int test_sign1_truncated(void)
 {
@@ -456,9 +447,7 @@ cleanup:
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * AAD Mismatch Tests
- * --------------------------------------------------------------------------- */
+/* ----- AAD Mismatch Tests ----- */
 #ifdef HAVE_ECC
 static int test_sign1_aad_mismatch(void)
 {
@@ -632,9 +621,7 @@ cleanup:
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * Detached Payload Missing Tests
- * --------------------------------------------------------------------------- */
+/* ----- Detached Payload Missing Tests ----- */
 #ifdef HAVE_ECC
 static int test_sign1_detached_missing(void)
 {
@@ -697,9 +684,7 @@ cleanup:
 }
 #endif /* HAVE_ECC */
 
-/* ---------------------------------------------------------------------------
- * Wrong Key Type Tests
- * --------------------------------------------------------------------------- */
+/* ----- Wrong Key Type Tests ----- */
 #ifdef HAVE_ECC
 static int test_sign1_with_symmetric_key(void)
 {
@@ -796,9 +781,7 @@ cleanup:
 }
 #endif /* HAVE_ECC && HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
- * Empty Payload Tests
- * --------------------------------------------------------------------------- */
+/* ----- Empty Payload Tests ----- */
 #ifdef HAVE_ECC
 static int test_sign1_empty_payload(void)
 {
@@ -859,9 +842,7 @@ cleanup:
 }
 #endif /* HAVE_ECC */
 
-/* ---------------------------------------------------------------------------
- * Error Test Runners
- * --------------------------------------------------------------------------- */
+/* ----- Error Test Runners ----- */
 #if defined(HAVE_ECC) && !defined(WOLFCOSE_NO_ERRORS_ALL_SIGN)
 static int test_sign_errors_all(void)
 {
@@ -995,9 +976,7 @@ static int test_mac_errors_all(void)
 }
 #endif /* !NO_HMAC && !WOLFCOSE_NO_ERRORS_ALL_MAC */
 
-/* ---------------------------------------------------------------------------
- * Main Entry Point
- * --------------------------------------------------------------------------- */
+/* ----- Main Entry Point ----- */
 int main(void)
 {
     int totalFailed = 0;

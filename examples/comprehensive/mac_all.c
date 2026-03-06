@@ -1,7 +1,5 @@
 /* mac_all.c
  *
- * Comprehensive COSE_Mac0 and COSE_Mac test coverage.
- *
  * Copyright (C) 2026 wolfSSL Inc.
  *
  * This file is part of wolfCOSE.
@@ -18,6 +16,9 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Comprehensive COSE_Mac0 and COSE_Mac test coverage.
  *
  * Compile-time gates:
  *   WOLFCOSE_EXAMPLE_MAC_ALL           - Enable this example (default: enabled)
@@ -49,9 +50,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* ---------------------------------------------------------------------------
- * Test Macros
- * --------------------------------------------------------------------------- */
+/* ----- Test Macros ----- */
 #define PRINT_TEST(name) printf("  Testing: %s... ", (name))
 #define CHECK_RESULT(r, name) do {                      \
     if ((r) == 0) {                                     \
@@ -63,7 +62,7 @@
     }                                                   \
 } while (0)
 
-/* ---------------------------------------------------------------------------
+/* -----
  * Mac0 Worker Function
  *
  * Parameters:
@@ -73,7 +72,7 @@
  *   useAad    - 0=no AAD, 1=with external AAD
  *
  * Returns 0 on success, negative error code on failure.
- * --------------------------------------------------------------------------- */
+ * ----- */
 #ifndef NO_HMAC
 static int test_mac0(int32_t alg, int keySz, int detached, int useAad)
 {
@@ -143,9 +142,7 @@ cleanup:
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * Multi-Recipient Mac Worker (Direct Key)
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Recipient Mac Worker (Direct Key) ----- */
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC)
 static int test_mac_multi_direct(int32_t macAlg, int keySz,
                                   int recipCount, int detached, int useAad)
@@ -213,9 +210,7 @@ cleanup:
 }
 #endif /* !NO_HMAC && WOLFCOSE_MAC */
 
-/* ---------------------------------------------------------------------------
- * Multi-Recipient Wrong Key Test
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Recipient Wrong Key Test ----- */
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC)
 static int test_mac_wrong_key(void)
 {
@@ -301,9 +296,7 @@ cleanup:
 }
 #endif /* !NO_HMAC && WOLFCOSE_MAC */
 
-/* ---------------------------------------------------------------------------
- * Mac0 Test Runner (20 tests)
- * --------------------------------------------------------------------------- */
+/* ----- Mac0 Test Runner (20 tests) ----- */
 #ifndef NO_HMAC
 static int test_mac0_all(void)
 {
@@ -411,9 +404,7 @@ static int test_mac0_all(void)
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * Multi-Recipient Test Runner
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Recipient Test Runner ----- */
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC) && \
     !defined(WOLFCOSE_NO_MAC_ALL_MULTI)
 static int test_mac_multi_all(void)
@@ -481,9 +472,7 @@ static int test_mac_multi_all(void)
 }
 #endif /* !NO_HMAC && WOLFCOSE_MAC */
 
-/* ---------------------------------------------------------------------------
- * Interop Vector Tests
- * --------------------------------------------------------------------------- */
+/* ----- Interop Vector Tests ----- */
 #if !defined(NO_HMAC) && !defined(WOLFCOSE_NO_MAC_ALL_INTEROP)
 static int test_mac0_interop(void)
 {
@@ -552,9 +541,7 @@ cleanup:
 }
 #endif /* !NO_HMAC && !WOLFCOSE_NO_MAC_ALL_INTEROP */
 
-/* ---------------------------------------------------------------------------
- * Main Entry Point
- * --------------------------------------------------------------------------- */
+/* ----- Main Entry Point ----- */
 int main(void)
 {
     int totalFailed = 0;

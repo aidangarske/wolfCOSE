@@ -63,9 +63,7 @@ static int check_encode_hex(const uint8_t* buf, size_t len,
     return (memcmp(buf, expected, len) == 0) ? 1 : 0;
 }
 
-/* ---------------------------------------------------------------------------
- * RFC 8949 Appendix A: Known encode vectors
- * --------------------------------------------------------------------------- */
+/* ----- RFC 8949 Appendix A: Known encode vectors ----- */
 static void test_cbor_encode_vectors(void)
 {
     uint8_t buf[64];
@@ -215,9 +213,7 @@ static void test_cbor_encode_vectors(void)
                 "tag 1");
 }
 
-/* ---------------------------------------------------------------------------
- * Decode known vectors
- * --------------------------------------------------------------------------- */
+/* ----- Decode known vectors ----- */
 static void test_cbor_decode_vectors(void)
 {
     WOLFCOSE_CBOR_CTX ctx;
@@ -373,9 +369,7 @@ static void test_cbor_decode_vectors(void)
                   item.val == 22, "decode null"); }
 }
 
-/* ---------------------------------------------------------------------------
- * Round-trip encode -> decode
- * --------------------------------------------------------------------------- */
+/* ----- Round-trip encode -> decode ----- */
 static void test_cbor_roundtrip(void)
 {
     uint8_t buf[256];
@@ -432,9 +426,7 @@ static void test_cbor_roundtrip(void)
     TEST_ASSERT(dec.idx == enc.idx, "rt consumed all bytes");
 }
 
-/* ---------------------------------------------------------------------------
- * Nested structures
- * --------------------------------------------------------------------------- */
+/* ----- Nested structures ----- */
 static void test_cbor_nested(void)
 {
     uint8_t buf[128];
@@ -482,9 +474,7 @@ static void test_cbor_nested(void)
                 "nested tstr");
 }
 
-/* ---------------------------------------------------------------------------
- * wc_CBOR_Skip
- * --------------------------------------------------------------------------- */
+/* ----- wc_CBOR_Skip ----- */
 static void test_cbor_skip(void)
 {
     uint8_t buf[128];
@@ -545,9 +535,7 @@ static void test_cbor_skip(void)
     TEST_ASSERT(ret == 0 && uval == 77, "skip read after tagged");
 }
 
-/* ---------------------------------------------------------------------------
- * Error cases
- * --------------------------------------------------------------------------- */
+/* ----- Error cases ----- */
 static void test_cbor_errors(void)
 {
     uint8_t buf[8];
@@ -665,9 +653,7 @@ static void test_cbor_errors(void)
 
 }
 
-/* ---------------------------------------------------------------------------
- * Map with negative keys (COSE-style: -1, -2, -3)
- * --------------------------------------------------------------------------- */
+/* ----- Map with negative keys (COSE-style: -1, -2, -3) ----- */
 static void test_cbor_negative_map_keys(void)
 {
     uint8_t buf[64];
@@ -713,9 +699,7 @@ static void test_cbor_negative_map_keys(void)
                   "neg keys val=h'AA'"); }
 }
 
-/* ---------------------------------------------------------------------------
- * Entry point
- * --------------------------------------------------------------------------- */
+/* ----- Entry point ----- */
 int test_cbor(void)
 {
     g_failures = 0;

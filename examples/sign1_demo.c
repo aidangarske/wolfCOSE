@@ -1,9 +1,25 @@
 /* sign1_demo.c
  *
- * Comprehensive COSE_Sign1 demonstration
- * Tests all signature algorithms: ES256, ES384, ES512, EdDSA
+ * Copyright (C) 2026 wolfSSL Inc.
  *
- * Copyright (C) 2024 wolfSSL Inc.
+ * This file is part of wolfCOSE.
+ *
+ * wolfCOSE is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * wolfCOSE is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Comprehensive COSE_Sign1 demonstration
+ * Tests all signature algorithms: ES256, ES384, ES512, EdDSA
  */
 
 #include <stdio.h>
@@ -51,16 +67,18 @@ static int demo_sign1_es256(void)
     DEMO_ASSERT(ret == 0, "Set ECC key");
 
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+        NULL, 0,                           /* kid, kidLen */
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng);
     DEMO_ASSERT(ret == 0, "Sign");
     printf("  COSE_Sign1: %zu bytes\n", outLen);
 
     ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify");
@@ -104,16 +122,18 @@ static int demo_sign1_es384(void)
     DEMO_ASSERT(ret == 0, "Set ECC key");
 
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES384,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+        NULL, 0,                           /* kid, kidLen */
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng);
     DEMO_ASSERT(ret == 0, "Sign");
     printf("  COSE_Sign1: %zu bytes\n", outLen);
 
     ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify");
@@ -156,16 +176,18 @@ static int demo_sign1_es512(void)
     DEMO_ASSERT(ret == 0, "Set ECC key");
 
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES512,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+        NULL, 0,                           /* kid, kidLen */
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng);
     DEMO_ASSERT(ret == 0, "Sign");
     printf("  COSE_Sign1: %zu bytes\n", outLen);
 
     ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify");
@@ -209,9 +231,10 @@ static int demo_sign1_with_aad(void)
     DEMO_ASSERT(ret == 0, "Set ECC key");
 
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        aad, sizeof(aad) - 1,
+        NULL, 0,                           /* kid, kidLen */
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        aad, sizeof(aad) - 1,              /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng);
     DEMO_ASSERT(ret == 0, "Sign with AAD");
@@ -219,7 +242,8 @@ static int demo_sign1_with_aad(void)
 
     /* Verify with correct AAD */
     ret = wc_CoseSign1_Verify(&key, out, outLen,
-        aad, sizeof(aad) - 1,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        aad, sizeof(aad) - 1,              /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify with correct AAD");
@@ -227,7 +251,8 @@ static int demo_sign1_with_aad(void)
     /* Verify wrong AAD fails */
     uint8_t wrongAad[] = "Wrong AAD";
     ret = wc_CoseSign1_Verify(&key, out, outLen,
-        wrongAad, sizeof(wrongAad) - 1,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        wrongAad, sizeof(wrongAad) - 1,    /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret != 0, "Wrong AAD rejected");
@@ -269,16 +294,18 @@ static int demo_sign1_eddsa(void)
     DEMO_ASSERT(ret == 0, "Set Ed25519 key");
 
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_EDDSA,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+        NULL, 0,                           /* kid, kidLen */
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng);
     DEMO_ASSERT(ret == 0, "Sign");
     printf("  COSE_Sign1: %zu bytes\n", outLen);
 
     ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify");

@@ -1,9 +1,25 @@
 /* encrypt0_demo.c
  *
- * Comprehensive COSE_Encrypt0 demonstration
- * Tests all AES-GCM key sizes with various modes
+ * Copyright (C) 2026 wolfSSL Inc.
  *
- * Copyright (C) 2024 wolfSSL Inc.
+ * This file is part of wolfCOSE.
+ *
+ * wolfCOSE is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * wolfCOSE is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Comprehensive COSE_Encrypt0 demonstration
+ * Tests all AES-GCM key sizes with various modes
  */
 
 #include <stdio.h>
@@ -48,15 +64,17 @@ static int demo_encrypt0_a128gcm(void)
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0, NULL,                     /* detachedPayload, detachedSz, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
     DEMO_ASSERT(ret == 0, "Encrypt");
     printf("  COSE_Encrypt0: %zu bytes\n", outLen);
 
     ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedCt, detachedCtLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, plaintext, sizeof(plaintext), &plaintextLen);
     DEMO_ASSERT(ret == 0, "Decrypt");
@@ -98,15 +116,17 @@ static int demo_encrypt0_a192gcm(void)
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A192GCM,
         iv, sizeof(iv),
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0, NULL,                     /* detachedPayload, detachedSz, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
     DEMO_ASSERT(ret == 0, "Encrypt");
     printf("  COSE_Encrypt0: %zu bytes\n", outLen);
 
     ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedCt, detachedCtLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, plaintext, sizeof(plaintext), &plaintextLen);
     DEMO_ASSERT(ret == 0, "Decrypt");
@@ -147,15 +167,17 @@ static int demo_encrypt0_a256gcm(void)
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A256GCM,
         iv, sizeof(iv),
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0, NULL,                     /* detachedPayload, detachedSz, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
     DEMO_ASSERT(ret == 0, "Encrypt");
     printf("  COSE_Encrypt0: %zu bytes\n", outLen);
 
     ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedCt, detachedCtLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, plaintext, sizeof(plaintext), &plaintextLen);
     DEMO_ASSERT(ret == 0, "Decrypt");
@@ -196,8 +218,9 @@ static int demo_encrypt0_with_aad(void)
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
-        payload, sizeof(payload) - 1,
-        aad, sizeof(aad) - 1,
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0, NULL,                     /* detachedPayload, detachedSz, detachedLen */
+        aad, sizeof(aad) - 1,              /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
     DEMO_ASSERT(ret == 0, "Encrypt with AAD");
@@ -205,7 +228,8 @@ static int demo_encrypt0_with_aad(void)
 
     /* Decrypt with correct AAD */
     ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
-        aad, sizeof(aad) - 1,
+        NULL, 0,                           /* detachedCt, detachedCtLen */
+        aad, sizeof(aad) - 1,              /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, plaintext, sizeof(plaintext), &plaintextLen);
     DEMO_ASSERT(ret == 0, "Decrypt with correct AAD");
@@ -213,7 +237,8 @@ static int demo_encrypt0_with_aad(void)
     /* Verify wrong AAD fails */
     uint8_t wrongAad[] = "Wrong AAD";
     ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
-        wrongAad, sizeof(wrongAad) - 1,
+        NULL, 0,                           /* detachedCt, detachedCtLen */
+        wrongAad, sizeof(wrongAad) - 1,    /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, plaintext, sizeof(plaintext), &plaintextLen);
     DEMO_ASSERT(ret != 0, "Wrong AAD rejected");

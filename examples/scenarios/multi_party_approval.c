@@ -1,11 +1,5 @@
 /* multi_party_approval.c
  *
- * Multi-Party Firmware Approval (Dual Control)
- *
- * Scenario: Firmware must be signed by BOTH silicon vendor (ES256)
- * and OEM (ES384) before device accepts it. Demonstrates COSE_Sign
- * with multiple signers using mixed algorithms.
- *
  * Copyright (C) 2026 wolfSSL Inc.
  *
  * This file is part of wolfCOSE.
@@ -22,6 +16,13 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Multi-Party Firmware Approval (Dual Control)
+ *
+ * Scenario: Firmware must be signed by BOTH silicon vendor (ES256)
+ * and OEM (ES384) before device accepts it. Demonstrates COSE_Sign
+ * with multiple signers using mixed algorithms.
  *
  * Compile-time gate:
  *   WOLFCOSE_EXAMPLE_MULTI_PARTY  - Enable this example (default: enabled)
@@ -60,9 +61,7 @@ static const uint8_t g_firmwareManifest[] = {
     0x02, 0x1A, 0x00, 0x01, 0x00, 0x00  /* key 2: size = 65536 */
 };
 
-/* ---------------------------------------------------------------------------
- * Silicon Vendor Key Generation
- * --------------------------------------------------------------------------- */
+/* ----- Silicon Vendor Key Generation ----- */
 static int silicon_vendor_init(ecc_key* key, WOLFCOSE_KEY* cosKey, WC_RNG* rng)
 {
     int ret;
@@ -92,9 +91,7 @@ static int silicon_vendor_init(ecc_key* key, WOLFCOSE_KEY* cosKey, WC_RNG* rng)
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * OEM Key Generation
- * --------------------------------------------------------------------------- */
+/* ----- OEM Key Generation ----- */
 #ifdef WOLFSSL_SHA384
 static int oem_init(ecc_key* key, WOLFCOSE_KEY* cosKey, WC_RNG* rng)
 {
@@ -126,9 +123,7 @@ static int oem_init(ecc_key* key, WOLFCOSE_KEY* cosKey, WC_RNG* rng)
 }
 #endif
 
-/* ---------------------------------------------------------------------------
- * Multi-Party Signing
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Party Signing ----- */
 static int sign_with_dual_control(WOLFCOSE_KEY* vendorKey, WOLFCOSE_KEY* oemKey,
                                    const uint8_t* manifest, size_t manifestLen,
                                    uint8_t* signedOut, size_t signedOutSz,
@@ -183,9 +178,7 @@ static int sign_with_dual_control(WOLFCOSE_KEY* vendorKey, WOLFCOSE_KEY* oemKey,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Device Verification (Both Signatures Required)
- * --------------------------------------------------------------------------- */
+/* ----- Device Verification (Both Signatures Required) ----- */
 static int device_verify_dual(WOLFCOSE_KEY* vendorPubKey, WOLFCOSE_KEY* oemPubKey,
                                const uint8_t* signedMsg, size_t signedMsgLen)
 {
@@ -226,9 +219,7 @@ static int device_verify_dual(WOLFCOSE_KEY* vendorPubKey, WOLFCOSE_KEY* oemPubKe
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Main Demo
- * --------------------------------------------------------------------------- */
+/* ----- Main Demo ----- */
 int main(void)
 {
     int ret = 0;

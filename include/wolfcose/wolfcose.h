@@ -56,7 +56,7 @@
 extern "C" {
 #endif
 
-/* ---------------------------------------------------------------------------
+/* -----
  * Compile-time feature gates — opt-out design
  *
  * Users exclude features via WOLFCOSE_NO_* defines:
@@ -64,7 +64,7 @@ extern "C" {
  *   -DWOLFCOSE_NO_SIGN1_SIGN -DWOLFCOSE_NO_CBOR_ENCODE → Verify-only build
  *
  * Parent gates imply children unless child is explicitly excluded.
- * --------------------------------------------------------------------------- */
+ * ----- */
 
 /* === Message Type Gates === */
 
@@ -190,7 +190,8 @@ extern "C" {
 
 /* Sign/Encrypt/Mac operations need CBOR encode */
 #if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_ENCRYPT0_ENCRYPT) || \
-    defined(WOLFCOSE_MAC0_CREATE)
+    defined(WOLFCOSE_MAC0_CREATE) || defined(WOLFCOSE_SIGN_SIGN) || \
+    defined(WOLFCOSE_ENCRYPT_ENCRYPT) || defined(WOLFCOSE_MAC_CREATE)
     #if !defined(WOLFCOSE_CBOR_ENCODE)
         #define WOLFCOSE_CBOR_ENCODE
     #endif
@@ -198,15 +199,14 @@ extern "C" {
 
 /* Verify/Decrypt operations need CBOR decode */
 #if defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_ENCRYPT0_DECRYPT) || \
-    defined(WOLFCOSE_MAC0_VERIFY)
+    defined(WOLFCOSE_MAC0_VERIFY) || defined(WOLFCOSE_SIGN_VERIFY) || \
+    defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY)
     #if !defined(WOLFCOSE_CBOR_DECODE)
         #define WOLFCOSE_CBOR_DECODE
     #endif
 #endif
 
-/* ---------------------------------------------------------------------------
- * Error codes (-9000 to -9099)
- * --------------------------------------------------------------------------- */
+/* ----- Error codes (-9000 to -9099) ----- */
 #define WOLFCOSE_SUCCESS             0
 #define WOLFCOSE_E_INVALID_ARG      (-9000)
 #define WOLFCOSE_E_BUFFER_TOO_SMALL (-9001)
@@ -226,9 +226,7 @@ extern "C" {
 #define WOLFCOSE_E_MAC_FAIL         (-9022)
 #define WOLFCOSE_E_DETACHED_PAYLOAD (-9023)
 
-/* ---------------------------------------------------------------------------
- * Configurable limits
- * --------------------------------------------------------------------------- */
+/* ----- Configurable limits ----- */
 #ifndef WOLFCOSE_MAX_SCRATCH_SZ
     #define WOLFCOSE_MAX_SCRATCH_SZ      512
 #endif
@@ -251,9 +249,7 @@ extern "C" {
     #endif
 #endif
 
-/* ---------------------------------------------------------------------------
- * CBOR constants (RFC 8949)
- * --------------------------------------------------------------------------- */
+/* ----- CBOR constants (RFC 8949) ----- */
 
 /* Major types (top 3 bits of initial byte) */
 #define WOLFCOSE_CBOR_UINT      0u
@@ -283,9 +279,7 @@ extern "C" {
 #define WOLFCOSE_CBOR_AI_FLOAT32 26u
 #define WOLFCOSE_CBOR_AI_FLOAT64 27u
 
-/* ---------------------------------------------------------------------------
- * COSE constants (RFC 9052)
- * --------------------------------------------------------------------------- */
+/* ----- COSE constants (RFC 9052) ----- */
 
 /* Tags (RFC 9052) */
 #define WOLFCOSE_TAG_SIGN1      18u
@@ -394,9 +388,7 @@ extern "C" {
 #define WOLFCOSE_CHACHA_NONCE_SZ  12
 #define WOLFCOSE_CHACHA_TAG_SZ    16
 
-/* ---------------------------------------------------------------------------
- * Structs
- * --------------------------------------------------------------------------- */
+/* ----- Structs ----- */
 
 /**
  * \brief CBOR encoder/decoder context. Zero-copy cursor over a buffer.
@@ -498,12 +490,12 @@ typedef struct WOLFCOSE_SIGNATURE {
     size_t         kidLen;      /**< Key ID length */
 } WOLFCOSE_SIGNATURE;
 
-/* ---------------------------------------------------------------------------
+/* -----
  * CBOR Encode API (RFC 8949)
  *
  * All functions return WOLFCOSE_SUCCESS or a negative error code.
  * Guarded by WOLFCOSE_CBOR_ENCODE — can be excluded for decode-only builds.
- * --------------------------------------------------------------------------- */
+ * ----- */
 
 #if defined(WOLFCOSE_CBOR_ENCODE)
 
@@ -595,11 +587,11 @@ WOLFCOSE_API int wc_CBOR_EncodeDouble(WOLFCOSE_CBOR_CTX* ctx, double val);
 
 #endif /* WOLFCOSE_CBOR_ENCODE */
 
-/* ---------------------------------------------------------------------------
+/* -----
  * CBOR Decode API (zero-copy, single-pass)
  *
  * Guarded by WOLFCOSE_CBOR_DECODE — always needed for verify/decrypt builds.
- * --------------------------------------------------------------------------- */
+ * ----- */
 
 #if defined(WOLFCOSE_CBOR_DECODE)
 
@@ -692,9 +684,7 @@ WOLFCOSE_API int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx);
 
 #endif /* WOLFCOSE_CBOR_DECODE */
 
-/* ---------------------------------------------------------------------------
- * COSE Key API
- * --------------------------------------------------------------------------- */
+/* ----- COSE Key API ----- */
 
 /**
  * \brief Initialize a WOLFCOSE_KEY structure (zero all fields).
@@ -784,9 +774,7 @@ WOLFCOSE_API int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in,
                                     size_t inSz);
 #endif /* WOLFCOSE_KEY_DECODE */
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 API (RFC 9052 Section 4.3)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 API (RFC 9052 Section 4.3) ----- */
 
 #if defined(WOLFCOSE_SIGN1_SIGN)
 /**
@@ -850,9 +838,7 @@ WOLFCOSE_API int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
     const uint8_t** payload, size_t* payloadLen);
 #endif /* WOLFCOSE_SIGN1_VERIFY */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt0 API (RFC 9052 Section 5.3)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt0 API (RFC 9052 Section 5.3) ----- */
 
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
 /**
@@ -916,11 +902,9 @@ WOLFCOSE_API int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
     uint8_t* plaintext, size_t plaintextSz, size_t* plaintextLen);
 #endif /* WOLFCOSE_ENCRYPT0_DECRYPT */
 
-/* ---------------------------------------------------------------------------
- * COSE_Mac0 API (RFC 9052 Section 6.2)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Mac0 API (RFC 9052 Section 6.2) ----- */
 
-#if defined(WOLFCOSE_MAC0_CREATE) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC0_CREATE) && (!defined(NO_HMAC) || defined(HAVE_AES_CBC))
 /**
  * \brief Create a COSE_Mac0 message (RFC 9052 Section 6.2).
  *
@@ -949,9 +933,9 @@ WOLFCOSE_API int wc_CoseMac0_Create(WOLFCOSE_KEY* key, int32_t alg,
     const uint8_t* extAad, size_t extAadLen,
     uint8_t* scratch, size_t scratchSz,
     uint8_t* out, size_t outSz, size_t* outLen);
-#endif /* WOLFCOSE_MAC0_CREATE && !NO_HMAC */
+#endif /* WOLFCOSE_MAC0_CREATE && (!NO_HMAC || HAVE_AES_CBC) */
 
-#if defined(WOLFCOSE_MAC0_VERIFY) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC0_VERIFY) && (!defined(NO_HMAC) || defined(HAVE_AES_CBC))
 /**
  * \brief Verify a COSE_Mac0 message and extract the payload.
  *
@@ -980,9 +964,7 @@ WOLFCOSE_API int wc_CoseMac0_Verify(WOLFCOSE_KEY* key,
     const uint8_t** payload, size_t* payloadLen);
 #endif /* WOLFCOSE_MAC0_VERIFY && !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign Multi-Signer API (RFC 9052 Section 4.1)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign Multi-Signer API (RFC 9052 Section 4.1) ----- */
 
 #if defined(WOLFCOSE_SIGN_SIGN)
 /**
@@ -1056,9 +1038,7 @@ WOLFCOSE_API int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
     const uint8_t** payload, size_t* payloadLen);
 #endif /* WOLFCOSE_SIGN_VERIFY */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt Multi-Recipient API (RFC 9052 Section 5.1)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt Multi-Recipient API (RFC 9052 Section 5.1) ----- */
 
 #if defined(WOLFCOSE_ENCRYPT_ENCRYPT)
 /**
@@ -1134,9 +1114,7 @@ WOLFCOSE_API int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     uint8_t* plaintext, size_t plaintextSz, size_t* plaintextLen);
 #endif /* WOLFCOSE_ENCRYPT_DECRYPT */
 
-/* ---------------------------------------------------------------------------
- * COSE_Mac Multi-Recipient API (RFC 9052 Section 6.1)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Mac Multi-Recipient API (RFC 9052 Section 6.1) ----- */
 
 #if defined(WOLFCOSE_MAC_CREATE)
 /**

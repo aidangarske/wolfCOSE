@@ -1,12 +1,5 @@
 /* iot_fleet_config.c
  *
- * Encrypted Config Push to IoT Fleet
- *
- * Scenario: Cloud server pushes encrypted configuration to multiple
- * IoT devices. Each device has unique key. Server uses COSE_Encrypt
- * with multiple recipients so the same encrypted message works for
- * all devices.
- *
  * Copyright (C) 2026 wolfSSL Inc.
  *
  * This file is part of wolfCOSE.
@@ -23,6 +16,13 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ *
+ * Encrypted Config Push to IoT Fleet
+ *
+ * Scenario: Cloud server pushes encrypted configuration to multiple
+ * IoT devices. Each device has unique key. Server uses COSE_Encrypt
+ * with multiple recipients so the same encrypted message works for
+ * all devices.
  *
  * Compile-time gate:
  *   WOLFCOSE_EXAMPLE_IOT_FLEET  - Enable this example (default: enabled)
@@ -88,9 +88,7 @@ static DeviceInfo g_devices[NUM_DEVICES] = {
 /* Content encryption key (randomly generated per message) */
 static uint8_t g_contentKey[16];
 
-/* ---------------------------------------------------------------------------
- * Cloud Server: Encrypt config for all devices
- * --------------------------------------------------------------------------- */
+/* ----- Cloud Server: Encrypt config for all devices ----- */
 static int cloud_encrypt_config(const uint8_t* config, size_t configLen,
                                  uint8_t* encryptedOut, size_t encryptedOutSz,
                                  size_t* encryptedLen, WC_RNG* rng)
@@ -169,9 +167,7 @@ static int cloud_encrypt_config(const uint8_t* config, size_t configLen,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * IoT Device: Decrypt config using device key
- * --------------------------------------------------------------------------- */
+/* ----- IoT Device: Decrypt config using device key ----- */
 static int device_decrypt_config(int deviceIndex,
                                   const uint8_t* encryptedMsg, size_t encryptedLen,
                                   uint8_t* plaintext, size_t plaintextSz,
@@ -221,9 +217,7 @@ static int device_decrypt_config(int deviceIndex,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Unauthorized device should fail
- * --------------------------------------------------------------------------- */
+/* ----- Unauthorized device should fail ----- */
 static int unauthorized_device_fails(const uint8_t* encryptedMsg,
                                       size_t encryptedLen)
 {
@@ -273,9 +267,7 @@ static int unauthorized_device_fails(const uint8_t* encryptedMsg,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Main Demo
- * --------------------------------------------------------------------------- */
+/* ----- Main Demo ----- */
 int main(void)
 {
     int ret = 0;

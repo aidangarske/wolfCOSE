@@ -1,9 +1,25 @@
 /* mac0_demo.c
  *
- * Comprehensive COSE_Mac0 demonstration
- * Tests HMAC variants with various modes
+ * Copyright (C) 2026 wolfSSL Inc.
  *
- * Copyright (C) 2024 wolfSSL Inc.
+ * This file is part of wolfCOSE.
+ *
+ * wolfCOSE is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * wolfCOSE is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Comprehensive COSE_Mac0 demonstration
+ * Tests HMAC variants with various modes
  */
 
 #include <stdio.h>
@@ -43,23 +59,25 @@ static int demo_mac0_hmac256(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     DEMO_ASSERT(ret == 0, "Set symmetric key");
 
-    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0,                           /* kid, kidLen */
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
     DEMO_ASSERT(ret == 0, "Create MAC");
     printf("  COSE_Mac0: %zu bytes\n", outLen);
 
     ret = wc_CoseMac0_Verify(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify MAC");
     DEMO_ASSERT(decPayloadLen == sizeof(payload) - 1, "Payload length");
     DEMO_ASSERT(memcmp(decPayload, payload, decPayloadLen) == 0, "Payload match");
-    DEMO_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC256, "Algorithm");
+    DEMO_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_256_256, "Algorithm");
 
     printf("  Result: PASS\n");
     return 0;
@@ -91,21 +109,23 @@ static int demo_mac0_hmac384(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     DEMO_ASSERT(ret == 0, "Set symmetric key");
 
-    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC384,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_384_384,
+        NULL, 0,                           /* kid, kidLen */
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
     DEMO_ASSERT(ret == 0, "Create MAC");
     printf("  COSE_Mac0: %zu bytes\n", outLen);
 
     ret = wc_CoseMac0_Verify(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify MAC");
-    DEMO_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC384, "Algorithm");
+    DEMO_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_384_384, "Algorithm");
 
     printf("  Result: PASS\n");
     return 0;
@@ -137,21 +157,23 @@ static int demo_mac0_hmac512(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     DEMO_ASSERT(ret == 0, "Set symmetric key");
 
-    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC512,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_512_512,
+        NULL, 0,                           /* kid, kidLen */
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
     DEMO_ASSERT(ret == 0, "Create MAC");
     printf("  COSE_Mac0: %zu bytes\n", outLen);
 
     ret = wc_CoseMac0_Verify(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify MAC");
-    DEMO_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC512, "Algorithm");
+    DEMO_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_512_512, "Algorithm");
 
     printf("  Result: PASS\n");
     return 0;
@@ -184,10 +206,11 @@ static int demo_mac0_with_aad(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     DEMO_ASSERT(ret == 0, "Set symmetric key");
 
-    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        aad, sizeof(aad) - 1,
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0,                           /* kid, kidLen */
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        aad, sizeof(aad) - 1,              /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
     DEMO_ASSERT(ret == 0, "Create MAC with AAD");
@@ -195,7 +218,8 @@ static int demo_mac0_with_aad(void)
 
     /* Verify with correct AAD */
     ret = wc_CoseMac0_Verify(&key, out, outLen,
-        aad, sizeof(aad) - 1,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        aad, sizeof(aad) - 1,              /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify with correct AAD");
@@ -203,7 +227,8 @@ static int demo_mac0_with_aad(void)
     /* Verify wrong AAD fails */
     uint8_t wrongAad[] = "Wrong AAD";
     ret = wc_CoseMac0_Verify(&key, out, outLen,
-        wrongAad, sizeof(wrongAad) - 1,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        wrongAad, sizeof(wrongAad) - 1,    /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret != 0, "Wrong AAD rejected");
@@ -236,10 +261,11 @@ static int demo_mac0_tamper_detection(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     DEMO_ASSERT(ret == 0, "Set symmetric key");
 
-    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0,                           /* kid, kidLen */
+        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
     DEMO_ASSERT(ret == 0, "Create MAC");
@@ -248,7 +274,8 @@ static int demo_mac0_tamper_detection(void)
     out[outLen - 5] ^= 0xFF;
 
     ret = wc_CoseMac0_Verify(&key, out, outLen,
-        NULL, 0,
+        NULL, 0,                           /* detachedPayload, detachedLen */
+        NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret != 0, "Tampered message rejected");

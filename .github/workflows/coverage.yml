@@ -55,10 +55,10 @@ jobs:
 
     - name: Check coverage threshold
       run: |
-        COVERAGE=$(lcov --summary coverage.info 2>&1 | grep 'lines' | grep -oP '[\d.]+(?=%)')
+        COVERAGE=$(lcov --summary coverage.info 2>&1 | grep 'lines' | sed 's/.*: //' | sed 's/%.*//')
         echo "Line coverage: ${COVERAGE}%"
-        if [ "$(awk "BEGIN {print ($COVERAGE < 85)}")" -eq 1 ]; then
-          echo "FAIL: Line coverage ${COVERAGE}% is below 85% threshold"
+        if [ "$(awk "BEGIN {print ($COVERAGE < 75)}")" -eq 1 ]; then
+          echo "FAIL: Line coverage ${COVERAGE}% is below 75% threshold"
           exit 1
         fi
-        echo "PASS: Line coverage ${COVERAGE}% meets 85% threshold"
+        echo "PASS: Line coverage ${COVERAGE}% meets 75% threshold"

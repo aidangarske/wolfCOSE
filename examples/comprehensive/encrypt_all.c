@@ -1,7 +1,5 @@
 /* encrypt_all.c
  *
- * Comprehensive COSE_Encrypt0 and COSE_Encrypt test coverage.
- *
  * Copyright (C) 2026 wolfSSL Inc.
  *
  * This file is part of wolfCOSE.
@@ -18,6 +16,9 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Comprehensive COSE_Encrypt0 and COSE_Encrypt test coverage.
  *
  * Compile-time gates:
  *   WOLFCOSE_EXAMPLE_ENCRYPT_ALL       - Enable this example (default: enabled)
@@ -48,9 +49,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* ---------------------------------------------------------------------------
- * Test Macros
- * --------------------------------------------------------------------------- */
+/* ----- Test Macros ----- */
 #define PRINT_TEST(name) printf("  Testing: %s... ", (name))
 #define CHECK_RESULT(r, name) do {                      \
     if ((r) == 0) {                                     \
@@ -62,17 +61,15 @@
     }                                                   \
 } while (0)
 
-/* ---------------------------------------------------------------------------
+/**
  * Encrypt0 Worker Function
  *
- * Parameters:
- *   alg       - Algorithm ID (WOLFCOSE_ALG_A128GCM, etc.)
- *   keySz     - Key size: 16, 24, or 32 bytes
- *   detached  - 0=inline ciphertext, 1=detached ciphertext
- *   useAad    - 0=no AAD, 1=with external AAD
- *
- * Returns 0 on success, negative error code on failure.
- * --------------------------------------------------------------------------- */
+ * @param alg       Algorithm ID (WOLFCOSE_ALG_A128GCM, etc.)
+ * @param keySz     Key size: 16, 24, or 32 bytes
+ * @param detached  0=inline ciphertext, 1=detached ciphertext
+ * @param useAad    0=no AAD, 1=with external AAD
+ * @return 0 on success, negative error code on failure.
+ */
 #ifdef HAVE_AESGCM
 static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
 {
@@ -165,9 +162,7 @@ cleanup:
 }
 #endif /* HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
- * Multi-Recipient Encrypt Worker (Direct Key)
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Recipient Encrypt Worker (Direct Key) ----- */
 #if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT)
 static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
                                       int recipCount, int detached, int useAad)
@@ -249,9 +244,7 @@ cleanup:
 }
 #endif /* HAVE_AESGCM && WOLFCOSE_ENCRYPT */
 
-/* ---------------------------------------------------------------------------
- * Multi-Recipient with Different Keys (Wrong Key Test)
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Recipient with Different Keys (Wrong Key Test) ----- */
 #if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT)
 static int test_encrypt_wrong_key(void)
 {
@@ -347,9 +340,7 @@ cleanup:
 }
 #endif /* HAVE_AESGCM && WOLFCOSE_ENCRYPT */
 
-/* ---------------------------------------------------------------------------
- * Encrypt0 Test Runner (12 tests)
- * --------------------------------------------------------------------------- */
+/* ----- Encrypt0 Test Runner (12 tests) ----- */
 #ifdef HAVE_AESGCM
 static int test_encrypt0_all(void)
 {
@@ -421,9 +412,7 @@ static int test_encrypt0_all(void)
 }
 #endif /* HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
- * Multi-Recipient Test Runner
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Recipient Test Runner ----- */
 #if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT) && \
     !defined(WOLFCOSE_NO_ENCRYPT_ALL_MULTI)
 static int test_encrypt_multi_all(void)
@@ -486,9 +475,7 @@ static int test_encrypt_multi_all(void)
 }
 #endif /* HAVE_AESGCM && WOLFCOSE_ENCRYPT */
 
-/* ---------------------------------------------------------------------------
- * Interop Vector Tests
- * --------------------------------------------------------------------------- */
+/* ----- Interop Vector Tests ----- */
 #if defined(HAVE_AESGCM) && !defined(WOLFCOSE_NO_ENCRYPT_ALL_INTEROP)
 static int test_encrypt0_interop(void)
 {
@@ -561,9 +548,7 @@ cleanup:
 }
 #endif /* HAVE_AESGCM && !WOLFCOSE_NO_ENCRYPT_ALL_INTEROP */
 
-/* ---------------------------------------------------------------------------
- * Main Entry Point
- * --------------------------------------------------------------------------- */
+/* ----- Main Entry Point ----- */
 int main(void)
 {
     int totalFailed = 0;

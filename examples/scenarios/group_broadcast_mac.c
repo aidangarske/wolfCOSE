@@ -1,12 +1,5 @@
 /* group_broadcast_mac.c
  *
- * Group MAC Broadcast
- *
- * Scenario: Gateway broadcasts authenticated telemetry to multiple
- * subscribers with different keys. Each subscriber can verify the
- * MAC using their own key. Demonstrates COSE_Mac with multiple
- * recipients.
- *
  * Copyright (C) 2026 wolfSSL Inc.
  *
  * This file is part of wolfCOSE.
@@ -23,6 +16,13 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ *
+ * Group MAC Broadcast
+ *
+ * Scenario: Gateway broadcasts authenticated telemetry to multiple
+ * subscribers with different keys. Each subscriber can verify the
+ * MAC using their own key. Demonstrates COSE_Mac with multiple
+ * recipients.
  *
  * Compile-time gate:
  *   WOLFCOSE_EXAMPLE_GROUP_BROADCAST  - Enable this example (default: enabled)
@@ -41,7 +41,7 @@
     #define WOLFCOSE_EXAMPLE_GROUP_BROADCAST
 #endif
 
-#if defined(WOLFCOSE_EXAMPLE_GROUP_BROADCAST) && defined(HAVE_AESGCM) && \
+#if defined(WOLFCOSE_EXAMPLE_GROUP_BROADCAST) && !defined(NO_HMAC) && \
     defined(WOLFCOSE_MAC)
 
 #include <wolfcose/wolfcose.h>
@@ -104,9 +104,7 @@ static SubscriberInfo g_subscribers[NUM_SUBSCRIBERS] = {
 /* Shared MAC key (used by gateway and derived for each recipient) */
 static uint8_t g_macKey[32];
 
-/* ---------------------------------------------------------------------------
- * Gateway: Create authenticated broadcast message
- * --------------------------------------------------------------------------- */
+/* ----- Gateway: Create authenticated broadcast message ----- */
 static int gateway_create_broadcast(const uint8_t* telemetry, size_t telemetryLen,
                                      uint8_t* macMsgOut, size_t macMsgOutSz,
                                      size_t* macMsgLen, WC_RNG* rng)
@@ -175,9 +173,7 @@ static int gateway_create_broadcast(const uint8_t* telemetry, size_t telemetryLe
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Subscriber: Verify broadcast message
- * --------------------------------------------------------------------------- */
+/* ----- Subscriber: Verify broadcast message ----- */
 static int subscriber_verify_broadcast(int subscriberIndex,
                                         const uint8_t* macMsg, size_t macMsgLen)
 {
@@ -226,9 +222,7 @@ static int subscriber_verify_broadcast(int subscriberIndex,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Unauthorized subscriber should fail
- * --------------------------------------------------------------------------- */
+/* ----- Unauthorized subscriber should fail ----- */
 static int unauthorized_subscriber_fails(const uint8_t* macMsg, size_t macMsgLen)
 {
     int ret;
@@ -278,9 +272,7 @@ static int unauthorized_subscriber_fails(const uint8_t* macMsg, size_t macMsgLen
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Tampered message detection
- * --------------------------------------------------------------------------- */
+/* ----- Tampered message detection ----- */
 static int tampered_message_detected(const uint8_t* macMsg, size_t macMsgLen)
 {
     int ret;
@@ -334,9 +326,7 @@ static int tampered_message_detected(const uint8_t* macMsg, size_t macMsgLen)
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Main Demo
- * --------------------------------------------------------------------------- */
+/* ----- Main Demo ----- */
 int main(void)
 {
     int ret = 0;
@@ -410,12 +400,12 @@ int main(void)
 {
 #ifndef WOLFCOSE_EXAMPLE_GROUP_BROADCAST
     printf("group_broadcast_mac: example disabled\n");
-#elif !defined(HAVE_AESGCM)
-    printf("group_broadcast_mac: requires AES-GCM support\n");
+#elif defined(NO_HMAC)
+    printf("group_broadcast_mac: requires HMAC support\n");
 #elif !defined(WOLFCOSE_MAC)
     printf("group_broadcast_mac: requires WOLFCOSE_MAC\n");
 #endif
     return 0;
 }
 
-#endif /* WOLFCOSE_EXAMPLE_GROUP_BROADCAST && HAVE_AESGCM && WOLFCOSE_MAC */
+#endif /* WOLFCOSE_EXAMPLE_GROUP_BROADCAST && !NO_HMAC && WOLFCOSE_MAC */

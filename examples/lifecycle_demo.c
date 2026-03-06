@@ -72,9 +72,7 @@
 
 static const uint8_t g_kid[] = "edge-sensor-01";
 
-/* ---------------------------------------------------------------------------
- * Shared: CBOR-encode sensor payload
- * --------------------------------------------------------------------------- */
+/* ----- Shared: CBOR-encode sensor payload ----- */
 static int encode_sensor_payload(uint8_t* payload, size_t payloadSz,
                                   size_t* payloadLen)
 {
@@ -105,9 +103,7 @@ static int encode_sensor_payload(uint8_t* payload, size_t payloadSz,
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 lifecycle: ES256
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 lifecycle: ES256 ----- */
 #ifdef HAVE_ECC
 static int demo_sign1_es256(void)
 {
@@ -181,9 +177,7 @@ done_es256:
 }
 #endif /* HAVE_ECC */
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 lifecycle: EdDSA (Ed25519)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 lifecycle: EdDSA (Ed25519) ----- */
 #ifdef HAVE_ED25519
 static int demo_sign1_eddsa(void)
 {
@@ -251,9 +245,7 @@ done_eddsa:
 }
 #endif /* HAVE_ED25519 */
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 lifecycle: RSA-PSS (PS256)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 lifecycle: RSA-PSS (PS256) ----- */
 #ifdef WC_RSA_PSS
 static int demo_sign1_ps256(void)
 {
@@ -323,9 +315,7 @@ done_ps256:
 }
 #endif /* WC_RSA_PSS */
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 lifecycle: ML-DSA-44 (Dilithium)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 lifecycle: ML-DSA-44 (Dilithium) ----- */
 #ifdef HAVE_DILITHIUM
 static int demo_sign1_ml_dsa_44(void)
 {
@@ -396,9 +386,7 @@ done_mldsa:
 }
 #endif /* HAVE_DILITHIUM */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt0 lifecycle: AES-GCM
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt0 lifecycle: AES-GCM ----- */
 #ifdef HAVE_AESGCM
 static int demo_encrypt0_aesgcm(int32_t alg)
 {
@@ -475,9 +463,7 @@ static int demo_encrypt0_aesgcm(int32_t alg)
 }
 #endif /* HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt0 lifecycle: ChaCha20-Poly1305
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt0 lifecycle: ChaCha20-Poly1305 ----- */
 #if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
 static int demo_encrypt0_chacha20(void)
 {
@@ -543,9 +529,7 @@ static int demo_encrypt0_chacha20(void)
 }
 #endif /* HAVE_CHACHA && HAVE_POLY1305 */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt0 lifecycle: AES-CCM
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt0 lifecycle: AES-CCM ----- */
 #ifdef HAVE_AESCCM
 static int demo_encrypt0_aes_ccm(void)
 {
@@ -611,9 +595,7 @@ static int demo_encrypt0_aes_ccm(void)
 }
 #endif /* HAVE_AESCCM */
 
-/* ---------------------------------------------------------------------------
- * COSE_Mac0 lifecycle: HMAC
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Mac0 lifecycle: HMAC ----- */
 #if !defined(NO_HMAC)
 static int demo_mac0_hmac(int32_t alg)
 {
@@ -689,9 +671,7 @@ static int demo_mac0_hmac(int32_t alg)
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * Algorithm name parser
- * --------------------------------------------------------------------------- */
+/* ----- Algorithm name parser ----- */
 enum {
     DEMO_ALG_ALL = 0,
     DEMO_ALG_ES256,
@@ -726,9 +706,7 @@ static int parse_demo_alg(const char* name)
     return -1;
 }
 
-/* ---------------------------------------------------------------------------
- * main
- * --------------------------------------------------------------------------- */
+/* ----- main ----- */
 int main(int argc, char* argv[])
 {
     int demoAlg = DEMO_ALG_ALL;

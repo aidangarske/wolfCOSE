@@ -41,7 +41,6 @@ DEMO_SRC  = examples/lifecycle_demo.c
 DEMO_BIN  = examples/lifecycle_demo
 ENC_DEMO  = examples/encrypt0_demo
 MAC_DEMO  = examples/mac0_demo
-MULTI_DEMO = examples/multi_demo
 SIGN1_DEMO = examples/sign1_demo
 
 # Comprehensive tests (CI)
@@ -110,13 +109,11 @@ demos: $(LIB_A)
 	$(CC) $(CFLAGS) -o $(DEMO_BIN) $(DEMO_SRC) $(LIB_A) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o $(ENC_DEMO) examples/encrypt0_demo.c $(LIB_A) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o $(MAC_DEMO) examples/mac0_demo.c $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(MULTI_DEMO) examples/multi_demo.c $(LIB_A) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o $(SIGN1_DEMO) examples/sign1_demo.c $(LIB_A) $(LDFLAGS)
 	@echo "=== Running all demos ==="
 	./$(DEMO_BIN)
 	./$(ENC_DEMO)
 	./$(MAC_DEMO)
-	./$(MULTI_DEMO)
 	./$(SIGN1_DEMO)
 
 # --- Comprehensive algorithm tests (CI) ---
@@ -151,7 +148,7 @@ scenarios: $(LIB_A)
 
 # --- Cleanup ---
 clean:
-	rm -f $(OBJ) $(TEST_BIN) $(TOOL_BIN) $(DEMO_BIN) $(ENC_DEMO) $(MAC_DEMO) $(MULTI_DEMO) \
+	rm -f $(OBJ) $(TEST_BIN) $(TOOL_BIN) $(DEMO_BIN) $(ENC_DEMO) $(MAC_DEMO) \
 	    $(SIGN1_DEMO) $(COMP_SIGN) $(COMP_ENCRYPT) $(COMP_MAC) $(COMP_ERRORS) \
 	    $(SCEN_FIRMWARE) $(SCEN_MULTIPARTY) $(SCEN_IOTFLEET) $(SCEN_SENSOR) $(SCEN_BROADCAST) \
 	    $(LIB_A) $(LIB_SO) src/*.su tests/*.su examples/comprehensive/*.su examples/scenarios/*.su \

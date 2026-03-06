@@ -49,7 +49,7 @@ typedef struct WOLFCOSE_HDR {
     size_t kidLen;
     const uint8_t* iv;        /* IV from unprotected header */
     size_t ivLen;
-    uint32_t flags;           /* WOLFCOSE_HDR_FLAG_* */
+    uint8_t flags;            /* WOLFCOSE_HDR_FLAG_* */
 } WOLFCOSE_HDR;
 ```
 Parsed COSE header information.
@@ -367,8 +367,9 @@ Decrypt a COSE_Encrypt0 message.
 ### wc_CoseMac0_Create
 ```c
 int wc_CoseMac0_Create(
-    const WOLFCOSE_KEY* key,
+    WOLFCOSE_KEY* key,
     int32_t alg,
+    const uint8_t* kid, size_t kidLen,
     const uint8_t* payload, size_t payloadLen,
     const uint8_t* detachedPayload, size_t detachedPayloadLen,
     const uint8_t* extAad, size_t extAadLen,
@@ -381,6 +382,7 @@ Create a COSE_Mac0 message.
 **Parameters:**
 - `key` - Symmetric MAC key
 - `alg` - Algorithm: `WOLFCOSE_ALG_HMAC_256_256`, `WOLFCOSE_ALG_AES_MAC_128_64`, etc.
+- `kid`, `kidLen` - Key identifier (can be NULL, 0)
 - `payload`, `payloadLen` - Payload to include in message
 - `detachedPayload`, `detachedPayloadLen` - Payload to MAC but not include
 - `extAad`, `extAadLen` - External AAD

@@ -61,9 +61,7 @@ static int g_failures = 0;
     }                                                          \
 } while (0)
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 Test Vectors (RFC 9052 / COSE WG Examples)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 Test Vectors (RFC 9052 / COSE WG Examples) ----- */
 
 /*
  * Test Vector: sign1-pass-01
@@ -97,9 +95,7 @@ static const uint8_t sign1_vec1_keyD[] = {
 
 static const uint8_t sign1_vec1_payload[] = "This is the content.";
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt0 Test Vectors
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt0 Test Vectors ----- */
 
 /*
  * Test Vector: encrypt0-pass-01
@@ -120,9 +116,7 @@ static const uint8_t enc0_vec1_iv[] = {
 
 static const uint8_t enc0_vec1_payload[] = "This is the content.";
 
-/* ---------------------------------------------------------------------------
- * COSE_Mac0 Test Vectors
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Mac0 Test Vectors ----- */
 
 /*
  * Test Vector: mac0-pass-01
@@ -139,9 +133,7 @@ static const uint8_t mac0_vec1_key[] = {
 
 static const uint8_t mac0_vec1_payload[] = "This is the content.";
 
-/* ---------------------------------------------------------------------------
- * Sign1 Interop Tests
- * --------------------------------------------------------------------------- */
+/* ----- Sign1 Interop Tests ----- */
 #ifdef HAVE_ECC
 static void test_interop_sign1_roundtrip(void)
 {
@@ -435,9 +427,7 @@ cleanup:
 }
 #endif /* HAVE_ECC */
 
-/* ---------------------------------------------------------------------------
- * Encrypt0 Interop Tests
- * --------------------------------------------------------------------------- */
+/* ----- Encrypt0 Interop Tests ----- */
 #ifdef HAVE_AESGCM
 static void test_interop_encrypt0_roundtrip(void)
 {
@@ -666,9 +656,7 @@ static void test_interop_encrypt0_detached(void)
 }
 #endif /* HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
- * Mac0 Interop Tests
- * --------------------------------------------------------------------------- */
+/* ----- Mac0 Interop Tests ----- */
 #ifndef NO_HMAC
 static void test_interop_mac0_roundtrip(void)
 {
@@ -889,9 +877,7 @@ static void test_interop_mac0_detached(void)
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * EdDSA Interop Tests
- * --------------------------------------------------------------------------- */
+/* ----- EdDSA Interop Tests ----- */
 #ifdef HAVE_ED25519
 static void test_interop_sign1_eddsa_roundtrip(void)
 {
@@ -999,9 +985,7 @@ cleanup:
 }
 #endif /* HAVE_ED25519 */
 
-/* ---------------------------------------------------------------------------
- * Multi-Signer Interop Tests
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Signer Interop Tests ----- */
 #ifdef HAVE_ECC
 static void test_interop_sign_multi_signer(void)
 {
@@ -1153,9 +1137,7 @@ cleanup:
 }
 #endif /* HAVE_ECC */
 
-/* ---------------------------------------------------------------------------
- * Multi-Recipient Interop Tests
- * --------------------------------------------------------------------------- */
+/* ----- Multi-Recipient Interop Tests ----- */
 #ifdef HAVE_AESGCM
 static void test_interop_encrypt_multi_recipient(void)
 {
@@ -1308,9 +1290,7 @@ static void test_interop_mac_multi_recipient(void)
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * Entry point
- * --------------------------------------------------------------------------- */
+/* ----- Entry point ----- */
 int test_interop(void)
 {
     g_failures = 0;

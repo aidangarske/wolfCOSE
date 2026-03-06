@@ -1,11 +1,5 @@
 /* firmware_update.c
  *
- * Firmware Update with Post-Quantum Signature
- *
- * Scenario: OEM signs firmware binary with ML-DSA-65 (or ES256 fallback),
- * embedded device verifies before installing. Uses detached payload since
- * firmware binary is transmitted separately from the COSE manifest.
- *
  * Copyright (C) 2026 wolfSSL Inc.
  *
  * This file is part of wolfCOSE.
@@ -22,6 +16,12 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ *
+ * Firmware Update with Post-Quantum Signature
+ *
+ * Scenario: OEM signs firmware binary with ML-DSA-65 (or ES256 fallback),
+ * embedded device verifies before installing. Uses detached payload since
+ * firmware binary is transmitted separately from the COSE manifest.
  *
  * Compile-time gate:
  *   WOLFCOSE_EXAMPLE_FIRMWARE_UPDATE  - Enable this example (default: enabled)
@@ -67,9 +67,7 @@ static const uint8_t g_firmwareBinary[] = {
     0x05, 0x06, 0x07, 0x08
 };
 
-/* ---------------------------------------------------------------------------
- * Step 1: OEM generates signing key (done once, stored securely)
- * --------------------------------------------------------------------------- */
+/* ----- Step 1: OEM generates signing key (done once, stored securely) ----- */
 #ifdef HAVE_DILITHIUM
 static int oem_generate_key_mldsa(dilithium_key* key, WC_RNG* rng)
 {
@@ -124,9 +122,7 @@ static int oem_generate_key_ecdsa(ecc_key* key, WC_RNG* rng)
 }
 #endif /* HAVE_ECC && !HAVE_DILITHIUM */
 
-/* ---------------------------------------------------------------------------
- * Step 2: OEM signs firmware with detached payload
- * --------------------------------------------------------------------------- */
+/* ----- Step 2: OEM signs firmware with detached payload ----- */
 static int oem_sign_firmware(WOLFCOSE_KEY* signingKey, int32_t alg,
                               const uint8_t* firmware, size_t firmwareSz,
                               uint8_t* manifestOut, size_t manifestOutSz,
@@ -171,9 +167,7 @@ static int oem_sign_firmware(WOLFCOSE_KEY* signingKey, int32_t alg,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Step 3: Device verifies firmware signature before installing
- * --------------------------------------------------------------------------- */
+/* ----- Step 3: Device verifies firmware signature before installing ----- */
 static int device_verify_firmware(WOLFCOSE_KEY* oemPubKey,
                                    const uint8_t* manifest, size_t manifestLen,
                                    const uint8_t* firmware, size_t firmwareSz)
@@ -208,9 +202,7 @@ static int device_verify_firmware(WOLFCOSE_KEY* oemPubKey,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Step 4: Tampered firmware must be rejected
- * --------------------------------------------------------------------------- */
+/* ----- Step 4: Tampered firmware must be rejected ----- */
 static int device_reject_tampered(WOLFCOSE_KEY* oemPubKey,
                                    const uint8_t* manifest, size_t manifestLen,
                                    const uint8_t* firmware, size_t firmwareSz)
@@ -248,9 +240,7 @@ static int device_reject_tampered(WOLFCOSE_KEY* oemPubKey,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Main Demo
- * --------------------------------------------------------------------------- */
+/* ----- Main Demo ----- */
 int main(void)
 {
     int ret = 0;

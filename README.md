@@ -73,7 +73,7 @@ Built for constrained IoT devices, FIPS-bounded deployments, and anywhere you ne
 
 | Algorithm | COSE ID | wolfCrypt Guard | Notes |
 |-----------|---------|-----------------|-------|
-| Direct | 0 | always | Pre-shared symmetric key |
+| Direct | -6 | always | Pre-shared symmetric key |
 | A128KW | -3 | `HAVE_AES_KEYWRAP` | AES Key Wrap 128-bit |
 | A192KW | -4 | `HAVE_AES_KEYWRAP` | AES Key Wrap 192-bit |
 | A256KW | -5 | `HAVE_AES_KEYWRAP` | AES Key Wrap 256-bit |

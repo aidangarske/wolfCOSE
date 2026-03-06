@@ -44,9 +44,7 @@
 #endif
 #include <string.h>
 
-/* ---------------------------------------------------------------------------
- * Internal helpers: algorithm dispatch
- * --------------------------------------------------------------------------- */
+/* ----- Internal helpers: algorithm dispatch ----- */
 
 int wolfCose_AlgToHashType(int32_t alg, enum wc_HashType* hashType)
 {
@@ -208,9 +206,7 @@ int wolfCose_CrvToWcCurve(int32_t crv, int* wcCrv)
 }
 #endif
 
-/* ---------------------------------------------------------------------------
- * Internal: AEAD dispatch helpers (AES-GCM, ChaCha20-Poly1305, AES-CCM)
- * --------------------------------------------------------------------------- */
+/* ----- Internal: AEAD dispatch helpers (AES-GCM, ChaCha20-Poly1305, AES-CCM) ----- */
 
 int wolfCose_AeadKeyLen(int32_t alg, size_t* keyLen)
 {
@@ -345,9 +341,7 @@ int wolfCose_AeadTagLen(int32_t alg, size_t* tagLen)
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * Internal: HMAC helpers
- * --------------------------------------------------------------------------- */
+/* ----- Internal: HMAC helpers ----- */
 
 #if !defined(NO_HMAC)
 int wolfCose_HmacTagSize(int32_t alg, size_t* tagSz)
@@ -411,9 +405,7 @@ int wolfCose_HmacType(int32_t alg, int* hmacType)
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * Internal: ECC DER <-> raw r||s conversion
- * --------------------------------------------------------------------------- */
+/* ----- Internal: ECC DER <-> raw r||s conversion ----- */
 
 #ifdef HAVE_ECC
 int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
@@ -512,9 +504,7 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
 }
 #endif /* HAVE_ECC */
 
-/* ---------------------------------------------------------------------------
- * Internal: Protected/Unprotected header encode/decode
- * --------------------------------------------------------------------------- */
+/* ----- Internal: Protected/Unprotected header encode/decode ----- */
 
 int wolfCose_EncodeProtectedHdr(int32_t alg, uint8_t* buf, size_t bufSz,
                                  size_t* outLen)
@@ -666,9 +656,7 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * COSE Key API
- * --------------------------------------------------------------------------- */
+/* ----- COSE Key API ----- */
 
 int wc_CoseKey_Init(WOLFCOSE_KEY* key)
 {
@@ -1533,9 +1521,7 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 }
 #endif /* WOLFCOSE_KEY_DECODE */
 
-/* ---------------------------------------------------------------------------
- * Internal: RSA-PSS hash-to-MGF mapping
- * --------------------------------------------------------------------------- */
+/* ----- Internal: RSA-PSS hash-to-MGF mapping ----- */
 #ifdef WC_RSA_PSS
 static int wolfCose_HashToMgf(enum wc_HashType hashType, int* mgf)
 {
@@ -1564,14 +1550,14 @@ static int wolfCose_HashToMgf(enum wc_HashType hashType, int* mgf)
 }
 #endif
 
-/* ---------------------------------------------------------------------------
+/* -----
  * Unified Structure Builders (Phase 3 refactoring)
  *
  * These shared helpers reduce code size by unifying:
  * - Sig_structure (Sign1/Sign): [context, body_prot, [sign_prot,] ext_aad, payload]
  * - MAC_structure (Mac0/Mac): [context, body_prot, ext_aad, payload]
  * - Enc_structure (Encrypt0/Encrypt): [context, body_prot, ext_aad]
- * --------------------------------------------------------------------------- */
+ * ----- */
 
 /**
  * Build a ToBeSigned/ToBeMAced structure (RFC 9052 Section 4.4, 6.3).
@@ -1676,12 +1662,12 @@ int wolfCose_BuildEncStructure(
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
+/* -----
  * Key Distribution Algorithms (RFC 9053 Section 6)
  *
  * These helpers implement key wrapping and key agreement for multi-recipient
  * COSE_Encrypt and COSE_Mac messages.
- * --------------------------------------------------------------------------- */
+ * ----- */
 
 #if defined(WOLFCOSE_KEY_WRAP)
 /**
@@ -2372,9 +2358,7 @@ static int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
 
 #endif /* WOLFCOSE_ECDH_ES_DIRECT && HAVE_ECC && HAVE_HKDF */
 
-/* ---------------------------------------------------------------------------
- * COSE_Sign1 API
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Sign1 API ----- */
 
 #if defined(WOLFCOSE_SIGN1)
 
@@ -3023,12 +3007,12 @@ cleanup:
 
 #endif /* WOLFCOSE_SIGN1 */
 
-/* ---------------------------------------------------------------------------
+/* -----
  * COSE_Sign Multi-signer API (RFC 9052 Section 4.1)
  *
  * COSE_Sign = [ Headers, payload : bstr / nil, signatures : [+ COSE_Signature] ]
  * COSE_Signature = [ Headers, signature : bstr ]
- * --------------------------------------------------------------------------- */
+ * ----- */
 
 #if defined(WOLFCOSE_SIGN)
 
@@ -3554,9 +3538,7 @@ cleanup:
 
 #endif /* WOLFCOSE_SIGN */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt0 API
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt0 API ----- */
 
 #if defined(WOLFCOSE_ENCRYPT0) && (defined(HAVE_AESGCM) || defined(HAVE_AESCCM) || \
     (defined(HAVE_CHACHA) && defined(HAVE_POLY1305)))
@@ -4149,10 +4131,10 @@ cleanup:
 
 #endif /* WOLFCOSE_ENCRYPT0 && (HAVE_AESGCM || HAVE_AESCCM || (HAVE_CHACHA && HAVE_POLY1305)) */
 
-/* ---------------------------------------------------------------------------
+/* -----
  * COSE_Mac0 API (RFC 9052 Section 6.2)
  * Supports HMAC (RFC 9053 Section 3.1) and AES-CBC-MAC (RFC 9053 Section 3.2)
- * --------------------------------------------------------------------------- */
+ * ----- */
 
 #if defined(WOLFCOSE_MAC0) && (!defined(NO_HMAC) || defined(HAVE_AES_CBC))
 
@@ -4824,9 +4806,7 @@ cleanup:
 
 #endif /* WOLFCOSE_MAC0 && (!NO_HMAC || HAVE_AES_CBC) */
 
-/* ---------------------------------------------------------------------------
- * COSE_Encrypt Multi-Recipient API (RFC 9052 Section 5.1)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Encrypt Multi-Recipient API (RFC 9052 Section 5.1) ----- */
 
 #if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
 
@@ -5637,9 +5617,7 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
 
 #endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
 
-/* ---------------------------------------------------------------------------
- * COSE_Mac Multi-Recipient API (RFC 9052 Section 6.1)
- * --------------------------------------------------------------------------- */
+/* ----- COSE_Mac Multi-Recipient API (RFC 9052 Section 6.1) ----- */
 
 #if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
 

@@ -1,11 +1,5 @@
 /* sensor_attestation.c
  *
- * Sensor Attestation Token (EAT-style)
- *
- * Scenario: Embedded sensor signs reading with device key and includes
- * hardware nonce as AAD for replay protection. Demonstrates COSE_Sign1
- * with external AAD for Entity Attestation Token (EAT) style attestation.
- *
  * Copyright (C) 2026 wolfSSL Inc.
  *
  * This file is part of wolfCOSE.
@@ -22,6 +16,13 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Sensor Attestation Token (EAT-style)
+ *
+ * Scenario: Embedded sensor signs reading with device key and includes
+ * hardware nonce as AAD for replay protection. Demonstrates COSE_Sign1
+ * with external AAD for Entity Attestation Token (EAT) style attestation.
  *
  * Compile-time gate:
  *   WOLFCOSE_EXAMPLE_SENSOR_ATTEST  - Enable this example (default: enabled)
@@ -59,9 +60,7 @@ static uint8_t g_sensorReading[] = {
     0x04, 0x1A, 0x65, 0xE4, 0x77, 0x80  /* key 4: timestamp */
 };
 
-/* ---------------------------------------------------------------------------
- * Sensor: Initialize device attestation key
- * --------------------------------------------------------------------------- */
+/* ----- Sensor: Initialize device attestation key ----- */
 static int sensor_init_key(ecc_key* eccKey, WOLFCOSE_KEY* cosKey, WC_RNG* rng)
 {
     int ret;
@@ -92,9 +91,7 @@ static int sensor_init_key(ecc_key* eccKey, WOLFCOSE_KEY* cosKey, WC_RNG* rng)
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Verifier: Generate challenge nonce
- * --------------------------------------------------------------------------- */
+/* ----- Verifier: Generate challenge nonce ----- */
 static int verifier_generate_nonce(uint8_t* nonce, size_t nonceLen, WC_RNG* rng)
 {
     int ret;
@@ -115,9 +112,7 @@ static int verifier_generate_nonce(uint8_t* nonce, size_t nonceLen, WC_RNG* rng)
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Sensor: Create attestation token with reading + nonce in AAD
- * --------------------------------------------------------------------------- */
+/* ----- Sensor: Create attestation token with reading + nonce in AAD ----- */
 static int sensor_create_attestation(WOLFCOSE_KEY* deviceKey,
                                       const uint8_t* reading, size_t readingLen,
                                       const uint8_t* nonce, size_t nonceLen,
@@ -151,9 +146,7 @@ static int sensor_create_attestation(WOLFCOSE_KEY* deviceKey,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Verifier: Verify attestation token
- * --------------------------------------------------------------------------- */
+/* ----- Verifier: Verify attestation token ----- */
 static int verifier_check_attestation(WOLFCOSE_KEY* devicePubKey,
                                        const uint8_t* token, size_t tokenLen,
                                        const uint8_t* expectedNonce, size_t nonceLen)
@@ -189,9 +182,7 @@ static int verifier_check_attestation(WOLFCOSE_KEY* devicePubKey,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Verifier: Replay attack detection (wrong nonce must fail)
- * --------------------------------------------------------------------------- */
+/* ----- Verifier: Replay attack detection (wrong nonce must fail) ----- */
 static int verifier_detect_replay(WOLFCOSE_KEY* devicePubKey,
                                    const uint8_t* token, size_t tokenLen,
                                    const uint8_t* wrongNonce, size_t nonceLen)
@@ -220,9 +211,7 @@ static int verifier_detect_replay(WOLFCOSE_KEY* devicePubKey,
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Main Demo
- * --------------------------------------------------------------------------- */
+/* ----- Main Demo ----- */
 int main(void)
 {
     int ret = 0;
