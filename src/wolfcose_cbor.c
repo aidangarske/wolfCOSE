@@ -31,7 +31,7 @@
 #include "wolfcose_internal.h"
 #include <string.h>  /* memcpy */
 
-/* ---------------------------------------------------------------------------
+/* -----
  * Internal: CBOR head encoder
  *
  * RFC 8949 Section 3.1: initial byte encoding
@@ -41,7 +41,7 @@
  *   val <= 0xFFFF:     3 bytes (AI=25, then BE16)
  *   val <= 0xFFFFFFFF: 5 bytes (AI=26, then BE32)
  *   else:              9 bytes (AI=27, then BE64)
- * --------------------------------------------------------------------------- */
+ * ----- */
 int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
                               uint64_t val)
 {
@@ -117,7 +117,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
+/* -----
  * Internal: CBOR head decoder
  *
  * Read initial byte, extract major type (bits 7-5) and AI (bits 4-0).
@@ -126,7 +126,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
  * AI 31 = WOLFCOSE_E_UNSUPPORTED (indefinite length -- COSE never uses it)
  *
  * For bstr/tstr: advances past the data and sets item->data/dataLen.
- * --------------------------------------------------------------------------- */
+ * ----- */
 int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
 {
     int ret;
@@ -219,9 +219,13 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
+/* -----
  * Public Encode API
- * --------------------------------------------------------------------------- */
+ *
+ * Guarded by WOLFCOSE_CBOR_ENCODE — can be excluded for decode-only builds.
+ * ----- */
+
+#if defined(WOLFCOSE_CBOR_ENCODE)
 
 int wc_CBOR_EncodeUint(WOLFCOSE_CBOR_CTX* ctx, uint64_t val)
 {
@@ -268,7 +272,7 @@ static int wolfCose_CBOR_EncodeBytes(WOLFCOSE_CBOR_CTX* ctx,
         }
         else {
             if (len > 0u && data != NULL) {
-                XMEMCPY(ctx->buf + ctx->idx, data, len);
+                XMEMMOVE(ctx->buf + ctx->idx, data, len);
             }
             ctx->idx += len;
         }
@@ -385,9 +389,15 @@ int wc_CBOR_EncodeDouble(WOLFCOSE_CBOR_CTX* ctx, double val)
 }
 #endif /* WOLFCOSE_FLOAT */
 
-/* ---------------------------------------------------------------------------
+#endif /* WOLFCOSE_CBOR_ENCODE */
+
+/* -----
  * Public Decode API
- * --------------------------------------------------------------------------- */
+ *
+ * Guarded by WOLFCOSE_CBOR_DECODE — always needed for verify/decrypt builds.
+ * ----- */
+
+#if defined(WOLFCOSE_CBOR_DECODE)
 
 int wc_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
 {
@@ -547,10 +557,10 @@ int wc_CBOR_DecodeTag(WOLFCOSE_CBOR_CTX* ctx, uint64_t* tag)
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
+/* -----
  * wc_CBOR_Skip: iterative traversal to skip a complete CBOR item.
  * Uses a bounded stack (no recursion, MISRA Rule 17.2 compliant).
- * --------------------------------------------------------------------------- */
+ * ----- */
 int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
 {
     int ret;
@@ -622,3 +632,5 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
     }
     return ret;
 }
+
+#endif /* WOLFCOSE_CBOR_DECODE */
