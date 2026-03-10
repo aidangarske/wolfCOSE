@@ -249,7 +249,7 @@ int main(void)
     uint8_t manifest[8192];
     size_t manifestLen = 0;
     WOLFCOSE_KEY signingKey;
-    int32_t alg;
+    int32_t alg = 0;
 
 #ifdef HAVE_DILITHIUM
     dilithium_key dlKey;
@@ -273,74 +273,97 @@ int main(void)
 
 #ifdef HAVE_DILITHIUM
     /* Prefer ML-DSA (post-quantum) if available */
-    ret = oem_generate_key_mldsa(&dlKey, &rng);
-    if (ret != 0) { goto cleanup; }
-    dlInit = 1;
-
-    wc_CoseKey_Init(&signingKey);
-    ret = wc_CoseKey_SetDilithium(&signingKey, WOLFCOSE_ALG_ML_DSA_65, &dlKey);
-    if (ret != 0) {
-        printf("ERROR: wc_CoseKey_SetDilithium failed: %d\n", ret);
-        goto cleanup;
+    if (ret == 0) {
+        ret = oem_generate_key_mldsa(&dlKey, &rng);
+        if (ret == 0) {
+            dlInit = 1;
+        }
     }
-    alg = WOLFCOSE_ALG_ML_DSA_65;
-    printf("Using post-quantum ML-DSA-65 algorithm\n\n");
+
+    if (ret == 0) {
+        wc_CoseKey_Init(&signingKey);
+        ret = wc_CoseKey_SetDilithium(&signingKey, WOLFCOSE_ALG_ML_DSA_65,
+                                      &dlKey);
+        if (ret != 0) {
+            printf("ERROR: wc_CoseKey_SetDilithium failed: %d\n", ret);
+        }
+    }
+
+    if (ret == 0) {
+        alg = WOLFCOSE_ALG_ML_DSA_65;
+        printf("Using post-quantum ML-DSA-65 algorithm\n\n");
+    }
 
 #elif defined(HAVE_ECC)
     /* Fallback to ECDSA */
-    ret = oem_generate_key_ecdsa(&eccKey, &rng);
-    if (ret != 0) { goto cleanup; }
-    eccInit = 1;
-
-    wc_CoseKey_Init(&signingKey);
-    ret = wc_CoseKey_SetEcc(&signingKey, WOLFCOSE_CRV_P256, &eccKey);
-    if (ret != 0) {
-        printf("ERROR: wc_CoseKey_SetEcc failed: %d\n", ret);
-        goto cleanup;
+    if (ret == 0) {
+        ret = oem_generate_key_ecdsa(&eccKey, &rng);
+        if (ret == 0) {
+            eccInit = 1;
+        }
     }
-    alg = WOLFCOSE_ALG_ES256;
-    printf("Using ECDSA ES256 algorithm (ML-DSA not available)\n\n");
+
+    if (ret == 0) {
+        wc_CoseKey_Init(&signingKey);
+        ret = wc_CoseKey_SetEcc(&signingKey, WOLFCOSE_CRV_P256, &eccKey);
+        if (ret != 0) {
+            printf("ERROR: wc_CoseKey_SetEcc failed: %d\n", ret);
+        }
+    }
+
+    if (ret == 0) {
+        alg = WOLFCOSE_ALG_ES256;
+        printf("Using ECDSA ES256 algorithm (ML-DSA not available)\n\n");
+    }
 
 #else
     printf("ERROR: No signing algorithm available\n");
     ret = -1;
-    goto cleanup;
 #endif
 
     /* OEM signs firmware */
-    ret = oem_sign_firmware(&signingKey, alg,
-        g_firmwareBinary, sizeof(g_firmwareBinary),
-        manifest, sizeof(manifest), &manifestLen, &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = oem_sign_firmware(&signingKey, alg,
+            g_firmwareBinary, sizeof(g_firmwareBinary),
+            manifest, sizeof(manifest), &manifestLen, &rng);
+    }
 
-    printf("\n");
+    if (ret == 0) {
+        printf("\n");
+    }
 
     /* Device verifies authentic firmware */
-    ret = device_verify_firmware(&signingKey,
-        manifest, manifestLen,
-        g_firmwareBinary, sizeof(g_firmwareBinary));
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = device_verify_firmware(&signingKey,
+            manifest, manifestLen,
+            g_firmwareBinary, sizeof(g_firmwareBinary));
+    }
 
-    printf("\n");
+    if (ret == 0) {
+        printf("\n");
+    }
 
     /* Device rejects tampered firmware */
-    ret = device_reject_tampered(&signingKey,
-        manifest, manifestLen,
-        g_firmwareBinary, sizeof(g_firmwareBinary));
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = device_reject_tampered(&signingKey,
+            manifest, manifestLen,
+            g_firmwareBinary, sizeof(g_firmwareBinary));
+    }
 
-    printf("\n================================================\n");
-    printf("Firmware Update Scenario: SUCCESS\n");
-    printf("================================================\n");
+    if (ret == 0) {
+        printf("\n================================================\n");
+        printf("Firmware Update Scenario: SUCCESS\n");
+        printf("================================================\n");
+    }
 
-cleanup:
+    /* Cleanup */
 #ifdef HAVE_DILITHIUM
-    if (dlInit) { wc_dilithium_free(&dlKey); }
+    if (dlInit != 0) { wc_dilithium_free(&dlKey); }
 #endif
 #ifdef HAVE_ECC
-    if (eccInit) { wc_ecc_free(&eccKey); }
+    if (eccInit != 0) { wc_ecc_free(&eccKey); }
 #endif
-    if (rngInit) { wc_FreeRng(&rng); }
+    if (rngInit != 0) { wc_FreeRng(&rng); }
 
     if (ret != 0) {
         printf("\n================================================\n");

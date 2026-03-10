@@ -118,94 +118,91 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
     XMEMSET(&cosKey, 0, sizeof(cosKey));
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
+    if (ret == 0) {
+        rngInit = 1;
+    }
 
     /* Key setup based on curve */
-    if (curveSize == 0) {
+    if (ret == 0 && curveSize == 0) {
 #ifdef HAVE_ED25519
         ret = wc_ed25519_init(&edKey);
-        if (ret != 0) { goto cleanup; }
-        edInit = 1;
-
-        ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
-        if (ret != 0) { goto cleanup; }
-
-        wc_CoseKey_Init(&cosKey);
-        ret = wc_CoseKey_SetEd25519(&cosKey, &edKey);
-        if (ret != 0) { goto cleanup; }
+        if (ret == 0) {
+            edInit = 1;
+            ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&cosKey);
+            ret = wc_CoseKey_SetEd25519(&cosKey, &edKey);
+        }
 #else
         ret = WOLFCOSE_E_UNSUPPORTED;
-        goto cleanup;
 #endif
     }
-    else {
+    else if (ret == 0) {
 #ifdef HAVE_ECC
         ret = wc_ecc_init(&eccKey);
-        if (ret != 0) { goto cleanup; }
-        eccInit = 1;
-
-        ret = wc_ecc_make_key(&rng, curveSize, &eccKey);
-        if (ret != 0) { goto cleanup; }
-
-        wc_CoseKey_Init(&cosKey);
-        ret = wc_CoseKey_SetEcc(&cosKey, crv_from_size(curveSize), &eccKey);
-        if (ret != 0) { goto cleanup; }
+        if (ret == 0) {
+            eccInit = 1;
+            ret = wc_ecc_make_key(&rng, curveSize, &eccKey);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&cosKey);
+            ret = wc_CoseKey_SetEcc(&cosKey, crv_from_size(curveSize), &eccKey);
+        }
 #else
         ret = WOLFCOSE_E_UNSUPPORTED;
-        goto cleanup;
 #endif
     }
 
     /* Sign */
-    ret = wc_CoseSign1_Sign(&cosKey, alg,
-        NULL, 0,  /* kid */
-        detached ? NULL : payload,
-        detached ? 0 : sizeof(payload) - 1,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Sign(&cosKey, alg,
+            NULL, 0,  /* kid */
+            detached ? NULL : payload,
+            detached ? 0 : sizeof(payload) - 1,
+            detached ? payload : NULL,
+            detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL,
+            useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
 
     /* Verify */
-    ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
+            detached ? payload : NULL,
+            detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL,
+            useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+    }
 
     /* Validate payload if inline */
-    if (!detached) {
+    if (ret == 0 && detached == 0) {
         if (decPayloadLen != sizeof(payload) - 1) {
             ret = -1;
-            goto cleanup;
         }
-        if (XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
+        else if (XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
             ret = -2;
-            goto cleanup;
         }
     }
 
     /* Validate algorithm */
-    if (hdr.alg != alg) {
+    if (ret == 0 && hdr.alg != alg) {
         ret = -3;
-        goto cleanup;
     }
 
-cleanup:
+    /* Cleanup */
 #ifdef HAVE_ED25519
-    if (edInit) { wc_ed25519_free(&edKey); }
+    if (edInit != 0) { wc_ed25519_free(&edKey); }
 #endif
 #ifdef HAVE_ECC
-    if (eccInit) { wc_ecc_free(&eccKey); }
+    if (eccInit != 0) { wc_ecc_free(&eccKey); }
 #endif
-    if (rngInit) { wc_FreeRng(&rng); }
+    if (rngInit != 0) { wc_FreeRng(&rng); }
+
     return ret;
 }
 
@@ -239,114 +236,123 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
     XMEMSET(signers, 0, sizeof(signers));
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
+    if (ret == 0) {
+        rngInit = 1;
+    }
 
     /* Setup key 1 */
-    if (keySz1 == 0) {
+    if (ret == 0 && keySz1 == 0) {
 #ifdef HAVE_ED25519
         ret = wc_ed25519_init(&edKey1);
-        if (ret != 0) { goto cleanup; }
-        ed1Init = 1;
-        ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey1);
-        if (ret != 0) { goto cleanup; }
-        wc_CoseKey_Init(&cosKey1);
-        ret = wc_CoseKey_SetEd25519(&cosKey1, &edKey1);
-        if (ret != 0) { goto cleanup; }
+        if (ret == 0) {
+            ed1Init = 1;
+            ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey1);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&cosKey1);
+            ret = wc_CoseKey_SetEd25519(&cosKey1, &edKey1);
+        }
 #else
         ret = WOLFCOSE_E_UNSUPPORTED;
-        goto cleanup;
 #endif
     }
-    else {
+    else if (ret == 0) {
         ret = wc_ecc_init(&eccKey1);
-        if (ret != 0) { goto cleanup; }
-        ecc1Init = 1;
-        ret = wc_ecc_make_key(&rng, keySz1, &eccKey1);
-        if (ret != 0) { goto cleanup; }
-        wc_CoseKey_Init(&cosKey1);
-        ret = wc_CoseKey_SetEcc(&cosKey1, crv_from_size(keySz1), &eccKey1);
-        if (ret != 0) { goto cleanup; }
+        if (ret == 0) {
+            ecc1Init = 1;
+            ret = wc_ecc_make_key(&rng, keySz1, &eccKey1);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&cosKey1);
+            ret = wc_CoseKey_SetEcc(&cosKey1, crv_from_size(keySz1), &eccKey1);
+        }
     }
 
     /* Setup key 2 */
-    if (keySz2 == 0) {
+    if (ret == 0 && keySz2 == 0) {
 #ifdef HAVE_ED25519
         ret = wc_ed25519_init(&edKey2);
-        if (ret != 0) { goto cleanup; }
-        ed2Init = 1;
-        ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey2);
-        if (ret != 0) { goto cleanup; }
-        wc_CoseKey_Init(&cosKey2);
-        ret = wc_CoseKey_SetEd25519(&cosKey2, &edKey2);
-        if (ret != 0) { goto cleanup; }
+        if (ret == 0) {
+            ed2Init = 1;
+            ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey2);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&cosKey2);
+            ret = wc_CoseKey_SetEd25519(&cosKey2, &edKey2);
+        }
 #else
         ret = WOLFCOSE_E_UNSUPPORTED;
-        goto cleanup;
 #endif
     }
-    else {
+    else if (ret == 0) {
         ret = wc_ecc_init(&eccKey2);
-        if (ret != 0) { goto cleanup; }
-        ecc2Init = 1;
-        ret = wc_ecc_make_key(&rng, keySz2, &eccKey2);
-        if (ret != 0) { goto cleanup; }
-        wc_CoseKey_Init(&cosKey2);
-        ret = wc_CoseKey_SetEcc(&cosKey2, crv_from_size(keySz2), &eccKey2);
-        if (ret != 0) { goto cleanup; }
+        if (ret == 0) {
+            ecc2Init = 1;
+            ret = wc_ecc_make_key(&rng, keySz2, &eccKey2);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&cosKey2);
+            ret = wc_CoseKey_SetEcc(&cosKey2, crv_from_size(keySz2), &eccKey2);
+        }
     }
 
     /* Setup signers array */
-    signers[0].algId = alg1;
-    signers[0].key = &cosKey1;
-    signers[0].kid = (const uint8_t*)"signer1";
-    signers[0].kidLen = 7;
+    if (ret == 0) {
+        signers[0].algId = alg1;
+        signers[0].key = &cosKey1;
+        signers[0].kid = (const uint8_t*)"signer1";
+        signers[0].kidLen = 7;
 
-    signers[1].algId = alg2;
-    signers[1].key = &cosKey2;
-    signers[1].kid = (const uint8_t*)"signer2";
-    signers[1].kidLen = 7;
+        signers[1].algId = alg2;
+        signers[1].key = &cosKey2;
+        signers[1].kid = (const uint8_t*)"signer2";
+        signers[1].kidLen = 7;
+    }
 
     /* Sign with both signers */
-    ret = wc_CoseSign_Sign(signers, 2,
-        detached ? NULL : payload,
-        detached ? 0 : sizeof(payload) - 1,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign_Sign(signers, 2,
+            detached ? NULL : payload,
+            detached ? 0 : sizeof(payload) - 1,
+            detached ? payload : NULL,
+            detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL,
+            useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
 
     /* Verify signer 0 */
-    ret = wc_CoseSign_Verify(&cosKey1, 0, out, outLen,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign_Verify(&cosKey1, 0, out, outLen,
+            detached ? payload : NULL,
+            detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL,
+            useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+    }
 
     /* Verify signer 1 */
-    ret = wc_CoseSign_Verify(&cosKey2, 1, out, outLen,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign_Verify(&cosKey2, 1, out, outLen,
+            detached ? payload : NULL,
+            detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL,
+            useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+    }
 
-cleanup:
+    /* Cleanup */
 #ifdef HAVE_ED25519
-    if (ed1Init) { wc_ed25519_free(&edKey1); }
-    if (ed2Init) { wc_ed25519_free(&edKey2); }
+    if (ed1Init != 0) { wc_ed25519_free(&edKey1); }
+    if (ed2Init != 0) { wc_ed25519_free(&edKey2); }
 #endif
-    if (ecc1Init) { wc_ecc_free(&eccKey1); }
-    if (ecc2Init) { wc_ecc_free(&eccKey2); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    if (ecc1Init != 0) { wc_ecc_free(&eccKey1); }
+    if (ecc2Init != 0) { wc_ecc_free(&eccKey2); }
+    if (rngInit != 0) { wc_FreeRng(&rng); }
+
     return ret;
 }
 #endif /* HAVE_ECC && WOLFCOSE_SIGN */
@@ -378,6 +384,15 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
     int i;
+    int keySizes[3];
+    int32_t algs[3];
+    ecc_key* eccKeys[3];
+    int* eccInits[3];
+    WOLFCOSE_KEY* cosKeys[3];
+#ifdef HAVE_ED25519
+    ed25519_key* edKeys[3];
+    int* edInits[3];
+#endif
 
     XMEMSET(&cosKey1, 0, sizeof(cosKey1));
     XMEMSET(&cosKey2, 0, sizeof(cosKey2));
@@ -385,71 +400,76 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
     XMEMSET(signers, 0, sizeof(signers));
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
+    if (ret == 0) {
+        rngInit = 1;
+    }
 
     /* Setup keys - use helper arrays for cleaner code */
-    int keySizes[3] = {keySz1, keySz2, keySz3};
-    int32_t algs[3] = {alg1, alg2, alg3};
-    ecc_key* eccKeys[3] = {&eccKey1, &eccKey2, &eccKey3};
-    int* eccInits[3] = {&ecc1Init, &ecc2Init, &ecc3Init};
-    WOLFCOSE_KEY* cosKeys[3] = {&cosKey1, &cosKey2, &cosKey3};
+    keySizes[0] = keySz1; keySizes[1] = keySz2; keySizes[2] = keySz3;
+    algs[0] = alg1; algs[1] = alg2; algs[2] = alg3;
+    eccKeys[0] = &eccKey1; eccKeys[1] = &eccKey2; eccKeys[2] = &eccKey3;
+    eccInits[0] = &ecc1Init; eccInits[1] = &ecc2Init; eccInits[2] = &ecc3Init;
+    cosKeys[0] = &cosKey1; cosKeys[1] = &cosKey2; cosKeys[2] = &cosKey3;
 #ifdef HAVE_ED25519
-    ed25519_key* edKeys[3] = {&edKey1, &edKey2, &edKey3};
-    int* edInits[3] = {&ed1Init, &ed2Init, &ed3Init};
+    edKeys[0] = &edKey1; edKeys[1] = &edKey2; edKeys[2] = &edKey3;
+    edInits[0] = &ed1Init; edInits[1] = &ed2Init; edInits[2] = &ed3Init;
 #endif
 
-    for (i = 0; i < 3; i++) {
+    for (i = 0; ret == 0 && i < 3; i++) {
         if (keySizes[i] == 0) {
 #ifdef HAVE_ED25519
             ret = wc_ed25519_init(edKeys[i]);
-            if (ret != 0) { goto cleanup; }
-            *edInits[i] = 1;
-            ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, edKeys[i]);
-            if (ret != 0) { goto cleanup; }
-            wc_CoseKey_Init(cosKeys[i]);
-            ret = wc_CoseKey_SetEd25519(cosKeys[i], edKeys[i]);
-            if (ret != 0) { goto cleanup; }
+            if (ret == 0) {
+                *edInits[i] = 1;
+                ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, edKeys[i]);
+            }
+            if (ret == 0) {
+                wc_CoseKey_Init(cosKeys[i]);
+                ret = wc_CoseKey_SetEd25519(cosKeys[i], edKeys[i]);
+            }
 #else
             ret = WOLFCOSE_E_UNSUPPORTED;
-            goto cleanup;
 #endif
         }
         else {
             ret = wc_ecc_init(eccKeys[i]);
-            if (ret != 0) { goto cleanup; }
-            *eccInits[i] = 1;
-            ret = wc_ecc_make_key(&rng, keySizes[i], eccKeys[i]);
-            if (ret != 0) { goto cleanup; }
-            wc_CoseKey_Init(cosKeys[i]);
-            ret = wc_CoseKey_SetEcc(cosKeys[i], crv_from_size(keySizes[i]),
-                                     eccKeys[i]);
-            if (ret != 0) { goto cleanup; }
+            if (ret == 0) {
+                *eccInits[i] = 1;
+                ret = wc_ecc_make_key(&rng, keySizes[i], eccKeys[i]);
+            }
+            if (ret == 0) {
+                wc_CoseKey_Init(cosKeys[i]);
+                ret = wc_CoseKey_SetEcc(cosKeys[i], crv_from_size(keySizes[i]),
+                                         eccKeys[i]);
+            }
         }
     }
 
     /* Setup signers array */
-    for (i = 0; i < 3; i++) {
-        signers[i].algId = algs[i];
-        signers[i].key = cosKeys[i];
-        signers[i].kid = (const uint8_t*)"sgnX";
-        signers[i].kidLen = 4;
+    if (ret == 0) {
+        for (i = 0; i < 3; i++) {
+            signers[i].algId = algs[i];
+            signers[i].key = cosKeys[i];
+            signers[i].kid = (const uint8_t*)"sgnX";
+            signers[i].kidLen = 4;
+        }
     }
 
     /* Sign */
-    ret = wc_CoseSign_Sign(signers, 3,
-        detached ? NULL : payload,
-        detached ? 0 : sizeof(payload) - 1,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign_Sign(signers, 3,
+            detached ? NULL : payload,
+            detached ? 0 : sizeof(payload) - 1,
+            detached ? payload : NULL,
+            detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL,
+            useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
 
     /* Verify each signer */
-    for (i = 0; i < 3; i++) {
+    for (i = 0; ret == 0 && i < 3; i++) {
         ret = wc_CoseSign_Verify(cosKeys[i], (size_t)i, out, outLen,
             detached ? payload : NULL,
             detached ? sizeof(payload) - 1 : 0,
@@ -457,19 +477,19 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
             useAad ? sizeof(aad) - 1 : 0,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
-        if (ret != 0) { goto cleanup; }
     }
 
-cleanup:
+    /* Cleanup */
 #ifdef HAVE_ED25519
-    if (ed1Init) { wc_ed25519_free(&edKey1); }
-    if (ed2Init) { wc_ed25519_free(&edKey2); }
-    if (ed3Init) { wc_ed25519_free(&edKey3); }
+    if (ed1Init != 0) { wc_ed25519_free(&edKey1); }
+    if (ed2Init != 0) { wc_ed25519_free(&edKey2); }
+    if (ed3Init != 0) { wc_ed25519_free(&edKey3); }
 #endif
-    if (ecc1Init) { wc_ecc_free(&eccKey1); }
-    if (ecc2Init) { wc_ecc_free(&eccKey2); }
-    if (ecc3Init) { wc_ecc_free(&eccKey3); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    if (ecc1Init != 0) { wc_ecc_free(&eccKey1); }
+    if (ecc2Init != 0) { wc_ecc_free(&eccKey2); }
+    if (ecc3Init != 0) { wc_ecc_free(&eccKey3); }
+    if (rngInit != 0) { wc_FreeRng(&rng); }
+
     return ret;
 }
 #endif /* HAVE_ECC && WOLFCOSE_SIGN */
@@ -498,113 +518,134 @@ static int test_sign_multi_4(int detached, int useAad)
     XMEMSET(signers, 0, sizeof(signers));
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
+    if (ret == 0) {
+        rngInit = 1;
+    }
 
     /* ES256 key */
-    ret = wc_ecc_init(&eccKey256);
-    if (ret != 0) { goto cleanup; }
-    ecc256Init = 1;
-    ret = wc_ecc_make_key(&rng, 32, &eccKey256);
-    if (ret != 0) { goto cleanup; }
-    wc_CoseKey_Init(&cosKey256);
-    ret = wc_CoseKey_SetEcc(&cosKey256, WOLFCOSE_CRV_P256, &eccKey256);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_ecc_init(&eccKey256);
+        if (ret == 0) {
+            ecc256Init = 1;
+            ret = wc_ecc_make_key(&rng, 32, &eccKey256);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&cosKey256);
+            ret = wc_CoseKey_SetEcc(&cosKey256, WOLFCOSE_CRV_P256, &eccKey256);
+        }
+    }
 
     /* ES384 key */
-    ret = wc_ecc_init(&eccKey384);
-    if (ret != 0) { goto cleanup; }
-    ecc384Init = 1;
-    ret = wc_ecc_make_key(&rng, 48, &eccKey384);
-    if (ret != 0) { goto cleanup; }
-    wc_CoseKey_Init(&cosKey384);
-    ret = wc_CoseKey_SetEcc(&cosKey384, WOLFCOSE_CRV_P384, &eccKey384);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_ecc_init(&eccKey384);
+        if (ret == 0) {
+            ecc384Init = 1;
+            ret = wc_ecc_make_key(&rng, 48, &eccKey384);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&cosKey384);
+            ret = wc_CoseKey_SetEcc(&cosKey384, WOLFCOSE_CRV_P384, &eccKey384);
+        }
+    }
 
     /* ES512 key */
-    ret = wc_ecc_init(&eccKey521);
-    if (ret != 0) { goto cleanup; }
-    ecc521Init = 1;
-    ret = wc_ecc_make_key(&rng, 66, &eccKey521);
-    if (ret != 0) { goto cleanup; }
-    wc_CoseKey_Init(&cosKey521);
-    ret = wc_CoseKey_SetEcc(&cosKey521, WOLFCOSE_CRV_P521, &eccKey521);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_ecc_init(&eccKey521);
+        if (ret == 0) {
+            ecc521Init = 1;
+            ret = wc_ecc_make_key(&rng, 66, &eccKey521);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&cosKey521);
+            ret = wc_CoseKey_SetEcc(&cosKey521, WOLFCOSE_CRV_P521, &eccKey521);
+        }
+    }
 
     /* EdDSA key */
-    ret = wc_ed25519_init(&edKey);
-    if (ret != 0) { goto cleanup; }
-    edInit = 1;
-    ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
-    if (ret != 0) { goto cleanup; }
-    wc_CoseKey_Init(&cosKeyEd);
-    ret = wc_CoseKey_SetEd25519(&cosKeyEd, &edKey);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_ed25519_init(&edKey);
+        if (ret == 0) {
+            edInit = 1;
+            ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&cosKeyEd);
+            ret = wc_CoseKey_SetEd25519(&cosKeyEd, &edKey);
+        }
+    }
 
     /* Setup signers */
-    signers[0].algId = WOLFCOSE_ALG_ES256;
-    signers[0].key = &cosKey256;
-    signers[0].kid = (const uint8_t*)"es256";
-    signers[0].kidLen = 5;
+    if (ret == 0) {
+        signers[0].algId = WOLFCOSE_ALG_ES256;
+        signers[0].key = &cosKey256;
+        signers[0].kid = (const uint8_t*)"es256";
+        signers[0].kidLen = 5;
 
-    signers[1].algId = WOLFCOSE_ALG_ES384;
-    signers[1].key = &cosKey384;
-    signers[1].kid = (const uint8_t*)"es384";
-    signers[1].kidLen = 5;
+        signers[1].algId = WOLFCOSE_ALG_ES384;
+        signers[1].key = &cosKey384;
+        signers[1].kid = (const uint8_t*)"es384";
+        signers[1].kidLen = 5;
 
-    signers[2].algId = WOLFCOSE_ALG_ES512;
-    signers[2].key = &cosKey521;
-    signers[2].kid = (const uint8_t*)"es512";
-    signers[2].kidLen = 5;
+        signers[2].algId = WOLFCOSE_ALG_ES512;
+        signers[2].key = &cosKey521;
+        signers[2].kid = (const uint8_t*)"es512";
+        signers[2].kidLen = 5;
 
-    signers[3].algId = WOLFCOSE_ALG_EDDSA;
-    signers[3].key = &cosKeyEd;
-    signers[3].kid = (const uint8_t*)"eddsa";
-    signers[3].kidLen = 5;
+        signers[3].algId = WOLFCOSE_ALG_EDDSA;
+        signers[3].key = &cosKeyEd;
+        signers[3].kid = (const uint8_t*)"eddsa";
+        signers[3].kidLen = 5;
+    }
 
     /* Sign */
-    ret = wc_CoseSign_Sign(signers, 4,
-        detached ? NULL : payload,
-        detached ? 0 : sizeof(payload) - 1,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign_Sign(signers, 4,
+            detached ? NULL : payload,
+            detached ? 0 : sizeof(payload) - 1,
+            detached ? payload : NULL,
+            detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL,
+            useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
 
     /* Verify each signer */
-    ret = wc_CoseSign_Verify(&cosKey256, 0, out, outLen,
-        detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign_Verify(&cosKey256, 0, out, outLen,
+            detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
+    }
 
-    ret = wc_CoseSign_Verify(&cosKey384, 1, out, outLen,
-        detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign_Verify(&cosKey384, 1, out, outLen,
+            detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
+    }
 
-    ret = wc_CoseSign_Verify(&cosKey521, 2, out, outLen,
-        detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign_Verify(&cosKey521, 2, out, outLen,
+            detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
+    }
 
-    ret = wc_CoseSign_Verify(&cosKeyEd, 3, out, outLen,
-        detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign_Verify(&cosKeyEd, 3, out, outLen,
+            detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
+    }
 
-cleanup:
-    if (edInit) { wc_ed25519_free(&edKey); }
-    if (ecc521Init) { wc_ecc_free(&eccKey521); }
-    if (ecc384Init) { wc_ecc_free(&eccKey384); }
-    if (ecc256Init) { wc_ecc_free(&eccKey256); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (edInit != 0) { wc_ed25519_free(&edKey); }
+    if (ecc521Init != 0) { wc_ecc_free(&eccKey521); }
+    if (ecc384Init != 0) { wc_ecc_free(&eccKey384); }
+    if (ecc256Init != 0) { wc_ecc_free(&eccKey256); }
+    if (rngInit != 0) { wc_FreeRng(&rng); }
+
     return ret;
 }
 #endif /* HAVE_ECC && WOLFCOSE_SIGN && HAVE_ED25519 */
@@ -987,57 +1028,62 @@ static int test_sign1_interop(void)
     printf("\n=== COSE_Sign1 Interoperability Tests ===\n\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
+    if (ret == 0) {
+        rngInit = 1;
+    }
 
-    ret = wc_ecc_init(&eccKey);
-    if (ret != 0) { goto cleanup; }
-    eccInit = 1;
+    if (ret == 0) {
+        ret = wc_ecc_init(&eccKey);
+        if (ret == 0) {
+            eccInit = 1;
+        }
+    }
 
     /* Import test vector key */
-    ret = wc_ecc_import_unsigned(&eccKey, keyX, keyY, keyD, ECC_SECP256R1);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_ecc_import_unsigned(&eccKey, keyX, keyY, keyD, ECC_SECP256R1);
+    }
 
-    wc_CoseKey_Init(&cosKey);
-    ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        wc_CoseKey_Init(&cosKey);
+        ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
+    }
 
     /* Sign with known key */
     PRINT_TEST("interop_sign1_es256_roundtrip");
-    ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
 
     /* Verify with same key */
-    ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+    }
 
     /* Validate */
-    if (hdr.alg != WOLFCOSE_ALG_ES256) {
+    if (ret == 0 && hdr.alg != WOLFCOSE_ALG_ES256) {
         ret = -1;
-        goto cleanup;
     }
-    if (decPayloadLen != sizeof(payload) - 1) {
+    if (ret == 0 && decPayloadLen != sizeof(payload) - 1) {
         ret = -2;
-        goto cleanup;
     }
-    if (XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
+    if (ret == 0 && XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
         ret = -3;
-        goto cleanup;
     }
 
     CHECK_RESULT(ret, "interop_sign1_es256_roundtrip");
 
-cleanup:
-    if (eccInit) { wc_ecc_free(&eccKey); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (eccInit != 0) { wc_ecc_free(&eccKey); }
+    if (rngInit != 0) { wc_FreeRng(&rng); }
 
     printf("\nInterop Summary: %d passed, %d failed\n", passed, failed);
     return failed;

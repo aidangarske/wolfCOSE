@@ -243,50 +243,71 @@ int main(void)
     rngInit = 1;
 
     /* Initialize both parties' keys */
-    ret = silicon_vendor_init(&vendorEccKey, &vendorKey, &rng);
-    if (ret != 0) { goto cleanup; }
-    vendorInit = 1;
+    if (ret == 0) {
+        ret = silicon_vendor_init(&vendorEccKey, &vendorKey, &rng);
+        if (ret == 0) {
+            vendorInit = 1;
+        }
+    }
 
 #ifdef WOLFSSL_SHA384
-    ret = oem_init(&oemEccKey, &oemKey, &rng);
+    if (ret == 0) {
+        ret = oem_init(&oemEccKey, &oemKey, &rng);
+        if (ret == 0) {
+            oemInit = 1;
+        }
+    }
 #else
     /* Fallback: use ES256 for both if SHA384 not available */
-    printf("[OEM] Generating ES256 signing key (SHA384 not available)...\n");
-    ret = wc_ecc_init(&oemEccKey);
-    if (ret == 0) ret = wc_ecc_make_key(&rng, 32, &oemEccKey);
     if (ret == 0) {
-        wc_CoseKey_Init(&oemKey);
-        ret = wc_CoseKey_SetEcc(&oemKey, WOLFCOSE_CRV_P256, &oemEccKey);
+        printf("[OEM] Generating ES256 signing key (SHA384 not available)...\n");
+        ret = wc_ecc_init(&oemEccKey);
+        if (ret == 0) {
+            ret = wc_ecc_make_key(&rng, 32, &oemEccKey);
+        }
+        if (ret == 0) {
+            wc_CoseKey_Init(&oemKey);
+            ret = wc_CoseKey_SetEcc(&oemKey, WOLFCOSE_CRV_P256, &oemEccKey);
+        }
+        if (ret == 0) {
+            printf("  SUCCESS: OEM key ready (P-256 fallback)\n");
+            oemInit = 1;
+        }
     }
-    if (ret == 0) printf("  SUCCESS: OEM key ready (P-256 fallback)\n");
 #endif
-    if (ret != 0) { goto cleanup; }
-    oemInit = 1;
 
-    printf("\n");
+    if (ret == 0) {
+        printf("\n");
+    }
 
     /* Both parties sign */
-    ret = sign_with_dual_control(&vendorKey, &oemKey,
-        g_firmwareManifest, sizeof(g_firmwareManifest),
-        signedMsg, sizeof(signedMsg), &signedMsgLen, &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = sign_with_dual_control(&vendorKey, &oemKey,
+            g_firmwareManifest, sizeof(g_firmwareManifest),
+            signedMsg, sizeof(signedMsg), &signedMsgLen, &rng);
+    }
 
-    printf("\n");
+    if (ret == 0) {
+        printf("\n");
+    }
 
     /* Device verifies both signatures */
-    ret = device_verify_dual(&vendorKey, &oemKey, signedMsg, signedMsgLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = device_verify_dual(&vendorKey, &oemKey, signedMsg, signedMsgLen);
+    }
 
-    printf("\n================================================\n");
-    printf("Multi-Party Approval: SUCCESS\n");
-    printf("Both Silicon Vendor and OEM signatures verified.\n");
-    printf("Firmware manifest is approved for deployment.\n");
-    printf("================================================\n");
+    if (ret == 0) {
+        printf("\n================================================\n");
+        printf("Multi-Party Approval: SUCCESS\n");
+        printf("Both Silicon Vendor and OEM signatures verified.\n");
+        printf("Firmware manifest is approved for deployment.\n");
+        printf("================================================\n");
+    }
 
-cleanup:
-    if (vendorInit) { wc_ecc_free(&vendorEccKey); }
-    if (oemInit) { wc_ecc_free(&oemEccKey); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (vendorInit != 0) { wc_ecc_free(&vendorEccKey); }
+    if (oemInit != 0) { wc_ecc_free(&oemEccKey); }
+    if (rngInit != 0) { wc_FreeRng(&rng); }
 
     if (ret != 0) {
         printf("\n================================================\n");

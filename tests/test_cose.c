@@ -263,7 +263,9 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
     WOLFCOSE_KEY signKey;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Hello wolfCOSE!";
     uint8_t kid[] = "key-1";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
@@ -276,96 +278,116 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
     printf("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, keySz, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "ecc keygen"); goto done_ecc; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, keySz, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "ecc keygen"); }
+    }
 
-    wc_CoseKey_Init(&signKey);
-    wc_CoseKey_SetEcc(&signKey, crv, &eccKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&signKey);
+        wc_CoseKey_SetEcc(&signKey, crv, &eccKey);
 
-    /* Sign */
-    ret = wc_CoseSign1_Sign(&signKey, alg,
-        kid, sizeof(kid) - 1,
-        payload, sizeof(payload) - 1,
-        NULL, 0, /* detachedPayload, detachedLen */
-        NULL, 0, /* extAad, extAadLen */
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ecc sign");
+        /* Sign */
+        ret = wc_CoseSign1_Sign(&signKey, alg,
+            kid, sizeof(kid) - 1,
+            payload, sizeof(payload) - 1,
+            NULL, 0, /* detachedPayload, detachedLen */
+            NULL, 0, /* extAad, extAadLen */
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ecc sign");
+    }
 
-    /* Verify with same key */
-    ret = wc_CoseSign1_Verify(&signKey, out, outLen,
-        NULL, 0, /* detachedPayload, detachedLen */
-        NULL, 0, /* extAad, extAadLen */
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 ecc verify");
-    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
-                memcmp(decPayload, payload, decPayloadLen) == 0,
-                "sign1 ecc payload match");
-    TEST_ASSERT(hdr.alg == alg, "sign1 ecc hdr alg");
-    TEST_ASSERT(hdr.kidLen == sizeof(kid) - 1 &&
-                memcmp(hdr.kid, kid, hdr.kidLen) == 0,
-                "sign1 ecc hdr kid");
+    if (ret == 0) {
+        /* Verify with same key */
+        ret = wc_CoseSign1_Verify(&signKey, out, outLen,
+            NULL, 0, /* detachedPayload, detachedLen */
+            NULL, 0, /* extAad, extAadLen */
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "sign1 ecc verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+                    memcmp(decPayload, payload, decPayloadLen) == 0,
+                    "sign1 ecc payload match");
+        TEST_ASSERT(hdr.alg == alg, "sign1 ecc hdr alg");
+        TEST_ASSERT(hdr.kidLen == sizeof(kid) - 1 &&
+                    memcmp(hdr.kid, kid, hdr.kidLen) == 0,
+                    "sign1 ecc hdr kid");
+    }
 
-    /* Wrong key should fail */
-    {
+    if (ret == 0) {
+        /* Wrong key should fail */
         ecc_key eccWrong;
         WOLFCOSE_KEY wrongKey;
+        int wrongRet;
         wc_ecc_init(&eccWrong);
-        ret = wc_ecc_make_key(&rng, keySz, &eccWrong);
-        if (ret == 0) {
+        wrongRet = wc_ecc_make_key(&rng, keySz, &eccWrong);
+        if (wrongRet == 0) {
             wc_CoseKey_Init(&wrongKey);
             wc_CoseKey_SetEcc(&wrongKey, crv, &eccWrong);
-            ret = wc_CoseSign1_Verify(&wrongKey, out, outLen,
+            wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &decPayload, &decPayloadLen);
-            TEST_ASSERT(ret != 0, "sign1 ecc wrong key fails");
+            TEST_ASSERT(wrongRet != 0, "sign1 ecc wrong key fails");
         }
         wc_ecc_free(&eccWrong);
     }
 
-    /* Tampered ciphertext should fail */
-    {
+    if (ret == 0) {
+        /* Tampered ciphertext should fail */
         uint8_t tampered[512];
+        int tamperedRet;
         memcpy(tampered, out, outLen);
         if (outLen > 20) {
             tampered[outLen / 2] ^= 0xFF;
         }
-        ret = wc_CoseSign1_Verify(&signKey, tampered, outLen,
+        tamperedRet = wc_CoseSign1_Verify(&signKey, tampered, outLen,
             NULL, 0, NULL, 0, scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
-        TEST_ASSERT(ret != 0, "sign1 ecc tampered fails");
+        TEST_ASSERT(tamperedRet != 0, "sign1 ecc tampered fails");
     }
 
-    /* Error: null args */
-    ret = wc_CoseSign1_Sign(NULL, WOLFCOSE_ALG_ES256, NULL, 0,
-        payload, sizeof(payload), NULL, 0, NULL, 0,
-        scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "sign1 null key");
+    if (ret == 0) {
+        /* Error: null args */
+        int nullRet;
+        nullRet = wc_CoseSign1_Sign(NULL, WOLFCOSE_ALG_ES256, NULL, 0,
+            payload, sizeof(payload), NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(nullRet == WOLFCOSE_E_INVALID_ARG, "sign1 null key");
 
-    ret = wc_CoseSign1_Verify(NULL, out, outLen, NULL, 0, NULL, 0,
-        scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "verify null key");
+        nullRet = wc_CoseSign1_Verify(NULL, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(nullRet == WOLFCOSE_E_INVALID_ARG, "verify null key");
+    }
 
-    /* Error: no private key */
-    {
+    if (ret == 0) {
+        /* Error: no private key */
         WOLFCOSE_KEY pubOnly;
+        int pubRet;
         wc_CoseKey_Init(&pubOnly);
         pubOnly.kty = WOLFCOSE_KTY_EC2;
         pubOnly.hasPrivate = 0;
         pubOnly.key.ecc = &eccKey;
-        ret = wc_CoseSign1_Sign(&pubOnly, WOLFCOSE_ALG_ES256, NULL, 0,
+        pubRet = wc_CoseSign1_Sign(&pubOnly, WOLFCOSE_ALG_ES256, NULL, 0,
             payload, sizeof(payload), NULL, 0, NULL, 0,
             scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
-        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "sign1 no privkey");
+        TEST_ASSERT(pubRet == WOLFCOSE_E_COSE_KEY_TYPE, "sign1 no privkey");
     }
 
-done_ecc:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* HAVE_ECC */
 
@@ -375,7 +397,9 @@ static void test_cose_sign1_eddsa(void)
     WOLFCOSE_KEY signKey;
     ed25519_key edKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int edInited = 0;
     uint8_t payload[] = "EdDSA payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -387,55 +411,70 @@ static void test_cose_sign1_eddsa(void)
     printf("  [Sign1 EdDSA]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ed25519_init(&edKey);
-    ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
-    if (ret != 0) { TEST_ASSERT(0, "ed keygen"); goto done_eddsa; }
+    if (ret == 0) {
+        wc_ed25519_init(&edKey);
+        edInited = 1;
+        ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
+        if (ret != 0) { TEST_ASSERT(0, "ed keygen"); }
+    }
 
-    wc_CoseKey_Init(&signKey);
-    wc_CoseKey_SetEd25519(&signKey, &edKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&signKey);
+        wc_CoseKey_SetEd25519(&signKey, &edKey);
 
-    /* Sign */
-    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, /* detachedPayload, detachedLen */
-        NULL, 0, /* extAad, extAadLen */
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 eddsa sign");
+        /* Sign */
+        ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, /* detachedPayload, detachedLen */
+            NULL, 0, /* extAad, extAadLen */
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0 && outLen > 0, "sign1 eddsa sign");
+    }
 
-    /* Verify */
-    ret = wc_CoseSign1_Verify(&signKey, out, outLen,
-        NULL, 0, NULL, 0, scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 eddsa verify");
-    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
-                memcmp(decPayload, payload, decPayloadLen) == 0,
-                "sign1 eddsa payload match");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_EDDSA, "sign1 eddsa hdr alg");
+    if (ret == 0) {
+        /* Verify */
+        ret = wc_CoseSign1_Verify(&signKey, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "sign1 eddsa verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+                    memcmp(decPayload, payload, decPayloadLen) == 0,
+                    "sign1 eddsa payload match");
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_EDDSA, "sign1 eddsa hdr alg");
+    }
 
-    /* Wrong key should fail */
-    {
+    if (ret == 0) {
+        /* Wrong key should fail */
         ed25519_key edWrong;
         WOLFCOSE_KEY wrongKey;
+        int wrongRet;
         wc_ed25519_init(&edWrong);
-        ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edWrong);
-        if (ret == 0) {
+        wrongRet = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edWrong);
+        if (wrongRet == 0) {
             wc_CoseKey_Init(&wrongKey);
             wc_CoseKey_SetEd25519(&wrongKey, &edWrong);
-            ret = wc_CoseSign1_Verify(&wrongKey, out, outLen,
+            wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &decPayload, &decPayloadLen);
-            TEST_ASSERT(ret != 0, "sign1 eddsa wrong key fails");
+            TEST_ASSERT(wrongRet != 0, "sign1 eddsa wrong key fails");
         }
         wc_ed25519_free(&edWrong);
     }
 
-done_eddsa:
-    wc_ed25519_free(&edKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (edInited != 0) {
+        wc_ed25519_free(&edKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* HAVE_ED25519 */
 
@@ -445,7 +484,9 @@ static void test_cose_sign1_ed448(void)
     WOLFCOSE_KEY signKey;
     ed448_key edKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int edInited = 0;
     uint8_t payload[] = "Ed448 payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -457,78 +498,96 @@ static void test_cose_sign1_ed448(void)
     printf("  [Sign1 Ed448]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ed448_init(&edKey);
-    ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edKey);
-    if (ret != 0) { TEST_ASSERT(0, "ed448 keygen"); goto done_ed448; }
+    if (ret == 0) {
+        wc_ed448_init(&edKey);
+        edInited = 1;
+        ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edKey);
+        if (ret != 0) { TEST_ASSERT(0, "ed448 keygen"); }
+    }
 
-    wc_CoseKey_Init(&signKey);
-    wc_CoseKey_SetEd448(&signKey, &edKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&signKey);
+        wc_CoseKey_SetEd448(&signKey, &edKey);
 
-    /* Sign */
-    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, /* detachedPayload, detachedLen */
-        NULL, 0, /* extAad, extAadLen */
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ed448 sign");
+        /* Sign */
+        ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, /* detachedPayload, detachedLen */
+            NULL, 0, /* extAad, extAadLen */
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ed448 sign");
+    }
 
-    /* Verify */
-    ret = wc_CoseSign1_Verify(&signKey, out, outLen,
-        NULL, 0, /* detachedPayload, detachedLen */
-        NULL, 0, /* extAad, extAadLen */
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 ed448 verify");
-    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
-                memcmp(decPayload, payload, decPayloadLen) == 0,
-                "sign1 ed448 payload match");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_EDDSA, "sign1 ed448 hdr alg");
+    if (ret == 0) {
+        /* Verify */
+        ret = wc_CoseSign1_Verify(&signKey, out, outLen,
+            NULL, 0, /* detachedPayload, detachedLen */
+            NULL, 0, /* extAad, extAadLen */
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "sign1 ed448 verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+                    memcmp(decPayload, payload, decPayloadLen) == 0,
+                    "sign1 ed448 payload match");
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_EDDSA, "sign1 ed448 hdr alg");
+    }
 
-    /* Wrong key should fail */
-    {
+    if (ret == 0) {
+        /* Wrong key should fail */
         ed448_key edWrong;
         WOLFCOSE_KEY wrongKey;
+        int wrongRet;
         wc_ed448_init(&edWrong);
-        ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edWrong);
-        if (ret == 0) {
+        wrongRet = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edWrong);
+        if (wrongRet == 0) {
             wc_CoseKey_Init(&wrongKey);
             wc_CoseKey_SetEd448(&wrongKey, &edWrong);
-            ret = wc_CoseSign1_Verify(&wrongKey, out, outLen,
+            wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, /* detachedPayload, detachedLen */
                 NULL, 0, /* extAad, extAadLen */
                 scratch, sizeof(scratch),
                 &hdr, &decPayload, &decPayloadLen);
-            TEST_ASSERT(ret != 0, "sign1 ed448 wrong key fails");
+            TEST_ASSERT(wrongRet != 0, "sign1 ed448 wrong key fails");
         }
         wc_ed448_free(&edWrong);
     }
 
-    /* Key encode/decode round-trip */
-    {
+    if (ret == 0) {
+        /* Key encode/decode round-trip */
         uint8_t keyBuf[256];
         size_t keyLen = 0;
         WOLFCOSE_KEY decKey;
         ed448_key decEdKey;
+        int encRet;
 
-        ret = wc_CoseKey_Encode(&signKey, keyBuf, sizeof(keyBuf), &keyLen);
-        TEST_ASSERT(ret == 0 && keyLen > 0, "key ed448 encode");
+        encRet = wc_CoseKey_Encode(&signKey, keyBuf, sizeof(keyBuf), &keyLen);
+        TEST_ASSERT(encRet == 0 && keyLen > 0, "key ed448 encode");
 
-        wc_ed448_init(&decEdKey);
-        wc_CoseKey_Init(&decKey);
-        decKey.key.ed448 = &decEdKey;
-        ret = wc_CoseKey_Decode(&decKey, keyBuf, keyLen);
-        TEST_ASSERT(ret == 0 && decKey.kty == WOLFCOSE_KTY_OKP &&
-                    decKey.crv == WOLFCOSE_CRV_ED448, "key ed448 decode");
-        wc_ed448_free(&decEdKey);
+        if (encRet == 0) {
+            wc_ed448_init(&decEdKey);
+            wc_CoseKey_Init(&decKey);
+            decKey.key.ed448 = &decEdKey;
+            encRet = wc_CoseKey_Decode(&decKey, keyBuf, keyLen);
+            TEST_ASSERT(encRet == 0 && decKey.kty == WOLFCOSE_KTY_OKP &&
+                        decKey.crv == WOLFCOSE_CRV_ED448, "key ed448 decode");
+            wc_ed448_free(&decEdKey);
+        }
     }
 
-done_ed448:
-    wc_ed448_free(&edKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (edInited != 0) {
+        wc_ed448_free(&edKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* HAVE_ED448 */
 
@@ -940,7 +999,9 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
     WOLFCOSE_KEY signKey;
     RsaKey rsaKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int rsaInited = 0;
     uint8_t payload[] = "RSA-PSS payload";
     uint8_t scratch[1024];
     uint8_t out[1024];
@@ -952,61 +1013,80 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
     printf("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    ret = wc_InitRsaKey(&rsaKey, NULL);
-    if (ret != 0) { TEST_ASSERT(0, "rsa init"); wc_FreeRng(&rng); return; }
+    if (ret == 0) {
+        ret = wc_InitRsaKey(&rsaKey, NULL);
+        if (ret != 0) { TEST_ASSERT(0, "rsa init"); }
+        if (ret == 0) {
+            rsaInited = 1;
+        }
+    }
 
-    ret = wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng);
-    if (ret != 0) { TEST_ASSERT(0, "rsa keygen"); goto done_pss; }
+    if (ret == 0) {
+        ret = wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng);
+        if (ret != 0) { TEST_ASSERT(0, "rsa keygen"); }
+    }
 
-    wc_CoseKey_Init(&signKey);
-    wc_CoseKey_SetRsa(&signKey, &rsaKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&signKey);
+        wc_CoseKey_SetRsa(&signKey, &rsaKey);
 
-    /* Sign */
-    ret = wc_CoseSign1_Sign(&signKey, alg,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, /* detachedPayload, detachedLen */
-        NULL, 0, /* extAad, extAadLen */
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 pss sign");
+        /* Sign */
+        ret = wc_CoseSign1_Sign(&signKey, alg,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, /* detachedPayload, detachedLen */
+            NULL, 0, /* extAad, extAadLen */
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0 && outLen > 0, "sign1 pss sign");
+    }
 
-    /* Verify */
-    ret = wc_CoseSign1_Verify(&signKey, out, outLen,
-        NULL, 0, /* detachedPayload, detachedLen */
-        NULL, 0, /* extAad, extAadLen */
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 pss verify");
-    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
-                memcmp(decPayload, payload, decPayloadLen) == 0,
-                "sign1 pss payload match");
-    TEST_ASSERT(hdr.alg == alg, "sign1 pss hdr alg");
+    if (ret == 0) {
+        /* Verify */
+        ret = wc_CoseSign1_Verify(&signKey, out, outLen,
+            NULL, 0, /* detachedPayload, detachedLen */
+            NULL, 0, /* extAad, extAadLen */
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "sign1 pss verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+                    memcmp(decPayload, payload, decPayloadLen) == 0,
+                    "sign1 pss payload match");
+        TEST_ASSERT(hdr.alg == alg, "sign1 pss hdr alg");
+    }
 
-    /* Wrong key should fail */
-    {
+    if (ret == 0) {
+        /* Wrong key should fail */
         RsaKey rsaWrong;
         WOLFCOSE_KEY wrongKey;
+        int wrongRet;
         wc_InitRsaKey(&rsaWrong, NULL);
-        ret = wc_MakeRsaKey(&rsaWrong, 2048, WC_RSA_EXPONENT, &rng);
-        if (ret == 0) {
+        wrongRet = wc_MakeRsaKey(&rsaWrong, 2048, WC_RSA_EXPONENT, &rng);
+        if (wrongRet == 0) {
             wc_CoseKey_Init(&wrongKey);
             wc_CoseKey_SetRsa(&wrongKey, &rsaWrong);
-            ret = wc_CoseSign1_Verify(&wrongKey, out, outLen,
+            wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, /* detachedPayload, detachedLen */
                 NULL, 0, /* extAad, extAadLen */
                 scratch, sizeof(scratch),
                 &hdr, &decPayload, &decPayloadLen);
-            TEST_ASSERT(ret != 0, "sign1 pss wrong key fails");
+            TEST_ASSERT(wrongRet != 0, "sign1 pss wrong key fails");
         }
         wc_FreeRsaKey(&rsaWrong);
     }
 
-done_pss:
-    wc_FreeRsaKey(&rsaKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (rsaInited != 0) {
+        wc_FreeRsaKey(&rsaKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
@@ -1017,7 +1097,9 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
     WOLFCOSE_KEY signKey;
     dilithium_key dlKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int dlInited = 0;
     uint8_t payload[] = "ML-DSA payload";
     uint8_t scratch[8192];
     uint8_t out[8192];
@@ -1029,65 +1111,86 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
     printf("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    ret = wc_dilithium_init(&dlKey);
-    if (ret != 0) { TEST_ASSERT(0, "dl init"); wc_FreeRng(&rng); return; }
+    if (ret == 0) {
+        ret = wc_dilithium_init(&dlKey);
+        if (ret != 0) { TEST_ASSERT(0, "dl init"); }
+        if (ret == 0) {
+            dlInited = 1;
+        }
+    }
 
-    ret = wc_dilithium_set_level(&dlKey, level);
-    if (ret != 0) { TEST_ASSERT(0, "dl set level"); goto done_mldsa; }
+    if (ret == 0) {
+        ret = wc_dilithium_set_level(&dlKey, level);
+        if (ret != 0) { TEST_ASSERT(0, "dl set level"); }
+    }
 
-    ret = wc_dilithium_make_key(&dlKey, &rng);
-    if (ret != 0) { TEST_ASSERT(0, "dl keygen"); goto done_mldsa; }
+    if (ret == 0) {
+        ret = wc_dilithium_make_key(&dlKey, &rng);
+        if (ret != 0) { TEST_ASSERT(0, "dl keygen"); }
+    }
 
-    wc_CoseKey_Init(&signKey);
-    wc_CoseKey_SetDilithium(&signKey, alg, &dlKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&signKey);
+        wc_CoseKey_SetDilithium(&signKey, alg, &dlKey);
 
-    /* Sign */
-    ret = wc_CoseSign1_Sign(&signKey, alg,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, /* detachedPayload, detachedLen */
-        NULL, 0, /* extAad, extAadLen */
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ml-dsa sign");
+        /* Sign */
+        ret = wc_CoseSign1_Sign(&signKey, alg,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, /* detachedPayload, detachedLen */
+            NULL, 0, /* extAad, extAadLen */
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ml-dsa sign");
+    }
 
-    /* Verify */
-    ret = wc_CoseSign1_Verify(&signKey, out, outLen,
-        NULL, 0, /* detachedPayload, detachedLen */
-        NULL, 0, /* extAad, extAadLen */
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 ml-dsa verify");
-    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
-                memcmp(decPayload, payload, decPayloadLen) == 0,
-                "sign1 ml-dsa payload match");
-    TEST_ASSERT(hdr.alg == alg, "sign1 ml-dsa hdr alg");
+    if (ret == 0) {
+        /* Verify */
+        ret = wc_CoseSign1_Verify(&signKey, out, outLen,
+            NULL, 0, /* detachedPayload, detachedLen */
+            NULL, 0, /* extAad, extAadLen */
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "sign1 ml-dsa verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+                    memcmp(decPayload, payload, decPayloadLen) == 0,
+                    "sign1 ml-dsa payload match");
+        TEST_ASSERT(hdr.alg == alg, "sign1 ml-dsa hdr alg");
+    }
 
-    /* Wrong key should fail */
-    {
+    if (ret == 0) {
+        /* Wrong key should fail */
         dilithium_key dlWrong;
         WOLFCOSE_KEY wrongKey;
+        int wrongRet;
         wc_dilithium_init(&dlWrong);
         wc_dilithium_set_level(&dlWrong, level);
-        ret = wc_dilithium_make_key(&dlWrong, &rng);
-        if (ret == 0) {
+        wrongRet = wc_dilithium_make_key(&dlWrong, &rng);
+        if (wrongRet == 0) {
             wc_CoseKey_Init(&wrongKey);
             wc_CoseKey_SetDilithium(&wrongKey, alg, &dlWrong);
-            ret = wc_CoseSign1_Verify(&wrongKey, out, outLen,
+            wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, /* detachedPayload, detachedLen */
                 NULL, 0, /* extAad, extAadLen */
                 scratch, sizeof(scratch),
                 &hdr, &decPayload, &decPayloadLen);
-            TEST_ASSERT(ret != 0, "sign1 ml-dsa wrong key fails");
+            TEST_ASSERT(wrongRet != 0, "sign1 ml-dsa wrong key fails");
         }
         wc_dilithium_free(&dlWrong);
     }
 
-done_mldsa:
-    wc_dilithium_free(&dlKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (dlInited != 0) {
+        wc_dilithium_free(&dlKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* HAVE_DILITHIUM */
 
@@ -1098,7 +1201,9 @@ static void test_cose_sign1_with_aad(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "AAD sign test";
     uint8_t extAad[] = "sign-external-aad";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
@@ -1111,46 +1216,61 @@ static void test_cose_sign1_with_aad(void)
     printf("  [Sign1 with external AAD]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_aad; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, /* detachedPayload, detachedLen */
-        extAad, sizeof(extAad) - 1,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0, "sign1 aad sign");
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, /* detachedPayload, detachedLen */
+            extAad, sizeof(extAad) - 1,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "sign1 aad sign");
+    }
 
-    /* Verify with correct AAD */
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0, /* detachedPayload, detachedLen */
-        extAad, sizeof(extAad) - 1,
-        scratch, sizeof(scratch), &hdr,
-        &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 aad verify ok");
-
-    /* Verify with wrong AAD should fail */
-    {
-        uint8_t wrongAad[] = "wrong";
+    if (ret == 0) {
+        /* Verify with correct AAD */
         ret = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, /* detachedPayload, detachedLen */
+            extAad, sizeof(extAad) - 1,
+            scratch, sizeof(scratch), &hdr,
+            &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "sign1 aad verify ok");
+    }
+
+    if (ret == 0) {
+        /* Verify with wrong AAD should fail */
+        uint8_t wrongAad[] = "wrong";
+        int wrongRet;
+        wrongRet = wc_CoseSign1_Verify(&key, out, outLen,
             NULL, 0, /* detachedPayload, detachedLen */
             wrongAad, sizeof(wrongAad) - 1,
             scratch, sizeof(scratch), &hdr,
             &decPayload, &decPayloadLen);
-        TEST_ASSERT(ret != 0, "sign1 wrong aad fails");
+        TEST_ASSERT(wrongRet != 0, "sign1 wrong aad fails");
     }
 
-done_aad:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif
 
@@ -1644,7 +1764,9 @@ static void test_cose_sign1_detached(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Detached sign payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -1656,54 +1778,72 @@ static void test_cose_sign1_detached(void)
     printf("  [Sign1 Detached Payload]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_det_sign; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    /* Sign with detached payload (payload in message is null) */
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0,          /* kid */
-        NULL, 0,          /* payload in message = null */
-        payload, sizeof(payload) - 1,  /* detached payload for signature */
-        NULL, 0,          /* extAad */
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 detached sign");
+        /* Sign with detached payload (payload in message is null) */
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0,          /* kid */
+            NULL, 0,          /* payload in message = null */
+            payload, sizeof(payload) - 1,  /* detached payload for signature */
+            NULL, 0,          /* extAad */
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0 && outLen > 0, "sign1 detached sign");
+    }
 
-    /* Verify must fail if no detached payload provided */
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0, /* no detached payload */
-        NULL, 0, scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_DETACHED_PAYLOAD, "sign1 detached no payload fails");
+    if (ret == 0) {
+        int verifyRet;
+        /* Verify must fail if no detached payload provided */
+        verifyRet = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, /* no detached payload */
+            NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(verifyRet == WOLFCOSE_E_DETACHED_PAYLOAD, "sign1 detached no payload fails");
+    }
 
-    /* Verify with correct detached payload */
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        payload, sizeof(payload) - 1, /* provide detached payload */
-        NULL, 0, scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 detached verify ok");
-    TEST_ASSERT(hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED, "sign1 detached flag set");
-    TEST_ASSERT(decPayload == NULL && decPayloadLen == 0, "sign1 detached payload null");
-
-    /* Verify with wrong detached payload should fail */
-    {
-        uint8_t wrongPayload[] = "Wrong payload data";
+    if (ret == 0) {
+        /* Verify with correct detached payload */
         ret = wc_CoseSign1_Verify(&key, out, outLen,
+            payload, sizeof(payload) - 1, /* provide detached payload */
+            NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "sign1 detached verify ok");
+        TEST_ASSERT((hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED) != 0, "sign1 detached flag set");
+        TEST_ASSERT(decPayload == NULL && decPayloadLen == 0, "sign1 detached payload null");
+    }
+
+    if (ret == 0) {
+        /* Verify with wrong detached payload should fail */
+        uint8_t wrongPayload[] = "Wrong payload data";
+        int wrongRet;
+        wrongRet = wc_CoseSign1_Verify(&key, out, outLen,
             wrongPayload, sizeof(wrongPayload) - 1,
             NULL, 0, scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
-        TEST_ASSERT(ret != 0, "sign1 detached wrong payload fails");
+        TEST_ASSERT(wrongRet != 0, "sign1 detached wrong payload fails");
     }
 
-done_det_sign:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* HAVE_ECC */
 
@@ -4309,7 +4449,9 @@ static void test_cose_sign1_es384(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "ES384 test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -4321,36 +4463,52 @@ static void test_cose_sign1_es384(void)
     printf("  [Sign1 ES384]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 48, &eccKey);  /* P-384 */
-    if (ret != 0) { TEST_ASSERT(0, "P-384 keygen"); goto done_es384; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 48, &eccKey);  /* P-384 */
+        if (ret != 0) { TEST_ASSERT(0, "P-384 keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P384, &eccKey);
-    TEST_ASSERT(ret == 0, "set P-384 key");
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P384, &eccKey);
+        TEST_ASSERT(ret == 0, "set P-384 key");
+    }
 
-    /* Sign */
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES384,
-        NULL, 0, payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 es384 sign");
+    if (ret == 0) {
+        /* Sign */
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES384,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0 && outLen > 0, "sign1 es384 sign");
+    }
 
-    /* Verify */
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 es384 verify");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES384, "sign1 es384 alg");
-    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1, "sign1 es384 payload len");
+    if (ret == 0) {
+        /* Verify */
+        ret = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "sign1 es384 verify");
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES384, "sign1 es384 alg");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1, "sign1 es384 payload len");
+    }
 
-done_es384:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 
 static void test_cose_sign1_es512(void)
@@ -4358,7 +4516,9 @@ static void test_cose_sign1_es512(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "ES512 test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[640];  /* ES512 sigs are larger */
@@ -4370,35 +4530,51 @@ static void test_cose_sign1_es512(void)
     printf("  [Sign1 ES512]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 66, &eccKey);  /* P-521 */
-    if (ret != 0) { TEST_ASSERT(0, "P-521 keygen"); goto done_es512; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 66, &eccKey);  /* P-521 */
+        if (ret != 0) { TEST_ASSERT(0, "P-521 keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P521, &eccKey);
-    TEST_ASSERT(ret == 0, "set P-521 key");
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P521, &eccKey);
+        TEST_ASSERT(ret == 0, "set P-521 key");
+    }
 
-    /* Sign */
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES512,
-        NULL, 0, payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0 && outLen > 0, "sign1 es512 sign");
+    if (ret == 0) {
+        /* Sign */
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES512,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0 && outLen > 0, "sign1 es512 sign");
+    }
 
-    /* Verify */
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "sign1 es512 verify");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES512, "sign1 es512 alg");
+    if (ret == 0) {
+        /* Verify */
+        ret = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "sign1 es512 verify");
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES512, "sign1 es512 alg");
+    }
 
-done_es512:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* HAVE_ECC */
 
@@ -4462,7 +4638,9 @@ static void test_cose_sign1_tampered_sig_byte(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Tamper test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -4474,36 +4652,51 @@ static void test_cose_sign1_tampered_sig_byte(void)
     printf("  [Sign1 Tampered Signature Byte]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
-
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_tamper_sig; }
-
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
-
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0, payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0, "sign for tamper test");
-
-    /* Flip ONE byte in signature (last byte of COSE message) */
-    if (outLen > 5) {
-        out[outLen - 2] ^= 0x01;  /* Flip single bit */
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
     }
 
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL, "tampered sig byte detected");
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-done_tamper_sig:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "sign for tamper test");
+    }
+
+    if (ret == 0) {
+        int verifyRet;
+        /* Flip ONE byte in signature (last byte of COSE message) */
+        if (outLen > 5) {
+            out[outLen - 2] ^= 0x01;  /* Flip single bit */
+        }
+
+        verifyRet = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(verifyRet == WOLFCOSE_E_COSE_SIG_FAIL, "tampered sig byte detected");
+    }
+
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 
 static void test_cose_sign1_tampered_payload_byte(void)
@@ -4511,7 +4704,9 @@ static void test_cose_sign1_tampered_payload_byte(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Payload to tamper with after signing";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -4524,35 +4719,50 @@ static void test_cose_sign1_tampered_payload_byte(void)
     printf("  [Sign1 Tampered Payload Byte]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_tamper_payload; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0, payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0, "sign for payload tamper test");
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "sign for payload tamper test");
+    }
 
-    /* Flip ONE byte in the payload area (middle of message) */
-    tamperedPos = outLen / 2;
-    out[tamperedPos] ^= 0x80;
+    if (ret == 0) {
+        int verifyRet;
+        /* Flip ONE byte in the payload area (middle of message) */
+        tamperedPos = outLen / 2;
+        out[tamperedPos] ^= 0x80;
 
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret != 0, "tampered payload byte detected");
+        verifyRet = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(verifyRet != 0, "tampered payload byte detected");
+    }
 
-done_tamper_payload:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 
 static void test_cose_sign1_truncated_sig(void)
@@ -4560,7 +4770,9 @@ static void test_cose_sign1_truncated_sig(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Truncation test";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -4572,32 +4784,47 @@ static void test_cose_sign1_truncated_sig(void)
     printf("  [Sign1 Truncated Signature]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_trunc; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0, payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0, "sign for truncation test");
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "sign for truncation test");
+    }
 
-    /* Remove last byte of message (truncates signature) */
-    ret = wc_CoseSign1_Verify(&key, out, outLen - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret != 0, "truncated signature detected");
+    if (ret == 0) {
+        int verifyRet;
+        /* Remove last byte of message (truncates signature) */
+        verifyRet = wc_CoseSign1_Verify(&key, out, outLen - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(verifyRet != 0, "truncated signature detected");
+    }
 
-done_trunc:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* HAVE_ECC */
 
@@ -4832,7 +5059,9 @@ static void test_cose_empty_payload(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
     size_t outLen = 0;
@@ -4843,34 +5072,48 @@ static void test_cose_empty_payload(void)
     printf("  [Sign1 Empty Payload]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_empty; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    /* Sign with zero-length payload (valid per RFC 9052) */
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        (const uint8_t*)"", 0,  /* empty payload */
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0, "sign empty payload");
+        /* Sign with zero-length payload (valid per RFC 9052) */
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            (const uint8_t*)"", 0,  /* empty payload */
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "sign empty payload");
+    }
 
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "verify empty payload");
-    TEST_ASSERT(decPayloadLen == 0, "empty payload length");
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "verify empty payload");
+        TEST_ASSERT(decPayloadLen == 0, "empty payload length");
+    }
 
-done_empty:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 
 static void test_cose_large_payload(void)
@@ -4878,7 +5121,9 @@ static void test_cose_large_payload(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t largePayload[4096];
     /* Scratch buffer must hold Sig_structure which includes the payload */
     uint8_t scratch[4096 + 128];  /* payload + CBOR overhead */
@@ -4897,35 +5142,49 @@ static void test_cose_large_payload(void)
     }
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_large; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        largePayload, sizeof(largePayload),
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0, "sign large payload");
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            largePayload, sizeof(largePayload),
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "sign large payload");
+    }
 
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "verify large payload");
-    TEST_ASSERT(decPayloadLen == sizeof(largePayload), "large payload length");
-    TEST_ASSERT(memcmp(decPayload, largePayload, decPayloadLen) == 0,
-                "large payload match");
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "verify large payload");
+        TEST_ASSERT(decPayloadLen == sizeof(largePayload), "large payload length");
+        TEST_ASSERT(memcmp(decPayload, largePayload, decPayloadLen) == 0,
+                    "large payload match");
+    }
 
-done_large:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 
 static void test_cose_empty_aad(void)
@@ -4933,7 +5192,9 @@ static void test_cose_empty_aad(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Test with empty AAD";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -4945,35 +5206,49 @@ static void test_cose_empty_aad(void)
     printf("  [Sign1 Empty AAD]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_empty_aad; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    /* Sign with zero-length AAD (valid per RFC 9052) */
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
-        (const uint8_t*)"", 0,  /* empty AAD */
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0, "sign with empty aad");
+        /* Sign with zero-length AAD (valid per RFC 9052) */
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0,
+            (const uint8_t*)"", 0,  /* empty AAD */
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "sign with empty aad");
+    }
 
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0,
-        (const uint8_t*)"", 0,  /* empty AAD */
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "verify with empty aad");
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0,
+            (const uint8_t*)"", 0,  /* empty AAD */
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "verify with empty aad");
+    }
 
-done_empty_aad:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 
 static void test_cose_long_kid(void)
@@ -4981,7 +5256,9 @@ static void test_cose_long_kid(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Test with long kid";
     uint8_t longKid[256];  /* 256-byte key identifier */
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
@@ -5000,33 +5277,47 @@ static void test_cose_long_kid(void)
     }
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_long_kid; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        longKid, sizeof(longKid),
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0, "sign with long kid");
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            longKid, sizeof(longKid),
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "sign with long kid");
+    }
 
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "verify with long kid");
-    TEST_ASSERT(hdr.kidLen == sizeof(longKid), "long kid length preserved");
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "verify with long kid");
+        TEST_ASSERT(hdr.kidLen == sizeof(longKid), "long kid length preserved");
+    }
 
-done_long_kid:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* HAVE_ECC */
 
@@ -5037,7 +5328,9 @@ static void test_cose_sign_output_too_small(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Buffer test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[10];  /* Way too small */
@@ -5046,26 +5339,39 @@ static void test_cose_sign_output_too_small(void)
     printf("  [Sign1 Output Buffer Too Small]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_buf_small; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        int signRet;
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "small output buffer detected");
+        signRet = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(signRet == WOLFCOSE_E_BUFFER_TOO_SMALL, "small output buffer detected");
+    }
 
-done_buf_small:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 
 static void test_cose_sign_scratch_too_small(void)
@@ -5073,7 +5379,9 @@ static void test_cose_sign_scratch_too_small(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Scratch buffer test";
     uint8_t scratch[16];  /* Too small for Sig_structure */
     uint8_t out[512];
@@ -5082,26 +5390,39 @@ static void test_cose_sign_scratch_too_small(void)
     printf("  [Sign1 Scratch Buffer Too Small]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_scratch_small; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        int signRet;
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "small scratch buffer detected");
+        signRet = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(signRet == WOLFCOSE_E_BUFFER_TOO_SMALL, "small scratch buffer detected");
+    }
 
-done_scratch_small:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* HAVE_ECC */
 
@@ -5145,7 +5466,9 @@ static void test_decode_truncated_message(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Truncation test";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -5157,32 +5480,47 @@ static void test_decode_truncated_message(void)
     printf("  [Decode Truncated Message]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_trunc_msg; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0, payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0, "create message for truncation");
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "create message for truncation");
+    }
 
-    /* Try to verify with truncated message (half the length) */
-    ret = wc_CoseSign1_Verify(&key, out, outLen / 2,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret != 0, "truncated message detected");
+    if (ret == 0) {
+        int verifyRet;
+        /* Try to verify with truncated message (half the length) */
+        verifyRet = wc_CoseSign1_Verify(&key, out, outLen / 2,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(verifyRet != 0, "truncated message detected");
+    }
 
-done_trunc_msg:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 
 static void test_decode_wrong_tag(void)
@@ -5190,7 +5528,9 @@ static void test_decode_wrong_tag(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Wrong tag test";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -5202,39 +5542,54 @@ static void test_decode_wrong_tag(void)
     printf("  [Decode Wrong COSE Tag]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
-
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done_wrong_tag; }
-
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
-
-    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-        NULL, 0, payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret == 0, "create message");
-
-    /* Corrupt the CBOR tag - Tag 18 is encoded as single byte 0xD2
-     * (major type 6 = 0xC0 | value 18 = 0x12 => 0xD2)
-     * Change it to tag 16 (Encrypt0 tag) = 0xD0 to test wrong tag detection */
-    if (outLen > 0 && out[0] == 0xD2) {
-        out[0] = 0xD0;  /* Wrong tag - COSE_Encrypt0 tag instead of COSE_Sign1 */
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
     }
 
-    ret = wc_CoseSign1_Verify(&key, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    /* Should fail with bad tag or malformed error */
-    TEST_ASSERT(ret != 0, "wrong tag detected");
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-done_wrong_tag:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "create message");
+    }
+
+    if (ret == 0) {
+        int verifyRet;
+        /* Corrupt the CBOR tag - Tag 18 is encoded as single byte 0xD2
+         * (major type 6 = 0xC0 | value 18 = 0x12 => 0xD2)
+         * Change it to tag 16 (Encrypt0 tag) = 0xD0 to test wrong tag detection */
+        if (outLen > 0 && out[0] == 0xD2) {
+            out[0] = 0xD0;  /* Wrong tag - COSE_Encrypt0 tag instead of COSE_Sign1 */
+        }
+
+        verifyRet = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        /* Should fail with bad tag or malformed error */
+        TEST_ASSERT(verifyRet != 0, "wrong tag detected");
+    }
+
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif /* HAVE_ECC */
 
@@ -5247,7 +5602,9 @@ static void test_cose_bad_algorithm(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    int ret;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
     uint8_t payload[] = "Bad algorithm test";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
@@ -5256,26 +5613,39 @@ static void test_cose_bad_algorithm(void)
     printf("  [Bad Algorithm Tests]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) {
+        rngInited = 1;
+    }
 
-    wc_ecc_init(&eccKey);
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { TEST_ASSERT(0, "keygen"); goto done; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    if (ret == 0) {
+        int signRet;
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
-    /* Try signing with invalid algorithm */
-    ret = wc_CoseSign1_Sign(&key, 9999,  /* Invalid algorithm ID */
-        NULL, 0, payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    TEST_ASSERT(ret != 0, "bad alg rejected");
+        /* Try signing with invalid algorithm */
+        signRet = wc_CoseSign1_Sign(&key, 9999,  /* Invalid algorithm ID */
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(signRet != 0, "bad alg rejected");
+    }
 
-done:
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        wc_FreeRng(&rng);
+    }
 }
 #endif
 

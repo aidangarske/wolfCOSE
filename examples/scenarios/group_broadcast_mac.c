@@ -348,40 +348,50 @@ int main(void)
     rngInit = 1;
 
     /* Gateway creates broadcast */
-    ret = gateway_create_broadcast(g_telemetryData, sizeof(g_telemetryData),
-        macMsg, sizeof(macMsg), &macMsgLen, &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = gateway_create_broadcast(g_telemetryData, sizeof(g_telemetryData),
+            macMsg, sizeof(macMsg), &macMsgLen, &rng);
+    }
 
-    printf("\n");
-
-    /* Each subscriber verifies */
-    for (i = 0; i < NUM_SUBSCRIBERS; i++) {
-        ret = subscriber_verify_broadcast(i, macMsg, macMsgLen);
-        if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
         printf("\n");
     }
 
-    /* Unauthorized subscriber should fail */
-    ret = unauthorized_subscriber_fails(macMsg, macMsgLen);
-    if (ret != 0) { goto cleanup; }
+    /* Each subscriber verifies */
+    for (i = 0; i < NUM_SUBSCRIBERS && ret == 0; i++) {
+        ret = subscriber_verify_broadcast(i, macMsg, macMsgLen);
+        if (ret == 0) {
+            printf("\n");
+        }
+    }
 
-    printf("\n");
+    /* Unauthorized subscriber should fail */
+    if (ret == 0) {
+        ret = unauthorized_subscriber_fails(macMsg, macMsgLen);
+    }
+
+    if (ret == 0) {
+        printf("\n");
+    }
 
     /* Tampered message should be detected */
-    ret = tampered_message_detected(macMsg, macMsgLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = tampered_message_detected(macMsg, macMsgLen);
+    }
 
-    printf("\n================================================\n");
-    printf("Group MAC Broadcast: SUCCESS\n");
-    printf("- Gateway broadcast authenticated for all %d subscribers\n",
-           NUM_SUBSCRIBERS);
-    printf("- Each subscriber independently verified the message\n");
-    printf("- Unauthorized access was blocked\n");
-    printf("- Message tampering was detected\n");
-    printf("================================================\n");
+    if (ret == 0) {
+        printf("\n================================================\n");
+        printf("Group MAC Broadcast: SUCCESS\n");
+        printf("- Gateway broadcast authenticated for all %d subscribers\n",
+               NUM_SUBSCRIBERS);
+        printf("- Each subscriber independently verified the message\n");
+        printf("- Unauthorized access was blocked\n");
+        printf("- Message tampering was detected\n");
+        printf("================================================\n");
+    }
 
-cleanup:
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (rngInit != 0) { wc_FreeRng(&rng); }
 
     if (ret != 0) {
         printf("\n================================================\n");

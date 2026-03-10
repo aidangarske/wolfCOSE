@@ -94,50 +94,49 @@ static int test_mac0(int32_t alg, int keySz, int detached, int useAad)
 
     wc_CoseKey_Init(&cosKey);
     ret = wc_CoseKey_SetSymmetric(&cosKey, keyData, (size_t)keySz);
-    if (ret != 0) { goto cleanup; }
 
     /* Create MAC */
-    ret = wc_CoseMac0_Create(&cosKey, alg,
-        NULL, 0,  /* kid */
-        detached ? NULL : payload,
-        detached ? 0 : sizeof(payload) - 1,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseMac0_Create(&cosKey, alg,
+            NULL, 0,  /* kid */
+            detached ? NULL : payload,
+            detached ? 0 : sizeof(payload) - 1,
+            detached ? payload : NULL,
+            detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL,
+            useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
 
     /* Verify */
-    ret = wc_CoseMac0_Verify(&cosKey, out, outLen,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseMac0_Verify(&cosKey, out, outLen,
+            detached ? payload : NULL,
+            detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL,
+            useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+    }
 
     /* Validate algorithm */
-    if (hdr.alg != alg) {
-        ret = -1;
-        goto cleanup;
+    if (ret == 0) {
+        if (hdr.alg != alg) {
+            ret = -1;
+        }
     }
 
     /* Validate payload if inline */
-    if (!detached) {
+    if (ret == 0 && detached == 0) {
         if (decPayloadLen != sizeof(payload) - 1) {
             ret = -2;
-            goto cleanup;
         }
-        if (XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
+        else if (XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
             ret = -3;
-            goto cleanup;
         }
     }
 
-cleanup:
     return ret;
 }
 #endif /* !NO_HMAC */
@@ -170,31 +169,33 @@ static int test_mac_multi_direct(int32_t macAlg, int keySz,
 
     wc_CoseKey_Init(&macKey);
     ret = wc_CoseKey_SetSymmetric(&macKey, keyData, (size_t)keySz);
-    if (ret != 0) { goto cleanup; }
 
     /* Setup recipients with direct key */
-    for (i = 0; i < recipCount; i++) {
-        recipients[i].algId = WOLFCOSE_ALG_DIRECT;
-        recipients[i].key = &macKey;
-        recipients[i].kid = (const uint8_t*)"macX";
-        recipients[i].kidLen = 4;
+    if (ret == 0) {
+        for (i = 0; i < recipCount; i++) {
+            recipients[i].algId = WOLFCOSE_ALG_DIRECT;
+            recipients[i].key = &macKey;
+            recipients[i].kid = (const uint8_t*)"macX";
+            recipients[i].kidLen = 4;
+        }
     }
 
     /* Create MAC */
-    ret = wc_CoseMac_Create(recipients, (size_t)recipCount,
-        macAlg,
-        detached ? NULL : payload,
-        detached ? 0 : sizeof(payload) - 1,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseMac_Create(recipients, (size_t)recipCount,
+            macAlg,
+            detached ? NULL : payload,
+            detached ? 0 : sizeof(payload) - 1,
+            detached ? payload : NULL,
+            detached ? sizeof(payload) - 1 : 0,
+            useAad ? aad : NULL,
+            useAad ? sizeof(aad) - 1 : 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
 
     /* Verify with each recipient */
-    for (i = 0; i < recipCount; i++) {
+    for (i = 0; i < recipCount && ret == 0; i++) {
         ret = wc_CoseMac_Verify(&recipients[i], (size_t)i, out, outLen,
             detached ? payload : NULL,
             detached ? sizeof(payload) - 1 : 0,
@@ -202,10 +203,8 @@ static int test_mac_multi_direct(int32_t macAlg, int keySz,
             useAad ? sizeof(aad) - 1 : 0,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
-        if (ret != 0) { goto cleanup; }
     }
 
-cleanup:
     return ret;
 }
 #endif /* !NO_HMAC && WOLFCOSE_MAC */
@@ -243,55 +242,59 @@ static int test_mac_wrong_key(void)
 
     wc_CoseKey_Init(&macKey);
     ret = wc_CoseKey_SetSymmetric(&macKey, keyData1, sizeof(keyData1));
-    if (ret != 0) { goto cleanup; }
 
-    wc_CoseKey_Init(&wrongKey);
-    ret = wc_CoseKey_SetSymmetric(&wrongKey, keyData2, sizeof(keyData2));
-    if (ret != 0) { goto cleanup; }
-
-    /* Setup recipients */
-    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
-    recipients[0].key = &macKey;
-    recipients[0].kid = (const uint8_t*)"recip1";
-    recipients[0].kidLen = 6;
-
-    recipients[1].algId = WOLFCOSE_ALG_DIRECT;
-    recipients[1].key = &macKey;
-    recipients[1].kid = (const uint8_t*)"recip2";
-    recipients[1].kidLen = 6;
-
-    /* Wrong recipient with different key */
-    wrongRecipient.algId = WOLFCOSE_ALG_DIRECT;
-    wrongRecipient.key = &wrongKey;
-    wrongRecipient.kid = (const uint8_t*)"wrong";
-    wrongRecipient.kidLen = 5;
-
-    /* Create MAC */
-    ret = wc_CoseMac_Create(recipients, 2,
-        WOLFCOSE_ALG_HMAC_256_256,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
-        NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
-
-    /* Verify with wrong key must fail */
-    ret = wc_CoseMac_Verify(&wrongRecipient, 0, out, outLen,
-        NULL, 0,
-        NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
     if (ret == 0) {
-        /* Should have failed */
-        ret = -100;
-        goto cleanup;
+        wc_CoseKey_Init(&wrongKey);
+        ret = wc_CoseKey_SetSymmetric(&wrongKey, keyData2, sizeof(keyData2));
     }
 
-    /* Reset ret for success */
-    ret = 0;
+    /* Setup recipients */
+    if (ret == 0) {
+        recipients[0].algId = WOLFCOSE_ALG_DIRECT;
+        recipients[0].key = &macKey;
+        recipients[0].kid = (const uint8_t*)"recip1";
+        recipients[0].kidLen = 6;
 
-cleanup:
+        recipients[1].algId = WOLFCOSE_ALG_DIRECT;
+        recipients[1].key = &macKey;
+        recipients[1].kid = (const uint8_t*)"recip2";
+        recipients[1].kidLen = 6;
+
+        /* Wrong recipient with different key */
+        wrongRecipient.algId = WOLFCOSE_ALG_DIRECT;
+        wrongRecipient.key = &wrongKey;
+        wrongRecipient.kid = (const uint8_t*)"wrong";
+        wrongRecipient.kidLen = 5;
+    }
+
+    /* Create MAC */
+    if (ret == 0) {
+        ret = wc_CoseMac_Create(recipients, 2,
+            WOLFCOSE_ALG_HMAC_256_256,
+            payload, sizeof(payload) - 1,
+            NULL, 0,
+            NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
+
+    /* Verify with wrong key must fail */
+    if (ret == 0) {
+        ret = wc_CoseMac_Verify(&wrongRecipient, 0, out, outLen,
+            NULL, 0,
+            NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        if (ret == 0) {
+            /* Should have failed */
+            ret = -100;
+        }
+        else {
+            /* Expected failure, reset ret for success */
+            ret = 0;
+        }
+    }
+
     return ret;
 }
 #endif /* !NO_HMAC && WOLFCOSE_MAC */
@@ -500,42 +503,45 @@ static int test_mac0_interop(void)
 
     wc_CoseKey_Init(&cosKey);
     ret = wc_CoseKey_SetSymmetric(&cosKey, key, sizeof(key));
-    if (ret != 0) { goto cleanup; }
 
     /* Create MAC with known key */
     PRINT_TEST("interop_mac0_hmac256_roundtrip");
-    ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
 
     /* Verify with same key */
-    ret = wc_CoseMac0_Verify(&cosKey, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseMac0_Verify(&cosKey, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+    }
 
     /* Validate */
-    if (hdr.alg != WOLFCOSE_ALG_HMAC_256_256) {
-        ret = -1;
-        goto cleanup;
+    if (ret == 0) {
+        if (hdr.alg != WOLFCOSE_ALG_HMAC_256_256) {
+            ret = -1;
+        }
     }
-    if (decPayloadLen != sizeof(payload) - 1) {
-        ret = -2;
-        goto cleanup;
+    if (ret == 0) {
+        if (decPayloadLen != sizeof(payload) - 1) {
+            ret = -2;
+        }
     }
-    if (XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
-        ret = -3;
-        goto cleanup;
+    if (ret == 0) {
+        if (XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
+            ret = -3;
+        }
     }
 
     CHECK_RESULT(ret, "interop_mac0_hmac256_roundtrip");
 
-cleanup:
     printf("\nInterop Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }

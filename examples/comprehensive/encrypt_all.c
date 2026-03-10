@@ -97,67 +97,70 @@ static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
 
     wc_CoseKey_Init(&cosKey);
     ret = wc_CoseKey_SetSymmetric(&cosKey, keyData, (size_t)keySz);
-    if (ret != 0) { goto cleanup; }
 
     /* Encrypt */
-    if (detached) {
-        ret = wc_CoseEncrypt0_Encrypt(&cosKey, alg,
-            iv, sizeof(iv),
-            payload, sizeof(payload) - 1,
-            detachedCt, sizeof(detachedCt), &detachedCtLen,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
-            scratch, sizeof(scratch),
-            out, sizeof(out), &outLen);
+    if (ret == 0) {
+        if (detached != 0) {
+            ret = wc_CoseEncrypt0_Encrypt(&cosKey, alg,
+                iv, sizeof(iv),
+                payload, sizeof(payload) - 1,
+                detachedCt, sizeof(detachedCt), &detachedCtLen,
+                useAad ? aad : NULL,
+                useAad ? sizeof(aad) - 1 : 0,
+                scratch, sizeof(scratch),
+                out, sizeof(out), &outLen);
+        }
+        else {
+            ret = wc_CoseEncrypt0_Encrypt(&cosKey, alg,
+                iv, sizeof(iv),
+                payload, sizeof(payload) - 1,
+                NULL, 0, NULL,
+                useAad ? aad : NULL,
+                useAad ? sizeof(aad) - 1 : 0,
+                scratch, sizeof(scratch),
+                out, sizeof(out), &outLen);
+        }
     }
-    else {
-        ret = wc_CoseEncrypt0_Encrypt(&cosKey, alg,
-            iv, sizeof(iv),
-            payload, sizeof(payload) - 1,
-            NULL, 0, NULL,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
-            scratch, sizeof(scratch),
-            out, sizeof(out), &outLen);
-    }
-    if (ret != 0) { goto cleanup; }
 
     /* Decrypt */
-    if (detached) {
-        ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
-            detachedCt, detachedCtLen,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
-            scratch, sizeof(scratch),
-            &hdr,
-            plaintext, sizeof(plaintext), &plaintextLen);
+    if (ret == 0) {
+        if (detached != 0) {
+            ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
+                detachedCt, detachedCtLen,
+                useAad ? aad : NULL,
+                useAad ? sizeof(aad) - 1 : 0,
+                scratch, sizeof(scratch),
+                &hdr,
+                plaintext, sizeof(plaintext), &plaintextLen);
+        }
+        else {
+            ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
+                NULL, 0,
+                useAad ? aad : NULL,
+                useAad ? sizeof(aad) - 1 : 0,
+                scratch, sizeof(scratch),
+                &hdr,
+                plaintext, sizeof(plaintext), &plaintextLen);
+        }
     }
-    else {
-        ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
-            NULL, 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
-            scratch, sizeof(scratch),
-            &hdr,
-            plaintext, sizeof(plaintext), &plaintextLen);
-    }
-    if (ret != 0) { goto cleanup; }
 
     /* Validate */
-    if (hdr.alg != alg) {
-        ret = -1;
-        goto cleanup;
+    if (ret == 0) {
+        if (hdr.alg != alg) {
+            ret = -1;
+        }
     }
-    if (plaintextLen != sizeof(payload) - 1) {
-        ret = -2;
-        goto cleanup;
+    if (ret == 0) {
+        if (plaintextLen != sizeof(payload) - 1) {
+            ret = -2;
+        }
     }
-    if (XMEMCMP(plaintext, payload, plaintextLen) != 0) {
-        ret = -3;
-        goto cleanup;
+    if (ret == 0) {
+        if (XMEMCMP(plaintext, payload, plaintextLen) != 0) {
+            ret = -3;
+        }
     }
 
-cleanup:
     return ret;
 }
 #endif /* HAVE_AESGCM */
@@ -195,51 +198,59 @@ static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
     XMEMSET(recipients, 0, sizeof(recipients));
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
+    if (ret == 0) {
+        rngInit = 1;
+    }
 
-    wc_CoseKey_Init(&cek);
-    ret = wc_CoseKey_SetSymmetric(&cek, keyData, (size_t)keySz);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        wc_CoseKey_Init(&cek);
+        ret = wc_CoseKey_SetSymmetric(&cek, keyData, (size_t)keySz);
+    }
 
     /* Setup recipients with direct key */
-    for (i = 0; i < recipCount; i++) {
-        recipients[i].algId = WOLFCOSE_ALG_DIRECT;
-        recipients[i].key = &cek;
-        recipients[i].kid = (const uint8_t*)"rcpX";
-        recipients[i].kidLen = 4;
+    if (ret == 0) {
+        for (i = 0; i < recipCount; i++) {
+            recipients[i].algId = WOLFCOSE_ALG_DIRECT;
+            recipients[i].key = &cek;
+            recipients[i].kid = (const uint8_t*)"rcpX";
+            recipients[i].kidLen = 4;
+        }
     }
 
     /* Encrypt */
-    ret = wc_CoseEncrypt_Encrypt(recipients, (size_t)recipCount,
-        contentAlg,
-        iv, sizeof(iv),
-        detached ? NULL : payload,
-        detached ? 0 : sizeof(payload) - 1,
-        detached ? payload : NULL,
-        detached ? sizeof(payload) - 1 : 0,
-        useAad ? aad : NULL,
-        useAad ? sizeof(aad) - 1 : 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen,
-        &rng);
-    if (ret != 0) { goto cleanup; }
-
-    /* Decrypt with each recipient */
-    for (i = 0; i < recipCount; i++) {
-        ret = wc_CoseEncrypt_Decrypt(&recipients[i], (size_t)i, out, outLen,
+    if (ret == 0) {
+        ret = wc_CoseEncrypt_Encrypt(recipients, (size_t)recipCount,
+            contentAlg,
+            iv, sizeof(iv),
+            detached ? NULL : payload,
+            detached ? 0 : sizeof(payload) - 1,
             detached ? payload : NULL,
             detached ? sizeof(payload) - 1 : 0,
             useAad ? aad : NULL,
             useAad ? sizeof(aad) - 1 : 0,
             scratch, sizeof(scratch),
-            &hdr,
-            plaintext, sizeof(plaintext), &plaintextLen);
-        if (ret != 0) { goto cleanup; }
+            out, sizeof(out), &outLen,
+            &rng);
     }
 
-cleanup:
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Decrypt with each recipient */
+    if (ret == 0) {
+        for (i = 0; i < recipCount && ret == 0; i++) {
+            ret = wc_CoseEncrypt_Decrypt(&recipients[i], (size_t)i, out, outLen,
+                detached ? payload : NULL,
+                detached ? sizeof(payload) - 1 : 0,
+                useAad ? aad : NULL,
+                useAad ? sizeof(aad) - 1 : 0,
+                scratch, sizeof(scratch),
+                &hdr,
+                plaintext, sizeof(plaintext), &plaintextLen);
+        }
+    }
+
+    /* Cleanup */
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     return ret;
 }
 #endif /* HAVE_AESGCM && WOLFCOSE_ENCRYPT */
@@ -278,64 +289,74 @@ static int test_encrypt_wrong_key(void)
     XMEMSET(&wrongRecipient, 0, sizeof(wrongRecipient));
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
-
-    wc_CoseKey_Init(&cek);
-    ret = wc_CoseKey_SetSymmetric(&cek, keyData1, sizeof(keyData1));
-    if (ret != 0) { goto cleanup; }
-
-    wc_CoseKey_Init(&wrongKey);
-    ret = wc_CoseKey_SetSymmetric(&wrongKey, keyData2, sizeof(keyData2));
-    if (ret != 0) { goto cleanup; }
-
-    /* Setup recipients */
-    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
-    recipients[0].key = &cek;
-    recipients[0].kid = (const uint8_t*)"recip1";
-    recipients[0].kidLen = 6;
-
-    recipients[1].algId = WOLFCOSE_ALG_DIRECT;
-    recipients[1].key = &cek;
-    recipients[1].kid = (const uint8_t*)"recip2";
-    recipients[1].kidLen = 6;
-
-    /* Wrong recipient with different key */
-    wrongRecipient.algId = WOLFCOSE_ALG_DIRECT;
-    wrongRecipient.key = &wrongKey;
-    wrongRecipient.kid = (const uint8_t*)"wrong";
-    wrongRecipient.kidLen = 5;
-
-    /* Encrypt */
-    ret = wc_CoseEncrypt_Encrypt(recipients, 2,
-        WOLFCOSE_ALG_A128GCM,
-        iv, sizeof(iv),
-        payload, sizeof(payload) - 1,
-        NULL, 0,
-        NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen,
-        &rng);
-    if (ret != 0) { goto cleanup; }
-
-    /* Decrypt with wrong key must fail */
-    ret = wc_CoseEncrypt_Decrypt(&wrongRecipient, 0, out, outLen,
-        NULL, 0,
-        NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr,
-        plaintext, sizeof(plaintext), &plaintextLen);
     if (ret == 0) {
-        /* Should have failed */
-        ret = -100;
-        goto cleanup;
+        rngInit = 1;
     }
 
-    /* Reset ret for success */
-    ret = 0;
+    if (ret == 0) {
+        wc_CoseKey_Init(&cek);
+        ret = wc_CoseKey_SetSymmetric(&cek, keyData1, sizeof(keyData1));
+    }
 
-cleanup:
-    if (rngInit) { wc_FreeRng(&rng); }
+    if (ret == 0) {
+        wc_CoseKey_Init(&wrongKey);
+        ret = wc_CoseKey_SetSymmetric(&wrongKey, keyData2, sizeof(keyData2));
+    }
+
+    /* Setup recipients */
+    if (ret == 0) {
+        recipients[0].algId = WOLFCOSE_ALG_DIRECT;
+        recipients[0].key = &cek;
+        recipients[0].kid = (const uint8_t*)"recip1";
+        recipients[0].kidLen = 6;
+
+        recipients[1].algId = WOLFCOSE_ALG_DIRECT;
+        recipients[1].key = &cek;
+        recipients[1].kid = (const uint8_t*)"recip2";
+        recipients[1].kidLen = 6;
+
+        /* Wrong recipient with different key */
+        wrongRecipient.algId = WOLFCOSE_ALG_DIRECT;
+        wrongRecipient.key = &wrongKey;
+        wrongRecipient.kid = (const uint8_t*)"wrong";
+        wrongRecipient.kidLen = 5;
+    }
+
+    /* Encrypt */
+    if (ret == 0) {
+        ret = wc_CoseEncrypt_Encrypt(recipients, 2,
+            WOLFCOSE_ALG_A128GCM,
+            iv, sizeof(iv),
+            payload, sizeof(payload) - 1,
+            NULL, 0,
+            NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen,
+            &rng);
+    }
+
+    /* Decrypt with wrong key must fail */
+    if (ret == 0) {
+        ret = wc_CoseEncrypt_Decrypt(&wrongRecipient, 0, out, outLen,
+            NULL, 0,
+            NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        if (ret == 0) {
+            /* Should have failed */
+            ret = -100;
+        }
+        else {
+            /* Failure was expected, reset ret for success */
+            ret = 0;
+        }
+    }
+
+    /* Cleanup */
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     return ret;
 }
 #endif /* HAVE_AESGCM && WOLFCOSE_ENCRYPT */
@@ -505,44 +526,47 @@ static int test_encrypt0_interop(void)
 
     wc_CoseKey_Init(&cosKey);
     ret = wc_CoseKey_SetSymmetric(&cosKey, key, sizeof(key));
-    if (ret != 0) { goto cleanup; }
 
     /* Encrypt with known key */
-    PRINT_TEST("interop_encrypt0_a128gcm_roundtrip");
-    ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
-        iv, sizeof(iv),
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL,
-        NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        PRINT_TEST("interop_encrypt0_a128gcm_roundtrip");
+        ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
+            iv, sizeof(iv),
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL,
+            NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
 
     /* Decrypt with same key */
-    ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr,
-        plaintext, sizeof(plaintext), &plaintextLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+    }
 
     /* Validate */
-    if (hdr.alg != WOLFCOSE_ALG_A128GCM) {
-        ret = -1;
-        goto cleanup;
+    if (ret == 0) {
+        if (hdr.alg != WOLFCOSE_ALG_A128GCM) {
+            ret = -1;
+        }
     }
-    if (plaintextLen != sizeof(payload) - 1) {
-        ret = -2;
-        goto cleanup;
+    if (ret == 0) {
+        if (plaintextLen != sizeof(payload) - 1) {
+            ret = -2;
+        }
     }
-    if (XMEMCMP(plaintext, payload, plaintextLen) != 0) {
-        ret = -3;
-        goto cleanup;
+    if (ret == 0) {
+        if (XMEMCMP(plaintext, payload, plaintextLen) != 0) {
+            ret = -3;
+        }
     }
 
     CHECK_RESULT(ret, "interop_encrypt0_a128gcm_roundtrip");
 
-cleanup:
     printf("\nInterop Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }

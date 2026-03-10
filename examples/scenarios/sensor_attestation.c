@@ -237,53 +237,71 @@ int main(void)
     rngInit = 1;
 
     /* Initialize sensor's device key */
-    ret = sensor_init_key(&eccKey, &deviceKey, &rng);
-    if (ret != 0) { goto cleanup; }
-    eccInit = 1;
+    if (ret == 0) {
+        ret = sensor_init_key(&eccKey, &deviceKey, &rng);
+        if (ret == 0) {
+            eccInit = 1;
+        }
+    }
 
-    printf("\n");
+    if (ret == 0) {
+        printf("\n");
+    }
 
     /* Verifier generates challenge nonce */
-    ret = verifier_generate_nonce(nonce, sizeof(nonce), &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = verifier_generate_nonce(nonce, sizeof(nonce), &rng);
+    }
 
-    printf("\n");
+    if (ret == 0) {
+        printf("\n");
+    }
 
     /* Sensor creates attestation token */
-    ret = sensor_create_attestation(&deviceKey,
-        g_sensorReading, sizeof(g_sensorReading),
-        nonce, sizeof(nonce),
-        token, sizeof(token), &tokenLen, &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = sensor_create_attestation(&deviceKey,
+            g_sensorReading, sizeof(g_sensorReading),
+            nonce, sizeof(nonce),
+            token, sizeof(token), &tokenLen, &rng);
+    }
 
-    printf("\n");
+    if (ret == 0) {
+        printf("\n");
+    }
 
     /* Verifier checks attestation */
-    ret = verifier_check_attestation(&deviceKey, token, tokenLen,
-        nonce, sizeof(nonce));
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = verifier_check_attestation(&deviceKey, token, tokenLen,
+            nonce, sizeof(nonce));
+    }
 
-    printf("\n");
+    if (ret == 0) {
+        printf("\n");
+    }
 
     /* Generate different nonce for replay test */
-    ret = wc_RNG_GenerateBlock(&rng, wrongNonce, sizeof(wrongNonce));
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = wc_RNG_GenerateBlock(&rng, wrongNonce, sizeof(wrongNonce));
+    }
 
     /* Test replay detection */
-    ret = verifier_detect_replay(&deviceKey, token, tokenLen,
-        wrongNonce, sizeof(wrongNonce));
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = verifier_detect_replay(&deviceKey, token, tokenLen,
+            wrongNonce, sizeof(wrongNonce));
+    }
 
-    printf("\n================================================\n");
-    printf("Sensor Attestation: SUCCESS\n");
-    printf("- Device identity verified via signature\n");
-    printf("- Freshness guaranteed via nonce binding\n");
-    printf("- Replay attacks detected and blocked\n");
-    printf("================================================\n");
+    if (ret == 0) {
+        printf("\n================================================\n");
+        printf("Sensor Attestation: SUCCESS\n");
+        printf("- Device identity verified via signature\n");
+        printf("- Freshness guaranteed via nonce binding\n");
+        printf("- Replay attacks detected and blocked\n");
+        printf("================================================\n");
+    }
 
-cleanup:
-    if (eccInit) { wc_ecc_free(&eccKey); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (eccInit != 0) { wc_ecc_free(&eccKey); }
+    if (rngInit != 0) { wc_FreeRng(&rng); }
 
     if (ret != 0) {
         printf("\n================================================\n");

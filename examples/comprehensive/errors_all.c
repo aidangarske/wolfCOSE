@@ -95,61 +95,65 @@ static int test_sign1_tamper(int tamperPos)
     WOLFCOSE_HDR hdr;
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
-
-    ret = wc_ecc_init(&eccKey);
-    if (ret != 0) { goto cleanup; }
-    eccInit = 1;
-
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    wc_CoseKey_Init(&cosKey);
-    ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    /* Create valid signature */
-    ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != 0) { goto cleanup; }
-
-    /* Tamper with message */
-    XMEMCPY(tampered, out, outLen);
-    if (tamperPos == 0) {
-        /* Tamper at first byte */
-        tampered[0] ^= 0xFF;
-    }
-    else if (tamperPos == 1) {
-        /* Tamper at middle */
-        tampered[outLen / 2] ^= 0xFF;
-    }
-    else {
-        /* Tamper at last byte */
-        tampered[outLen - 1] ^= 0xFF;
-    }
-
-    /* Verify should fail */
-    ret = wc_CoseSign1_Verify(&cosKey, tampered, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
     if (ret == 0) {
-        /* Should have failed */
-        ret = -100;
-        goto cleanup;
+        rngInit = 1;
+        ret = wc_ecc_init(&eccKey);
+    }
+    if (ret == 0) {
+        eccInit = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&cosKey);
+        ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
+    }
+    if (ret == 0) {
+        /* Create valid signature */
+        ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
+    if (ret == 0) {
+        /* Tamper with message */
+        XMEMCPY(tampered, out, outLen);
+        if (tamperPos == 0) {
+            /* Tamper at first byte */
+            tampered[0] ^= 0xFF;
+        }
+        else if (tamperPos == 1) {
+            /* Tamper at middle */
+            tampered[outLen / 2] ^= 0xFF;
+        }
+        else {
+            /* Tamper at last byte */
+            tampered[outLen - 1] ^= 0xFF;
+        }
+
+        /* Verify should fail */
+        ret = wc_CoseSign1_Verify(&cosKey, tampered, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        if (ret == 0) {
+            /* Should have failed */
+            ret = -100;
+        }
+        else {
+            /* Reset for success */
+            ret = 0;
+        }
     }
 
-    /* Reset for success */
-    ret = 0;
-
-cleanup:
-    if (eccInit) { wc_ecc_free(&eccKey); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (eccInit != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     return ret;
 }
 #endif /* HAVE_ECC */
@@ -179,44 +183,43 @@ static int test_encrypt0_tamper(int tamperPos)
 
     wc_CoseKey_Init(&cosKey);
     ret = wc_CoseKey_SetSymmetric(&cosKey, keyData, sizeof(keyData));
-    if (ret != 0) { goto cleanup; }
-
-    /* Encrypt */
-    ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
-        iv, sizeof(iv),
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL,
-        NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
-
-    /* Tamper with message */
-    XMEMCPY(tampered, out, outLen);
-    if (tamperPos == 0) {
-        tampered[0] ^= 0xFF;
-    }
-    else if (tamperPos == 1) {
-        tampered[outLen / 2] ^= 0xFF;
-    }
-    else {
-        tampered[outLen - 1] ^= 0xFF;
-    }
-
-    /* Decrypt should fail */
-    ret = wc_CoseEncrypt0_Decrypt(&cosKey, tampered, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr,
-        plaintext, sizeof(plaintext), &plaintextLen);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        /* Encrypt */
+        ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
+            iv, sizeof(iv),
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL,
+            NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
+    if (ret == 0) {
+        /* Tamper with message */
+        XMEMCPY(tampered, out, outLen);
+        if (tamperPos == 0) {
+            tampered[0] ^= 0xFF;
+        }
+        else if (tamperPos == 1) {
+            tampered[outLen / 2] ^= 0xFF;
+        }
+        else {
+            tampered[outLen - 1] ^= 0xFF;
+        }
+
+        /* Decrypt should fail */
+        ret = wc_CoseEncrypt0_Decrypt(&cosKey, tampered, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
     return ret;
 }
 #endif /* HAVE_AESGCM */
@@ -244,42 +247,41 @@ static int test_mac0_tamper(int tamperPos)
 
     wc_CoseKey_Init(&cosKey);
     ret = wc_CoseKey_SetSymmetric(&cosKey, keyData, sizeof(keyData));
-    if (ret != 0) { goto cleanup; }
-
-    /* Create MAC */
-    ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
-
-    /* Tamper with message */
-    XMEMCPY(tampered, out, outLen);
-    if (tamperPos == 0) {
-        tampered[0] ^= 0xFF;
-    }
-    else if (tamperPos == 1) {
-        tampered[outLen / 2] ^= 0xFF;
-    }
-    else {
-        tampered[outLen - 1] ^= 0xFF;
-    }
-
-    /* Verify should fail */
-    ret = wc_CoseMac0_Verify(&cosKey, tampered, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        /* Create MAC */
+        ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
+    if (ret == 0) {
+        /* Tamper with message */
+        XMEMCPY(tampered, out, outLen);
+        if (tamperPos == 0) {
+            tampered[0] ^= 0xFF;
+        }
+        else if (tamperPos == 1) {
+            tampered[outLen / 2] ^= 0xFF;
+        }
+        else {
+            tampered[outLen - 1] ^= 0xFF;
+        }
+
+        /* Verify should fail */
+        ret = wc_CoseMac0_Verify(&cosKey, tampered, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
     return ret;
 }
 #endif /* !NO_HMAC */
@@ -303,44 +305,48 @@ static int test_sign1_truncated(void)
     WOLFCOSE_HDR hdr;
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
-
-    ret = wc_ecc_init(&eccKey);
-    if (ret != 0) { goto cleanup; }
-    eccInit = 1;
-
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    wc_CoseKey_Init(&cosKey);
-    ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    /* Create valid message */
-    ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != 0) { goto cleanup; }
-
-    /* Truncate to half and verify - should fail */
-    ret = wc_CoseSign1_Verify(&cosKey, out, outLen / 2,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        rngInit = 1;
+        ret = wc_ecc_init(&eccKey);
+    }
+    if (ret == 0) {
+        eccInit = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&cosKey);
+        ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
+    }
+    if (ret == 0) {
+        /* Create valid message */
+        ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
+    if (ret == 0) {
+        /* Truncate to half and verify - should fail */
+        ret = wc_CoseSign1_Verify(&cosKey, out, outLen / 2,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
-    if (eccInit) { wc_ecc_free(&eccKey); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (eccInit != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     return ret;
 }
 #endif /* HAVE_ECC */
@@ -368,32 +374,31 @@ static int test_encrypt0_truncated(void)
 
     wc_CoseKey_Init(&cosKey);
     ret = wc_CoseKey_SetSymmetric(&cosKey, keyData, sizeof(keyData));
-    if (ret != 0) { goto cleanup; }
-
-    /* Encrypt */
-    ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
-        iv, sizeof(iv),
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL,
-        NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
-
-    /* Truncate and decrypt - should fail */
-    ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen / 2,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr,
-        plaintext, sizeof(plaintext), &plaintextLen);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        /* Encrypt */
+        ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
+            iv, sizeof(iv),
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL,
+            NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
+    if (ret == 0) {
+        /* Truncate and decrypt - should fail */
+        ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen / 2,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
     return ret;
 }
 #endif /* HAVE_AESGCM */
@@ -419,30 +424,29 @@ static int test_mac0_truncated(void)
 
     wc_CoseKey_Init(&cosKey);
     ret = wc_CoseKey_SetSymmetric(&cosKey, keyData, sizeof(keyData));
-    if (ret != 0) { goto cleanup; }
-
-    /* Create MAC */
-    ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
-
-    /* Truncate and verify - should fail */
-    ret = wc_CoseMac0_Verify(&cosKey, out, outLen / 2,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        /* Create MAC */
+        ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
+    if (ret == 0) {
+        /* Truncate and verify - should fail */
+        ret = wc_CoseMac0_Verify(&cosKey, out, outLen / 2,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
     return ret;
 }
 #endif /* !NO_HMAC */
@@ -468,46 +472,50 @@ static int test_sign1_aad_mismatch(void)
     WOLFCOSE_HDR hdr;
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
-
-    ret = wc_ecc_init(&eccKey);
-    if (ret != 0) { goto cleanup; }
-    eccInit = 1;
-
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    wc_CoseKey_Init(&cosKey);
-    ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    /* Sign with AAD */
-    ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
-        aad, sizeof(aad) - 1,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != 0) { goto cleanup; }
-
-    /* Verify with wrong AAD - should fail */
-    ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
-        NULL, 0,
-        wrongAad, sizeof(wrongAad) - 1,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        rngInit = 1;
+        ret = wc_ecc_init(&eccKey);
+    }
+    if (ret == 0) {
+        eccInit = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&cosKey);
+        ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
+    }
+    if (ret == 0) {
+        /* Sign with AAD */
+        ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0,
+            aad, sizeof(aad) - 1,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
+    if (ret == 0) {
+        /* Verify with wrong AAD - should fail */
+        ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
+            NULL, 0,
+            wrongAad, sizeof(wrongAad) - 1,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
-    if (eccInit) { wc_ecc_free(&eccKey); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (eccInit != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     return ret;
 }
 #endif /* HAVE_ECC */
@@ -537,33 +545,32 @@ static int test_encrypt0_aad_mismatch(void)
 
     wc_CoseKey_Init(&cosKey);
     ret = wc_CoseKey_SetSymmetric(&cosKey, keyData, sizeof(keyData));
-    if (ret != 0) { goto cleanup; }
-
-    /* Encrypt with AAD */
-    ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
-        iv, sizeof(iv),
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL,
-        aad, sizeof(aad) - 1,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
-
-    /* Decrypt with wrong AAD - should fail */
-    ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
-        NULL, 0,
-        wrongAad, sizeof(wrongAad) - 1,
-        scratch, sizeof(scratch),
-        &hdr,
-        plaintext, sizeof(plaintext), &plaintextLen);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        /* Encrypt with AAD */
+        ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
+            iv, sizeof(iv),
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL,
+            aad, sizeof(aad) - 1,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
+    if (ret == 0) {
+        /* Decrypt with wrong AAD - should fail */
+        ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
+            NULL, 0,
+            wrongAad, sizeof(wrongAad) - 1,
+            scratch, sizeof(scratch),
+            &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
     return ret;
 }
 #endif /* HAVE_AESGCM */
@@ -591,32 +598,31 @@ static int test_mac0_aad_mismatch(void)
 
     wc_CoseKey_Init(&cosKey);
     ret = wc_CoseKey_SetSymmetric(&cosKey, keyData, sizeof(keyData));
-    if (ret != 0) { goto cleanup; }
-
-    /* Create MAC with AAD */
-    ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0,
-        aad, sizeof(aad) - 1,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
-    if (ret != 0) { goto cleanup; }
-
-    /* Verify with wrong AAD - should fail */
-    ret = wc_CoseMac0_Verify(&cosKey, out, outLen,
-        NULL, 0,
-        wrongAad, sizeof(wrongAad) - 1,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        /* Create MAC with AAD */
+        ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0,
+            aad, sizeof(aad) - 1,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
+    if (ret == 0) {
+        /* Verify with wrong AAD - should fail */
+        ret = wc_CoseMac0_Verify(&cosKey, out, outLen,
+            NULL, 0,
+            wrongAad, sizeof(wrongAad) - 1,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
     return ret;
 }
 #endif /* !NO_HMAC */
@@ -640,46 +646,50 @@ static int test_sign1_detached_missing(void)
     WOLFCOSE_HDR hdr;
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
-
-    ret = wc_ecc_init(&eccKey);
-    if (ret != 0) { goto cleanup; }
-    eccInit = 1;
-
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    wc_CoseKey_Init(&cosKey);
-    ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    /* Sign with detached payload */
-    ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        NULL, 0,  /* no inline payload */
-        payload, sizeof(payload) - 1,  /* detached */
-        NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != 0) { goto cleanup; }
-
-    /* Verify without providing detached payload - should fail */
-    ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
-        NULL, 0,  /* missing detached payload */
-        NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        rngInit = 1;
+        ret = wc_ecc_init(&eccKey);
+    }
+    if (ret == 0) {
+        eccInit = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&cosKey);
+        ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
+    }
+    if (ret == 0) {
+        /* Sign with detached payload */
+        ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            NULL, 0,  /* no inline payload */
+            payload, sizeof(payload) - 1,  /* detached */
+            NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
+    if (ret == 0) {
+        /* Verify without providing detached payload - should fail */
+        ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
+            NULL, 0,  /* missing detached payload */
+            NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
-    if (eccInit) { wc_ecc_free(&eccKey); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (eccInit != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     return ret;
 }
 #endif /* HAVE_ECC */
@@ -699,29 +709,31 @@ static int test_sign1_with_symmetric_key(void)
     size_t outLen = 0;
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
-
-    /* Try to sign with a symmetric key */
-    wc_CoseKey_Init(&cosKey);
-    ret = wc_CoseKey_SetSymmetric(&cosKey, keyData, sizeof(keyData));
-    if (ret != 0) { goto cleanup; }
-
-    ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        rngInit = 1;
+        /* Try to sign with a symmetric key */
+        wc_CoseKey_Init(&cosKey);
+        ret = wc_CoseKey_SetSymmetric(&cosKey, keyData, sizeof(keyData));
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     return ret;
 }
 #endif /* HAVE_ECC */
@@ -745,38 +757,42 @@ static int test_encrypt0_with_signing_key(void)
     size_t outLen = 0;
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
-
-    ret = wc_ecc_init(&eccKey);
-    if (ret != 0) { goto cleanup; }
-    eccInit = 1;
-
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    /* Try to encrypt with an ECC key (wrong type) */
-    wc_CoseKey_Init(&cosKey);
-    ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
-        iv, sizeof(iv),
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL,
-        NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen);
     if (ret == 0) {
-        ret = -100;
-        goto cleanup;
+        rngInit = 1;
+        ret = wc_ecc_init(&eccKey);
+    }
+    if (ret == 0) {
+        eccInit = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    }
+    if (ret == 0) {
+        /* Try to encrypt with an ECC key (wrong type) */
+        wc_CoseKey_Init(&cosKey);
+        ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
+    }
+    if (ret == 0) {
+        ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
+            iv, sizeof(iv),
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL,
+            NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+        if (ret == 0) {
+            ret = -100;
+        }
+        else {
+            ret = 0;
+        }
     }
 
-    ret = 0;
-
-cleanup:
-    if (eccInit) { wc_ecc_free(&eccKey); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (eccInit != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     return ret;
 }
 #endif /* HAVE_ECC && HAVE_AESGCM */
@@ -799,45 +815,48 @@ static int test_sign1_empty_payload(void)
     WOLFCOSE_HDR hdr;
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { goto cleanup; }
-    rngInit = 1;
-
-    ret = wc_ecc_init(&eccKey);
-    if (ret != 0) { goto cleanup; }
-    eccInit = 1;
-
-    ret = wc_ecc_make_key(&rng, 32, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    wc_CoseKey_Init(&cosKey);
-    ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
-    if (ret != 0) { goto cleanup; }
-
-    /* Sign empty payload (edge case, should work) */
-    ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
-        NULL, 0,
-        (const uint8_t*)"", 0,  /* empty payload */
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != 0) { goto cleanup; }
-
-    /* Verify */
-    ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    if (ret != 0) { goto cleanup; }
-
-    /* Empty payload expected */
-    if (decPayloadLen != 0) {
-        ret = -101;
-        goto cleanup;
+    if (ret == 0) {
+        rngInit = 1;
+        ret = wc_ecc_init(&eccKey);
+    }
+    if (ret == 0) {
+        eccInit = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&cosKey);
+        ret = wc_CoseKey_SetEcc(&cosKey, WOLFCOSE_CRV_P256, &eccKey);
+    }
+    if (ret == 0) {
+        /* Sign empty payload (edge case, should work) */
+        ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
+            NULL, 0,
+            (const uint8_t*)"", 0,  /* empty payload */
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
+    if (ret == 0) {
+        /* Verify */
+        ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+    }
+    if (ret == 0) {
+        /* Empty payload expected */
+        if (decPayloadLen != 0) {
+            ret = -101;
+        }
     }
 
-cleanup:
-    if (eccInit) { wc_ecc_free(&eccKey); }
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (eccInit != 0) {
+        wc_ecc_free(&eccKey);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     return ret;
 }
 #endif /* HAVE_ECC */

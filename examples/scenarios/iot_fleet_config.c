@@ -291,40 +291,48 @@ int main(void)
     rngInit = 1;
 
     /* Cloud server encrypts config */
-    ret = cloud_encrypt_config(g_deviceConfig, sizeof(g_deviceConfig),
-        encryptedMsg, sizeof(encryptedMsg), &encryptedLen, &rng);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = cloud_encrypt_config(g_deviceConfig, sizeof(g_deviceConfig),
+            encryptedMsg, sizeof(encryptedMsg), &encryptedLen, &rng);
+    }
 
-    printf("\n");
-
-    /* Each device decrypts */
-    for (i = 0; i < NUM_DEVICES; i++) {
-        ret = device_decrypt_config(i, encryptedMsg, encryptedLen,
-            plaintext, sizeof(plaintext), &plaintextLen);
-        if (ret != 0) { goto cleanup; }
-
-        /* Verify content matches */
-        if (plaintextLen != sizeof(g_deviceConfig) ||
-            XMEMCMP(plaintext, g_deviceConfig, plaintextLen) != 0) {
-            printf("  ERROR: Decrypted content mismatch!\n");
-            ret = -1;
-            goto cleanup;
-        }
+    if (ret == 0) {
         printf("\n");
     }
 
+    /* Each device decrypts */
+    for (i = 0; i < NUM_DEVICES && ret == 0; i++) {
+        ret = device_decrypt_config(i, encryptedMsg, encryptedLen,
+            plaintext, sizeof(plaintext), &plaintextLen);
+
+        /* Verify content matches */
+        if (ret == 0) {
+            if (plaintextLen != sizeof(g_deviceConfig) ||
+                XMEMCMP(plaintext, g_deviceConfig, plaintextLen) != 0) {
+                printf("  ERROR: Decrypted content mismatch!\n");
+                ret = -1;
+            }
+        }
+        if (ret == 0) {
+            printf("\n");
+        }
+    }
+
     /* Unauthorized device should fail */
-    ret = unauthorized_device_fails(encryptedMsg, encryptedLen);
-    if (ret != 0) { goto cleanup; }
+    if (ret == 0) {
+        ret = unauthorized_device_fails(encryptedMsg, encryptedLen);
+    }
 
-    printf("\n================================================\n");
-    printf("IoT Fleet Configuration: SUCCESS\n");
-    printf("All %d devices received identical configuration.\n", NUM_DEVICES);
-    printf("Unauthorized device was blocked.\n");
-    printf("================================================\n");
+    if (ret == 0) {
+        printf("\n================================================\n");
+        printf("IoT Fleet Configuration: SUCCESS\n");
+        printf("All %d devices received identical configuration.\n", NUM_DEVICES);
+        printf("Unauthorized device was blocked.\n");
+        printf("================================================\n");
+    }
 
-cleanup:
-    if (rngInit) { wc_FreeRng(&rng); }
+    /* Cleanup */
+    if (rngInit != 0) { wc_FreeRng(&rng); }
 
     if (ret != 0) {
         printf("\n================================================\n");
