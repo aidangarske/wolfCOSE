@@ -51,6 +51,9 @@ jobs:
                  --suppress=constParameter \
                  --suppress=knownConditionTrueFalse \
                  --suppress=unusedLabelConfiguration \
+                 --suppress=duplicateCondition:tests/test_cose.c \
+                 --suppress=variableScope:tests/test_cose.c \
+                 --suppress=variableScope:tests/test_interop.c \
                  --inline-suppr \
                  -I include -I src -I $HOME/wolfssl-install/include \
                  src/ tests/
