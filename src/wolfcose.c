@@ -2561,7 +2561,6 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
         enum wc_HashType hashType;
         int digestSz = 0;
         int mgf = 0;
-        word32 rsaSigLen;
 
         if (key->kty != WOLFCOSE_KTY_RSA) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
@@ -2593,7 +2592,7 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
 
         /* RSA sig goes into scratch (after hashing, scratch is free) */
         if (ret == WOLFCOSE_SUCCESS) {
-            rsaSigLen = (word32)scratchSz;
+            word32 rsaSigLen = (word32)scratchSz;
             ret = wc_RsaPSS_Sign_ex(hashBuf, (word32)digestSz,
                                       scratch, rsaSigLen,
                                       hashType, mgf, digestSz,
@@ -4176,8 +4175,8 @@ static int wolfCose_AesCbcMac(const uint8_t* key, size_t keyLen,
     uint8_t iv[AES_BLOCK_SIZE];
     uint8_t inBlock[AES_BLOCK_SIZE];
     uint8_t outBlock[AES_BLOCK_SIZE];
-    size_t numBlocks;
-    size_t lastBlockLen;
+    size_t numBlocks = 0;
+    size_t lastBlockLen = 0;
     size_t i;
 
     /* Parameter validation */
