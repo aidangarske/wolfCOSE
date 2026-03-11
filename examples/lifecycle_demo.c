@@ -264,7 +264,7 @@ static int demo_sign1_eddsa(void)
 #endif /* HAVE_ED25519 */
 
 /* ----- COSE_Sign1 lifecycle: RSA-PSS (PS256) ----- */
-#ifdef WC_RSA_PSS
+#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
 static int demo_sign1_ps256(void)
 {
     int ret = 0;
@@ -342,7 +342,7 @@ static int demo_sign1_ps256(void)
 
     return ret;
 }
-#endif /* WC_RSA_PSS */
+#endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
 /* ----- COSE_Sign1 lifecycle: ML-DSA-44 (Dilithium) ----- */
 #ifdef HAVE_DILITHIUM
@@ -793,7 +793,7 @@ int main(int argc, char* argv[])
         if (demo_sign1_eddsa() != 0) { failures++; }
     }
 #endif
-#ifdef WC_RSA_PSS
+#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
     if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_PS256) {
         tests++;
         if (demo_sign1_ps256() != 0) { failures++; }
