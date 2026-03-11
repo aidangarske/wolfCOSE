@@ -220,9 +220,7 @@ static int write_file(const char* path, const uint8_t* buf, size_t len)
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * keygen: generate a COSE key and write to file
- * --------------------------------------------------------------------------- */
+/* ----- keygen: generate a COSE key and write to file ----- */
 static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
 {
     int ret;
@@ -398,9 +396,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * sign: COSE_Sign1 sign
- * --------------------------------------------------------------------------- */
+/* ----- sign: COSE_Sign1 sign ----- */
 static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
                       const char* inPath, const char* outPath)
 {
@@ -443,7 +439,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
         }
 
         ret = wc_CoseSign1_Sign(&coseKey, alg, NULL, 0,
-            msgBuf, msgLen, NULL, 0,
+            msgBuf, msgLen, NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             outBuf, sizeof(outBuf), &outLen, &rng);
 
@@ -471,7 +467,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
         }
 
         ret = wc_CoseSign1_Sign(&coseKey, alg, NULL, 0,
-            msgBuf, msgLen, NULL, 0,
+            msgBuf, msgLen, NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             outBuf, sizeof(outBuf), &outLen, &rng);
 
@@ -499,7 +495,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
         }
 
         ret = wc_CoseSign1_Sign(&coseKey, alg, NULL, 0,
-            msgBuf, msgLen, NULL, 0,
+            msgBuf, msgLen, NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             outBuf, sizeof(outBuf), &outLen, &rng);
 
@@ -528,7 +524,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
         }
 
         ret = wc_CoseSign1_Sign(&coseKey, alg, NULL, 0,
-            msgBuf, msgLen, NULL, 0,
+            msgBuf, msgLen, NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             outBuf, sizeof(outBuf), &outLen, &rng);
 
@@ -557,7 +553,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
         }
 
         ret = wc_CoseSign1_Sign(&coseKey, alg, NULL, 0,
-            msgBuf, msgLen, NULL, 0,
+            msgBuf, msgLen, NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             outBuf, sizeof(outBuf), &outLen, &rng);
 
@@ -584,12 +580,10 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * verify: COSE_Sign1 verify
- * --------------------------------------------------------------------------- */
+/* ----- verify: COSE_Sign1 verify ----- */
 static int tool_verify(const char* keyPath, const char* inPath)
 {
-    int ret;
+    int ret = 0;
     uint8_t keyBuf[WOLFCOSE_TOOL_MAX_KEY];
     size_t keyLen = 0;
     uint8_t msgBuf[WOLFCOSE_TOOL_MAX_MSG];
@@ -599,54 +593,60 @@ static int tool_verify(const char* keyPath, const char* inPath)
     WOLFCOSE_HDR hdr;
     const uint8_t* payload = NULL;
     size_t payloadLen = 0;
+    int keyMatched = 0;
 
     ret = read_file(keyPath, keyBuf, sizeof(keyBuf), &keyLen);
-    if (ret != 0) return ret;
-
-    ret = read_file(inPath, msgBuf, sizeof(msgBuf), &msgLen);
-    if (ret != 0) return ret;
+    if (ret == 0) {
+        ret = read_file(inPath, msgBuf, sizeof(msgBuf), &msgLen);
+    }
 
     /* Decode key to determine kty, then dispatch to correct wolfCrypt
      * key type. OKP keys need crv to distinguish Ed25519/Ed448/Dilithium. */
-    wc_CoseKey_Init(&coseKey);
+    if (ret == 0) {
+        wc_CoseKey_Init(&coseKey);
+    }
 
 #ifdef HAVE_ECC
-    {
+    if (ret == 0 && keyMatched == 0) {
         ecc_key ecc;
         wc_ecc_init(&ecc);
         coseKey.key.ecc = &ecc;
         ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
         if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_EC2) {
+            keyMatched = 1;
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
-                NULL, 0, scratch, sizeof(scratch),
+                NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &payload, &payloadLen);
-            wc_ecc_free(&ecc);
-            goto verify_done;
+        }
+        else if (ret != 0 || coseKey.kty != WOLFCOSE_KTY_EC2) {
+            ret = 0; /* Reset for next key type attempt */
         }
         wc_ecc_free(&ecc);
     }
 #endif
 
 #ifdef WC_RSA_PSS
-    {
+    if (ret == 0 && keyMatched == 0) {
         RsaKey rsa;
         wc_CoseKey_Init(&coseKey);
         wc_InitRsaKey(&rsa, NULL);
         coseKey.key.rsa = &rsa;
         ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
         if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_RSA) {
+            keyMatched = 1;
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
-                NULL, 0, scratch, sizeof(scratch),
+                NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &payload, &payloadLen);
-            wc_FreeRsaKey(&rsa);
-            goto verify_done;
+        }
+        else if (ret != 0 || coseKey.kty != WOLFCOSE_KTY_RSA) {
+            ret = 0; /* Reset for next key type attempt */
         }
         wc_FreeRsaKey(&rsa);
     }
 #endif
 
 #ifdef HAVE_ED25519
-    {
+    if (ret == 0 && keyMatched == 0) {
         ed25519_key ed;
         wc_CoseKey_Init(&coseKey);
         wc_ed25519_init(&ed);
@@ -654,18 +654,21 @@ static int tool_verify(const char* keyPath, const char* inPath)
         ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
         if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_OKP &&
             coseKey.crv == WOLFCOSE_CRV_ED25519) {
+            keyMatched = 1;
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
-                NULL, 0, scratch, sizeof(scratch),
+                NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &payload, &payloadLen);
-            wc_ed25519_free(&ed);
-            goto verify_done;
+        }
+        else if (ret != 0 || coseKey.kty != WOLFCOSE_KTY_OKP ||
+                 coseKey.crv != WOLFCOSE_CRV_ED25519) {
+            ret = 0; /* Reset for next key type attempt */
         }
         wc_ed25519_free(&ed);
     }
 #endif
 
 #ifdef HAVE_ED448
-    {
+    if (ret == 0 && keyMatched == 0) {
         ed448_key ed;
         wc_CoseKey_Init(&coseKey);
         wc_ed448_init(&ed);
@@ -673,18 +676,21 @@ static int tool_verify(const char* keyPath, const char* inPath)
         ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
         if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_OKP &&
             coseKey.crv == WOLFCOSE_CRV_ED448) {
+            keyMatched = 1;
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
-                NULL, 0, scratch, sizeof(scratch),
+                NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &payload, &payloadLen);
-            wc_ed448_free(&ed);
-            goto verify_done;
+        }
+        else if (ret != 0 || coseKey.kty != WOLFCOSE_KTY_OKP ||
+                 coseKey.crv != WOLFCOSE_CRV_ED448) {
+            ret = 0; /* Reset for next key type attempt */
         }
         wc_ed448_free(&ed);
     }
 #endif
 
 #ifdef HAVE_DILITHIUM
-    {
+    if (ret == 0 && keyMatched == 0) {
         dilithium_key dl;
         wc_CoseKey_Init(&coseKey);
         wc_dilithium_init(&dl);
@@ -694,32 +700,40 @@ static int tool_verify(const char* keyPath, const char* inPath)
             (coseKey.crv == WOLFCOSE_CRV_ML_DSA_44 ||
              coseKey.crv == WOLFCOSE_CRV_ML_DSA_65 ||
              coseKey.crv == WOLFCOSE_CRV_ML_DSA_87)) {
+            keyMatched = 1;
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
-                NULL, 0, scratch, sizeof(scratch),
+                NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &payload, &payloadLen);
-            wc_dilithium_free(&dl);
-            goto verify_done;
+        }
+        else if (ret != 0 || coseKey.kty != WOLFCOSE_KTY_OKP ||
+                 (coseKey.crv != WOLFCOSE_CRV_ML_DSA_44 &&
+                  coseKey.crv != WOLFCOSE_CRV_ML_DSA_65 &&
+                  coseKey.crv != WOLFCOSE_CRV_ML_DSA_87)) {
+            ret = 0; /* Reset for next key type attempt */
         }
         wc_dilithium_free(&dl);
     }
 #endif
 
-    fprintf(stderr, "Unsupported key type\n");
-    return EXIT_CRYPTO;
-
-verify_done:
-    if (ret != 0) {
-        fprintf(stderr, "Verification FAILED: %d\n", ret);
-        return EXIT_CRYPTO;
+    /* Check if key type was matched */
+    if (ret == 0 && keyMatched == 0) {
+        fprintf(stderr, "Unsupported key type\n");
+        ret = EXIT_CRYPTO;
     }
 
-    printf("Verification OK. Payload: %zu bytes\n", payloadLen);
-    return 0;
+    /* Report result */
+    if (ret != 0 && keyMatched != 0) {
+        fprintf(stderr, "Verification FAILED: %d\n", ret);
+        ret = EXIT_CRYPTO;
+    }
+    else if (ret == 0) {
+        printf("Verification OK. Payload: %zu bytes\n", payloadLen);
+    }
+
+    return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * enc: COSE_Encrypt0 encrypt
- * --------------------------------------------------------------------------- */
+/* ----- enc: COSE_Encrypt0 encrypt ----- */
 #if defined(HAVE_AESGCM) || defined(HAVE_AESCCM) || \
     (defined(HAVE_CHACHA) && defined(HAVE_POLY1305))
 static int tool_enc(const char* keyPath, int32_t alg,
@@ -780,8 +794,8 @@ static int tool_enc(const char* keyPath, int32_t alg,
 
     ret = wc_CoseEncrypt0_Encrypt(&coseKey, alg,
         iv, ivLen,
-        msgBuf, msgLen, NULL, 0,
-        scratch, sizeof(scratch),
+        msgBuf, msgLen, NULL, 0, NULL,
+        NULL, 0, scratch, sizeof(scratch),
         outBuf, sizeof(outBuf), &outLen);
 
     wc_FreeRng(&rng);
@@ -799,9 +813,7 @@ static int tool_enc(const char* keyPath, int32_t alg,
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * dec: COSE_Encrypt0 decrypt
- * --------------------------------------------------------------------------- */
+/* ----- dec: COSE_Encrypt0 decrypt ----- */
 static int tool_dec(const char* keyPath, const char* inPath,
                      const char* outPath)
 {
@@ -831,7 +843,7 @@ static int tool_dec(const char* keyPath, const char* inPath,
     }
 
     ret = wc_CoseEncrypt0_Decrypt(&coseKey, msgBuf, msgLen,
-        NULL, 0, scratch, sizeof(scratch), &hdr,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch), &hdr,
         plainBuf, sizeof(plainBuf), &plainLen);
     if (ret != 0) {
         fprintf(stderr, "Decrypt FAILED: %d\n", ret);
@@ -847,9 +859,7 @@ static int tool_dec(const char* keyPath, const char* inPath,
 }
 #endif /* HAVE_AESGCM || HAVE_AESCCM || (HAVE_CHACHA && HAVE_POLY1305) */
 
-/* ---------------------------------------------------------------------------
- * mac: COSE_Mac0 create
- * --------------------------------------------------------------------------- */
+/* ----- mac: COSE_Mac0 create ----- */
 #if !defined(NO_HMAC)
 static int tool_mac(const char* keyPath, int32_t alg,
                      const char* inPath, const char* outPath)
@@ -879,7 +889,7 @@ static int tool_mac(const char* keyPath, int32_t alg,
     }
 
     ret = wc_CoseMac0_Create(&coseKey, alg, NULL, 0,
-        msgBuf, msgLen, NULL, 0,
+        msgBuf, msgLen, NULL, 0, NULL, 0,
         scratch, sizeof(scratch),
         outBuf, sizeof(outBuf), &outLen);
     if (ret != 0) {
@@ -895,9 +905,7 @@ static int tool_mac(const char* keyPath, int32_t alg,
     return ret;
 }
 
-/* ---------------------------------------------------------------------------
- * macverify: COSE_Mac0 verify
- * --------------------------------------------------------------------------- */
+/* ----- macverify: COSE_Mac0 verify ----- */
 static int tool_macverify(const char* keyPath, const char* inPath)
 {
     int ret;
@@ -926,7 +934,7 @@ static int tool_macverify(const char* keyPath, const char* inPath)
     }
 
     ret = wc_CoseMac0_Verify(&coseKey, msgBuf, msgLen,
-        NULL, 0, scratch, sizeof(scratch),
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
         &hdr, &payload, &payloadLen);
     if (ret != 0) {
         fprintf(stderr, "MAC verification FAILED: %d\n", ret);
@@ -938,9 +946,7 @@ static int tool_macverify(const char* keyPath, const char* inPath)
 }
 #endif /* !NO_HMAC */
 
-/* ---------------------------------------------------------------------------
- * info: dump CBOR structure of a COSE message
- * --------------------------------------------------------------------------- */
+/* ----- info: dump CBOR structure of a COSE message ----- */
 static int tool_info(const char* inPath)
 {
     int ret;
@@ -1019,15 +1025,13 @@ static int tool_info(const char* inPath)
     return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * test: in-memory round-trip self-tests for all algorithms
- * --------------------------------------------------------------------------- */
+/* ----- test: in-memory round-trip self-tests for all algorithms ----- */
 
 /* Sign round-trip: keygen -> sign -> verify -> check payload */
 #ifdef HAVE_ECC
 static int test_sign_es256(void)
 {
-    int ret = -1;
+    int ret = 0;
     WC_RNG rng;
     ecc_key ecc;
     WOLFCOSE_KEY key;
@@ -1042,31 +1046,43 @@ static int test_sign_es256(void)
 
     printf("  %-12s sign/verify ... ", "ES256");
 
-    if (wc_InitRng(&rng) != 0) goto done;
-    rngInit = 1;
-    if (wc_ecc_init(&ecc) != 0) goto done;
-    eccInit = 1;
-    if (wc_ecc_make_key(&rng, 32, &ecc) != 0) goto done;
+    ret = wc_InitRng(&rng);
+    if (ret == 0) {
+        rngInit = 1;
+        ret = wc_ecc_init(&ecc);
+    }
+    if (ret == 0) {
+        eccInit = 1;
+        ret = wc_ecc_make_key(&rng, 32, &ecc);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &ecc);
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &ecc);
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&key, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decoded, &decodedLen);
+    }
+    if (ret == 0) {
+        if (decodedLen != sizeof(payload) - 1 ||
+            memcmp(decoded, payload, decodedLen) != 0) {
+            ret = -1;
+        }
+    }
 
-    if (wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256, NULL, 0,
-        payload, sizeof(payload) - 1, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng) != 0) goto done;
-
-    if (wc_CoseSign1_Verify(&key, out, outLen, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decoded, &decodedLen) != 0) goto done;
-
-    if (decodedLen != sizeof(payload) - 1 ||
-        memcmp(decoded, payload, decodedLen) != 0) goto done;
-
-    ret = 0;
-done:
-    if (eccInit) wc_ecc_free(&ecc);
-    if (rngInit) wc_FreeRng(&rng);
+    /* Cleanup */
+    if (eccInit != 0) {
+        wc_ecc_free(&ecc);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     printf("%s\n", ret == 0 ? "PASS" : "FAIL");
     return ret;
 }
@@ -1075,7 +1091,7 @@ done:
 #ifdef HAVE_ED25519
 static int test_sign_eddsa(void)
 {
-    int ret = -1;
+    int ret = 0;
     WC_RNG rng;
     ed25519_key ed;
     WOLFCOSE_KEY key;
@@ -1090,31 +1106,43 @@ static int test_sign_eddsa(void)
 
     printf("  %-12s sign/verify ... ", "EdDSA");
 
-    if (wc_InitRng(&rng) != 0) goto done;
-    rngInit = 1;
-    if (wc_ed25519_init(&ed) != 0) goto done;
-    edInit = 1;
-    if (wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &ed) != 0) goto done;
+    ret = wc_InitRng(&rng);
+    if (ret == 0) {
+        rngInit = 1;
+        ret = wc_ed25519_init(&ed);
+    }
+    if (ret == 0) {
+        edInit = 1;
+        ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &ed);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEd25519(&key, &ed);
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEd25519(&key, &ed);
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_EDDSA, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&key, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decoded, &decodedLen);
+    }
+    if (ret == 0) {
+        if (decodedLen != sizeof(payload) - 1 ||
+            memcmp(decoded, payload, decodedLen) != 0) {
+            ret = -1;
+        }
+    }
 
-    if (wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_EDDSA, NULL, 0,
-        payload, sizeof(payload) - 1, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng) != 0) goto done;
-
-    if (wc_CoseSign1_Verify(&key, out, outLen, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decoded, &decodedLen) != 0) goto done;
-
-    if (decodedLen != sizeof(payload) - 1 ||
-        memcmp(decoded, payload, decodedLen) != 0) goto done;
-
-    ret = 0;
-done:
-    if (edInit) wc_ed25519_free(&ed);
-    if (rngInit) wc_FreeRng(&rng);
+    /* Cleanup */
+    if (edInit != 0) {
+        wc_ed25519_free(&ed);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     printf("%s\n", ret == 0 ? "PASS" : "FAIL");
     return ret;
 }
@@ -1123,7 +1151,7 @@ done:
 #ifdef HAVE_ED448
 static int test_sign_ed448(void)
 {
-    int ret = -1;
+    int ret = 0;
     WC_RNG rng;
     ed448_key ed;
     WOLFCOSE_KEY key;
@@ -1138,31 +1166,43 @@ static int test_sign_ed448(void)
 
     printf("  %-12s sign/verify ... ", "Ed448");
 
-    if (wc_InitRng(&rng) != 0) goto done;
-    rngInit = 1;
-    if (wc_ed448_init(&ed) != 0) goto done;
-    edInit = 1;
-    if (wc_ed448_make_key(&rng, ED448_KEY_SIZE, &ed) != 0) goto done;
+    ret = wc_InitRng(&rng);
+    if (ret == 0) {
+        rngInit = 1;
+        ret = wc_ed448_init(&ed);
+    }
+    if (ret == 0) {
+        edInit = 1;
+        ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &ed);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEd448(&key, &ed);
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEd448(&key, &ed);
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_EDDSA, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&key, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decoded, &decodedLen);
+    }
+    if (ret == 0) {
+        if (decodedLen != sizeof(payload) - 1 ||
+            memcmp(decoded, payload, decodedLen) != 0) {
+            ret = -1;
+        }
+    }
 
-    if (wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_EDDSA, NULL, 0,
-        payload, sizeof(payload) - 1, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng) != 0) goto done;
-
-    if (wc_CoseSign1_Verify(&key, out, outLen, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decoded, &decodedLen) != 0) goto done;
-
-    if (decodedLen != sizeof(payload) - 1 ||
-        memcmp(decoded, payload, decodedLen) != 0) goto done;
-
-    ret = 0;
-done:
-    if (edInit) wc_ed448_free(&ed);
-    if (rngInit) wc_FreeRng(&rng);
+    /* Cleanup */
+    if (edInit != 0) {
+        wc_ed448_free(&ed);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     printf("%s\n", ret == 0 ? "PASS" : "FAIL");
     return ret;
 }
@@ -1171,7 +1211,7 @@ done:
 #if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
 static int test_sign_pss(const char* name, int32_t alg)
 {
-    int ret = -1;
+    int ret = 0;
     WC_RNG rng;
     RsaKey rsa;
     WOLFCOSE_KEY key;
@@ -1186,31 +1226,43 @@ static int test_sign_pss(const char* name, int32_t alg)
 
     printf("  %-12s sign/verify ... ", name);
 
-    if (wc_InitRng(&rng) != 0) goto done;
-    rngInit = 1;
-    if (wc_InitRsaKey(&rsa, NULL) != 0) goto done;
-    rsaInit = 1;
-    if (wc_MakeRsaKey(&rsa, 2048, WC_RSA_EXPONENT, &rng) != 0) goto done;
+    ret = wc_InitRng(&rng);
+    if (ret == 0) {
+        rngInit = 1;
+        ret = wc_InitRsaKey(&rsa, NULL);
+    }
+    if (ret == 0) {
+        rsaInit = 1;
+        ret = wc_MakeRsaKey(&rsa, 2048, WC_RSA_EXPONENT, &rng);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetRsa(&key, &rsa);
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetRsa(&key, &rsa);
+        ret = wc_CoseSign1_Sign(&key, alg, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&key, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decoded, &decodedLen);
+    }
+    if (ret == 0) {
+        if (decodedLen != sizeof(payload) - 1 ||
+            memcmp(decoded, payload, decodedLen) != 0) {
+            ret = -1;
+        }
+    }
 
-    if (wc_CoseSign1_Sign(&key, alg, NULL, 0,
-        payload, sizeof(payload) - 1, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng) != 0) goto done;
-
-    if (wc_CoseSign1_Verify(&key, out, outLen, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decoded, &decodedLen) != 0) goto done;
-
-    if (decodedLen != sizeof(payload) - 1 ||
-        memcmp(decoded, payload, decodedLen) != 0) goto done;
-
-    ret = 0;
-done:
-    if (rsaInit) wc_FreeRsaKey(&rsa);
-    if (rngInit) wc_FreeRng(&rng);
+    /* Cleanup */
+    if (rsaInit != 0) {
+        wc_FreeRsaKey(&rsa);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     printf("%s\n", ret == 0 ? "PASS" : "FAIL");
     return ret;
 }
@@ -1219,7 +1271,7 @@ done:
 #ifdef HAVE_DILITHIUM
 static int test_sign_mldsa(const char* name, int32_t alg, byte level)
 {
-    int ret = -1;
+    int ret = 0;
     WC_RNG rng;
     dilithium_key dl;
     WOLFCOSE_KEY key;
@@ -1234,32 +1286,46 @@ static int test_sign_mldsa(const char* name, int32_t alg, byte level)
 
     printf("  %-12s sign/verify ... ", name);
 
-    if (wc_InitRng(&rng) != 0) goto done;
-    rngInit = 1;
-    if (wc_dilithium_init(&dl) != 0) goto done;
-    dlInit = 1;
-    if (wc_dilithium_set_level(&dl, level) != 0) goto done;
-    if (wc_dilithium_make_key(&dl, &rng) != 0) goto done;
+    ret = wc_InitRng(&rng);
+    if (ret == 0) {
+        rngInit = 1;
+        ret = wc_dilithium_init(&dl);
+    }
+    if (ret == 0) {
+        dlInit = 1;
+        ret = wc_dilithium_set_level(&dl, level);
+    }
+    if (ret == 0) {
+        ret = wc_dilithium_make_key(&dl, &rng);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetDilithium(&key, alg, &dl);
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetDilithium(&key, alg, &dl);
+        ret = wc_CoseSign1_Sign(&key, alg, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&key, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decoded, &decodedLen);
+    }
+    if (ret == 0) {
+        if (decodedLen != sizeof(payload) - 1 ||
+            memcmp(decoded, payload, decodedLen) != 0) {
+            ret = -1;
+        }
+    }
 
-    if (wc_CoseSign1_Sign(&key, alg, NULL, 0,
-        payload, sizeof(payload) - 1, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng) != 0) goto done;
-
-    if (wc_CoseSign1_Verify(&key, out, outLen, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decoded, &decodedLen) != 0) goto done;
-
-    if (decodedLen != sizeof(payload) - 1 ||
-        memcmp(decoded, payload, decodedLen) != 0) goto done;
-
-    ret = 0;
-done:
-    if (dlInit) wc_dilithium_free(&dl);
-    if (rngInit) wc_FreeRng(&rng);
+    /* Cleanup */
+    if (dlInit != 0) {
+        wc_dilithium_free(&dl);
+    }
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     printf("%s\n", ret == 0 ? "PASS" : "FAIL");
     return ret;
 }
@@ -1271,7 +1337,7 @@ done:
 static int test_enc_roundtrip(const char* name, int32_t alg,
                                size_t keyLen, size_t nonceLen)
 {
-    int ret = -1;
+    int ret = 0;
     WC_RNG rng;
     WOLFCOSE_KEY key;
     uint8_t keyData[32];
@@ -1287,29 +1353,39 @@ static int test_enc_roundtrip(const char* name, int32_t alg,
 
     printf("  %-12s enc/dec   ... ", name);
 
-    if (wc_InitRng(&rng) != 0) goto done;
-    rngInit = 1;
-    if (wc_RNG_GenerateBlock(&rng, keyData, (word32)keyLen) != 0) goto done;
-    if (wc_RNG_GenerateBlock(&rng, iv, (word32)nonceLen) != 0) goto done;
+    ret = wc_InitRng(&rng);
+    if (ret == 0) {
+        rngInit = 1;
+        ret = wc_RNG_GenerateBlock(&rng, keyData, (word32)keyLen);
+    }
+    if (ret == 0) {
+        ret = wc_RNG_GenerateBlock(&rng, iv, (word32)nonceLen);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetSymmetric(&key, keyData, keyLen);
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, keyLen);
+        ret = wc_CoseEncrypt0_Encrypt(&key, alg, iv, nonceLen,
+            payload, sizeof(payload) - 1, NULL, 0, NULL,
+            NULL, 0, scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
+    if (ret == 0) {
+        ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr,
+            plain, sizeof(plain), &plainLen);
+    }
+    if (ret == 0) {
+        if (plainLen != sizeof(payload) - 1 ||
+            memcmp(plain, payload, plainLen) != 0) {
+            ret = -1;
+        }
+    }
 
-    if (wc_CoseEncrypt0_Encrypt(&key, alg, iv, nonceLen,
-        payload, sizeof(payload) - 1, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen) != 0) goto done;
-
-    if (wc_CoseEncrypt0_Decrypt(&key, out, outLen, NULL, 0,
-        scratch, sizeof(scratch), &hdr,
-        plain, sizeof(plain), &plainLen) != 0) goto done;
-
-    if (plainLen != sizeof(payload) - 1 ||
-        memcmp(plain, payload, plainLen) != 0) goto done;
-
-    ret = 0;
-done:
-    if (rngInit) wc_FreeRng(&rng);
+    /* Cleanup */
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     printf("%s\n", ret == 0 ? "PASS" : "FAIL");
     return ret;
 }
@@ -1319,7 +1395,7 @@ done:
 #if !defined(NO_HMAC)
 static int test_mac_roundtrip(const char* name, int32_t alg, size_t keyLen)
 {
-    int ret = -1;
+    int ret = 0;
     WC_RNG rng;
     WOLFCOSE_KEY key;
     uint8_t keyData[64];
@@ -1334,28 +1410,36 @@ static int test_mac_roundtrip(const char* name, int32_t alg, size_t keyLen)
 
     printf("  %-12s mac/verify ... ", name);
 
-    if (wc_InitRng(&rng) != 0) goto done;
-    rngInit = 1;
-    if (wc_RNG_GenerateBlock(&rng, keyData, (word32)keyLen) != 0) goto done;
+    ret = wc_InitRng(&rng);
+    if (ret == 0) {
+        rngInit = 1;
+        ret = wc_RNG_GenerateBlock(&rng, keyData, (word32)keyLen);
+    }
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetSymmetric(&key, keyData, keyLen);
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, keyLen);
+        ret = wc_CoseMac0_Create(&key, alg, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
+    if (ret == 0) {
+        ret = wc_CoseMac0_Verify(&key, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decoded, &decodedLen);
+    }
+    if (ret == 0) {
+        if (decodedLen != sizeof(payload) - 1 ||
+            memcmp(decoded, payload, decodedLen) != 0) {
+            ret = -1;
+        }
+    }
 
-    if (wc_CoseMac0_Create(&key, alg, NULL, 0,
-        payload, sizeof(payload) - 1, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen) != 0) goto done;
-
-    if (wc_CoseMac0_Verify(&key, out, outLen, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decoded, &decodedLen) != 0) goto done;
-
-    if (decodedLen != sizeof(payload) - 1 ||
-        memcmp(decoded, payload, decodedLen) != 0) goto done;
-
-    ret = 0;
-done:
-    if (rngInit) wc_FreeRng(&rng);
+    /* Cleanup */
+    if (rngInit != 0) {
+        wc_FreeRng(&rng);
+    }
     printf("%s\n", ret == 0 ? "PASS" : "FAIL");
     return ret;
 }
@@ -1488,9 +1572,7 @@ static int tool_test(const char* filter)
     return failures > 0 ? EXIT_CRYPTO : 0;
 }
 
-/* ---------------------------------------------------------------------------
- * main
- * --------------------------------------------------------------------------- */
+/* ----- main ----- */
 int main(int argc, char* argv[])
 {
     const char* cmd;

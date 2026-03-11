@@ -37,7 +37,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-${{ matrix.os }}-v3
+        key: wolfssl-${{ matrix.os }}-v3-full
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -47,10 +47,12 @@ jobs:
         cd wolfssl
         ./autogen.sh
         ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
-                    --enable-curve25519 --enable-aesgcm --enable-aesccm \
-                    --enable-sha384 --enable-sha512 --enable-keygen \
-                    --enable-rsapss --enable-chacha --enable-poly1305 \
-                    --enable-dilithium \
+                    --enable-curve25519 --enable-curve448 \
+                    --enable-aesgcm --enable-aesccm \
+                    --enable-sha384 --enable-sha512 \
+                    --enable-keygen --enable-hkdf --enable-aeskeywrap \
+                    --enable-chacha --enable-poly1305 \
+                    --enable-dilithium --enable-rsapss \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
         make install
@@ -69,7 +71,7 @@ jobs:
         make test CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
-    - name: Run tool round-trip test (all algorithms)
+    - name: Run tool round-trip test
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
@@ -77,10 +79,76 @@ jobs:
         make tool-test CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
-    - name: Run lifecycle demo (all algorithms)
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool lcov
+
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-coverage-v3-full
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
+                    --enable-curve25519 --enable-curve448 \
+                    --enable-aesgcm --enable-aesccm \
+                    --enable-sha384 --enable-sha512 \
+                    --enable-keygen --enable-hkdf --enable-aeskeywrap \
+                    --enable-chacha --enable-poly1305 \
+                    --enable-dilithium --enable-rsapss \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Build with coverage
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        make clean
+        make CFLAGS="-std=c99 -Os --coverage -I./include -I$WOLFSSL_DIR/include" \
+             LDFLAGS="--coverage -L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run tests with coverage
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        export DYLD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make demo CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
-                  LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+        make test CFLAGS="-std=c99 -Os --coverage -I./include -I$WOLFSSL_DIR/include" \
+                  LDFLAGS="--coverage -L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Generate coverage report
+      run: |
+        lcov --capture --directory . --output-file coverage.info
+        lcov --remove coverage.info '/usr/*' '*/tests/*' --output-file coverage.info
+        lcov --list coverage.info
+
+    - name: Check coverage threshold
+      run: |
+        # Extract line coverage percentage
+        COVERAGE=$(lcov --summary coverage.info 2>&1 | grep "lines" | sed 's/.*: //' | sed 's/%.*//')
+        echo "Line coverage: ${COVERAGE}%"
+        if (( $(echo "$COVERAGE < 75" | bc -l) )); then
+          echo "Coverage ${COVERAGE}% is below threshold of 75%"
+          exit 1
+        fi
+        echo "Coverage ${COVERAGE}% meets threshold of 75%"
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage.info
