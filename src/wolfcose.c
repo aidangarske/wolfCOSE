@@ -44,6 +44,24 @@
 #endif
 #include <string.h>
 
+/* ----- Constant-time comparison (side-channel safe) ----- */
+
+/**
+ * Constant-time memory comparison (matches wolfSSL ConstantCompare pattern).
+ * Returns 0 if equal, non-zero otherwise.
+ * Timing is independent of comparison result.
+ */
+static int wolfCose_ConstantCompare(const byte* a, const byte* b, int length)
+{
+    int i;
+    int result = 0;
+
+    for (i = 0; i < length; i++) {
+        result |= (int)(a[i] ^ b[i]);
+    }
+    return result;
+}
+
 /* ----- Internal helpers: algorithm dispatch ----- */
 
 int wolfCose_AlgToHashType(int32_t alg, enum wc_HashType* hashType)
@@ -4670,7 +4688,7 @@ int wc_CoseMac0_Verify(WOLFCOSE_KEY* key,
 
     /* Constant-time comparison */
     if (ret == WOLFCOSE_SUCCESS) {
-        if (XMEMCMP(computedTag, macTag, expectedTagSz) != 0) {
+        if (wolfCose_ConstantCompare(computedTag, macTag, (int)expectedTagSz) != 0) {
             ret = WOLFCOSE_E_MAC_FAIL;
         }
     }
@@ -5943,7 +5961,7 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     }
 
     /* Constant-time comparison */
-    if (XMEMCMP(computedTag, macTag, expectedTagLen) != 0) {
+    if (wolfCose_ConstantCompare(computedTag, macTag, (int)expectedTagLen) != 0) {
         wc_ForceZero(computedTag, sizeof(computedTag));
         return WOLFCOSE_E_MAC_FAIL;
     }

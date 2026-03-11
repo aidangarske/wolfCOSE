@@ -609,6 +609,10 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
                         /* Sanitize: can't have more entries than bytes */
                         ret = WOLFCOSE_E_CBOR_MALFORMED;
                     }
+                    else if (item.val > (SIZE_MAX / 2u)) {
+                        /* Prevent overflow in item.val * 2 */
+                        ret = WOLFCOSE_E_CBOR_MALFORMED;
+                    }
                     else {
                         stack[depth] = remaining;
                         depth++;
