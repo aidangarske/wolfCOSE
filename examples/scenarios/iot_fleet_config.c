@@ -20,9 +20,9 @@
  * Encrypted Config Push to IoT Fleet
  *
  * Scenario: Cloud server pushes encrypted configuration to multiple
- * IoT devices. Each device has unique key. Server uses COSE_Encrypt
- * with multiple recipients so the same encrypted message works for
- * all devices.
+ * IoT devices using a shared group key. Server uses COSE_Encrypt
+ * with multiple recipients (Direct key mode) so the same encrypted
+ * message works for all devices. Each recipient is identified by KID.
  *
  * Compile-time gate:
  *   WOLFCOSE_EXAMPLE_IOT_FLEET  - Enable this example (default: enabled)

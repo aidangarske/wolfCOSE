@@ -20,9 +20,9 @@
  * Group MAC Broadcast
  *
  * Scenario: Gateway broadcasts authenticated telemetry to multiple
- * subscribers with different keys. Each subscriber can verify the
- * MAC using their own key. Demonstrates COSE_Mac with multiple
- * recipients.
+ * subscribers using a shared group MAC key. Each subscriber can
+ * verify the MAC using this shared key. Demonstrates COSE_Mac with
+ * multiple recipients using Direct key mode.
  *
  * Compile-time gate:
  *   WOLFCOSE_EXAMPLE_GROUP_BROADCAST  - Enable this example (default: enabled)
