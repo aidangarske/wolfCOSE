@@ -257,14 +257,6 @@ WOLFCOSE_LOCAL int wolfCose_AeadTagLen(int32_t alg, size_t* tagLen);
 
 #if !defined(NO_HMAC)
 /**
- * \brief Get HMAC tag size for a COSE HMAC algorithm.
- * \param alg    COSE algorithm ID (5, 6, or 7).
- * \param tagSz  Output: tag size in bytes.
- * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_COSE_BAD_ALG.
- */
-WOLFCOSE_LOCAL int wolfCose_HmacTagSize(int32_t alg, size_t* tagSz);
-
-/**
  * \brief Map COSE HMAC algorithm ID to wolfCrypt HMAC type.
  * \param alg       COSE algorithm ID.
  * \param hmacType  Output: wolfCrypt hash type for HMAC.

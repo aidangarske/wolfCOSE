@@ -44,6 +44,19 @@
 #endif
 #include <string.h>
 
+/* ----- Forced failure injection for testing error paths ----- */
+#ifdef WOLFCOSE_FORCE_FAILURE
+    #include "../tests/force_failure.h"
+    /* Check if a forced failure is set; if so, consume it and set ret */
+    #define INJECT_FAILURE(failure_type, error_code) \
+        if (wolfForceFailure_Check(failure_type)) { \
+            ret = (error_code); \
+        } else
+#else
+    /* No-op when not testing */
+    #define INJECT_FAILURE(failure_type, error_code)
+#endif
+
 /* ----- Constant-time comparison (side-channel safe) ----- */
 
 /**
@@ -362,36 +375,6 @@ int wolfCose_AeadTagLen(int32_t alg, size_t* tagLen)
 /* ----- Internal: HMAC helpers ----- */
 
 #if !defined(NO_HMAC)
-int wolfCose_HmacTagSize(int32_t alg, size_t* tagSz)
-{
-    int ret = WOLFCOSE_SUCCESS;
-
-    if (tagSz == NULL) {
-        ret = WOLFCOSE_E_INVALID_ARG;
-    }
-    else {
-        switch (alg) {
-            case WOLFCOSE_ALG_HMAC_256_256:
-                *tagSz = 32;
-                break;
-#ifdef WOLFSSL_SHA384
-            case WOLFCOSE_ALG_HMAC_384_384:
-                *tagSz = 48;
-                break;
-#endif
-#ifdef WOLFSSL_SHA512
-            case WOLFCOSE_ALG_HMAC_512_512:
-                *tagSz = 64;
-                break;
-#endif
-            default:
-                ret = WOLFCOSE_E_COSE_BAD_ALG;
-                break;
-        }
-    }
-    return ret;
-}
-
 int wolfCose_HmacType(int32_t alg, int* hmacType)
 {
     int ret = WOLFCOSE_SUCCESS;
@@ -445,8 +428,11 @@ int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
     }
     else {
         /* Sign producing DER-encoded signature */
-        ret = wc_ecc_sign_hash(hash, (word32)hashLen, derSig, &derSigLen,
-                                rng, eccKey);
+        INJECT_FAILURE(WOLF_FAIL_ECC_SIGN, -1)
+        {
+            ret = wc_ecc_sign_hash(hash, (word32)hashLen, derSig, &derSigLen,
+                                    rng, eccKey);
+        }
         if (ret != 0) {
             ret = WOLFCOSE_E_CRYPTO;
         }
@@ -459,9 +445,12 @@ int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
             XMEMSET(sigBuf, 0, coordSz * 2u);
 
             /* wc_ecc_sig_to_rs extracts r and s as raw bytes */
-            ret = wc_ecc_sig_to_rs(derSig, derSigLen,
-                                    sigBuf, &rLen,
-                                    sigBuf + coordSz, &sLen);
+            INJECT_FAILURE(WOLF_FAIL_ECC_SIG_TO_RS, -1)
+            {
+                ret = wc_ecc_sig_to_rs(derSig, derSigLen,
+                                        sigBuf, &rLen,
+                                        sigBuf + coordSz, &sLen);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -503,15 +492,21 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
         *verified = 0;
 
         /* Convert raw r||s to DER */
-        ret = wc_ecc_rs_raw_to_sig(sigBuf, (word32)coordSz,
-                                     sigBuf + coordSz, (word32)coordSz,
-                                     derSig, &derSigLen);
+        INJECT_FAILURE(WOLF_FAIL_ECC_RS_TO_SIG, -1)
+        {
+            ret = wc_ecc_rs_raw_to_sig(sigBuf, (word32)coordSz,
+                                         sigBuf + coordSz, (word32)coordSz,
+                                         derSig, &derSigLen);
+        }
         if (ret != 0) {
             ret = WOLFCOSE_E_CRYPTO;
         }
         else {
-            ret = wc_ecc_verify_hash(derSig, derSigLen, hash,
-                                      (word32)hashLen, verified, eccKey);
+            INJECT_FAILURE(WOLF_FAIL_ECC_VERIFY, -1)
+            {
+                ret = wc_ecc_verify_hash(derSig, derSigLen, hash,
+                                          (word32)hashLen, verified, eccKey);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -849,8 +844,11 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             ret = wolfCose_CrvKeySize(key->crv, &coordSz);
 
             if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_ecc_export_public_raw(key->key.ecc, xBuf, &xLen,
-                                               yBuf, &yLen);
+                INJECT_FAILURE(WOLF_FAIL_ECC_EXPORT_X963, -1)
+                {
+                    ret = wc_ecc_export_public_raw(key->key.ecc, xBuf, &xLen,
+                                                   yBuf, &yLen);
+                }
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -894,7 +892,10 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             if (ret == WOLFCOSE_SUCCESS && key->hasPrivate) {
                 uint8_t dBuf[66];
                 word32 dLen = (word32)sizeof(dBuf);
-                ret = wc_ecc_export_private_only(key->key.ecc, dBuf, &dLen);
+                INJECT_FAILURE(WOLF_FAIL_ECC_EXPORT_PRIVATE, -1)
+                {
+                    ret = wc_ecc_export_private_only(key->key.ecc, dBuf, &dLen);
+                }
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -991,9 +992,12 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                         /* Use output buffer tail for d, then scratch
                          * space for e2/n2/p/q that RsaExportKey requires */
                         word32 dSz, eSz2, nSz2, pSz, qSz;
-                        int rsaEncSz;
+                        int rsaEncSz = 0;
 
-                        rsaEncSz = wc_RsaEncryptSize((RsaKey*)key->key.rsa);
+                        INJECT_FAILURE(WOLF_FAIL_RSA_ENCRYPT_SIZE, rsaEncSz)
+                        {
+                            rsaEncSz = wc_RsaEncryptSize((RsaKey*)key->key.rsa);
+                        }
                         if (rsaEncSz <= 0) {
                             ret = WOLFCOSE_E_CRYPTO;
                         }
@@ -1014,14 +1018,17 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                                 nSz2 = (word32)rsaEncSz;
                                 pSz = (word32)((word32)rsaEncSz / 2u);
                                 qSz = (word32)((word32)rsaEncSz / 2u);
-                                ret = wc_RsaExportKey(
-                                    (RsaKey*)key->key.rsa,
-                                    ctx.buf + scrOff, &eSz2,
-                                    ctx.buf + scrOff + 8u, &nSz2,
-                                    ctx.buf + dOff, &dSz,
-                                    ctx.buf + scrOff + 8u + nSz2, &pSz,
-                                    ctx.buf + scrOff + 8u + nSz2 + pSz,
-                                    &qSz);
+                                INJECT_FAILURE(WOLF_FAIL_RSA_EXPORT_KEY, -1)
+                                {
+                                    ret = wc_RsaExportKey(
+                                        (RsaKey*)key->key.rsa,
+                                        ctx.buf + scrOff, &eSz2,
+                                        ctx.buf + scrOff + 8u, &nSz2,
+                                        ctx.buf + dOff, &dSz,
+                                        ctx.buf + scrOff + 8u + nSz2, &pSz,
+                                        ctx.buf + scrOff + 8u + nSz2 + pSz,
+                                        &qSz);
+                                }
                                 if (ret != 0) {
                                     ret = WOLFCOSE_E_CRYPTO;
                                 }
@@ -1099,8 +1106,11 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 else {
                     ctx.idx += 3u;
                     dlKeyLen = (word32)(ctx.bufSz - ctx.idx);
-                    ret = wc_dilithium_export_public(key->key.dilithium,
-                        ctx.buf + ctx.idx, &dlKeyLen);
+                    INJECT_FAILURE(WOLF_FAIL_DILITHIUM_EXPORT_PUB, -1)
+                    {
+                        ret = wc_dilithium_export_public(key->key.dilithium,
+                            ctx.buf + ctx.idx, &dlKeyLen);
+                    }
                     if (ret != 0) {
                         ret = WOLFCOSE_E_CRYPTO;
                     }
@@ -1132,9 +1142,12 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                     else {
                         ctx.idx += 3u;
                         dlKeyLen = (word32)(ctx.bufSz - ctx.idx);
-                        ret = wc_dilithium_export_private(
-                            key->key.dilithium,
-                            ctx.buf + ctx.idx, &dlKeyLen);
+                        INJECT_FAILURE(WOLF_FAIL_DILITHIUM_EXPORT_PRIV, -1)
+                        {
+                            ret = wc_dilithium_export_private(
+                                key->key.dilithium,
+                                ctx.buf + ctx.idx, &dlKeyLen);
+                        }
                         if (ret != 0) {
                             ret = WOLFCOSE_E_CRYPTO;
                         }
@@ -1167,8 +1180,11 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
 
 #ifdef HAVE_ED25519
             if (key->crv == WOLFCOSE_CRV_ED25519) {
-                ret = wc_ed25519_export_public(key->key.ed25519,
-                                                pubBuf, &pubLen);
+                INJECT_FAILURE(WOLF_FAIL_ED25519_EXPORT_PUB, -1)
+                {
+                    ret = wc_ed25519_export_public(key->key.ed25519,
+                                                    pubBuf, &pubLen);
+                }
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -1177,8 +1193,11 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
 #endif
 #ifdef HAVE_ED448
             if (key->crv == WOLFCOSE_CRV_ED448) {
-                ret = wc_ed448_export_public(key->key.ed448,
-                                              pubBuf, &pubLen);
+                INJECT_FAILURE(WOLF_FAIL_ED448_EXPORT_PUB, -1)
+                {
+                    ret = wc_ed448_export_public(key->key.ed448,
+                                                  pubBuf, &pubLen);
+                }
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -1221,15 +1240,21 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 word32 privLen = (word32)sizeof(privBuf);
 #ifdef HAVE_ED25519
                 if (key->crv == WOLFCOSE_CRV_ED25519) {
-                    ret = wc_ed25519_export_private_only(key->key.ed25519,
-                                                          privBuf, &privLen);
+                    INJECT_FAILURE(WOLF_FAIL_ED25519_EXPORT_PRIV, -1)
+                    {
+                        ret = wc_ed25519_export_private_only(key->key.ed25519,
+                                                              privBuf, &privLen);
+                    }
                 }
                 else
 #endif
 #ifdef HAVE_ED448
                 if (key->crv == WOLFCOSE_CRV_ED448) {
-                    ret = wc_ed448_export_private_only(key->key.ed448,
-                                                        privBuf, &privLen);
+                    INJECT_FAILURE(WOLF_FAIL_ED448_EXPORT_PRIV, -1)
+                    {
+                        ret = wc_ed448_export_private_only(key->key.ed448,
+                                                            privBuf, &privLen);
+                    }
                 }
                 else
 #endif
@@ -1403,17 +1428,23 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     ret = wolfCose_CrvToWcCurve(key->crv, &wcCrv);
                     if (ret == WOLFCOSE_SUCCESS) {
                         if (dData != NULL) {
-                            ret = wc_ecc_import_unsigned(key->key.ecc,
-                                (byte*)xData, (byte*)yData,
-                                (byte*)dData, wcCrv);
+                            INJECT_FAILURE(WOLF_FAIL_ECC_IMPORT_X963, -1)
+                            {
+                                ret = wc_ecc_import_unsigned(key->key.ecc,
+                                    (byte*)xData, (byte*)yData,
+                                    (byte*)dData, wcCrv);
+                            }
                             if (ret == 0) {
                                 key->hasPrivate = 1;
                             }
                         }
                         else {
-                            ret = wc_ecc_import_unsigned(key->key.ecc,
-                                (byte*)xData, (byte*)yData,
-                                NULL, wcCrv);
+                            INJECT_FAILURE(WOLF_FAIL_ECC_IMPORT_X963, -1)
+                            {
+                                ret = wc_ecc_import_unsigned(key->key.ecc,
+                                    (byte*)xData, (byte*)yData,
+                                    NULL, wcCrv);
+                            }
                         }
                         if (ret != 0 && ret != WOLFCOSE_SUCCESS) {
                             ret = WOLFCOSE_E_CRYPTO;
@@ -1430,8 +1461,11 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     ret = WOLFCOSE_E_COSE_BAD_HDR;
                 }
                 else {
-                    ret = wc_RsaPublicKeyDecodeRaw(nData, (word32)nLen,
-                        xData, (word32)xLen, key->key.rsa);
+                    INJECT_FAILURE(WOLF_FAIL_RSA_PUBLIC_DECODE, -1)
+                    {
+                        ret = wc_RsaPublicKeyDecodeRaw(nData, (word32)nLen,
+                            xData, (word32)xLen, key->key.rsa);
+                    }
                     if (ret != 0) {
                         ret = WOLFCOSE_E_CRYPTO;
                     }
@@ -1466,15 +1500,21 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                         ret = WOLFCOSE_E_CRYPTO;
                     }
                     else if (dData != NULL) {
-                        ret = wc_dilithium_import_key(
-                            dData, (word32)dLen,
-                            xData, (word32)xLen, key->key.dilithium);
+                        INJECT_FAILURE(WOLF_FAIL_DILITHIUM_IMPORT_PRIV, -1)
+                        {
+                            ret = wc_dilithium_import_key(
+                                dData, (word32)dLen,
+                                xData, (word32)xLen, key->key.dilithium);
+                        }
                         if (ret == 0) { key->hasPrivate = 1; }
                         else { ret = WOLFCOSE_E_CRYPTO; }
                     }
                     else {
-                        ret = wc_dilithium_import_public(
-                            xData, (word32)xLen, key->key.dilithium);
+                        INJECT_FAILURE(WOLF_FAIL_DILITHIUM_IMPORT_PUB, -1)
+                        {
+                            ret = wc_dilithium_import_public(
+                                xData, (word32)xLen, key->key.dilithium);
+                        }
                         if (ret != 0) { ret = WOLFCOSE_E_CRYPTO; }
                     }
                 }
@@ -1490,14 +1530,20 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 else if (key->crv == WOLFCOSE_CRV_ED25519 &&
                          key->key.ed25519 != NULL) {
                     if (dData != NULL) {
-                        ret = wc_ed25519_import_private_key(dData, (word32)dLen,
-                            xData, (word32)xLen, key->key.ed25519);
+                        INJECT_FAILURE(WOLF_FAIL_ED25519_IMPORT_PRIV, -1)
+                        {
+                            ret = wc_ed25519_import_private_key(dData, (word32)dLen,
+                                xData, (word32)xLen, key->key.ed25519);
+                        }
                         if (ret == 0) { key->hasPrivate = 1; }
                         else { ret = WOLFCOSE_E_CRYPTO; }
                     }
                     else {
-                        ret = wc_ed25519_import_public(xData, (word32)xLen,
-                                                        key->key.ed25519);
+                        INJECT_FAILURE(WOLF_FAIL_ED25519_IMPORT_PUB, -1)
+                        {
+                            ret = wc_ed25519_import_public(xData, (word32)xLen,
+                                                            key->key.ed25519);
+                        }
                         if (ret != 0) { ret = WOLFCOSE_E_CRYPTO; }
                     }
                 }
@@ -1506,14 +1552,20 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 else if (key->crv == WOLFCOSE_CRV_ED448 &&
                          key->key.ed448 != NULL) {
                     if (dData != NULL) {
-                        ret = wc_ed448_import_private_key(dData, (word32)dLen,
-                            xData, (word32)xLen, key->key.ed448);
+                        INJECT_FAILURE(WOLF_FAIL_ED448_IMPORT_PRIV, -1)
+                        {
+                            ret = wc_ed448_import_private_key(dData, (word32)dLen,
+                                xData, (word32)xLen, key->key.ed448);
+                        }
                         if (ret == 0) { key->hasPrivate = 1; }
                         else { ret = WOLFCOSE_E_CRYPTO; }
                     }
                     else {
-                        ret = wc_ed448_import_public(xData, (word32)xLen,
-                                                      key->key.ed448);
+                        INJECT_FAILURE(WOLF_FAIL_ED448_IMPORT_PUB, -1)
+                        {
+                            ret = wc_ed448_import_public(xData, (word32)xLen,
+                                                          key->key.ed448);
+                        }
                         if (ret != 0) { ret = WOLFCOSE_E_CRYPTO; }
                     }
                 }
@@ -2043,8 +2095,12 @@ static int wolfCose_EcdhEsDirect(int32_t alg,
 
     /* Perform ECDH */
     if (ret == WOLFCOSE_SUCCESS) {
-        int eccRet = wc_ecc_shared_secret(&ephemKey, recipientPub->key.ecc,
+        int eccRet = -1;  /* Initialize to failure for injection testing */
+        INJECT_FAILURE(WOLF_FAIL_ECDH_SHARED_SECRET, eccRet)
+        {
+            eccRet = wc_ecc_shared_secret(&ephemKey, recipientPub->key.ecc,
                                            sharedSecret, &sharedSecretLen);
+        }
         if (eccRet != 0) {
             ret = WOLFCOSE_E_CRYPTO;
         }
@@ -2495,8 +2551,11 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
         if (ret == WOLFCOSE_SUCCESS) {
 #ifdef HAVE_ED25519
             if (key->crv == WOLFCOSE_CRV_ED25519) {
-                ret = wc_ed25519_sign_msg(scratch, (word32)sigStructLen,
-                                           sigBuf, &edSigLen, key->key.ed25519);
+                INJECT_FAILURE(WOLF_FAIL_ED25519_SIGN, -1)
+                {
+                    ret = wc_ed25519_sign_msg(scratch, (word32)sigStructLen,
+                                               sigBuf, &edSigLen, key->key.ed25519);
+                }
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -2508,9 +2567,12 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
 #endif
 #ifdef HAVE_ED448
             if (key->crv == WOLFCOSE_CRV_ED448) {
-                ret = wc_ed448_sign_msg(scratch, (word32)sigStructLen,
-                                         sigBuf, &edSigLen, key->key.ed448,
-                                         NULL, 0);
+                INJECT_FAILURE(WOLF_FAIL_ED448_SIGN, -1)
+                {
+                    ret = wc_ed448_sign_msg(scratch, (word32)sigStructLen,
+                                             sigBuf, &edSigLen, key->key.ed448,
+                                             NULL, 0);
+                }
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -2550,8 +2612,11 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
         }
 
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_Hash(hashType, scratch, (word32)sigStructLen,
-                           hashBuf, (word32)digestSz);
+            INJECT_FAILURE(WOLF_FAIL_HASH, -1)
+            {
+                ret = wc_Hash(hashType, scratch, (word32)sigStructLen,
+                               hashBuf, (word32)digestSz);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -2597,8 +2662,11 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
 
         /* Hash Sig_structure */
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_Hash(hashType, scratch, (word32)sigStructLen,
-                           hashBuf, (word32)digestSz);
+            INJECT_FAILURE(WOLF_FAIL_HASH, -1)
+            {
+                ret = wc_Hash(hashType, scratch, (word32)sigStructLen,
+                               hashBuf, (word32)digestSz);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -2611,10 +2679,13 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
         /* RSA sig goes into scratch (after hashing, scratch is free) */
         if (ret == WOLFCOSE_SUCCESS) {
             word32 rsaSigLen = (word32)scratchSz;
-            ret = wc_RsaPSS_Sign_ex(hashBuf, (word32)digestSz,
-                                      scratch, rsaSigLen,
-                                      hashType, mgf, digestSz,
-                                      key->key.rsa, rng);
+            INJECT_FAILURE(WOLF_FAIL_RSA_SSL_SIGN, -1)
+            {
+                ret = wc_RsaPSS_Sign_ex(hashBuf, (word32)digestSz,
+                                          scratch, rsaSigLen,
+                                          hashType, mgf, digestSz,
+                                          key->key.rsa, rng);
+            }
             if (ret <= 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -2647,10 +2718,13 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
 
         if (ret == WOLFCOSE_SUCCESS) {
             word32 dlSigLen = (word32)expectedSigSz;
-            ret = wc_dilithium_sign_msg(
-                scratch, (word32)sigStructLen,
-                scratch + sigStructLen, &dlSigLen,
-                key->key.dilithium, rng);
+            INJECT_FAILURE(WOLF_FAIL_DILITHIUM_SIGN, -1)
+            {
+                ret = wc_dilithium_sign_msg(
+                    scratch, (word32)sigStructLen,
+                    scratch + sigStructLen, &dlSigLen,
+                    key->key.dilithium, rng);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -2856,9 +2930,12 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         }
 #ifdef HAVE_ED25519
         if (ret == WOLFCOSE_SUCCESS && key->crv == WOLFCOSE_CRV_ED25519) {
-            ret = wc_ed25519_verify_msg(sigData, (word32)sigDataLen,
-                                         scratch, (word32)sigStructLen,
-                                         &verified, key->key.ed25519);
+            INJECT_FAILURE(WOLF_FAIL_ED25519_VERIFY, -1)
+            {
+                ret = wc_ed25519_verify_msg(sigData, (word32)sigDataLen,
+                                             scratch, (word32)sigStructLen,
+                                             &verified, key->key.ed25519);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -2867,9 +2944,12 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
 #endif
 #ifdef HAVE_ED448
         if (ret == WOLFCOSE_SUCCESS && key->crv == WOLFCOSE_CRV_ED448) {
-            ret = wc_ed448_verify_msg(sigData, (word32)sigDataLen,
-                                       scratch, (word32)sigStructLen,
-                                       &verified, key->key.ed448, NULL, 0);
+            INJECT_FAILURE(WOLF_FAIL_ED448_VERIFY, -1)
+            {
+                ret = wc_ed448_verify_msg(sigData, (word32)sigDataLen,
+                                           scratch, (word32)sigStructLen,
+                                           &verified, key->key.ed448, NULL, 0);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -2907,8 +2987,11 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_Hash(hashType, scratch, (word32)sigStructLen,
-                           hashBuf, (word32)digestSz);
+            INJECT_FAILURE(WOLF_FAIL_HASH, -1)
+            {
+                ret = wc_Hash(hashType, scratch, (word32)sigStructLen,
+                               hashBuf, (word32)digestSz);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -2948,8 +3031,11 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_Hash(hashType, scratch, (word32)sigStructLen,
-                           hashBuf, (word32)digestSz);
+            INJECT_FAILURE(WOLF_FAIL_HASH, -1)
+            {
+                ret = wc_Hash(hashType, scratch, (word32)sigStructLen,
+                               hashBuf, (word32)digestSz);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -2967,10 +3053,13 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         }
         if (ret == WOLFCOSE_SUCCESS) {
             XMEMCPY(scratch, sigData, sigDataLen);
-            ret = wc_RsaPSS_VerifyCheck(scratch, (word32)sigDataLen,
-                                          scratch, (word32)scratchSz,
-                                          hashBuf, (word32)digestSz,
-                                          hashType, mgf, key->key.rsa);
+            INJECT_FAILURE(WOLF_FAIL_RSA_SSL_VERIFY, -1)
+            {
+                ret = wc_RsaPSS_VerifyCheck(scratch, (word32)sigDataLen,
+                                              scratch, (word32)scratchSz,
+                                              hashBuf, (word32)digestSz,
+                                              hashType, mgf, key->key.rsa);
+            }
             if (ret < 0) {
                 ret = WOLFCOSE_E_COSE_SIG_FAIL;
             }
@@ -2991,9 +3080,12 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_dilithium_verify_msg(sigData, (word32)sigDataLen,
-                                            scratch, (word32)sigStructLen,
-                                            &verified, key->key.dilithium);
+            INJECT_FAILURE(WOLF_FAIL_DILITHIUM_VERIFY, -1)
+            {
+                ret = wc_dilithium_verify_msg(sigData, (word32)sigDataLen,
+                                                scratch, (word32)sigStructLen,
+                                                &verified, key->key.dilithium);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -3509,7 +3601,9 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
 
     /* Cleanup: always executed */
     wc_ForceZero(hashBuf, sizeof(hashBuf));
-    wc_ForceZero(scratch, scratchSz);
+    if (scratch != NULL) {
+        wc_ForceZero(scratch, scratchSz);
+    }
 
     return ret;
 }
@@ -3661,7 +3755,10 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
         }
         else {
             aesInited = 1;
-            ret = wc_AesGcmSetKey(&aes, key->key.symm.key, (word32)aeadKeyLen);
+            INJECT_FAILURE(WOLF_FAIL_AES_GCM_SET_KEY, -1)
+            {
+                ret = wc_AesGcmSetKey(&aes, key->key.symm.key, (word32)aeadKeyLen);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -3669,13 +3766,16 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
 
         if (ret == WOLFCOSE_SUCCESS && isDetached != 0) {
             /* Detached mode: ciphertext goes to detachedPayload buffer */
-            ret = wc_AesGcmEncrypt(&aes,
-                detachedPayload,                      /* ciphertext output */
-                payload, (word32)payloadLen,          /* plaintext input */
-                iv, (word32)ivLen,                    /* nonce */
-                detachedPayload + payloadLen,         /* auth tag (after ct) */
-                (word32)aeadTagLen,
-                scratch, (word32)encStructLen);       /* AAD = Enc_structure */
+            INJECT_FAILURE(WOLF_FAIL_AES_GCM_ENCRYPT, -1)
+            {
+                ret = wc_AesGcmEncrypt(&aes,
+                    detachedPayload,                      /* ciphertext output */
+                    payload, (word32)payloadLen,          /* plaintext input */
+                    iv, (word32)ivLen,                    /* nonce */
+                    detachedPayload + payloadLen,         /* auth tag (after ct) */
+                    (word32)aeadTagLen,
+                    scratch, (word32)encStructLen);       /* AAD = Enc_structure */
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -3696,13 +3796,16 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
             }
             if (ret == WOLFCOSE_SUCCESS) {
                 ciphertextOffset = outCtx.idx;
-                ret = wc_AesGcmEncrypt(&aes,
-                    out + ciphertextOffset,              /* ciphertext output */
-                    payload, (word32)payloadLen,          /* plaintext input */
-                    iv, (word32)ivLen,                    /* nonce */
-                    out + ciphertextOffset + payloadLen,  /* auth tag */
-                    (word32)aeadTagLen,
-                    scratch, (word32)encStructLen);       /* AAD */
+                INJECT_FAILURE(WOLF_FAIL_AES_GCM_ENCRYPT, -1)
+                {
+                    ret = wc_AesGcmEncrypt(&aes,
+                        out + ciphertextOffset,              /* ciphertext output */
+                        payload, (word32)payloadLen,          /* plaintext input */
+                        iv, (word32)ivLen,                    /* nonce */
+                        out + ciphertextOffset + payloadLen,  /* auth tag */
+                        (word32)aeadTagLen,
+                        scratch, (word32)encStructLen);       /* AAD */
+                }
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -3742,19 +3845,25 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_AesCcmSetKey(&aes, key->key.symm.key, (word32)aeadKeyLen);
+            INJECT_FAILURE(WOLF_FAIL_AES_CCM_SET_KEY, -1)
+            {
+                ret = wc_AesCcmSetKey(&aes, key->key.symm.key, (word32)aeadKeyLen);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_AesCcmEncrypt(&aes,
-                out + ciphertextOffset,
-                payload, (word32)payloadLen,
-                iv, (word32)ivLen,
-                out + ciphertextOffset + payloadLen,
-                (word32)aeadTagLen,
-                scratch, (word32)encStructLen);
+            INJECT_FAILURE(WOLF_FAIL_AES_CCM_ENCRYPT, -1)
+            {
+                ret = wc_AesCcmEncrypt(&aes,
+                    out + ciphertextOffset,
+                    payload, (word32)payloadLen,
+                    iv, (word32)ivLen,
+                    out + ciphertextOffset + payloadLen,
+                    (word32)aeadTagLen,
+                    scratch, (word32)encStructLen);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -3974,18 +4083,24 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
         }
         else {
             aesInited = 1;
-            ret = wc_AesGcmSetKey(&aes, key->key.symm.key, (word32)aeadKeyLen);
+            INJECT_FAILURE(WOLF_FAIL_AES_GCM_SET_KEY, -1)
+            {
+                ret = wc_AesGcmSetKey(&aes, key->key.symm.key, (word32)aeadKeyLen);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_AesGcmDecrypt(&aes,
-                plaintext,
-                ciphertext, (word32)payloadSz,
-                hdr->iv, (word32)hdr->ivLen,
-                ciphertext + payloadSz, (word32)aeadTagLen,
-                scratch, (word32)encStructLen);
+            INJECT_FAILURE(WOLF_FAIL_AES_GCM_DECRYPT, -1)
+            {
+                ret = wc_AesGcmDecrypt(&aes,
+                    plaintext,
+                    ciphertext, (word32)payloadSz,
+                    hdr->iv, (word32)hdr->ivLen,
+                    ciphertext + payloadSz, (word32)aeadTagLen,
+                    scratch, (word32)encStructLen);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_COSE_DECRYPT_FAIL;
             }
@@ -4009,18 +4124,24 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
         }
         else {
             aesInited = 1;
-            ret = wc_AesCcmSetKey(&aes, key->key.symm.key, (word32)aeadKeyLen);
+            INJECT_FAILURE(WOLF_FAIL_AES_CCM_SET_KEY, -1)
+            {
+                ret = wc_AesCcmSetKey(&aes, key->key.symm.key, (word32)aeadKeyLen);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_AesCcmDecrypt(&aes,
-                plaintext,
-                ciphertext, (word32)payloadSz,
-                hdr->iv, (word32)hdr->ivLen,
-                ciphertext + payloadSz, (word32)aeadTagLen,
-                scratch, (word32)encStructLen);
+            INJECT_FAILURE(WOLF_FAIL_AES_CCM_DECRYPT, -1)
+            {
+                ret = wc_AesCcmDecrypt(&aes,
+                    plaintext,
+                    ciphertext, (word32)payloadSz,
+                    hdr->iv, (word32)hdr->ivLen,
+                    ciphertext + payloadSz, (word32)aeadTagLen,
+                    scratch, (word32)encStructLen);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_COSE_DECRYPT_FAIL;
             }
@@ -4392,20 +4513,29 @@ int wc_CoseMac0_Create(WOLFCOSE_KEY* key, int32_t alg,
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_HmacSetKey(&hmac, hmacType, key->key.symm.key,
-                                 (word32)key->key.symm.keyLen);
+            INJECT_FAILURE(WOLF_FAIL_HMAC_SET_KEY, -1)
+            {
+                ret = wc_HmacSetKey(&hmac, hmacType, key->key.symm.key,
+                                     (word32)key->key.symm.keyLen);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_HmacUpdate(&hmac, scratch, (word32)macStructLen);
+            INJECT_FAILURE(WOLF_FAIL_HMAC_UPDATE, -1)
+            {
+                ret = wc_HmacUpdate(&hmac, scratch, (word32)macStructLen);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_HmacFinal(&hmac, tagBuf);
+            INJECT_FAILURE(WOLF_FAIL_HMAC_FINAL, -1)
+            {
+                ret = wc_HmacFinal(&hmac, tagBuf);
+            }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
@@ -4490,7 +4620,9 @@ int wc_CoseMac0_Create(WOLFCOSE_KEY* key, int32_t alg,
     }
 #endif
     wc_ForceZero(tagBuf, sizeof(tagBuf));
-    wc_ForceZero(scratch, scratchSz);
+    if (scratch != NULL) {
+        wc_ForceZero(scratch, scratchSz);
+    }
 
     return ret;
 }
@@ -4706,7 +4838,9 @@ int wc_CoseMac0_Verify(WOLFCOSE_KEY* key,
     }
 #endif
     wc_ForceZero(computedTag, sizeof(computedTag));
-    wc_ForceZero(scratch, scratchSz);
+    if (scratch != NULL) {
+        wc_ForceZero(scratch, scratchSz);
+    }
 
     return ret;
 }

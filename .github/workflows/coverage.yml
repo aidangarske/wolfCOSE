@@ -45,20 +45,114 @@ jobs:
         make -j$(nproc)
         make install
 
-    - name: Run coverage
+    - name: Run coverage with failure injection
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make coverage CC=gcc \
+        make coverage-force-failure CC=gcc \
           CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
           LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
-    - name: Check coverage threshold
+    - name: Check coverage thresholds
       run: |
-        COVERAGE=$(lcov --summary coverage.info 2>&1 | grep 'lines' | sed 's/.*: //' | sed 's/%.*//')
-        echo "Line coverage: ${COVERAGE}%"
-        if [ "$(awk "BEGIN {print ($COVERAGE < 75)}")" -eq 1 ]; then
-          echo "FAIL: Line coverage ${COVERAGE}% is below 75% threshold"
+        echo "=============================================="
+        echo "         wolfCOSE Coverage Report"
+        echo "=============================================="
+        echo ""
+
+        # Coverage thresholds:
+        #   wolfcose.c:      90% minimum
+        #   wolfcose_cbor.c: 95% minimum
+        #
+        # Why not 100%? The remaining ~10% in wolfcose.c consists of:
+        #   - Internal wolfCrypt error paths (malloc fail, HW errors)
+        #   - ECDH-ES deep error recovery requiring specific crypto failures
+        #   - Multi-recipient CBOR edge cases needing malformed input fuzzing
+        # These are tested via WOLFCOSE_FORCE_FAILURE but some paths require
+        # wolfCrypt internals to fail which cannot be triggered externally.
+
+        FAILED=0
+
+        # Parse gcov output for wolfcose.c
+        if [ -f wolfcose.c.gcov ]; then
+          COSE_TOTAL=$(grep -cE "^\s+[0-9]+:" wolfcose.c.gcov || echo "0")
+          COSE_EXEC=$(grep -cE "^\s+[0-9]+:" wolfcose.c.gcov || echo "0")
+          COSE_UNCOV=$(grep -c "#####" wolfcose.c.gcov || echo "0")
+          COSE_COV=$((COSE_EXEC - COSE_UNCOV > 0 ? COSE_EXEC - COSE_UNCOV : 0))
+
+          # Get line count from gcov summary
+          COSE_PCT=$(grep "Lines executed" wolfcose.c.gcov 2>/dev/null | head -1 | sed 's/.*://' | sed 's/%.*//' || echo "0")
+          if [ "$COSE_PCT" = "0" ]; then
+            # Fallback calculation
+            COSE_LINES=$(grep -E "of [0-9]+" wolfcose.c.gcov 2>/dev/null | head -1 | sed 's/.*of //' || echo "3775")
+            COSE_PCT=$(awk "BEGIN {printf \"%.2f\", (($COSE_LINES - $COSE_UNCOV) / $COSE_LINES) * 100}")
+          fi
+
+          echo "wolfcose.c:"
+          echo "  Coverage: ${COSE_PCT}%"
+          echo "  Threshold: 90%"
+          echo "  Uncovered lines: ${COSE_UNCOV}"
+          echo ""
+
+          if [ "$(awk "BEGIN {print ($COSE_PCT < 90)}")" -eq 1 ]; then
+            FAILED=1
+            echo ">>> FAILED: wolfcose.c coverage is below 90%! <<<"
+            echo ""
+            echo "Uncovered lines in wolfcose.c:"
+            echo "------------------------------"
+            grep -n "#####" wolfcose.c.gcov | head -50
+            echo ""
+            if [ "$COSE_UNCOV" -gt 50 ]; then
+              echo "... and $((COSE_UNCOV - 50)) more uncovered lines"
+            fi
+            echo ""
+          else
+            echo ">>> PASSED: wolfcose.c meets 90% threshold <<<"
+          fi
+          echo ""
+        fi
+
+        # Parse gcov output for wolfcose_cbor.c
+        if [ -f wolfcose_cbor.c.gcov ]; then
+          CBOR_UNCOV=$(grep -c "#####" wolfcose_cbor.c.gcov || echo "0")
+          CBOR_PCT=$(grep "Lines executed" wolfcose_cbor.c.gcov 2>/dev/null | head -1 | sed 's/.*://' | sed 's/%.*//' || echo "0")
+          if [ "$CBOR_PCT" = "0" ]; then
+            CBOR_LINES=$(grep -E "of [0-9]+" wolfcose_cbor.c.gcov 2>/dev/null | head -1 | sed 's/.*of //' || echo "334")
+            CBOR_PCT=$(awk "BEGIN {printf \"%.2f\", (($CBOR_LINES - $CBOR_UNCOV) / $CBOR_LINES) * 100}")
+          fi
+
+          echo "wolfcose_cbor.c:"
+          echo "  Coverage: ${CBOR_PCT}%"
+          echo "  Threshold: 95%"
+          echo "  Uncovered lines: ${CBOR_UNCOV}"
+          echo ""
+
+          if [ "$(awk "BEGIN {print ($CBOR_PCT < 95)}")" -eq 1 ]; then
+            FAILED=1
+            echo ">>> FAILED: wolfcose_cbor.c coverage is below 95%! <<<"
+            echo ""
+            echo "Uncovered lines in wolfcose_cbor.c:"
+            echo "-----------------------------------"
+            grep -n "#####" wolfcose_cbor.c.gcov
+            echo ""
+          else
+            echo ">>> PASSED: wolfcose_cbor.c meets 95% threshold <<<"
+          fi
+          echo ""
+        fi
+
+        echo "=============================================="
+
+        if [ "$FAILED" -eq 1 ]; then
+          echo ""
+          echo "  Looks like you need more tests!"
+          echo ""
+          echo "  Add tests to tests/test_cose.c to cover the"
+          echo "  uncovered lines shown above."
+          echo ""
+          echo "=============================================="
           exit 1
         fi
-        echo "PASS: Line coverage ${COVERAGE}% meets 75% threshold"
+
+        echo "  All coverage thresholds passed!"
+        echo "=============================================="

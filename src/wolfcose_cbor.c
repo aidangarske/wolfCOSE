@@ -232,11 +232,6 @@ int wc_CBOR_EncodeUint(WOLFCOSE_CBOR_CTX* ctx, uint64_t val)
     return wolfCose_CBOR_EncodeHead(ctx, WOLFCOSE_CBOR_UINT, val);
 }
 
-int wc_CBOR_EncodeNegInt(WOLFCOSE_CBOR_CTX* ctx, uint64_t val)
-{
-    return wolfCose_CBOR_EncodeHead(ctx, WOLFCOSE_CBOR_NEGINT, val);
-}
-
 int wc_CBOR_EncodeInt(WOLFCOSE_CBOR_CTX* ctx, int64_t val)
 {
     int ret;

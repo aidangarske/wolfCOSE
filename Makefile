@@ -85,6 +85,17 @@ coverage: clean
 	./$(TEST_BIN)
 	gcov src/*.c
 
+# --- Coverage with forced failure injection (for testing error paths) ---
+# See FORCE_FAILURE.md for documentation on this testing mechanism
+FORCE_FAIL_SRC = tests/force_failure.c
+coverage-force-failure: clean
+	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE --coverage -fprofile-arcs -ftest-coverage -c src/wolfcose_cbor.c -o src/wolfcose_cbor.o
+	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE --coverage -fprofile-arcs -ftest-coverage -c src/wolfcose.c -o src/wolfcose.o
+	$(AR) rcs $(LIB_A) $(OBJ)
+	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE --coverage -fprofile-arcs -ftest-coverage -o $(TEST_BIN) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LIB_A) $(LDFLAGS)
+	./$(TEST_BIN)
+	gcov src/*.c
+
 # --- CLI Tool (compiled out of core lib) ---
 tool: $(LIB_A)
 	$(CC) $(CFLAGS) -DWOLFCOSE_BUILD_TOOL -o $(TOOL_BIN) $(TOOL_SRC) $(LIB_A) $(LDFLAGS)

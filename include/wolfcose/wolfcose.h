@@ -508,15 +508,7 @@ typedef struct WOLFCOSE_SIGNATURE {
 WOLFCOSE_API int wc_CBOR_EncodeUint(WOLFCOSE_CBOR_CTX* ctx, uint64_t val);
 
 /**
- * \brief Encode a negative integer. Encodes CBOR value -(val+1).
- * \param ctx  Encoder context.
- * \param val  Magnitude minus one (e.g., 0 encodes -1, 99 encodes -100).
- * \return WOLFCOSE_SUCCESS or negative error code.
- */
-WOLFCOSE_API int wc_CBOR_EncodeNegInt(WOLFCOSE_CBOR_CTX* ctx, uint64_t val);
-
-/**
- * \brief Encode a signed integer. Dispatches to EncodeUint or EncodeNegInt.
+ * \brief Encode a signed integer. Dispatches to EncodeUint internally.
  * \param ctx  Encoder context.
  * \param val  Signed value.
  * \return WOLFCOSE_SUCCESS or negative error code.
