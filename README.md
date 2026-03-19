@@ -110,7 +110,7 @@ Runs on every push and PR:
 - **Comprehensive Tests**: ~240 algorithm combination tests
 - **Static Analysis**: cppcheck, Clang analyzer, GCC `-fanalyzer`
 - **Coverity Scan**: nightly defect analysis
-- **Code Coverage**: 90%+ for core library
+- **Code Coverage**: 97%+ for wolfcose.c, 100% for wolfcose_cbor.c
 
 ```bash
 make coverage                  # Run tests with gcov

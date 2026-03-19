@@ -40,7 +40,8 @@ jobs:
                     --enable-curve25519 --enable-aesgcm --enable-aesccm \
                     --enable-sha384 --enable-sha512 --enable-keygen \
                     --enable-rsapss --enable-chacha --enable-poly1305 \
-                    --enable-dilithium \
+                    --enable-dilithium --enable-hkdf --enable-aeskeywrap \
+                    --enable-aescbc \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc)
         make install
@@ -61,8 +62,8 @@ jobs:
         echo ""
 
         # Coverage thresholds:
-        #   wolfcose.c:      90% minimum
-        #   wolfcose_cbor.c: 95% minimum
+        #   wolfcose.c:      97% minimum
+        #   wolfcose_cbor.c: 100% minimum
 
         FAILED=0
 
@@ -78,21 +79,21 @@ jobs:
         if [ -n "$COSE_PCT" ]; then
           echo "wolfcose.c:"
           echo "  Coverage: ${COSE_PCT}%"
-          echo "  Threshold: 90%"
+          echo "  Threshold: 97%"
           echo "  Uncovered lines: ${COSE_UNCOV}"
           echo ""
 
           # Compare using awk (handles decimals)
-          if awk "BEGIN {exit !($COSE_PCT < 90)}"; then
+          if awk "BEGIN {exit !($COSE_PCT < 97)}"; then
             FAILED=1
-            echo ">>> FAILED: wolfcose.c coverage is below 90%! <<<"
+            echo ">>> FAILED: wolfcose.c coverage is below 97%! <<<"
             echo ""
             echo "Uncovered lines in wolfcose.c:"
             echo "------------------------------"
             grep -n "#####" wolfcose.c.gcov | head -50
             echo ""
           else
-            echo ">>> PASSED: wolfcose.c meets 90% threshold <<<"
+            echo ">>> PASSED: wolfcose.c meets 97% threshold <<<"
           fi
           echo ""
         fi
@@ -104,21 +105,21 @@ jobs:
         if [ -n "$CBOR_PCT" ]; then
           echo "wolfcose_cbor.c:"
           echo "  Coverage: ${CBOR_PCT}%"
-          echo "  Threshold: 95%"
+          echo "  Threshold: 100%"
           echo "  Uncovered lines: ${CBOR_UNCOV}"
           echo ""
 
           # Compare using awk (handles decimals)
-          if awk "BEGIN {exit !($CBOR_PCT < 95)}"; then
+          if awk "BEGIN {exit !($CBOR_PCT < 100)}"; then
             FAILED=1
-            echo ">>> FAILED: wolfcose_cbor.c coverage is below 95%! <<<"
+            echo ">>> FAILED: wolfcose_cbor.c coverage is below 100%! <<<"
             echo ""
             echo "Uncovered lines in wolfcose_cbor.c:"
             echo "-----------------------------------"
             grep -n "#####" wolfcose_cbor.c.gcov
             echo ""
           else
-            echo ">>> PASSED: wolfcose_cbor.c meets 95% threshold <<<"
+            echo ">>> PASSED: wolfcose_cbor.c meets 100% threshold <<<"
           fi
           echo ""
         fi
