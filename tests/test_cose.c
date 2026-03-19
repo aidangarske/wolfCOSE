@@ -6213,8 +6213,8 @@ static void test_cose_invalid_algorithms(void)
     WOLFCOSE_KEY key;
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
-    uint8_t data[32] = {0};
-    uint8_t iv[12] = {0};
+    const uint8_t data[32] = {0};
+    const uint8_t iv[12] = {0};
     size_t outLen = 0;
     int ret;
 
@@ -7720,7 +7720,7 @@ static void test_internal_helpers(void)
 #ifdef HAVE_ECC
     printf("  [ECC Sign/Verify Raw Error Tests]\n");
     {
-        uint8_t hash[32] = {0};
+        const uint8_t hash[32] = {0};
         uint8_t sigBuf[64];
         size_t sigLen = sizeof(sigBuf);
         int verified;
@@ -10043,7 +10043,7 @@ static void test_multi_mac_verify_wrong_key(void)
 #endif /* WOLFCOSE_MAC && !NO_HMAC */
 
 /* ----- Additional Key Type Tests ----- */
-#ifdef HAVE_ECC
+#if defined(HAVE_ECC) && (defined(HAVE_ED25519) || defined(HAVE_ED448))
 static void test_key_type_eddsa_wrong_crv(void)
 {
     WOLFCOSE_KEY key;
@@ -10084,7 +10084,7 @@ static void test_key_type_eddsa_wrong_crv(void)
     wc_ecc_free(&eccKey);
     wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC */
+#endif /* HAVE_ECC && (HAVE_ED25519 || HAVE_ED448) */
 
 #if defined(HAVE_ED25519) && defined(HAVE_ECC)
 static void test_key_type_okp_for_ecdsa(void)
@@ -10739,8 +10739,6 @@ static void test_multi_encrypt_with_detached(void)
         0x64, 0x6D, 0x07, 0xDB, 0xB5, 0x33, 0x56, 0x6E
     };
     uint8_t payload[32] = "Test multi-encrypt detached";
-    uint8_t detachedBuf[64];
-    size_t detachedLen = 0;
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
     size_t outLen = 0;
@@ -11097,14 +11095,12 @@ static void test_multi_encrypt_recipients_with_kids(void)
     recipients[0].kid = (const uint8_t*)"recipient-1";
     recipients[0].kidLen = 11;
 
+    /* Multi-encrypt with KIDs in recipients - direct mode requires same key */
+    /* Using key1 for both recipients to test KID encoding path */
     recipients[1].algId = WOLFCOSE_ALG_DIRECT;
-    recipients[1].key = &key2;
+    recipients[1].key = &key1;
     recipients[1].kid = (const uint8_t*)"recipient-2";
     recipients[1].kidLen = 11;
-
-    /* Multi-encrypt with KIDs in recipients - direct mode requires same key */
-    /* Using key1 for both to test KID encoding path */
-    recipients[1].key = &key1;
 
     ret = wc_CoseEncrypt_Encrypt(recipients, 2,
         WOLFCOSE_ALG_A128GCM,
@@ -11472,7 +11468,7 @@ int test_cose(void)
 #endif
 
     /* Additional Key Type Tests */
-#ifdef HAVE_ECC
+#if defined(HAVE_ECC) && (defined(HAVE_ED25519) || defined(HAVE_ED448))
     test_key_type_eddsa_wrong_crv();
 #endif
 #if defined(HAVE_ED25519) && defined(HAVE_ECC)

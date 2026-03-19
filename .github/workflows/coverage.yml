@@ -63,38 +63,27 @@ jobs:
         # Coverage thresholds:
         #   wolfcose.c:      90% minimum
         #   wolfcose_cbor.c: 95% minimum
-        #
-        # Why not 100%? The remaining ~10% in wolfcose.c consists of:
-        #   - Internal wolfCrypt error paths (malloc fail, HW errors)
-        #   - ECDH-ES deep error recovery requiring specific crypto failures
-        #   - Multi-recipient CBOR edge cases needing malformed input fuzzing
-        # These are tested via WOLFCOSE_FORCE_FAILURE but some paths require
-        # wolfCrypt internals to fail which cannot be triggered externally.
 
         FAILED=0
 
-        # Parse gcov output for wolfcose.c
-        if [ -f wolfcose.c.gcov ]; then
-          COSE_TOTAL=$(grep -cE "^\s+[0-9]+:" wolfcose.c.gcov || echo "0")
-          COSE_EXEC=$(grep -cE "^\s+[0-9]+:" wolfcose.c.gcov || echo "0")
-          COSE_UNCOV=$(grep -c "#####" wolfcose.c.gcov || echo "0")
-          COSE_COV=$((COSE_EXEC - COSE_UNCOV > 0 ? COSE_EXEC - COSE_UNCOV : 0))
+        # Run gcov and capture output
+        GCOV_OUTPUT=$(gcov src/*.c 2>&1)
+        echo "$GCOV_OUTPUT"
+        echo ""
 
-          # Get line count from gcov summary
-          COSE_PCT=$(grep "Lines executed" wolfcose.c.gcov 2>/dev/null | head -1 | sed 's/.*://' | sed 's/%.*//' || echo "0")
-          if [ "$COSE_PCT" = "0" ]; then
-            # Fallback calculation
-            COSE_LINES=$(grep -E "of [0-9]+" wolfcose.c.gcov 2>/dev/null | head -1 | sed 's/.*of //' || echo "3775")
-            COSE_PCT=$(awk "BEGIN {printf \"%.2f\", (($COSE_LINES - $COSE_UNCOV) / $COSE_LINES) * 100}")
-          fi
+        # Parse wolfcose.c coverage from gcov output
+        COSE_PCT=$(echo "$GCOV_OUTPUT" | grep -A1 "wolfcose.c'" | grep "Lines executed" | sed "s/.*:\([0-9.]*\)%.*/\1/")
+        COSE_UNCOV=$(grep -c "#####" wolfcose.c.gcov 2>/dev/null || echo "0")
 
+        if [ -n "$COSE_PCT" ]; then
           echo "wolfcose.c:"
           echo "  Coverage: ${COSE_PCT}%"
           echo "  Threshold: 90%"
           echo "  Uncovered lines: ${COSE_UNCOV}"
           echo ""
 
-          if [ "$(awk "BEGIN {print ($COSE_PCT < 90)}")" -eq 1 ]; then
+          # Compare using awk (handles decimals)
+          if awk "BEGIN {exit !($COSE_PCT < 90)}"; then
             FAILED=1
             echo ">>> FAILED: wolfcose.c coverage is below 90%! <<<"
             echo ""
@@ -102,32 +91,25 @@ jobs:
             echo "------------------------------"
             grep -n "#####" wolfcose.c.gcov | head -50
             echo ""
-            if [ "$COSE_UNCOV" -gt 50 ]; then
-              echo "... and $((COSE_UNCOV - 50)) more uncovered lines"
-            fi
-            echo ""
           else
             echo ">>> PASSED: wolfcose.c meets 90% threshold <<<"
           fi
           echo ""
         fi
 
-        # Parse gcov output for wolfcose_cbor.c
-        if [ -f wolfcose_cbor.c.gcov ]; then
-          CBOR_UNCOV=$(grep -c "#####" wolfcose_cbor.c.gcov || echo "0")
-          CBOR_PCT=$(grep "Lines executed" wolfcose_cbor.c.gcov 2>/dev/null | head -1 | sed 's/.*://' | sed 's/%.*//' || echo "0")
-          if [ "$CBOR_PCT" = "0" ]; then
-            CBOR_LINES=$(grep -E "of [0-9]+" wolfcose_cbor.c.gcov 2>/dev/null | head -1 | sed 's/.*of //' || echo "334")
-            CBOR_PCT=$(awk "BEGIN {printf \"%.2f\", (($CBOR_LINES - $CBOR_UNCOV) / $CBOR_LINES) * 100}")
-          fi
+        # Parse wolfcose_cbor.c coverage from gcov output
+        CBOR_PCT=$(echo "$GCOV_OUTPUT" | grep -A1 "wolfcose_cbor.c'" | grep "Lines executed" | sed "s/.*:\([0-9.]*\)%.*/\1/")
+        CBOR_UNCOV=$(grep -c "#####" wolfcose_cbor.c.gcov 2>/dev/null || echo "0")
 
+        if [ -n "$CBOR_PCT" ]; then
           echo "wolfcose_cbor.c:"
           echo "  Coverage: ${CBOR_PCT}%"
           echo "  Threshold: 95%"
           echo "  Uncovered lines: ${CBOR_UNCOV}"
           echo ""
 
-          if [ "$(awk "BEGIN {print ($CBOR_PCT < 95)}")" -eq 1 ]; then
+          # Compare using awk (handles decimals)
+          if awk "BEGIN {exit !($CBOR_PCT < 95)}"; then
             FAILED=1
             echo ">>> FAILED: wolfcose_cbor.c coverage is below 95%! <<<"
             echo ""
