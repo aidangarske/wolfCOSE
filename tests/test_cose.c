@@ -11117,6 +11117,238 @@ static void test_multi_encrypt_recipients_with_kids(void)
 }
 #endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
 
+/* ----- wolfReview Regression Tests ----- */
+
+/* Test #1: wc_CoseSign_Sign encodes outer array as 4 (not 3) */
+#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+static void test_sign_multi_array_count(void)
+{
+    WOLFCOSE_KEY key1;
+    ecc_key eccKey1;
+    WOLFCOSE_SIGNATURE signers[1];
+    WOLFCOSE_HDR hdr;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[512];
+    size_t outLen;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "array count test";
+    const uint8_t* decPayload;
+    size_t decPayloadLen;
+
+    printf("  [Sign Multi Array Count = 4]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+
+    ret = wc_ecc_init(&eccKey1);
+    if (ret != 0) { wc_FreeRng(&rng); TEST_ASSERT(0, "ecc init"); return; }
+
+    ret = wc_ecc_make_key(&rng, 32, &eccKey1);
+    TEST_ASSERT(ret == 0, "ecc keygen");
+
+    wc_CoseKey_Init(&key1);
+    ret = wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
+    TEST_ASSERT(ret == 0, "key set");
+
+    signers[0].algId = WOLFCOSE_ALG_ES256;
+    signers[0].key = &key1;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+
+    ret = wc_CoseSign_Sign(signers, 1,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == 0, "sign create");
+
+    /* Verify: if array count was wrong (3), verify would fail decoding */
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseSign_Verify(&key1, 0,
+        out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "sign verify roundtrip");
+    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1, "payload length");
+
+    wc_ecc_free(&eccKey1);
+    wc_FreeRng(&rng);
+}
+#endif
+
+/* Test #2: wc_CoseEncrypt_Encrypt rejects detached mode */
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+static void test_encrypt_multi_detached_rejected(void)
+{
+    WOLFCOSE_KEY key1;
+    WOLFCOSE_RECIPIENT recipients[1];
+    int ret;
+    uint8_t out[512];
+    size_t outLen;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "detached test";
+    const uint8_t iv[12] = {1,2,3,4,5,6,7,8,9,10,11,12};
+    const uint8_t keyData[16] = {0};
+
+    printf("  [Encrypt Multi Detached Rejected]\n");
+
+    wc_CoseKey_Init(&key1);
+    wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
+    recipients[0].algId = 0;
+    recipients[0].key = &key1;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(recipients, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        NULL, 0,
+        payload, sizeof(payload) - 1,  /* detached */
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED, "detached rejected");
+}
+#endif
+
+/* Test #5: wc_CoseEncrypt_Encrypt rejects wrong IV length */
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+static void test_encrypt_multi_wrong_iv_len(void)
+{
+    WOLFCOSE_KEY key1;
+    WOLFCOSE_RECIPIENT recipients[1];
+    int ret;
+    uint8_t out[512];
+    size_t outLen;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "IV length test";
+    const uint8_t shortIv[8] = {1,2,3,4,5,6,7,8};  /* A128GCM needs 12 */
+    const uint8_t keyData[16] = {0};
+
+    printf("  [Encrypt Multi Wrong IV Length]\n");
+
+    wc_CoseKey_Init(&key1);
+    wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
+    recipients[0].algId = 0;
+    recipients[0].key = &key1;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(recipients, 1,
+        WOLFCOSE_ALG_A128GCM,
+        shortIv, sizeof(shortIv),
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "wrong IV length");
+}
+#endif
+
+/* Test #7: ECDH-ES multi-recipient rejected */
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM) && \
+    defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+static void test_ecdh_es_multi_recipient_rejected(void)
+{
+    WOLFCOSE_KEY key1, key2;
+    ecc_key eccKey1, eccKey2;
+    WOLFCOSE_RECIPIENT recipients[2];
+    WC_RNG rng;
+    int ret;
+    uint8_t out[512];
+    size_t outLen;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "ECDH-ES multi test";
+    const uint8_t iv[12] = {1,2,3,4,5,6,7,8,9,10,11,12};
+
+    printf("  [ECDH-ES Multi-Recipient Rejected]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+
+    wc_ecc_init(&eccKey1);
+    wc_ecc_init(&eccKey2);
+    wc_ecc_make_key(&rng, 32, &eccKey1);
+    wc_ecc_make_key(&rng, 32, &eccKey2);
+
+    wc_CoseKey_Init(&key1);
+    wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
+    wc_CoseKey_Init(&key2);
+    wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
+
+    recipients[0].algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+    recipients[0].key = &key1;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+
+    recipients[1].algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+    recipients[1].key = &key2;
+    recipients[1].kid = NULL;
+    recipients[1].kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(recipients, 2,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "ecdh-es multi rejected");
+
+    wc_ecc_free(&eccKey1);
+    wc_ecc_free(&eccKey2);
+    wc_FreeRng(&rng);
+}
+#endif
+
+/* Test #9: wc_CoseSign_Verify rejects wrong array count */
+#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+static void test_sign_verify_bad_array_count(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    int ret;
+    WOLFCOSE_HDR hdr;
+    uint8_t scratch[256];
+    const uint8_t* decPayload;
+    size_t decPayloadLen;
+
+    /* Manually crafted COSE_Sign with array(3) instead of array(4) */
+    /* Tag(98), array(3), h'', {}, h'payload' - missing signatures array */
+    uint8_t badMsg[] = {
+        0xD8, 0x62,       /* Tag 98 (COSE_Sign) */
+        0x83,             /* array(3) - WRONG, should be 84 */
+        0x40,             /* bstr(0) - empty protected */
+        0xA0,             /* map(0) - empty unprotected */
+        0x47, 0x70, 0x61, 0x79, 0x6C, 0x6F, 0x61, 0x64  /* bstr "payload" */
+    };
+
+    printf("  [Sign Verify Bad Array Count]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+
+    wc_ecc_init(&eccKey);
+    wc_ecc_make_key(&rng, 32, &eccKey);
+    wc_CoseKey_Init(&key);
+    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseSign_Verify(&key, 0,
+        badMsg, sizeof(badMsg),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "bad array count rejected");
+
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+#endif
+
 /* ----- Entry point ----- */
 int test_cose(void)
 {
@@ -11523,6 +11755,20 @@ int test_cose(void)
     test_multi_mac_verify_malformed();
     test_mac0_verify_unknown_alg();
     test_mac0_verify_corrupted_tag();
+#endif
+
+    /* wolfReview regression tests */
+#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+    test_sign_multi_array_count();
+    test_sign_verify_bad_array_count();
+#endif
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+    test_encrypt_multi_detached_rejected();
+    test_encrypt_multi_wrong_iv_len();
+#endif
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM) && \
+    defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+    test_ecdh_es_multi_recipient_rejected();
 #endif
 
     /* Mock failure injection tests */
