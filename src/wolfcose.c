@@ -3162,7 +3162,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
     WC_RNG* rng)
 {
     int ret = WOLFCOSE_SUCCESS;
-    uint8_t bodyProtectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
+    const uint8_t bodyProtectedBuf[WOLFCOSE_PROTECTED_HDR_MAX] = {0};
     size_t bodyProtectedLen = 0;
     uint8_t signerProtectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
     size_t signerProtectedLen = 0;
@@ -4933,7 +4933,7 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
     const uint8_t* encryptPayload;
     size_t encryptPayloadLen;
     size_t i;
-    const uint8_t* encKey;
+    const uint8_t* encKey = NULL;
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     uint8_t cek[32];           /* Derived CEK for ECDH-ES (max 256-bit) */
     uint8_t ephemPubX[66];     /* Max for P-521 */
