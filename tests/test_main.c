@@ -30,6 +30,9 @@ int test_cbor(void);
 /* Defined in test_cose.c */
 int test_cose(void);
 
+/* Defined in test_interop.c */
+int test_interop(void);
+
 int main(void)
 {
     int failures = 0;
@@ -41,6 +44,9 @@ int main(void)
 
     printf("\n--- COSE Tests (RFC 9052) ---\n");
     failures += test_cose();
+
+    printf("\n--- Interoperability Tests ---\n");
+    failures += test_interop();
 
     printf("\n=== Results: %s ===\n",
            (failures == 0) ? "ALL PASSED" : "FAILURES");

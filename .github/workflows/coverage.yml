@@ -40,25 +40,102 @@ jobs:
                     --enable-curve25519 --enable-aesgcm --enable-aesccm \
                     --enable-sha384 --enable-sha512 --enable-keygen \
                     --enable-rsapss --enable-chacha --enable-poly1305 \
-                    --enable-dilithium \
+                    --enable-dilithium --enable-hkdf --enable-aeskeywrap \
+                    --enable-aescbc \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc)
         make install
 
-    - name: Run coverage
+    - name: Run coverage with failure injection
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make coverage CC=gcc \
+        make coverage-force-failure CC=gcc \
           CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
           LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
-    - name: Check coverage threshold
+    - name: Check coverage thresholds
       run: |
-        COVERAGE=$(lcov --summary coverage.info 2>&1 | grep 'lines' | grep -oP '[\d.]+(?=%)')
-        echo "Line coverage: ${COVERAGE}%"
-        if [ "$(awk "BEGIN {print ($COVERAGE < 85)}")" -eq 1 ]; then
-          echo "FAIL: Line coverage ${COVERAGE}% is below 85% threshold"
+        echo "=============================================="
+        echo "         wolfCOSE Coverage Report"
+        echo "=============================================="
+        echo ""
+
+        # Coverage thresholds:
+        #   wolfcose.c:      97% minimum
+        #   wolfcose_cbor.c: 100% minimum
+
+        FAILED=0
+
+        # Run gcov and capture output
+        GCOV_OUTPUT=$(gcov src/*.c 2>&1)
+        echo "$GCOV_OUTPUT"
+        echo ""
+
+        # Parse wolfcose.c coverage from gcov output
+        COSE_PCT=$(echo "$GCOV_OUTPUT" | grep -A1 "wolfcose.c'" | grep "Lines executed" | sed "s/.*:\([0-9.]*\)%.*/\1/")
+        COSE_UNCOV=$(grep -c "#####" wolfcose.c.gcov 2>/dev/null || echo "0")
+
+        if [ -n "$COSE_PCT" ]; then
+          echo "wolfcose.c:"
+          echo "  Coverage: ${COSE_PCT}%"
+          echo "  Threshold: 97%"
+          echo "  Uncovered lines: ${COSE_UNCOV}"
+          echo ""
+
+          # Compare using awk (handles decimals)
+          if awk "BEGIN {exit !($COSE_PCT < 97)}"; then
+            FAILED=1
+            echo ">>> FAILED: wolfcose.c coverage is below 97%! <<<"
+            echo ""
+            echo "Uncovered lines in wolfcose.c:"
+            echo "------------------------------"
+            grep -n "#####" wolfcose.c.gcov | head -50
+            echo ""
+          else
+            echo ">>> PASSED: wolfcose.c meets 97% threshold <<<"
+          fi
+          echo ""
+        fi
+
+        # Parse wolfcose_cbor.c coverage from gcov output
+        CBOR_PCT=$(echo "$GCOV_OUTPUT" | grep -A1 "wolfcose_cbor.c'" | grep "Lines executed" | sed "s/.*:\([0-9.]*\)%.*/\1/")
+        CBOR_UNCOV=$(grep -c "#####" wolfcose_cbor.c.gcov 2>/dev/null || echo "0")
+
+        if [ -n "$CBOR_PCT" ]; then
+          echo "wolfcose_cbor.c:"
+          echo "  Coverage: ${CBOR_PCT}%"
+          echo "  Threshold: 100%"
+          echo "  Uncovered lines: ${CBOR_UNCOV}"
+          echo ""
+
+          # Compare using awk (handles decimals)
+          if awk "BEGIN {exit !($CBOR_PCT < 100)}"; then
+            FAILED=1
+            echo ">>> FAILED: wolfcose_cbor.c coverage is below 100%! <<<"
+            echo ""
+            echo "Uncovered lines in wolfcose_cbor.c:"
+            echo "-----------------------------------"
+            grep -n "#####" wolfcose_cbor.c.gcov
+            echo ""
+          else
+            echo ">>> PASSED: wolfcose_cbor.c meets 100% threshold <<<"
+          fi
+          echo ""
+        fi
+
+        echo "=============================================="
+
+        if [ "$FAILED" -eq 1 ]; then
+          echo ""
+          echo "  Looks like you need more tests!"
+          echo ""
+          echo "  Add tests to tests/test_cose.c to cover the"
+          echo "  uncovered lines shown above."
+          echo ""
+          echo "=============================================="
           exit 1
         fi
-        echo "PASS: Line coverage ${COVERAGE}% meets 85% threshold"
+
+        echo "  All coverage thresholds passed!"
+        echo "=============================================="
