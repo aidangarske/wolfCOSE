@@ -22,7 +22,24 @@ wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.r
 
 ## Prerequisites (wolfSSL)
 
-wolfSSL 5.8.4+ with required algorithms enabled based on your build criteria:
+wolfCOSE requires [wolfSSL](https://www.wolfssl.com/) 5.x as its crypto backend. Choose between a minimal build (ECC + AES-GCM only) or a full build that enables all 26 algorithms wolfCOSE supports.
+
+### Minimal Build (ECC + AES-GCM)
+
+This gives you COSE Sign1 (ES256/384/512) and Encrypt0 (AES-GCM) — the most common COSE operations for IoT:
+
+```bash
+cd wolfssl
+./autogen.sh
+./configure --enable-ecc --enable-aesgcm \
+            --enable-sha384 --enable-sha512 --enable-keygen
+make && sudo make install
+sudo ldconfig
+```
+
+**Algorithms enabled:** ES256, ES384, ES512, AES-GCM-128/192/256
+
+### Full Build (All Algorithms)
 
 ```bash
 cd wolfssl
@@ -109,8 +126,10 @@ Runs on every push and PR:
 - **Build + Test**: Ubuntu, macOS, GCC 10-14, Clang 14-18
 - **Comprehensive Tests**: ~240 algorithm combination tests
 - **Static Analysis**: cppcheck, Clang analyzer, GCC `-fanalyzer`
+- **MISRA C 2012**: cppcheck `--addon=misra` checking all wolfCOSE code paths
+- **MISRA C 2023**: strict GCC warnings and clang-tidy (`bugprone-*`, `cert-*`, `clang-analyzer-*`, `misc-*`)
 - **Coverity Scan**: nightly defect analysis
-- **Code Coverage**: 97%+ for wolfcose.c, 100% for wolfcose_cbor.c
+- **Code Coverage**: 99.3% for wolfcose.c, 100% for wolfcose_cbor.c
 
 ```bash
 make coverage                  # Run tests with gcov

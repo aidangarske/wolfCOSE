@@ -229,100 +229,100 @@ static void test_cbor_decode_vectors(void)
 
     /* uint 0 */
     { uint8_t in[] = {0x00};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeUint(&ctx, &uval);
       TEST_ASSERT(ret == 0 && uval == 0, "decode uint 0"); }
 
     /* uint 23 */
     { uint8_t in[] = {0x17};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeUint(&ctx, &uval);
       TEST_ASSERT(ret == 0 && uval == 23, "decode uint 23"); }
 
     /* uint 24 */
     { uint8_t in[] = {0x18, 0x18};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeUint(&ctx, &uval);
       TEST_ASSERT(ret == 0 && uval == 24, "decode uint 24"); }
 
     /* uint 100 */
     { uint8_t in[] = {0x18, 0x64};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeUint(&ctx, &uval);
       TEST_ASSERT(ret == 0 && uval == 100, "decode uint 100"); }
 
     /* uint 1000 */
     { uint8_t in[] = {0x19, 0x03, 0xE8};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeUint(&ctx, &uval);
       TEST_ASSERT(ret == 0 && uval == 1000, "decode uint 1000"); }
 
     /* uint 1000000 */
     { uint8_t in[] = {0x1A, 0x00, 0x0F, 0x42, 0x40};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeUint(&ctx, &uval);
       TEST_ASSERT(ret == 0 && uval == 1000000, "decode uint 1000000"); }
 
     /* uint 1000000000000 */
     { uint8_t in[] = {0x1B, 0x00, 0x00, 0x00, 0xE8, 0xD4, 0xA5, 0x10, 0x00};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeUint(&ctx, &uval);
       TEST_ASSERT(ret == 0 && uval == 1000000000000ULL,
                   "decode uint 1000000000000"); }
 
     /* int -1 */
     { uint8_t in[] = {0x20};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeInt(&ctx, &ival);
       TEST_ASSERT(ret == 0 && ival == -1, "decode int -1"); }
 
     /* int -100 */
     { uint8_t in[] = {0x38, 0x63};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeInt(&ctx, &ival);
       TEST_ASSERT(ret == 0 && ival == -100, "decode int -100"); }
 
     /* int -1000 */
     { uint8_t in[] = {0x39, 0x03, 0xE7};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeInt(&ctx, &ival);
       TEST_ASSERT(ret == 0 && ival == -1000, "decode int -1000"); }
 
     /* Positive int via DecodeInt */
     { uint8_t in[] = {0x18, 0x64};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeInt(&ctx, &ival);
       TEST_ASSERT(ret == 0 && ival == 100, "decode int +100"); }
 
     /* bstr empty */
     { uint8_t in[] = {0x40};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeBstr(&ctx, &data, &dataLen);
       TEST_ASSERT(ret == 0 && dataLen == 0, "decode bstr empty"); }
 
     /* bstr 4 bytes */
     { uint8_t in[] = {0x44, 0x01, 0x02, 0x03, 0x04};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeBstr(&ctx, &data, &dataLen);
       TEST_ASSERT(ret == 0 && dataLen == 4 && data[0] == 0x01 &&
                   data[3] == 0x04, "decode bstr 4 bytes"); }
 
     /* tstr empty */
     { uint8_t in[] = {0x60};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeTstr(&ctx, &data, &dataLen);
       TEST_ASSERT(ret == 0 && dataLen == 0, "decode tstr empty"); }
 
     /* tstr "IETF" */
     { uint8_t in[] = {0x64, 0x49, 0x45, 0x54, 0x46};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeTstr(&ctx, &data, &dataLen);
       TEST_ASSERT(ret == 0 && dataLen == 4 &&
                   memcmp(data, "IETF", 4) == 0, "decode tstr IETF"); }
 
     /* array [1, 2, 3] */
     { uint8_t in[] = {0x83, 0x01, 0x02, 0x03};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
       TEST_ASSERT(ret == 0 && count == 3, "decode array start 3");
       if (ret == 0) {
@@ -336,34 +336,34 @@ static void test_cbor_decode_vectors(void)
 
     /* empty map */
     { uint8_t in[] = {0xA0};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeMapStart(&ctx, &count);
       TEST_ASSERT(ret == 0 && count == 0, "decode map empty"); }
 
     /* Tag(18) */
     { uint8_t in[] = {0xD2};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeTag(&ctx, &tag);
       TEST_ASSERT(ret == 0 && tag == 18, "decode tag 18"); }
 
     /* false, true, null via DecodeHead */
     { uint8_t in[] = {0xF4};
       WOLFCOSE_CBOR_ITEM item;
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeHead(&ctx, &item);
       TEST_ASSERT(ret == 0 && item.majorType == WOLFCOSE_CBOR_SIMPLE &&
                   item.val == 20, "decode false"); }
 
     { uint8_t in[] = {0xF5};
       WOLFCOSE_CBOR_ITEM item;
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeHead(&ctx, &item);
       TEST_ASSERT(ret == 0 && item.majorType == WOLFCOSE_CBOR_SIMPLE &&
                   item.val == 21, "decode true"); }
 
     { uint8_t in[] = {0xF6};
       WOLFCOSE_CBOR_ITEM item;
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeHead(&ctx, &item);
       TEST_ASSERT(ret == 0 && item.majorType == WOLFCOSE_CBOR_SIMPLE &&
                   item.val == 22, "decode null"); }
@@ -399,7 +399,7 @@ static void test_cbor_roundtrip(void)
     TEST_ASSERT(ret == 0, "rt encode complex");
 
     /* Decode it back */
-    dec.buf = buf; dec.bufSz = enc.idx; dec.idx = 0;
+    dec.cbuf = buf; dec.bufSz = enc.idx; dec.idx = 0;
     ret = wc_CBOR_DecodeTag(&dec, &tag);
     TEST_ASSERT(ret == 0 && tag == 99, "rt tag");
 
@@ -451,7 +451,7 @@ static void test_cbor_nested(void)
     TEST_ASSERT(ret == 0, "nested encode");
 
     /* Decode it */
-    dec.buf = buf; dec.bufSz = enc.idx; dec.idx = 0;
+    dec.cbuf = buf; dec.bufSz = enc.idx; dec.idx = 0;
     ret = wc_CBOR_DecodeMapStart(&dec, &count);
     TEST_ASSERT(ret == 0 && count == 2, "nested map 2");
 
@@ -501,7 +501,7 @@ static void test_cbor_skip(void)
     if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 99);
     TEST_ASSERT(ret == 0, "skip encode");
 
-    dec.buf = buf; dec.bufSz = enc.idx; dec.idx = 0;
+    dec.cbuf = buf; dec.bufSz = enc.idx; dec.idx = 0;
     { size_t count;
       ret = wc_CBOR_DecodeArrayStart(&dec, &count);
       TEST_ASSERT(ret == 0 && count == 3, "skip array start"); }
@@ -527,7 +527,7 @@ static void test_cbor_skip(void)
     if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 77);
     TEST_ASSERT(ret == 0, "skip tagged encode");
 
-    dec.buf = buf; dec.bufSz = enc.idx; dec.idx = 0;
+    dec.cbuf = buf; dec.bufSz = enc.idx; dec.idx = 0;
     ret = wc_CBOR_Skip(&dec);
     TEST_ASSERT(ret == 0, "skip tagged item");
 
@@ -557,7 +557,7 @@ static void test_cbor_errors(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode null ctx");
 
     /* NULL output param */
-    ctx.buf = buf; ctx.bufSz = sizeof(buf); ctx.idx = 0;
+    ctx.cbuf = buf; ctx.bufSz = sizeof(buf); ctx.idx = 0;
     buf[0] = 0x00;
     ret = wc_CBOR_DecodeUint(&ctx, NULL);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode null val");
@@ -575,68 +575,68 @@ static void test_cbor_errors(void)
 
     /* Truncated input on decode */
     { uint8_t in[] = {0x19}; /* needs 2 more bytes */
-      ctx.buf = in; ctx.bufSz = 1; ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = 1; ctx.idx = 0;
       ret = wc_CBOR_DecodeUint(&ctx, &uval);
       TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "decode truncated"); }
 
     /* Wrong type: expect uint, get bstr */
     { uint8_t in[] = {0x40};
-      ctx.buf = in; ctx.bufSz = 1; ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = 1; ctx.idx = 0;
       ret = wc_CBOR_DecodeUint(&ctx, &uval);
       TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE, "decode wrong type uint"); }
 
     /* Wrong type: expect bstr, get uint */
     { uint8_t in[] = {0x00};
-      ctx.buf = in; ctx.bufSz = 1; ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = 1; ctx.idx = 0;
       ret = wc_CBOR_DecodeBstr(&ctx, &data, &dataLen);
       TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE, "decode wrong type bstr"); }
 
     /* Wrong type: expect tstr, get uint */
     { uint8_t in[] = {0x00};
-      ctx.buf = in; ctx.bufSz = 1; ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = 1; ctx.idx = 0;
       ret = wc_CBOR_DecodeTstr(&ctx, &data, &dataLen);
       TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE, "decode wrong type tstr"); }
 
     /* Wrong type: expect array, get uint */
     { uint8_t in[] = {0x00};
-      ctx.buf = in; ctx.bufSz = 1; ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = 1; ctx.idx = 0;
       ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
       TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE, "decode wrong type array"); }
 
     /* Wrong type: expect map, get uint */
     { uint8_t in[] = {0x00};
-      ctx.buf = in; ctx.bufSz = 1; ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = 1; ctx.idx = 0;
       ret = wc_CBOR_DecodeMapStart(&ctx, &count);
       TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE, "decode wrong type map"); }
 
     /* Wrong type: expect tag, get uint */
     { uint64_t tag;
       uint8_t in[] = {0x00};
-      ctx.buf = in; ctx.bufSz = 1; ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = 1; ctx.idx = 0;
       ret = wc_CBOR_DecodeTag(&ctx, &tag);
       TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE, "decode wrong type tag"); }
 
     /* Indefinite length -> unsupported */
     { uint8_t in[] = {0x5F}; /* bstr indefinite */
-      ctx.buf = in; ctx.bufSz = 1; ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = 1; ctx.idx = 0;
       ret = wc_CBOR_DecodeHead(&ctx, &item);
       TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED, "decode indefinite"); }
 
     /* Reserved AI 28 -> malformed */
     { uint8_t in[] = {0x1C}; /* uint with AI=28 */
-      ctx.buf = in; ctx.bufSz = 1; ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = 1; ctx.idx = 0;
       ret = wc_CBOR_DecodeHead(&ctx, &item);
       TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "decode reserved AI"); }
 
     /* Empty buffer */
-    { ctx.buf = buf; ctx.bufSz = 0; ctx.idx = 0;
+    { ctx.cbuf = buf; ctx.bufSz = 0; ctx.idx = 0;
       ret = wc_CBOR_DecodeHead(&ctx, &item);
       TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "decode empty buffer"); }
 
     /* DecodeInt: overflow (negative with val > INT64_MAX) handled gracefully */
     /* PeekType check */
     { uint8_t in[] = {0x83, 0x01};
-      ctx.buf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       TEST_ASSERT(wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_ARRAY,
                   "peek type array"); }
 
@@ -646,7 +646,7 @@ static void test_cbor_errors(void)
 
     /* DecodeInt with NULL val */
     /* cppcheck-suppress redundantAssignment */
-    ctx.buf = buf; ctx.bufSz = sizeof(buf); ctx.idx = 0;
+    ctx.cbuf = buf; ctx.bufSz = sizeof(buf); ctx.idx = 0;
     buf[0] = 0x00;
     ret = wc_CBOR_DecodeInt(&ctx, NULL);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode int null val");
@@ -676,7 +676,7 @@ static void test_cbor_negative_map_keys(void)
       if (ret == 0) ret = wc_CBOR_EncodeBstr(&enc, &b, 1); }
     TEST_ASSERT(ret == 0, "neg keys encode");
 
-    dec.buf = buf; dec.bufSz = enc.idx; dec.idx = 0;
+    dec.cbuf = buf; dec.bufSz = enc.idx; dec.idx = 0;
     { size_t count;
       ret = wc_CBOR_DecodeMapStart(&dec, &count);
       TEST_ASSERT(ret == 0 && count == 3, "neg keys map 3"); }

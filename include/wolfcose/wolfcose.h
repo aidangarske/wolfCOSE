@@ -73,10 +73,10 @@ extern "C" {
     #define WOLFCOSE_SIGN1
 #endif
 #if defined(WOLFCOSE_SIGN1)
-    #if !defined(WOLFCOSE_NO_SIGN1_SIGN)
+    #if !defined(WOLFCOSE_NO_SIGN1_SIGN) && !defined(WOLFCOSE_SIGN1_SIGN)
         #define WOLFCOSE_SIGN1_SIGN
     #endif
-    #if !defined(WOLFCOSE_NO_SIGN1_VERIFY)
+    #if !defined(WOLFCOSE_NO_SIGN1_VERIFY) && !defined(WOLFCOSE_SIGN1_VERIFY)
         #define WOLFCOSE_SIGN1_VERIFY
     #endif
 #endif
@@ -86,10 +86,10 @@ extern "C" {
     #define WOLFCOSE_ENCRYPT0
 #endif
 #if defined(WOLFCOSE_ENCRYPT0)
-    #if !defined(WOLFCOSE_NO_ENCRYPT0_ENCRYPT)
+    #if !defined(WOLFCOSE_NO_ENCRYPT0_ENCRYPT) && !defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
         #define WOLFCOSE_ENCRYPT0_ENCRYPT
     #endif
-    #if !defined(WOLFCOSE_NO_ENCRYPT0_DECRYPT)
+    #if !defined(WOLFCOSE_NO_ENCRYPT0_DECRYPT) && !defined(WOLFCOSE_ENCRYPT0_DECRYPT)
         #define WOLFCOSE_ENCRYPT0_DECRYPT
     #endif
 #endif
@@ -99,10 +99,10 @@ extern "C" {
     #define WOLFCOSE_MAC0
 #endif
 #if defined(WOLFCOSE_MAC0)
-    #if !defined(WOLFCOSE_NO_MAC0_CREATE)
+    #if !defined(WOLFCOSE_NO_MAC0_CREATE) && !defined(WOLFCOSE_MAC0_CREATE)
         #define WOLFCOSE_MAC0_CREATE
     #endif
-    #if !defined(WOLFCOSE_NO_MAC0_VERIFY)
+    #if !defined(WOLFCOSE_NO_MAC0_VERIFY) && !defined(WOLFCOSE_MAC0_VERIFY)
         #define WOLFCOSE_MAC0_VERIFY
     #endif
 #endif
@@ -112,10 +112,10 @@ extern "C" {
     #define WOLFCOSE_SIGN
 #endif
 #if defined(WOLFCOSE_SIGN)
-    #if !defined(WOLFCOSE_NO_SIGN_SIGN)
+    #if !defined(WOLFCOSE_NO_SIGN_SIGN) && !defined(WOLFCOSE_SIGN_SIGN)
         #define WOLFCOSE_SIGN_SIGN
     #endif
-    #if !defined(WOLFCOSE_NO_SIGN_VERIFY)
+    #if !defined(WOLFCOSE_NO_SIGN_VERIFY) && !defined(WOLFCOSE_SIGN_VERIFY)
         #define WOLFCOSE_SIGN_VERIFY
     #endif
 #endif
@@ -125,10 +125,10 @@ extern "C" {
     #define WOLFCOSE_ENCRYPT
 #endif
 #if defined(WOLFCOSE_ENCRYPT)
-    #if !defined(WOLFCOSE_NO_ENCRYPT_ENCRYPT)
+    #if !defined(WOLFCOSE_NO_ENCRYPT_ENCRYPT) && !defined(WOLFCOSE_ENCRYPT_ENCRYPT)
         #define WOLFCOSE_ENCRYPT_ENCRYPT
     #endif
-    #if !defined(WOLFCOSE_NO_ENCRYPT_DECRYPT)
+    #if !defined(WOLFCOSE_NO_ENCRYPT_DECRYPT) && !defined(WOLFCOSE_ENCRYPT_DECRYPT)
         #define WOLFCOSE_ENCRYPT_DECRYPT
     #endif
 #endif
@@ -138,10 +138,10 @@ extern "C" {
     #define WOLFCOSE_MAC
 #endif
 #if defined(WOLFCOSE_MAC)
-    #if !defined(WOLFCOSE_NO_MAC_CREATE)
+    #if !defined(WOLFCOSE_NO_MAC_CREATE) && !defined(WOLFCOSE_MAC_CREATE)
         #define WOLFCOSE_MAC_CREATE
     #endif
-    #if !defined(WOLFCOSE_NO_MAC_VERIFY)
+    #if !defined(WOLFCOSE_NO_MAC_VERIFY) && !defined(WOLFCOSE_MAC_VERIFY)
         #define WOLFCOSE_MAC_VERIFY
     #endif
 #endif
@@ -152,18 +152,20 @@ extern "C" {
     #define WOLFCOSE_RECIPIENTS
 #endif
 #if defined(WOLFCOSE_RECIPIENTS)
-    #if !defined(WOLFCOSE_NO_KEY_WRAP) && defined(HAVE_AES_KEYWRAP)
+    #if !defined(WOLFCOSE_NO_KEY_WRAP) && defined(HAVE_AES_KEYWRAP) && \
+        !defined(WOLFCOSE_KEY_WRAP)
         #define WOLFCOSE_KEY_WRAP
     #endif
-    #if !defined(WOLFCOSE_NO_ECDH) && (defined(HAVE_ECC) || defined(HAVE_CURVE25519))
+    #if !defined(WOLFCOSE_NO_ECDH) && (defined(HAVE_ECC) || defined(HAVE_CURVE25519)) && \
+        !defined(WOLFCOSE_ECDH)
         #define WOLFCOSE_ECDH
     #endif
     #if !defined(WOLFCOSE_NO_ECDH_WRAP) && defined(WOLFCOSE_ECDH) && \
-        defined(WOLFCOSE_KEY_WRAP)
+        defined(WOLFCOSE_KEY_WRAP) && !defined(WOLFCOSE_ECDH_WRAP)
         #define WOLFCOSE_ECDH_WRAP
     #endif
     #if !defined(WOLFCOSE_NO_ECDH_ES_DIRECT) && defined(WOLFCOSE_ECDH) && \
-        defined(HAVE_ECC) && defined(HAVE_HKDF)
+        defined(HAVE_ECC) && defined(HAVE_HKDF) && !defined(WOLFCOSE_ECDH_ES_DIRECT)
         #define WOLFCOSE_ECDH_ES_DIRECT
     #endif
 #endif
@@ -394,9 +396,10 @@ extern "C" {
  * \brief CBOR encoder/decoder context. Zero-copy cursor over a buffer.
  */
 typedef struct WOLFCOSE_CBOR_CTX {
-    uint8_t* buf;      /**< Buffer pointer (encode: output, decode: input) */
-    size_t   bufSz;    /**< Total buffer size */
-    size_t   idx;      /**< Current read/write position */
+    uint8_t*       buf;   /**< Mutable buffer pointer (encode output) */
+    const uint8_t* cbuf;  /**< Const buffer pointer (decode input, read-only) */
+    size_t         bufSz; /**< Total buffer size */
+    size_t         idx;   /**< Current read/write position */
 } WOLFCOSE_CBOR_CTX;
 
 /**
@@ -672,7 +675,7 @@ WOLFCOSE_API int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx);
  * \param ctx  Decoder context. Must have idx < bufSz.
  * \return Major type (0-7).
  */
-#define wc_CBOR_PeekType(ctx) ((ctx)->buf[(ctx)->idx] >> 5)
+#define wc_CBOR_PeekType(ctx) ((ctx)->cbuf[(ctx)->idx] >> 5u)
 
 #endif /* WOLFCOSE_CBOR_DECODE */
 
@@ -918,7 +921,7 @@ WOLFCOSE_API int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
  * \param outLen          Output: bytes written to out.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
-WOLFCOSE_API int wc_CoseMac0_Create(WOLFCOSE_KEY* key, int32_t alg,
+WOLFCOSE_API int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
     const uint8_t* kid, size_t kidLen,
     const uint8_t* payload, size_t payloadLen,
     const uint8_t* detachedPayload, size_t detachedLen,
@@ -947,7 +950,7 @@ WOLFCOSE_API int wc_CoseMac0_Create(WOLFCOSE_KEY* key, int32_t alg,
  * \return WOLFCOSE_SUCCESS or negative error code.
  *         WOLFCOSE_E_DETACHED_PAYLOAD if payload is nil and detachedPayload is NULL.
  */
-WOLFCOSE_API int wc_CoseMac0_Verify(WOLFCOSE_KEY* key,
+WOLFCOSE_API int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
     const uint8_t* in, size_t inSz,
     const uint8_t* detachedPayload, size_t detachedLen,
     const uint8_t* extAad, size_t extAadLen,

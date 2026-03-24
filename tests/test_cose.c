@@ -7111,6 +7111,7 @@ static void test_cbor_edge_cases(void)
     ret = wc_CBOR_EncodeUint(&ctx, 1000);  /* > 255, needs 2 bytes */
     TEST_ASSERT(ret == 0, "encode uint 1000");
 
+    ctx.cbuf = buf;
     ctx.idx = 0;
     ret = wc_CBOR_DecodeUint(&ctx, &u64Val);
     TEST_ASSERT(ret == 0, "decode uint 1000");
@@ -7176,6 +7177,7 @@ static void test_cbor_edge_cases(void)
     ret = wc_CBOR_EncodeBstr(&ctx, (const uint8_t*)"test", 4);
     TEST_ASSERT(ret == 0, "encode map val bstr");
 
+    ctx.cbuf = buf;
     ctx.idx = 0;
     ret = wc_CBOR_DecodeMapStart(&ctx, &count);
     TEST_ASSERT(ret == 0, "decode map start");
@@ -7276,7 +7278,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t empty[1] = {0};
         WOLFCOSE_CBOR_CTX emptyCtx;
-        emptyCtx.buf = empty;
+        emptyCtx.cbuf = empty;
         emptyCtx.bufSz = 0;  /* Empty buffer */
         emptyCtx.idx = 0;
         ret = wc_CBOR_DecodeUint(&emptyCtx, &u64Val);
@@ -7287,7 +7289,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t truncated[] = {0x19, 0x01};  /* uint16 header, only 1 data byte */
         WOLFCOSE_CBOR_CTX truncCtx;
-        truncCtx.buf = truncated;
+        truncCtx.cbuf = truncated;
         truncCtx.bufSz = sizeof(truncated);
         truncCtx.idx = 0;
         ret = wc_CBOR_DecodeUint(&truncCtx, &u64Val);
@@ -7298,7 +7300,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t truncated[] = {0x1A, 0x01, 0x02};  /* uint32 header, only 2 data bytes */
         WOLFCOSE_CBOR_CTX truncCtx;
-        truncCtx.buf = truncated;
+        truncCtx.cbuf = truncated;
         truncCtx.bufSz = sizeof(truncated);
         truncCtx.idx = 0;
         ret = wc_CBOR_DecodeUint(&truncCtx, &u64Val);
@@ -7309,7 +7311,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t truncated[] = {0x1B, 0x01, 0x02, 0x03, 0x04};  /* uint64 header, only 4 data bytes */
         WOLFCOSE_CBOR_CTX truncCtx;
-        truncCtx.buf = truncated;
+        truncCtx.cbuf = truncated;
         truncCtx.bufSz = sizeof(truncated);
         truncCtx.idx = 0;
         ret = wc_CBOR_DecodeUint(&truncCtx, &u64Val);
@@ -7320,7 +7322,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t reserved[] = {0x1C};  /* AI=28 is reserved */
         WOLFCOSE_CBOR_CTX resCtx;
-        resCtx.buf = reserved;
+        resCtx.cbuf = reserved;
         resCtx.bufSz = sizeof(reserved);
         resCtx.idx = 0;
         ret = wc_CBOR_DecodeUint(&resCtx, &u64Val);
@@ -7331,7 +7333,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t indef[] = {0x5F};  /* bstr indefinite */
         WOLFCOSE_CBOR_CTX indefCtx;
-        indefCtx.buf = indef;
+        indefCtx.cbuf = indef;
         indefCtx.bufSz = sizeof(indef);
         indefCtx.idx = 0;
         const uint8_t* data;
@@ -7344,7 +7346,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t truncBstr[] = {0x45, 'a', 'b'};  /* bstr of 5 bytes, only 2 provided */
         WOLFCOSE_CBOR_CTX truncCtx;
-        truncCtx.buf = truncBstr;
+        truncCtx.cbuf = truncBstr;
         truncCtx.bufSz = sizeof(truncBstr);
         truncCtx.idx = 0;
         const uint8_t* data;
@@ -7360,7 +7362,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};  /* bstr of 3 bytes */
         WOLFCOSE_CBOR_CTX bstrCtx;
-        bstrCtx.buf = bstr;
+        bstrCtx.cbuf = bstr;
         bstrCtx.bufSz = sizeof(bstr);
         bstrCtx.idx = 0;
         ret = wc_CBOR_DecodeUint(&bstrCtx, &u64Val);
@@ -7371,7 +7373,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t uintData[] = {0x18, 0x64};  /* uint 100 */
         WOLFCOSE_CBOR_CTX uintCtx;
-        uintCtx.buf = uintData;
+        uintCtx.cbuf = uintData;
         uintCtx.bufSz = sizeof(uintData);
         uintCtx.idx = 0;
         const uint8_t* data;
@@ -7384,7 +7386,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};
         WOLFCOSE_CBOR_CTX bstrCtx;
-        bstrCtx.buf = bstr;
+        bstrCtx.cbuf = bstr;
         bstrCtx.bufSz = sizeof(bstr);
         bstrCtx.idx = 0;
         ret = wc_CBOR_DecodeArrayStart(&bstrCtx, &count);
@@ -7395,7 +7397,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t arr[] = {0x82, 0x01, 0x02};  /* array of 2 elements */
         WOLFCOSE_CBOR_CTX arrCtx;
-        arrCtx.buf = arr;
+        arrCtx.cbuf = arr;
         arrCtx.bufSz = sizeof(arr);
         arrCtx.idx = 0;
         ret = wc_CBOR_DecodeMapStart(&arrCtx, &count);
@@ -7406,7 +7408,7 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};
         WOLFCOSE_CBOR_CTX bstrCtx;
-        bstrCtx.buf = bstr;
+        bstrCtx.cbuf = bstr;
         bstrCtx.bufSz = sizeof(bstr);
         bstrCtx.idx = 0;
         ret = wc_CBOR_DecodeInt(&bstrCtx, &i64Val);
@@ -7421,7 +7423,7 @@ static void test_cbor_edge_cases(void)
         /* Encode 0x8000000000000000 (> INT64_MAX) */
         uint8_t bigUint[] = {0x1B, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
         WOLFCOSE_CBOR_CTX bigCtx;
-        bigCtx.buf = bigUint;
+        bigCtx.cbuf = bigUint;
         bigCtx.bufSz = sizeof(bigUint);
         bigCtx.idx = 0;
         ret = wc_CBOR_DecodeInt(&bigCtx, &i64Val);
@@ -7433,7 +7435,7 @@ static void test_cbor_edge_cases(void)
         /* CBOR negative: -1 - 0x8000000000000000 would overflow */
         uint8_t bigNeg[] = {0x3B, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
         WOLFCOSE_CBOR_CTX bigCtx;
-        bigCtx.buf = bigNeg;
+        bigCtx.cbuf = bigNeg;
         bigCtx.bufSz = sizeof(bigNeg);
         bigCtx.idx = 0;
         ret = wc_CBOR_DecodeInt(&bigCtx, &i64Val);
@@ -7449,6 +7451,7 @@ static void test_cbor_edge_cases(void)
         ret = wc_CBOR_EncodeTag(&ctx, 18);  /* COSE_Sign1 tag */
         TEST_ASSERT(ret == 0, "encode tag 18");
 
+        ctx.cbuf = buf;
         ctx.idx = 0;
         ret = wc_CBOR_DecodeTag(&ctx, &tag);
         TEST_ASSERT(ret == 0, "decode tag");
@@ -7457,7 +7460,7 @@ static void test_cbor_edge_cases(void)
         /* Tag with wrong type */
         uint8_t notTag[] = {0x01};  /* uint 1 */
         WOLFCOSE_CBOR_CTX notTagCtx;
-        notTagCtx.buf = notTag;
+        notTagCtx.cbuf = notTag;
         notTagCtx.bufSz = sizeof(notTag);
         notTagCtx.idx = 0;
         ret = wc_CBOR_DecodeTag(&notTagCtx, &tag);
@@ -7552,6 +7555,7 @@ static void test_cbor_edge_cases(void)
         ret = wc_CBOR_EncodeTstr(&ctx, (const uint8_t*)"hello", 5);
         TEST_ASSERT(ret == 0, "encode tstr");
 
+        ctx.cbuf = buf;
         ctx.idx = 0;
         ret = wc_CBOR_DecodeTstr(&ctx, &str, &strLen);
         TEST_ASSERT(ret == 0, "decode tstr");
@@ -7561,7 +7565,7 @@ static void test_cbor_edge_cases(void)
         /* Type mismatch: decode bstr as tstr */
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};  /* bstr */
         WOLFCOSE_CBOR_CTX bstrCtx;
-        bstrCtx.buf = bstr;
+        bstrCtx.cbuf = bstr;
         bstrCtx.bufSz = sizeof(bstr);
         bstrCtx.idx = 0;
         ret = wc_CBOR_DecodeTstr(&bstrCtx, &str, &strLen);
@@ -7579,9 +7583,12 @@ static void test_cbor_edge_cases(void)
         ret = wc_CBOR_EncodeUint(&nullBufCtx, 1);
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "encode uint null buf");
 
-        WOLFCOSE_CBOR_ITEM item;
-        ret = wc_CBOR_DecodeHead(&nullBufCtx, &item);
-        TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode head null buf");
+        nullBufCtx.cbuf = NULL;
+        {
+            WOLFCOSE_CBOR_ITEM item;
+            ret = wc_CBOR_DecodeHead(&nullBufCtx, &item);
+            TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode head null buf");
+        }
     }
 }
 
@@ -7818,7 +7825,7 @@ static void test_internal_helpers(void)
         {
             /* CBOR: {6: h'010203'} - partial_iv with 3-byte value */
             uint8_t partialIvHdr[] = {0xA1, 0x06, 0x43, 0x01, 0x02, 0x03};
-            ctx.buf = partialIvHdr;
+            ctx.cbuf = partialIvHdr;
             ctx.bufSz = sizeof(partialIvHdr);
             ctx.idx = 0;
             XMEMSET(&hdr, 0, sizeof(hdr));
@@ -7831,7 +7838,7 @@ static void test_internal_helpers(void)
         {
             /* CBOR: {1: -7} - alg ES256 in unprotected header */
             uint8_t algHdr[] = {0xA1, 0x01, 0x26}; /* map(1), 1, -7 */
-            ctx.buf = algHdr;
+            ctx.cbuf = algHdr;
             ctx.bufSz = sizeof(algHdr);
             ctx.idx = 0;
             XMEMSET(&hdr, 0, sizeof(hdr));
@@ -7849,7 +7856,7 @@ static void test_internal_helpers(void)
                 bigMap[idx++] = (uint8_t)(0x10 + i);
                 bigMap[idx++] = 0x00;
             }
-            ctx.buf = bigMap;
+            ctx.cbuf = bigMap;
             ctx.bufSz = idx;
             ctx.idx = 0;
             XMEMSET(&hdr, 0, sizeof(hdr));

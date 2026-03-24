@@ -62,7 +62,7 @@ jobs:
         echo ""
 
         # Coverage thresholds:
-        #   wolfcose.c:      97% minimum
+        #   wolfcose.c:      99% minimum
         #   wolfcose_cbor.c: 100% minimum
 
         FAILED=0
@@ -79,21 +79,21 @@ jobs:
         if [ -n "$COSE_PCT" ]; then
           echo "wolfcose.c:"
           echo "  Coverage: ${COSE_PCT}%"
-          echo "  Threshold: 97%"
+          echo "  Threshold: 99%"
           echo "  Uncovered lines: ${COSE_UNCOV}"
           echo ""
 
           # Compare using awk (handles decimals)
-          if awk "BEGIN {exit !($COSE_PCT < 97)}"; then
+          if awk "BEGIN {exit !($COSE_PCT < 99)}"; then
             FAILED=1
-            echo ">>> FAILED: wolfcose.c coverage is below 97%! <<<"
+            echo ">>> FAILED: wolfcose.c coverage is below 99%! <<<"
             echo ""
             echo "Uncovered lines in wolfcose.c:"
             echo "------------------------------"
             grep -n "#####" wolfcose.c.gcov | head -50
             echo ""
           else
-            echo ">>> PASSED: wolfcose.c meets 97% threshold <<<"
+            echo ">>> PASSED: wolfcose.c meets 99% threshold <<<"
           fi
           echo ""
         fi

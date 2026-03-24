@@ -1,0 +1,265 @@
+name: MISRA C 2023 Compliance
+
+# Fast MISRA C 2023 checks via strict compiler warnings and clang-tidy.
+# Covers essential type rules, declaration ordering, data flow, and CERT C
+# mappings that fill the gap between MISRA C 2012 and 2023.
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Strict compiler warnings for MISRA C 2023 essential type &
+  # declaration rules.
+  # ---------------------------------------------------------------------------
+  misra-compiler-warnings:
+    name: MISRA C 2023 Compiler Warnings
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool
+
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-v3
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
+                    --enable-curve25519 --enable-aesgcm --enable-aesccm \
+                    --enable-sha384 --enable-sha512 --enable-keygen \
+                    --enable-rsapss --enable-chacha --enable-poly1305 \
+                    --enable-dilithium \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Compile with strict MISRA-adjacent warnings
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        # Compile both files, collecting ALL warnings (no -Werror so we don't
+        # bail on the first warning). Fail check is at the end.
+        #
+        # Base flags (already in Makefile):
+        #   -Wall -Wextra -Wpedantic -Wshadow -Wconversion
+        # Additional MISRA C 2023 flags:
+        #   -Wcast-qual           Rule 11.8  const qualifier preservation
+        #   -Wstrict-prototypes   Rule 8.2   function declaration completeness
+        #   -Wmissing-prototypes  Rule 8.2   missing function prototypes
+        #   -Wold-style-definition Rule 8.2  old-style function definitions
+        #   -Wdeclaration-after-statement Rule 8.x declaration ordering
+        #   -Wundef               Rule 20.9  undefined macro in #if
+        #   -Wfloat-equal         Rule 13.4  float equality comparison
+        #   -Wpointer-arith      Rule 18.x  pointer arithmetic safety
+        #   -Wredundant-decls    Rule 8.x   redundant declarations
+        #   -Wnested-externs     Rule 8.x   nested extern declarations
+        #   -Wformat=2           Rule 21.6  format string safety
+        #   -Wformat-security    Rule 21.6  format string security
+        #   -Wlogical-op         Rule 12.x  logical vs bitwise operators
+        #   -Wjump-misses-init   Rule 15.1  goto skipping initialization
+        #   -Wdouble-promotion   Rule 10.x  implicit float-to-double
+        #   -Wnull-dereference   Safety     null pointer dereference
+        #   -Wsign-conversion    Rule 10.x  signed/unsigned conversion
+        MISRA_FLAGS="-std=c99 -Os \
+            -Wall -Wextra -Wpedantic -Wshadow -Wconversion \
+            -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes \
+            -Wold-style-definition -Wdeclaration-after-statement \
+            -Wundef -Wfloat-equal -Wpointer-arith \
+            -Wredundant-decls -Wnested-externs \
+            -Wformat=2 -Wformat-security \
+            -Wlogical-op -Wjump-misses-init -Wdouble-promotion \
+            -Wnull-dereference -Wsign-conversion \
+            -DHAVE_ECC -DHAVE_ED25519 -DHAVE_ED448 \
+            -DWC_RSA_PSS -DHAVE_DILITHIUM \
+            -DHAVE_AESGCM -DHAVE_AESCCM \
+            -DHAVE_CHACHA -DHAVE_POLY1305 \
+            -DWOLFSSL_SHA384 -DWOLFSSL_SHA512 \
+            -DHAVE_AES_KEYWRAP -DWOLFSSL_AES_DIRECT \
+            -DHAVE_HKDF -DHAVE_AES_CBC \
+            -DWOLFCOSE_SIGN1 -DWOLFCOSE_SIGN1_SIGN -DWOLFCOSE_SIGN1_VERIFY \
+            -DWOLFCOSE_ENCRYPT0 -DWOLFCOSE_ENCRYPT0_ENCRYPT -DWOLFCOSE_ENCRYPT0_DECRYPT \
+            -DWOLFCOSE_MAC0 -DWOLFCOSE_MAC0_CREATE -DWOLFCOSE_MAC0_VERIFY \
+            -DWOLFCOSE_SIGN -DWOLFCOSE_SIGN_SIGN -DWOLFCOSE_SIGN_VERIFY \
+            -DWOLFCOSE_ENCRYPT -DWOLFCOSE_ENCRYPT_ENCRYPT -DWOLFCOSE_ENCRYPT_DECRYPT \
+            -DWOLFCOSE_MAC -DWOLFCOSE_MAC_CREATE -DWOLFCOSE_MAC_VERIFY \
+            -DWOLFCOSE_RECIPIENTS -DWOLFCOSE_KEY_WRAP \
+            -DWOLFCOSE_ECDH -DWOLFCOSE_ECDH_WRAP \
+            -DWOLFCOSE_CBOR_ENCODE -DWOLFCOSE_CBOR_DECODE \
+            -DWOLFCOSE_KEY_ENCODE -DWOLFCOSE_KEY_DECODE \
+            -DWOLFCOSE_FLOAT \
+            -I./include -I$WOLFSSL_DIR/include"
+        for f in src/*.c; do
+          gcc $MISRA_FLAGS -c "$f" -o /dev/null 2>&1 | tee -a compiler-warnings.txt || true
+        done
+
+    - name: Compiler warnings summary
+      if: always()
+      run: |
+        echo "## MISRA C 2023 Compiler Warnings" >> $GITHUB_STEP_SUMMARY
+        if [ -s compiler-warnings.txt ]; then
+          TOTAL=$(grep -c 'warning:' compiler-warnings.txt || true)
+          echo "**Total warnings: ${TOTAL}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -50 compiler-warnings.txt >> $GITHUB_STEP_SUMMARY
+          if [ "$TOTAL" -gt 50 ]; then
+            echo "... (${TOTAL} total, showing first 50)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        else
+          echo "No compiler warnings found." >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Upload compiler warnings report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: misra-compiler-warnings
+        path: compiler-warnings.txt
+
+    - name: Fail if warnings or errors found
+      run: |
+        if [ -s compiler-warnings.txt ]; then
+          WARNINGS=$(grep -c 'warning:' compiler-warnings.txt || true)
+          ERRORS=$(grep -c 'error:' compiler-warnings.txt || true)
+          if [ "$WARNINGS" -gt 0 ] || [ "$ERRORS" -gt 0 ]; then
+            echo "Compiler check failed with ${WARNINGS} warning(s) and ${ERRORS} error(s)"
+            exit 1
+          fi
+        fi
+
+  # ---------------------------------------------------------------------------
+  # Job 2: clang-tidy for MISRA C 2023 amendment coverage
+  # Covers standard library safety (Amendment 3), deep data-flow analysis,
+  # and CERT C rules that map to MISRA 2023 logic.
+  # ---------------------------------------------------------------------------
+  misra-clang-tidy:
+    name: MISRA C 2023 (clang-tidy)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-tidy autoconf automake libtool
+
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-v3
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
+                    --enable-curve25519 --enable-aesgcm --enable-aesccm \
+                    --enable-sha384 --enable-sha512 --enable-keygen \
+                    --enable-rsapss --enable-chacha --enable-poly1305 \
+                    --enable-dilithium \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Run clang-tidy
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        # Deviations (documented at
+        # https://github.com/aidangarske/wolfCOSE/wiki/MISRA-Compliance):
+        #
+        # -bugprone-branch-clone: Different COSE algorithms intentionally
+        #   map to the same wolfCrypt value (e.g. ES512 and EdDSA both
+        #   use SHA-512). The switch branches are not bugs.
+        #
+        # -bugprone-easily-swappable-parameters: Advisory warning about
+        #   adjacent function parameters of similar types. Cannot fix
+        #   without breaking the public API.
+        #
+        # -misc-include-cleaner: Flags transitive header includes which
+        #   are by design (wolfcose_internal.h includes wolfcose.h).
+        #
+        clang-tidy src/*.c \
+            -checks='-*,bugprone-*,cert-*,clang-analyzer-*,misc-*,-misc-include-cleaner,-bugprone-branch-clone,-bugprone-easily-swappable-parameters' \
+            -- -std=c99 -I./include -I$WOLFSSL_DIR/include \
+            -DHAVE_ECC -DHAVE_ED25519 -DHAVE_ED448 \
+            -DWC_RSA_PSS -DHAVE_DILITHIUM \
+            -DHAVE_AESGCM -DHAVE_AESCCM \
+            -DHAVE_CHACHA -DHAVE_POLY1305 \
+            -DWOLFSSL_SHA384 -DWOLFSSL_SHA512 \
+            -DHAVE_AES_KEYWRAP -DWOLFSSL_AES_DIRECT \
+            -DHAVE_HKDF -DHAVE_AES_CBC \
+            -DWOLFCOSE_SIGN1 -DWOLFCOSE_SIGN1_SIGN -DWOLFCOSE_SIGN1_VERIFY \
+            -DWOLFCOSE_ENCRYPT0 -DWOLFCOSE_ENCRYPT0_ENCRYPT -DWOLFCOSE_ENCRYPT0_DECRYPT \
+            -DWOLFCOSE_MAC0 -DWOLFCOSE_MAC0_CREATE -DWOLFCOSE_MAC0_VERIFY \
+            -DWOLFCOSE_SIGN -DWOLFCOSE_SIGN_SIGN -DWOLFCOSE_SIGN_VERIFY \
+            -DWOLFCOSE_ENCRYPT -DWOLFCOSE_ENCRYPT_ENCRYPT -DWOLFCOSE_ENCRYPT_DECRYPT \
+            -DWOLFCOSE_MAC -DWOLFCOSE_MAC_CREATE -DWOLFCOSE_MAC_VERIFY \
+            -DWOLFCOSE_RECIPIENTS -DWOLFCOSE_KEY_WRAP \
+            -DWOLFCOSE_ECDH -DWOLFCOSE_ECDH_WRAP \
+            -DWOLFCOSE_CBOR_ENCODE -DWOLFCOSE_CBOR_DECODE \
+            -DWOLFCOSE_KEY_ENCODE -DWOLFCOSE_KEY_DECODE \
+            -DWOLFCOSE_FLOAT \
+            > clang-tidy-report.txt 2>&1 || true
+
+    - name: clang-tidy summary
+      if: always()
+      run: |
+        echo "## MISRA C 2023 clang-tidy Report" >> $GITHUB_STEP_SUMMARY
+        if [ -s clang-tidy-report.txt ]; then
+          TOTAL=$(grep -c 'warning:' clang-tidy-report.txt || true)
+          echo "**Total warnings: ${TOTAL}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -50 clang-tidy-report.txt >> $GITHUB_STEP_SUMMARY
+          if [ "$TOTAL" -gt 50 ]; then
+            echo "... (${TOTAL} total, showing first 50)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        else
+          echo "No clang-tidy warnings found." >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Upload clang-tidy report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: clang-tidy-report
+        path: clang-tidy-report.txt
+
+    - name: Fail if clang-tidy warnings or errors found
+      run: |
+        if [ -s clang-tidy-report.txt ]; then
+          WARNINGS=$(grep -c 'warning:' clang-tidy-report.txt || true)
+          ERRORS=$(grep -c 'error:' clang-tidy-report.txt || true)
+          if [ "$WARNINGS" -gt 0 ] || [ "$ERRORS" -gt 0 ]; then
+            echo "clang-tidy check failed with ${WARNINGS} warning(s) and ${ERRORS} error(s)"
+            exit 1
+          fi
+        fi
