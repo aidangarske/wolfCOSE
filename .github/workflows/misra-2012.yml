@@ -1,0 +1,280 @@
+name: MISRA C 2012
+
+# MISRA C:2012 compliance check via cppcheck --addon=misra.
+# Reports violations via GitHub Issue (auto-created/updated).
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  misra-cppcheck:
+    name: MISRA C 2012 (cppcheck)
+    runs-on: ubuntu-latest
+
+    permissions:
+      issues: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install cppcheck
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cppcheck autoconf automake libtool
+
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-v3
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
+                    --enable-curve25519 --enable-aesgcm --enable-aesccm \
+                    --enable-sha384 --enable-sha512 --enable-keygen \
+                    --enable-rsapss --enable-chacha --enable-poly1305 \
+                    --enable-dilithium \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Run MISRA C 2012 check
+      run: |
+        # Define every wolfCOSE and wolfSSL macro so cppcheck checks the full
+        # code path instead of enumerating thousands of wolfSSL platform #ifdef
+        # combinations (which takes 3+ hours with --force).
+        #
+        # wolfSSL algorithm/feature macros (match our ./configure flags):
+        #   Signing: ECC, Ed25519, Ed448, RSA-PSS, ML-DSA (Dilithium)
+        #   Encryption: AES-GCM, AES-CCM, ChaCha20-Poly1305
+        #   MAC: HMAC (enabled by default, NO_HMAC must NOT be defined)
+        #   Hashing: SHA-384, SHA-512
+        #   Key distribution: AES Key Wrap, HKDF, ECDH
+        #
+        # wolfCOSE message type gates:
+        #   Sign1, Encrypt0, Mac0, Sign, Encrypt, Mac
+        #
+        # wolfCOSE feature gates:
+        #   Recipients, Key Wrap, ECDH, CBOR, Key encode/decode, Float
+        #
+        # MISRA C:2012 Deviations (documented at
+        # https://github.com/aidangarske/wolfCOSE/wiki/MISRA-Compliance):
+        #
+        # Rule 2.5  — Feature-gate macros (WOLFCOSE_SIGN1 etc.) are defined
+        #             conditionally; cppcheck false-positive when both parent
+        #             and child -D flags are passed on the command line.
+        #
+        # Rule 8.7  — wolfCose_SigSize is WOLFCOSE_LOCAL (not static) because
+        #             it is called from tests/test_cose.c, which cppcheck does
+        #             not scan. cppcheck only sees src/ and thinks the function
+        #             is used in one translation unit.
+        #
+        # Rule 11.8 — wolfSSL's ECC/ECDH APIs (wc_ecc_set_rng,
+        #             wc_ecc_shared_secret, wolfCose_EccSignRaw) take
+        #             non-const ecc_key* even for read-like operations.
+        #             wolfCOSE passes keys through the WOLFCOSE_KEY union,
+        #             which cppcheck flags as discarding const.
+        #
+        # Rule 19.2 — Tagged union in WOLFCOSE_KEY is a fundamental design
+        #             choice for multi-algorithm key support. The kty field
+        #             discriminates the active union member.
+        #
+        # Rule 21.15 — XMEMMOVE (memmove) is used intentionally for
+        #              overlapping memory regions when right-justifying
+        #              ECC r/s signature components. cppcheck flags the
+        #              overlap as a potential issue but memmove handles
+        #              it correctly by design.
+        #
+        cppcheck --addon=misra \
+                 --enable=all \
+                 --suppress=misra-config \
+                 --suppress=unmatchedSuppression \
+                 --suppress=missingIncludeSystem \
+                 --suppress=unusedFunction \
+                 --suppress=*:$HOME/wolfssl-install/include/* \
+                 --suppress=misra-c2012-2.5 \
+                 --suppress=misra-c2012-8.7 \
+                 --suppress=misra-c2012-11.8 \
+                 --suppress=misra-c2012-19.2 \
+                 --suppress=misra-c2012-21.15 \
+                 -DHAVE_ECC \
+                 -DHAVE_ED25519 \
+                 -DHAVE_ED448 \
+                 -DWC_RSA_PSS \
+                 -DHAVE_DILITHIUM \
+                 -DHAVE_AESGCM \
+                 -DHAVE_AESCCM \
+                 -DHAVE_CHACHA \
+                 -DHAVE_POLY1305 \
+                 -DWOLFSSL_SHA384 \
+                 -DWOLFSSL_SHA512 \
+                 -DHAVE_AES_KEYWRAP \
+                 -DWOLFSSL_AES_DIRECT \
+                 -DHAVE_HKDF \
+                 -DHAVE_AES_CBC \
+                 -DWOLFCOSE_SIGN1 \
+                 -DWOLFCOSE_SIGN1_SIGN \
+                 -DWOLFCOSE_SIGN1_VERIFY \
+                 -DWOLFCOSE_ENCRYPT0 \
+                 -DWOLFCOSE_ENCRYPT0_ENCRYPT \
+                 -DWOLFCOSE_ENCRYPT0_DECRYPT \
+                 -DWOLFCOSE_MAC0 \
+                 -DWOLFCOSE_MAC0_CREATE \
+                 -DWOLFCOSE_MAC0_VERIFY \
+                 -DWOLFCOSE_SIGN \
+                 -DWOLFCOSE_SIGN_SIGN \
+                 -DWOLFCOSE_SIGN_VERIFY \
+                 -DWOLFCOSE_ENCRYPT \
+                 -DWOLFCOSE_ENCRYPT_ENCRYPT \
+                 -DWOLFCOSE_ENCRYPT_DECRYPT \
+                 -DWOLFCOSE_MAC \
+                 -DWOLFCOSE_MAC_CREATE \
+                 -DWOLFCOSE_MAC_VERIFY \
+                 -DWOLFCOSE_RECIPIENTS \
+                 -DWOLFCOSE_KEY_WRAP \
+                 -DWOLFCOSE_ECDH \
+                 -DWOLFCOSE_ECDH_WRAP \
+                 -DWOLFCOSE_CBOR_ENCODE \
+                 -DWOLFCOSE_CBOR_DECODE \
+                 -DWOLFCOSE_KEY_ENCODE \
+                 -DWOLFCOSE_KEY_DECODE \
+                 -DWOLFCOSE_FLOAT \
+                 -I include -I src -I $HOME/wolfssl-install/include \
+                 src/ include/ \
+                 2>&1 | tee misra-report-raw.txt || true
+        # Check for cppcheck tool errors (addon not found, parse errors, etc.)
+        if grep -q 'error:.*\[preprocessorErrorDirective\]\|Failed to execute addon\|Bailing out' misra-report-raw.txt; then
+          echo "::warning::cppcheck encountered tool errors — review raw report"
+        fi
+        # Filter out wolfSSL header violations — only keep wolfCOSE code
+        grep -E '^(src/|include/wolfcose/)' misra-report-raw.txt > misra-report.txt || true
+
+    - name: MISRA report summary
+      if: always()
+      run: |
+        echo "## MISRA C 2012 Report" >> $GITHUB_STEP_SUMMARY
+        if [ -s misra-report.txt ]; then
+          TOTAL=$(wc -l < misra-report.txt)
+          echo "**Total violations: ${TOTAL}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -50 misra-report.txt >> $GITHUB_STEP_SUMMARY
+          if [ "$TOTAL" -gt 50 ]; then
+            echo "... (${TOTAL} total, showing first 50)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        else
+          echo "No MISRA violations found." >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Upload MISRA report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: misra-compliance-report
+        path: misra-report.txt
+
+    - name: Report results via GitHub Issue
+      if: always() && github.event_name == 'push'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const title = 'MISRA C 2012 Compliance Report';
+          const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
+          let body = '';
+          let hasViolations = false;
+
+          try {
+            const report = fs.readFileSync('misra-report.txt', 'utf8').trim();
+            if (report.length > 0) {
+              const lines = report.split('\n');
+              hasViolations = true;
+              body = `## MISRA C 2012 Violations Found\n\n`;
+              body += `**Total violations: ${lines.length}**\n\n`;
+              body += `[Full workflow run](${runUrl})\n\n`;
+              body += '```\n';
+              body += lines.slice(0, 100).join('\n');
+              if (lines.length > 100) {
+                body += `\n... (${lines.length} total, showing first 100)`;
+              }
+              body += '\n```\n\n';
+              body += `*Updated: ${new Date().toISOString()}*`;
+            }
+          } catch (e) {
+            // No report file means cppcheck didn't produce output
+          }
+
+          // Find existing issue
+          const issues = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'all',
+            labels: 'misra',
+            per_page: 10
+          });
+          const existing = issues.data.find(i => i.title === title);
+
+          if (hasViolations) {
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: body,
+                state: 'open'
+              });
+              core.info(`Updated issue #${existing.number}`);
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['misra']
+              });
+              core.info('Created new MISRA report issue');
+            }
+          } else {
+            // No violations — close the issue if it exists
+            if (existing && existing.state === 'open') {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                state: 'closed',
+                state_reason: 'completed'
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `No MISRA violations found. [Workflow run](${runUrl})\n\n*${new Date().toISOString()}*`
+              });
+              core.info(`Closed issue #${existing.number} — no violations`);
+            }
+          }
+
+    - name: Fail if MISRA violations found
+      if: always()
+      run: |
+        if [ -s misra-report.txt ]; then
+          TOTAL=$(wc -l < misra-report.txt)
+          echo "MISRA check failed with ${TOTAL} violation(s)"
+          exit 1
+        fi

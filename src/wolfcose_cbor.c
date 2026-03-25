@@ -47,7 +47,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
 {
     int ret;
 
-    if (ctx == NULL || ctx->buf == NULL) {
+    if ((ctx == NULL) || (ctx->buf == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
@@ -56,7 +56,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
 
         if (val <= 23u) {
             need = 1;
-            if (ctx->idx + need > ctx->bufSz) {
+            if ((ctx->idx + need) > ctx->bufSz) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
             else {
@@ -67,48 +67,48 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
         }
         else if (val <= 0xFFu) {
             need = 2;
-            if (ctx->idx + need > ctx->bufSz) {
+            if ((ctx->idx + need) > ctx->bufSz) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
             else {
                 ctx->buf[ctx->idx]     = (uint8_t)(mt | WOLFCOSE_CBOR_AI_1BYTE);
-                ctx->buf[ctx->idx + 1] = (uint8_t)val;
+                ctx->buf[ctx->idx + 1u] = (uint8_t)val;
                 ctx->idx += need;
                 ret = WOLFCOSE_SUCCESS;
             }
         }
         else if (val <= 0xFFFFu) {
             need = 3;
-            if (ctx->idx + need > ctx->bufSz) {
+            if ((ctx->idx + need) > ctx->bufSz) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
             else {
                 ctx->buf[ctx->idx] = (uint8_t)(mt | WOLFCOSE_CBOR_AI_2BYTE);
-                WOLFCOSE_STORE_BE16(ctx->buf + ctx->idx + 1, val);
+                WOLFCOSE_STORE_BE16(&ctx->buf[ctx->idx + 1u], val);
                 ctx->idx += need;
                 ret = WOLFCOSE_SUCCESS;
             }
         }
         else if (val <= 0xFFFFFFFFu) {
             need = 5;
-            if (ctx->idx + need > ctx->bufSz) {
+            if ((ctx->idx + need) > ctx->bufSz) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
             else {
                 ctx->buf[ctx->idx] = (uint8_t)(mt | WOLFCOSE_CBOR_AI_4BYTE);
-                WOLFCOSE_STORE_BE32(ctx->buf + ctx->idx + 1, val);
+                WOLFCOSE_STORE_BE32(&ctx->buf[ctx->idx + 1u], val);
                 ctx->idx += need;
                 ret = WOLFCOSE_SUCCESS;
             }
         }
         else {
             need = 9;
-            if (ctx->idx + need > ctx->bufSz) {
+            if ((ctx->idx + need) > ctx->bufSz) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
             else {
                 ctx->buf[ctx->idx] = (uint8_t)(mt | WOLFCOSE_CBOR_AI_8BYTE);
-                WOLFCOSE_STORE_BE64(ctx->buf + ctx->idx + 1, val);
+                WOLFCOSE_STORE_BE64(&ctx->buf[ctx->idx + 1u], val);
                 ctx->idx += need;
                 ret = WOLFCOSE_SUCCESS;
             }
@@ -133,14 +133,14 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
     uint8_t ib;
     uint8_t ai;
 
-    if (ctx == NULL || ctx->buf == NULL || item == NULL) {
+    if ((ctx == NULL) || (ctx->cbuf == NULL) || (item == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else if (ctx->idx >= ctx->bufSz) {
         ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
     else {
-        ib = ctx->buf[ctx->idx];
+        ib = ctx->cbuf[ctx->idx];
         ctx->idx++;
 
         item->majorType = (uint8_t)(ib >> 5);
@@ -153,41 +153,41 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
             ret = WOLFCOSE_SUCCESS;
         }
         else if (ai == WOLFCOSE_CBOR_AI_1BYTE) {
-            if (ctx->idx + 1u > ctx->bufSz) {
+            if ((ctx->idx + 1u) > ctx->bufSz) {
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
             else {
-                item->val = (uint64_t)ctx->buf[ctx->idx];
+                item->val = (uint64_t)ctx->cbuf[ctx->idx];
                 ctx->idx += 1u;
                 ret = WOLFCOSE_SUCCESS;
             }
         }
         else if (ai == WOLFCOSE_CBOR_AI_2BYTE) {
-            if (ctx->idx + 2u > ctx->bufSz) {
+            if ((ctx->idx + 2u) > ctx->bufSz) {
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
             else {
-                item->val = (uint64_t)WOLFCOSE_LOAD_BE16(ctx->buf + ctx->idx);
+                item->val = (uint64_t)WOLFCOSE_LOAD_BE16(&ctx->cbuf[ctx->idx]);
                 ctx->idx += 2u;
                 ret = WOLFCOSE_SUCCESS;
             }
         }
         else if (ai == WOLFCOSE_CBOR_AI_4BYTE) {
-            if (ctx->idx + 4u > ctx->bufSz) {
+            if ((ctx->idx + 4u) > ctx->bufSz) {
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
             else {
-                item->val = (uint64_t)WOLFCOSE_LOAD_BE32(ctx->buf + ctx->idx);
+                item->val = (uint64_t)WOLFCOSE_LOAD_BE32(&ctx->cbuf[ctx->idx]);
                 ctx->idx += 4u;
                 ret = WOLFCOSE_SUCCESS;
             }
         }
         else if (ai == WOLFCOSE_CBOR_AI_8BYTE) {
-            if (ctx->idx + 8u > ctx->bufSz) {
+            if ((ctx->idx + 8u) > ctx->bufSz) {
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
             else {
-                item->val = WOLFCOSE_LOAD_BE64(ctx->buf + ctx->idx);
+                item->val = WOLFCOSE_LOAD_BE64(&ctx->cbuf[ctx->idx]);
                 ctx->idx += 8u;
                 ret = WOLFCOSE_SUCCESS;
             }
@@ -203,13 +203,16 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
 
         /* For bstr/tstr, advance past the data bytes (zero-copy) */
         if (ret == WOLFCOSE_SUCCESS) {
-            if (item->majorType == WOLFCOSE_CBOR_BSTR ||
-                item->majorType == WOLFCOSE_CBOR_TSTR) {
-                if (ctx->idx + (size_t)item->val > ctx->bufSz) {
+            if ((item->majorType == WOLFCOSE_CBOR_BSTR) ||
+                (item->majorType == WOLFCOSE_CBOR_TSTR)) {
+                if (item->val > (uint64_t)SIZE_MAX) {
+                    ret = WOLFCOSE_E_CBOR_OVERFLOW;
+                }
+                else if ((ctx->idx + (size_t)item->val) > ctx->bufSz) {
                     ret = WOLFCOSE_E_CBOR_MALFORMED;
                 }
                 else {
-                    item->data = ctx->buf + ctx->idx;
+                    item->data = &ctx->cbuf[ctx->idx];
                     item->dataLen = (size_t)item->val;
                     ctx->idx += (size_t)item->val;
                 }
@@ -262,12 +265,12 @@ static int wolfCose_CBOR_EncodeBytes(WOLFCOSE_CBOR_CTX* ctx,
 
     ret = wolfCose_CBOR_EncodeHead(ctx, majorType, (uint64_t)len);
     if (ret == WOLFCOSE_SUCCESS) {
-        if (ctx->idx + len > ctx->bufSz) {
+        if ((ctx->idx + len) > ctx->bufSz) {
             ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
         }
         else {
-            if (len > 0u && data != NULL) {
-                XMEMMOVE(ctx->buf + ctx->idx, data, len);
+            if ((len > 0u) && (data != NULL)) {
+                (void)XMEMMOVE(&ctx->buf[ctx->idx], data, len);
             }
             ctx->idx += len;
         }
@@ -309,10 +312,10 @@ static int wolfCose_CBOR_EncodeSimpleVal(WOLFCOSE_CBOR_CTX* ctx, uint8_t val)
 {
     int ret;
 
-    if (ctx == NULL || ctx->buf == NULL) {
+    if ((ctx == NULL) || (ctx->buf == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
-    else if (ctx->idx + 1u > ctx->bufSz) {
+    else if ((ctx->idx + 1u) > ctx->bufSz) {
         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
     }
     else {
@@ -344,17 +347,17 @@ int wc_CBOR_EncodeFloat(WOLFCOSE_CBOR_CTX* ctx, float val)
     int ret;
     uint32_t bits;
 
-    if (ctx == NULL || ctx->buf == NULL) {
+    if ((ctx == NULL) || (ctx->buf == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
-    else if (ctx->idx + 5u > ctx->bufSz) {
+    else if ((ctx->idx + 5u) > ctx->bufSz) {
         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
     }
     else {
-        XMEMCPY(&bits, &val, sizeof(bits));
+        (void)XMEMCPY(&bits, &val, sizeof(bits));
         ctx->buf[ctx->idx] = (uint8_t)((WOLFCOSE_CBOR_SIMPLE << 5) |
                                          WOLFCOSE_CBOR_AI_FLOAT32);
-        WOLFCOSE_STORE_BE32(ctx->buf + ctx->idx + 1, bits);
+        WOLFCOSE_STORE_BE32(&ctx->buf[ctx->idx + 1u], bits);
         ctx->idx += 5u;
         ret = WOLFCOSE_SUCCESS;
     }
@@ -366,17 +369,17 @@ int wc_CBOR_EncodeDouble(WOLFCOSE_CBOR_CTX* ctx, double val)
     int ret;
     uint64_t bits;
 
-    if (ctx == NULL || ctx->buf == NULL) {
+    if ((ctx == NULL) || (ctx->buf == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
-    else if (ctx->idx + 9u > ctx->bufSz) {
+    else if ((ctx->idx + 9u) > ctx->bufSz) {
         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
     }
     else {
-        XMEMCPY(&bits, &val, sizeof(bits));
+        (void)XMEMCPY(&bits, &val, sizeof(bits));
         ctx->buf[ctx->idx] = (uint8_t)((WOLFCOSE_CBOR_SIMPLE << 5) |
                                          WOLFCOSE_CBOR_AI_FLOAT64);
-        WOLFCOSE_STORE_BE64(ctx->buf + ctx->idx + 1, bits);
+        WOLFCOSE_STORE_BE64(&ctx->buf[ctx->idx + 1u], bits);
         ctx->idx += 9u;
         ret = WOLFCOSE_SUCCESS;
     }
@@ -404,7 +407,7 @@ int wc_CBOR_DecodeUint(WOLFCOSE_CBOR_CTX* ctx, uint64_t* val)
     int ret;
     WOLFCOSE_CBOR_ITEM item;
 
-    if (ctx == NULL || val == NULL) {
+    if ((ctx == NULL) || (val == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
@@ -426,7 +429,7 @@ int wc_CBOR_DecodeInt(WOLFCOSE_CBOR_CTX* ctx, int64_t* val)
     int ret;
     WOLFCOSE_CBOR_ITEM item;
 
-    if (ctx == NULL || val == NULL) {
+    if ((ctx == NULL) || (val == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
@@ -465,7 +468,7 @@ static int wolfCose_CBOR_DecodeBytes(WOLFCOSE_CBOR_CTX* ctx,
     int ret;
     WOLFCOSE_CBOR_ITEM item;
 
-    if (ctx == NULL || data == NULL || dataLen == NULL) {
+    if ((ctx == NULL) || (data == NULL) || (dataLen == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
@@ -503,7 +506,7 @@ static int wolfCose_CBOR_DecodeContainerStart(WOLFCOSE_CBOR_CTX* ctx,
     int ret;
     WOLFCOSE_CBOR_ITEM item;
 
-    if (ctx == NULL || count == NULL) {
+    if ((ctx == NULL) || (count == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
@@ -535,7 +538,7 @@ int wc_CBOR_DecodeTag(WOLFCOSE_CBOR_CTX* ctx, uint64_t* tag)
     int ret;
     WOLFCOSE_CBOR_ITEM item;
 
-    if (ctx == NULL || tag == NULL) {
+    if ((ctx == NULL) || (tag == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
@@ -571,7 +574,7 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
         size_t remaining = 1; /* Start: need to skip 1 item */
         ret = WOLFCOSE_SUCCESS;
 
-        while (remaining > 0u && ret == WOLFCOSE_SUCCESS) {
+        while ((remaining > 0u) && (ret == WOLFCOSE_SUCCESS)) {
             ret = wolfCose_CBOR_DecodeHead(ctx, &item);
             if (ret != WOLFCOSE_SUCCESS) {
                 break;
@@ -620,10 +623,12 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
                 /* Tag wraps exactly one item */
                 remaining++;
             }
-            /* For uint/negint/bstr/tstr/simple: already consumed by DecodeHead */
+            else {
+                /* For uint/negint/bstr/tstr/simple: already consumed by DecodeHead */
+            }
 
             /* Unwind stack when current level is exhausted */
-            while (remaining == 0u && depth > 0) {
+            while ((remaining == 0u) && (depth > 0)) {
                 depth--;
                 remaining = stack[depth];
             }
