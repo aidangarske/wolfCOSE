@@ -2786,10 +2786,18 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
             word32 dlSigLen = (word32)expectedSigSz;
             INJECT_FAILURE(WOLF_FAIL_DILITHIUM_SIGN, -1)
             {
+#ifdef wc_MlDsaKey_SignCtx
+                ret = wc_dilithium_sign_ctx_msg(
+                    NULL, 0,
+                    scratch, (word32)sigStructLen,
+                    &scratch[sigStructLen], &dlSigLen,
+                    key->key.dilithium, rng);
+#else
                 ret = wc_dilithium_sign_msg(
                     scratch, (word32)sigStructLen,
                     &scratch[sigStructLen], &dlSigLen,
                     key->key.dilithium, rng);
+#endif
             }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
@@ -3154,9 +3162,18 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         if (ret == WOLFCOSE_SUCCESS) {
             INJECT_FAILURE(WOLF_FAIL_DILITHIUM_VERIFY, -1)
             {
-                ret = wc_dilithium_verify_msg(sigData, (word32)sigDataLen,
-                                                scratch, (word32)sigStructLen,
-                                                &verified, key->key.dilithium);
+#ifdef wc_MlDsaKey_SignCtx
+                ret = wc_dilithium_verify_ctx_msg(
+                    sigData, (word32)sigDataLen,
+                    NULL, 0,
+                    scratch, (word32)sigStructLen,
+                    &verified, key->key.dilithium);
+#else
+                ret = wc_dilithium_verify_msg(
+                    sigData, (word32)sigDataLen,
+                    scratch, (word32)sigStructLen,
+                    &verified, key->key.dilithium);
+#endif
             }
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
