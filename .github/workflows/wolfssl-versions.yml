@@ -1,10 +1,6 @@
 name: wolfSSL Version Matrix
 
 on:
-  push:
-    branches: [ 'master', 'main', 'release/**' ]
-  pull_request:
-    branches: [ '*' ]
   workflow_dispatch:
 
 concurrency:
@@ -61,10 +57,9 @@ jobs:
             wolfssl-ref: 'v5.9.1-stable'
             cache-key: 'wolfssl-version-v5.9.1-v1'
             flags-tier: 'full'
-          # --- Bleeding edge ---
+          # --- Bleeding edge (no cache — always rebuilds) ---
           - wolfssl-version: 'HEAD'
             wolfssl-ref: 'master'
-            cache-key: 'wolfssl-version-head'
             flags-tier: 'full'
 
     steps:
