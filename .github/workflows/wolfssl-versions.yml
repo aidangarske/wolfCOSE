@@ -1,0 +1,143 @@
+name: wolfSSL Version Matrix
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wolfssl-version-test:
+    name: wolfSSL ${{ matrix.wolfssl-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- Base flags (no --enable-dilithium / --enable-curve448) ---
+          - wolfssl-version: 'v5.0.0-stable'
+            wolfssl-ref: 'v5.0.0-stable'
+            cache-key: 'wolfssl-version-v5.0.0-v1'
+            flags-tier: 'base'
+          - wolfssl-version: 'v5.1.1-stable'
+            wolfssl-ref: 'v5.1.1-stable'
+            cache-key: 'wolfssl-version-v5.1.1-v1'
+            flags-tier: 'base'
+          - wolfssl-version: 'v5.2.1-stable'
+            wolfssl-ref: 'v5.2.1-stable'
+            cache-key: 'wolfssl-version-v5.2.1-v1'
+            flags-tier: 'base'
+          - wolfssl-version: 'v5.3.0-stable'
+            wolfssl-ref: 'v5.3.0-stable'
+            cache-key: 'wolfssl-version-v5.3.0-v1'
+            flags-tier: 'base'
+          - wolfssl-version: 'v5.4.0-stable'
+            wolfssl-ref: 'v5.4.0-stable'
+            cache-key: 'wolfssl-version-v5.4.0-v1'
+            flags-tier: 'base'
+          # --- Full flags (adds dilithium + curve448) ---
+          - wolfssl-version: 'v5.5.4-stable'
+            wolfssl-ref: 'v5.5.4-stable'
+            cache-key: 'wolfssl-version-v5.5.4-v1'
+            flags-tier: 'full'
+          - wolfssl-version: 'v5.6.6-stable'
+            wolfssl-ref: 'v5.6.6-stable'
+            cache-key: 'wolfssl-version-v5.6.6-v1'
+            flags-tier: 'full'
+          - wolfssl-version: 'v5.7.6-stable'
+            wolfssl-ref: 'v5.7.6-stable'
+            cache-key: 'wolfssl-version-v5.7.6-v1'
+            flags-tier: 'full'
+          - wolfssl-version: 'v5.8.4-stable'
+            wolfssl-ref: 'v5.8.4-stable'
+            cache-key: 'wolfssl-version-v5.8.4-v1'
+            flags-tier: 'full'
+          - wolfssl-version: 'v5.9.1-stable'
+            wolfssl-ref: 'v5.9.1-stable'
+            cache-key: 'wolfssl-version-v5.9.1-v1'
+            flags-tier: 'full'
+          # --- Bleeding edge ---
+          - wolfssl-version: 'HEAD'
+            wolfssl-ref: 'master'
+            cache-key: 'wolfssl-version-head'
+            flags-tier: 'full'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool
+
+    # Cache stable versions only — HEAD must always rebuild to catch regressions
+    - name: Cache wolfSSL (${{ matrix.wolfssl-version }})
+      if: matrix.wolfssl-version != 'HEAD'
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: ${{ matrix.cache-key }}
+
+    - name: Build wolfSSL (${{ matrix.wolfssl-version }})
+      if: matrix.wolfssl-version == 'HEAD' || steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 --branch ${{ matrix.wolfssl-ref }} \
+            https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+
+        # Base flags available in all wolfSSL 5.x
+        BASE_FLAGS="--enable-ecc --enable-ed25519 --enable-ed448 \
+                    --enable-curve25519 \
+                    --enable-aesgcm --enable-aesccm \
+                    --enable-sha384 --enable-sha512 \
+                    --enable-keygen \
+                    --enable-rsapss --enable-chacha --enable-poly1305 \
+                    --enable-hkdf --enable-aeskeywrap"
+
+        if [ "${{ matrix.flags-tier }}" = "full" ]; then
+          EXTRA_FLAGS="--enable-dilithium --enable-curve448"
+        else
+          EXTRA_FLAGS=""
+        fi
+
+        ./configure $BASE_FLAGS $EXTRA_FLAGS \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Build wolfCOSE
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+             LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run unit tests
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make test CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+                  LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run tool round-trip test
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make tool-test CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+                       LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: wolfSSL version info
+      if: always()
+      run: |
+        echo "=== wolfSSL Version ==="
+        echo "Ref: ${{ matrix.wolfssl-ref }}"
+        if [ -f ~/wolfssl-install/include/wolfssl/version.h ]; then
+          grep LIBWOLFSSL_VERSION_STRING ~/wolfssl-install/include/wolfssl/version.h || true
+        fi
