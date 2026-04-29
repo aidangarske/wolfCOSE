@@ -52,7 +52,7 @@ jobs:
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         make coverage-force-failure CC=gcc \
-          CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+          CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
           LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Check coverage thresholds

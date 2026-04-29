@@ -55,11 +55,11 @@ jobs:
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         ASAN_FLAGS="-fsanitize=address -fno-omit-frame-pointer"
         make clean
-        make CFLAGS="-std=c99 -O1 -g -Wall -Wextra -Wpedantic $ASAN_FLAGS -I./include -I$WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c11 -O1 -g -Wall -Wextra -Wpedantic $ASAN_FLAGS -I./include -I$WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl $ASAN_FLAGS"
-        make test CFLAGS="-std=c99 -O1 -g -Wall -Wextra -Wpedantic $ASAN_FLAGS -I./include -I$WOLFSSL_DIR/include" \
+        make test CFLAGS="-std=c11 -O1 -g -Wall -Wextra -Wpedantic $ASAN_FLAGS -I./include -I$WOLFSSL_DIR/include" \
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl $ASAN_FLAGS"
-        make tool-test CFLAGS="-std=c99 -O1 -g -Wall -Wextra -Wpedantic $ASAN_FLAGS -I./include -I$WOLFSSL_DIR/include" \
+        make tool-test CFLAGS="-std=c11 -O1 -g -Wall -Wextra -Wpedantic $ASAN_FLAGS -I./include -I$WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl $ASAN_FLAGS"
-        make demo CFLAGS="-std=c99 -O1 -g -Wall -Wextra -Wpedantic $ASAN_FLAGS -I./include -I$WOLFSSL_DIR/include" \
+        make demo CFLAGS="-std=c11 -O1 -g -Wall -Wextra -Wpedantic $ASAN_FLAGS -I./include -I$WOLFSSL_DIR/include" \
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl $ASAN_FLAGS"

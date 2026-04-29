@@ -1,6 +1,10 @@
 name: wolfSSL Version Matrix
 
 on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
   workflow_dispatch:
 
 concurrency:
@@ -15,52 +19,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # --- Base flags (no --enable-dilithium / --enable-curve448) ---
-          - wolfssl-version: 'v5.0.0-stable'
-            wolfssl-ref: 'v5.0.0-stable'
-            cache-key: 'wolfssl-version-v5.0.0-v1'
-            flags-tier: 'base'
-          - wolfssl-version: 'v5.1.1-stable'
-            wolfssl-ref: 'v5.1.1-stable'
-            cache-key: 'wolfssl-version-v5.1.1-v1'
-            flags-tier: 'base'
-          - wolfssl-version: 'v5.2.1-stable'
-            wolfssl-ref: 'v5.2.1-stable'
-            cache-key: 'wolfssl-version-v5.2.1-v1'
-            flags-tier: 'base'
-          - wolfssl-version: 'v5.3.0-stable'
-            wolfssl-ref: 'v5.3.0-stable'
-            cache-key: 'wolfssl-version-v5.3.0-v1'
-            flags-tier: 'base'
-          - wolfssl-version: 'v5.4.0-stable'
-            wolfssl-ref: 'v5.4.0-stable'
-            cache-key: 'wolfssl-version-v5.4.0-v1'
-            flags-tier: 'base'
-          # --- Full flags (adds dilithium + curve448) ---
-          - wolfssl-version: 'v5.5.4-stable'
-            wolfssl-ref: 'v5.5.4-stable'
-            cache-key: 'wolfssl-version-v5.5.4-v1'
-            flags-tier: 'full'
-          - wolfssl-version: 'v5.6.6-stable'
-            wolfssl-ref: 'v5.6.6-stable'
-            cache-key: 'wolfssl-version-v5.6.6-v1'
-            flags-tier: 'full'
+          # wolfCOSE minimum supported wolfSSL: v5.7.4
+          # (first release with FIPS 204 final ML-DSA + wc_dilithium_*_ctx_msg
+          # APIs and the WOLFSSL_DILITHIUM_NO_CTX gating macro). Earlier
+          # versions only ship the legacy draft-FIPS-204 dispatch.
+          # ed25519_key/ed448_key privKeySet field is also required.
           - wolfssl-version: 'v5.7.6-stable'
             wolfssl-ref: 'v5.7.6-stable'
             cache-key: 'wolfssl-version-v5.7.6-v1'
-            flags-tier: 'full'
           - wolfssl-version: 'v5.8.4-stable'
             wolfssl-ref: 'v5.8.4-stable'
             cache-key: 'wolfssl-version-v5.8.4-v1'
-            flags-tier: 'full'
           - wolfssl-version: 'v5.9.1-stable'
             wolfssl-ref: 'v5.9.1-stable'
             cache-key: 'wolfssl-version-v5.9.1-v1'
-            flags-tier: 'full'
           # --- Bleeding edge (no cache — always rebuilds) ---
           - wolfssl-version: 'HEAD'
             wolfssl-ref: 'master'
-            flags-tier: 'full'
 
     steps:
     - uses: actions/checkout@v4
@@ -87,23 +62,13 @@ jobs:
             https://github.com/wolfSSL/wolfssl.git
         cd wolfssl
         ./autogen.sh
-
-        # Base flags available in all wolfSSL 5.x
-        BASE_FLAGS="--enable-ecc --enable-ed25519 --enable-ed448 \
-                    --enable-curve25519 \
-                    --enable-aesgcm --enable-aesccm \
+        ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
+                    --enable-curve25519 --enable-curve448 \
+                    --enable-aesgcm --enable-aesccm --enable-aescbc \
                     --enable-sha384 --enable-sha512 \
-                    --enable-keygen \
-                    --enable-rsapss --enable-chacha --enable-poly1305 \
-                    --enable-hkdf --enable-aeskeywrap"
-
-        if [ "${{ matrix.flags-tier }}" = "full" ]; then
-          EXTRA_FLAGS="--enable-dilithium --enable-curve448"
-        else
-          EXTRA_FLAGS=""
-        fi
-
-        ./configure $BASE_FLAGS $EXTRA_FLAGS \
+                    --enable-keygen --enable-hkdf --enable-aeskeywrap \
+                    --enable-chacha --enable-poly1305 \
+                    --enable-dilithium --enable-rsapss \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc)
         make install
@@ -111,21 +76,21 @@ jobs:
     - name: Build wolfCOSE
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
-        make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run unit tests
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make test CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run tool round-trip test
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make tool-test CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make tool-test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: wolfSSL version info

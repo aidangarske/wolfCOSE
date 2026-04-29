@@ -38,6 +38,13 @@
 extern "C" {
 #endif
 
+/* ----- Secure memory zero -----
+ * Portable secure-zero using a volatile pointer so the compiler cannot
+ * optimise the writes away. Used in place of wc_ForceZero so wolfCOSE
+ * links against the full 5.x range (wc_ForceZero only became a public
+ * WOLFSSL_API symbol in v5.8.4). Definition lives in wolfcose.c. */
+WOLFCOSE_LOCAL void wolfCose_ForceZero(void* mem, size_t len);
+
 /* ----- Big-endian load/store macros (bit-shift only, no platform dependencies) ----- */
 
 #define WOLFCOSE_STORE_BE16(buf, val) do {                     \

@@ -32,7 +32,7 @@
  * dilithium.h, rsa.h, random.h.  Only list headers not pulled in. */
 #include <wolfssl/wolfcrypt/hash.h>
 #include <wolfssl/wolfcrypt/error-crypt.h>
-#include <wolfssl/wolfcrypt/memory.h>  /* wc_ForceZero, XMEMCPY */
+#include <wolfssl/wolfcrypt/memory.h>  /* XMEMCPY */
 #if defined(HAVE_AESGCM) || defined(HAVE_AESCCM)
     #include <wolfssl/wolfcrypt/aes.h>
 #endif
@@ -56,6 +56,25 @@
     /* No-op when not testing */
     #define INJECT_FAILURE(failure_type, error_code)
 #endif
+
+/* ----- Secure memory zero ----- */
+
+/**
+ * Portable secure-zero. Volatile pointer prevents the compiler optimising
+ * the writes away when the buffer is dead at function exit. Used in place
+ * of wc_ForceZero so wolfCOSE links against the full wolfSSL 5.x range
+ * (wc_ForceZero only became a public WOLFSSL_API symbol in v5.8.4).
+ */
+WOLFCOSE_LOCAL void wolfCose_ForceZero(void* mem, size_t len)
+{
+    if ((mem != NULL) && (len > 0u)) {
+        volatile unsigned char* p = (volatile unsigned char*)mem;
+        size_t i;
+        for (i = 0u; i < len; i++) {
+            p[i] = 0u;
+        }
+    }
+}
 
 /* ----- Constant-time comparison (side-channel safe) ----- */
 
@@ -470,7 +489,7 @@ int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
                 *sigLen = coordSz * 2u;
             }
         }
-        (void)wc_ForceZero(derSig, sizeof(derSig));
+        (void)wolfCose_ForceZero(derSig, sizeof(derSig));
     }
     return ret;
 }
@@ -512,7 +531,7 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
                 ret = WOLFCOSE_E_CRYPTO;
             }
         }
-        (void)wc_ForceZero(derSig, sizeof(derSig));
+        (void)wolfCose_ForceZero(derSig, sizeof(derSig));
     }
     return ret;
 }
@@ -688,7 +707,7 @@ void wc_CoseKey_Free(WOLFCOSE_KEY* key)
 {
     if (key != NULL) {
         /* Does NOT free the underlying wolfCrypt key -- caller owns it */
-        (void)wc_ForceZero(key, sizeof(WOLFCOSE_KEY));
+        (void)wolfCose_ForceZero(key, sizeof(WOLFCOSE_KEY));
     }
 }
 
@@ -911,14 +930,14 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                         ret = wc_CBOR_EncodeBstr(&ctx, dBuf, (size_t)dLen);
                     }
                 }
-                (void)wc_ForceZero(dBuf, sizeof(dBuf));
+                (void)wolfCose_ForceZero(dBuf, sizeof(dBuf));
             }
 
             if (ret == WOLFCOSE_SUCCESS) {
                 *outLen = ctx.idx;
             }
-            (void)wc_ForceZero(xBuf, sizeof(xBuf));
-            (void)wc_ForceZero(yBuf, sizeof(yBuf));
+            (void)wolfCose_ForceZero(xBuf, sizeof(xBuf));
+            (void)wolfCose_ForceZero(yBuf, sizeof(yBuf));
         }
         else
 #endif /* HAVE_ECC */
@@ -1055,7 +1074,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                                     ctx.idx = dOff + (size_t)dSz;
                                 }
                                 /* Zero scratch (e2/n2/p/q) */
-                                (void)wc_ForceZero(&ctx.buf[scrOff],
+                                (void)wolfCose_ForceZero(&ctx.buf[scrOff],
                                     needed - scrOff);
                             }
                         }
@@ -1066,7 +1085,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             if (ret == WOLFCOSE_SUCCESS) {
                 *outLen = ctx.idx;
             }
-            (void)wc_ForceZero(eBuf, sizeof(eBuf));
+            (void)wolfCose_ForceZero(eBuf, sizeof(eBuf));
         }
         else
 #endif /* WC_RSA_PSS */
@@ -1286,13 +1305,13 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 else {
                     /* No action required */
                 }
-                (void)wc_ForceZero(privBuf, sizeof(privBuf));
+                (void)wolfCose_ForceZero(privBuf, sizeof(privBuf));
             }
 
             if (ret == WOLFCOSE_SUCCESS) {
                 *outLen = ctx.idx;
             }
-            (void)wc_ForceZero(pubBuf, sizeof(pubBuf));
+            (void)wolfCose_ForceZero(pubBuf, sizeof(pubBuf));
         }
         else
 #endif /* HAVE_ED25519 || HAVE_ED448 */
@@ -1323,7 +1342,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
 
     /* Cleanup: zero output buffer on error */
     if ((ret != WOLFCOSE_SUCCESS) && (out != NULL)) {
-        (void)wc_ForceZero(out, outSz);
+        (void)wolfCose_ForceZero(out, outSz);
     }
 
     return ret;
@@ -1461,7 +1480,7 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                                         key->key.ecc,
                                         tmpX, tmpY, tmpD, wcCrv);
                                 }
-                                (void)wc_ForceZero(tmpD, sizeof(tmpD));
+                                (void)wolfCose_ForceZero(tmpD, sizeof(tmpD));
                                 if (ret == 0) {
                                     key->hasPrivate = 1;
                                 }
@@ -2191,7 +2210,7 @@ static int wolfCose_EcdhEsDirect(int32_t alg,
     if (ephemInited != 0) {
         (void)wc_ecc_free(&ephemKey);
     }
-    (void)wc_ForceZero(sharedSecret, sizeof(sharedSecret));
+    (void)wolfCose_ForceZero(sharedSecret, sizeof(sharedSecret));
 
     return ret;
 }
@@ -2367,7 +2386,7 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
         (void)wc_ecc_set_rng(recipientKey->key.ecc, NULL);
         (void)wc_FreeRng(&rng);
     }
-    (void)wc_ForceZero(sharedSecret, sizeof(sharedSecret));
+    (void)wolfCose_ForceZero(sharedSecret, sizeof(sharedSecret));
 
     return ret;
 }
@@ -2786,14 +2805,19 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
             word32 dlSigLen = (word32)expectedSigSz;
             INJECT_FAILURE(WOLF_FAIL_DILITHIUM_SIGN, -1)
             {
-#ifdef wc_MlDsaKey_SignCtx
-                ret = wc_dilithium_sign_ctx_msg(
-                    NULL, 0,
+                /* wolfSSL gates the legacy non-context ML-DSA API on
+                 * WOLFSSL_DILITHIUM_NO_CTX since the FIPS 204 final
+                 * transition.  When undefined (modern default), only the
+                 * context-aware API is available; pass an empty context
+                 * since COSE has no application context string. */
+#ifdef WOLFSSL_DILITHIUM_NO_CTX
+                ret = wc_dilithium_sign_msg(
                     scratch, (word32)sigStructLen,
                     &scratch[sigStructLen], &dlSigLen,
                     key->key.dilithium, rng);
 #else
-                ret = wc_dilithium_sign_msg(
+                ret = wc_dilithium_sign_ctx_msg(
+                    NULL, 0,
                     scratch, (word32)sigStructLen,
                     &scratch[sigStructLen], &dlSigLen,
                     key->key.dilithium, rng);
@@ -2868,13 +2892,13 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
     }
 
     /* Cleanup: always executed */
-    (void)wc_ForceZero(hashBuf, sizeof(hashBuf));
-    (void)wc_ForceZero(sigBuf, sizeof(sigBuf));
+    (void)wolfCose_ForceZero(hashBuf, sizeof(hashBuf));
+    (void)wolfCose_ForceZero(sigBuf, sizeof(sigBuf));
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
     if ((ret != WOLFCOSE_SUCCESS) && (out != NULL)) {
-        (void)wc_ForceZero(out, outSz);
+        (void)wolfCose_ForceZero(out, outSz);
     }
 
     return ret;
@@ -3162,15 +3186,15 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         if (ret == WOLFCOSE_SUCCESS) {
             INJECT_FAILURE(WOLF_FAIL_DILITHIUM_VERIFY, -1)
             {
-#ifdef wc_MlDsaKey_SignCtx
-                ret = wc_dilithium_verify_ctx_msg(
+#ifdef WOLFSSL_DILITHIUM_NO_CTX
+                ret = wc_dilithium_verify_msg(
                     sigData, (word32)sigDataLen,
-                    NULL, 0,
                     scratch, (word32)sigStructLen,
                     &verified, key->key.dilithium);
 #else
-                ret = wc_dilithium_verify_msg(
+                ret = wc_dilithium_verify_ctx_msg(
                     sigData, (word32)sigDataLen,
+                    NULL, 0,
                     scratch, (word32)sigStructLen,
                     &verified, key->key.dilithium);
 #endif
@@ -3199,9 +3223,9 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
     }
 
     /* Cleanup: always executed */
-    (void)wc_ForceZero(hashBuf, sizeof(hashBuf));
+    (void)wolfCose_ForceZero(hashBuf, sizeof(hashBuf));
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
 
     return ret;
@@ -3469,13 +3493,13 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
     }
 
     /* Cleanup: always executed */
-    (void)wc_ForceZero(hashBuf, sizeof(hashBuf));
-    (void)wc_ForceZero(sigBuf, sizeof(sigBuf));
+    (void)wolfCose_ForceZero(hashBuf, sizeof(hashBuf));
+    (void)wolfCose_ForceZero(sigBuf, sizeof(sigBuf));
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
     if ((ret != WOLFCOSE_SUCCESS) && (out != NULL)) {
-        (void)wc_ForceZero(out, outSz);
+        (void)wolfCose_ForceZero(out, outSz);
     }
 
     return ret;
@@ -3733,9 +3757,9 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
     }
 
     /* Cleanup: always executed */
-    (void)wc_ForceZero(hashBuf, sizeof(hashBuf));
+    (void)wolfCose_ForceZero(hashBuf, sizeof(hashBuf));
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
 
     return ret;
@@ -4063,10 +4087,10 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
     }
 #endif
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
     if ((ret != WOLFCOSE_SUCCESS) && (out != NULL)) {
-        (void)wc_ForceZero(out, outSz);
+        (void)wolfCose_ForceZero(out, outSz);
     }
 
     return ret;
@@ -4331,11 +4355,11 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
     }
 #endif
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
     /* Zero plaintext on failure to prevent unauthenticated data leak */
     if ((ret != WOLFCOSE_SUCCESS) && (plaintext != NULL)) {
-        (void)wc_ForceZero(plaintext, plaintextSz);
+        (void)wolfCose_ForceZero(plaintext, plaintextSz);
     }
 
     return ret;
@@ -4554,9 +4578,9 @@ static int wolfCose_AesCbcMac(const uint8_t* key, size_t keyLen,
     if (aesInited != 0) {
         wc_AesFree(&aes);
     }
-    (void)wc_ForceZero(inBlock, sizeof(inBlock));
-    (void)wc_ForceZero(outBlock, sizeof(outBlock));
-    (void)wc_ForceZero(iv, sizeof(iv));
+    (void)wolfCose_ForceZero(inBlock, sizeof(inBlock));
+    (void)wolfCose_ForceZero(outBlock, sizeof(outBlock));
+    (void)wolfCose_ForceZero(iv, sizeof(iv));
 
     return ret;
 }
@@ -4777,9 +4801,9 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
         wc_HmacFree(&hmac);
     }
 #endif
-    (void)wc_ForceZero(tagBuf, sizeof(tagBuf));
+    (void)wolfCose_ForceZero(tagBuf, sizeof(tagBuf));
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
 
     return ret;
@@ -4998,9 +5022,9 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
         wc_HmacFree(&hmac);
     }
 #endif
-    (void)wc_ForceZero(computedTag, sizeof(computedTag));
+    (void)wolfCose_ForceZero(computedTag, sizeof(computedTag));
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
 
     return ret;
@@ -5416,17 +5440,17 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
 
     /* Cleanup: always scrub CEK material unconditionally */
 #if defined(WOLFCOSE_KEY_WRAP)
-    (void)wc_ForceZero(cekKeyWrap, sizeof(cekKeyWrap));
-    (void)wc_ForceZero(wrappedCek, sizeof(wrappedCek));
+    (void)wolfCose_ForceZero(cekKeyWrap, sizeof(cekKeyWrap));
+    (void)wolfCose_ForceZero(wrappedCek, sizeof(wrappedCek));
 #endif
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
-    (void)wc_ForceZero(cek, sizeof(cek));
+    (void)wolfCose_ForceZero(cek, sizeof(cek));
 #endif
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
     if ((ret != WOLFCOSE_SUCCESS) && (out != NULL)) {
-        (void)wc_ForceZero(out, outSz);
+        (void)wolfCose_ForceZero(out, outSz);
     }
 
     return ret;
@@ -5789,18 +5813,18 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         wc_AesFree(&aes);
     }
 #if defined(WOLFCOSE_KEY_WRAP)
-    (void)wc_ForceZero(cekKeyWrap, sizeof(cekKeyWrap));
+    (void)wolfCose_ForceZero(cekKeyWrap, sizeof(cekKeyWrap));
 #endif
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
-    (void)wc_ForceZero(cek, sizeof(cek));
+    (void)wolfCose_ForceZero(cek, sizeof(cek));
 #endif
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
 
     if (ret != WOLFCOSE_SUCCESS) {
         if (plaintext != NULL) {
-            (void)wc_ForceZero(plaintext, plaintextSz);
+            (void)wolfCose_ForceZero(plaintext, plaintextSz);
         }
     }
     else {
@@ -6060,9 +6084,9 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
         *outLen = ctx.idx;
     }
 
-    (void)wc_ForceZero(macTag, sizeof(macTag));
+    (void)wolfCose_ForceZero(macTag, sizeof(macTag));
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
     return ret;
 }
@@ -6287,9 +6311,9 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         }
     }
 
-    (void)wc_ForceZero(computedTag, sizeof(computedTag));
+    (void)wolfCose_ForceZero(computedTag, sizeof(computedTag));
     if (scratch != NULL) {
-        (void)wc_ForceZero(scratch, scratchSz);
+        (void)wolfCose_ForceZero(scratch, scratchSz);
     }
 
     /* Return payload pointer */

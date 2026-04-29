@@ -50,14 +50,14 @@ jobs:
     - name: Build wolfCOSE
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
-        make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -fstack-usage -I./include -I$WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -fstack-usage -I./include -I$WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run scenario examples
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make scenarios CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -fstack-usage -I./include -I$WOLFSSL_DIR/include" \
+        make scenarios CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -fstack-usage -I./include -I$WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Scenario Summary
