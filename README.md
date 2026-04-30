@@ -172,4 +172,6 @@ Copyright (C) 2026 wolfSSL Inc.
 
 ## Support
 
-For commercial licensing and support, contact [wolfSSL](https://www.wolfssl.com/contact/). wolfSSL offers FIPS 140-3 validated crypto modules.
+> **Note:** While wolfCOSE is currently maintained by wolfSSL developers, it is not yet classified as an officially supported product. It was designed from the ground up to meet the same quality standards as the rest of the wolfSSL suite with future adoption in mind. We are eager to transition this to a fully supported product as demand grows; if your organization requires official support or has specific feature requirements or you just have general questions or guidance with product, please reach out.
+
+For commercial licensing, professional support contracts, or to discuss moving wolfCOSE into your production environment, contact [wolfSSL](https://www.wolfssl.com/contact/).
