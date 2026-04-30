@@ -13,3 +13,10 @@ examples/lifecycle_demo
 *.swp
 *~
 .DS_Store
+
+# Jekyll / GitHub Pages local build
+docs/_site/
+docs/.jekyll-cache/
+docs/.bundle/
+docs/vendor/
+docs/Gemfile.lock

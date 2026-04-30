@@ -1,0 +1,22 @@
+title: wolfCOSE
+description: Zero-allocation C COSE/CBOR for embedded, FIPS, and PQC
+baseurl: "/wolfCOSE"
+url: "https://aidangarske.github.io"
+theme: minima
+
+permalink: /blog/:title/
+
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+
+social:
+  name: wolfCOSE
+  links:
+    - https://github.com/aidangarske/wolfCOSE
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+  - .bundle
