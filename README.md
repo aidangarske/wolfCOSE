@@ -1,7 +1,5 @@
 # wolfCOSE
 
-**Blog:** <https://aidangarske.github.io/wolfCOSE/>
-
 wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.rfc-editor.org/rfc/rfc8949) and [COSE (RFC 9052/9053)](https://www.rfc-editor.org/rfc/rfc9052) using [wolfSSL](https://www.wolfssl.com/) as the crypto backend.
 
 ## Main Features
@@ -170,6 +168,12 @@ Full documentation is available in the [Wiki](https://github.com/aidangarske/wol
 - [Macros](https://github.com/aidangarske/wolfCOSE/wiki/Macros): Compile-time configuration options
 - [Testing](https://github.com/aidangarske/wolfCOSE/wiki/Testing): Test infrastructure, coverage, and failure injection
 - [Project Structure](https://github.com/aidangarske/wolfCOSE/wiki/Project-Structure): Source file layout
+
+## Blogs
+
+Blogs and update can be found here:
+
+[wolfCOSE Blogs](https://aidangarske.github.io/wolfCOSE/)
 
 ## License
 
