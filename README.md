@@ -146,11 +146,16 @@ make coverage-force-failure    # Include crypto failure path testing
   <img alt="Coverity Scan Build Status"
        src="https://scan.coverity.com/projects/32918/badge.svg"/>
 </a>
+<a href="https://github.com/aidangarske/wolfCOSE/actions">
+  <img alt="CI Status"
+       src="https://img.shields.io/github/actions/workflow/status/aidangarske/wolfCOSE/build-test.yml?label=CI&logo=github"/>
+</a>
 <a href="https://github.com/wolfssl/skoll">                                                                                                              <img alt="Skoll Review" src="https://img.shields.io/badge/skoll-passed-blue"/>                                                                     
 </a>                                                                                                                                                 
 <a href="https://github.com/wolfssl/fenrir">                                                                                                         
   <img alt="Fenrir Review" src="https://img.shields.io/badge/fenrir-passed-blueviolet"/>
 </a>
+
 
 ## Documentation
 
