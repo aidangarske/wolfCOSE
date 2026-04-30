@@ -8,7 +8,7 @@ date: 2026-04-30 12:00:00
 
 Most C COSE libraries make you choose. You either get a small footprint with one message type (`t_cose` does `Sign1` only, and depends on QCBOR plus OpenSSL or mbedTLS), or every message type with `malloc` and OpenSSL (`COSE-C` does all six but ships at ~77 KB). For embedded teams already in the wolfSSL ecosystem, neither fits without doubling the crypto footprint.
 
-wolfCOSE is the missing third option: the full RFC 9052 message set — `Sign1`, `Sign`, `Encrypt0`, `Encrypt`, `Mac0`, `Mac` — in **5,500 lines of C99 with zero dynamic allocation**, **40 algorithms** including native ML-DSA-44/65/87, and a **7.5 KB minimum `.text`** when you only need `Sign1` with ECC. It is also, as far as we can tell, the first COSE implementation in any language with production-tested post-quantum signatures.
+wolfCOSE is the missing third option: the full RFC 9052 message set — `Sign1`, `Sign`, `Encrypt0`, `Encrypt`, `Mac0`, `Mac` — in **7.5 KB minimum `.text`** (25.6 KB full build), with **zero dynamic allocation** and **40 algorithms** including native ML-DSA-44/65/87. It is also, as far as we can tell, the first COSE implementation in any language with production-tested post-quantum signatures.
 
 ## A Note on the Project
 
@@ -34,18 +34,18 @@ wolfCOSE eliminates that dependency entirely. wolfBoot can verify `COSE_Sign1` f
 ## What Is in It Today
 
 - **Full RFC 9052 message set:** `Sign1`, `Sign`, `Encrypt0`, `Encrypt`, `Mac0`, `Mac`. Multi-signer and multi-recipient supported, not stubbed.
-- **40 algorithms:** ECDSA (P-256/384/521), EdDSA, RSA-PSS, AES-GCM, AES-CCM, ChaCha20-Poly1305, AES Key Wrap, HMAC-SHA-256/384/512, ECDH-ES, and **ML-DSA-44/65/87**.
+- **40 algorithms:** ECDSA (P-256/384/521), EdDSA, RSA-PSS, AES-GCM, AES-CCM, ChaCha20-Poly1305, AES Key Wrap, HMAC-SHA-256/384/512, ECDH-ES, and **ML-DSA-44/65/87**. (The CLI tool's `test --all` exercises a 17-algorithm round-trip subset of those for quick smoke testing; the 40 figure counts every distinct COSE algorithm ID across signing, encryption, MAC, and key distribution.)
 - **Zero dynamic allocation.** Every API takes caller-provided buffers. Stack crypto material zeroized with `wc_ForceZero` on every exit.
 - **Compile-time stripping:** 238 `#ifdef` guards. Minimum build is 7.5 KB; full build is 25.6 KB.
 - **MISRA-C:2023 striving** with three CI checkers.
 - **Path to FIPS 140-3** via wolfCrypt's [Certificate #4718](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4718).
-- **11 GitHub Actions workflows, ~240 algorithm-combination tests, AddressSanitizer + UndefinedBehaviorSanitizer in CI, Coverity nightly scan.**
+- **15 GitHub Actions workflows** (13 on every PR, plus a nightly orchestrator and a wolfSSL-versions matrix), **~240 algorithm-combination tests**, AddressSanitizer + UndefinedBehaviorSanitizer in CI, Coverity nightly scan.
 
 ## What I Would Love from Early Adopters
 
 - **Build it on your toolchain.** We test on Linux/macOS with GCC 10–14 and Clang 14–18. If you build on something else (IAR, ARMCC, TI CCS, Renesas, embedded Clang variants) and it fails, file an issue.
 - **Try the API and tell us what is awkward.** The pre-1.0 window is when API feedback is cheapest to act on.
-- **Run the lifecycle demo on your target.** `make demo DEMO_ALG=ML-DSA-65` exercises keygen, sign, verify, and key serialization end to end.
+- **Run the lifecycle demo on your target.** `make demo` exercises keygen, sign, verify, and key serialization end to end across ECC, EdDSA, AEAD, HMAC, and ML-DSA-44. For ML-DSA-65 and ML-DSA-87 round-trips, use `./tools/wolfcose_tool test -a ML-DSA-65`.
 - **Tell us if you want production support.** If wolfCOSE is on a critical path for you, that is the signal that turns this from an experimental project into a supported one.
 
 ## Read More
@@ -60,7 +60,7 @@ wolfCOSE eliminates that dependency entirely. wolfBoot can verify `COSE_Sign1` f
 git clone https://github.com/aidangarske/wolfCOSE
 cd wolfCOSE
 make && make test
-./tools/wolfcose_tool test --all
+make tool && ./tools/wolfcose_tool test --all
 ```
 
 Repo: <https://github.com/aidangarske/wolfCOSE>

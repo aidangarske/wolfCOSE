@@ -4,7 +4,7 @@ title: "The Smallest Complete COSE Library for Embedded"
 date: 2026-04-30 10:00:00
 ---
 
-*All Six RFC 9052 Message Types in 5,500 Lines of C99*
+*Sign, Encrypt, and MAC — Single-Actor and Multi-Actor — In One Library*
 
 wolfCOSE now has full multi-signer and multi-recipient support, making it the smallest C COSE library to implement the entire RFC 9052 message set: `COSE_Sign1`, `COSE_Sign`, `COSE_Encrypt0`, `COSE_Encrypt`, `COSE_Mac0`, `COSE_Mac`. No malloc, no external CBOR dependency, no caveats.
 
@@ -26,6 +26,8 @@ These are exactly the scenarios `COSE_Sign`, `COSE_Encrypt`, and `COSE_Mac` were
 ## Dual-Signing a Firmware Manifest
 
 ```c
+/* vendorKey and oemKey are WOLFCOSE_KEY*, prepared earlier via
+   wc_CoseKey_SetEcc() and wc_CoseKey_SetDilithium() respectively. */
 WOLFCOSE_SIGNATURE signers[2] = {
     { .algId = WOLFCOSE_ALG_ES256,
       .key   = &vendorKey,
@@ -83,7 +85,7 @@ For teams that need wolfCOSE on an embedded target, this is the right tradeoff. 
 
 ## Compile-Time Stripping Is the Design
 
-The full library is 22.9 KB of `.text`. The "I just need ES256 Sign1 and nothing else" build is 4.8 KB of COSE + 2.7 KB of CBOR = 7.5 KB total. You opt out of features you do not need:
+The full library is 22.9 KB of `.text` for the COSE layer; combined with the 2.7 KB CBOR engine, that is the 25.6 KB full-build total quoted in the comparison above. The "I just need ES256 Sign1 and nothing else" build is 4.8 KB of COSE + 2.7 KB of CBOR = 7.5 KB total. You opt out of features you do not need:
 
 ```
 -DWOLFCOSE_NO_SIGN     -DWOLFCOSE_NO_ENCRYPT  -DWOLFCOSE_NO_MAC
@@ -103,7 +105,7 @@ This matters because the people who care most about COSE are the people who care
 
 ## CI
 
-wolfCOSE runs 11 GitHub Actions workflows on every PR, covering the full development lifecycle:
+wolfCOSE has 15 GitHub Actions workflows: 13 trigger on every PR, plus a nightly orchestrator and a wolfSSL-versions matrix that run on a schedule. Together they cover the full development lifecycle:
 
 - **Build + Test:** multi-platform (Ubuntu / macOS), multi-compiler (GCC 10 to 14, Clang 14 to 18)
 - **Static analysis:** cppcheck + Clang scan-build + GCC `-fanalyzer`
@@ -118,6 +120,8 @@ wolfCOSE runs 11 GitHub Actions workflows on every PR, covering the full develop
 - **Examples build:** all example programs compile and link cleanly
 - **wolfSSL integration:** builds against wolfSSL to verify crypto backend compatibility
 - **Codespell:** typo checking across the codebase
+- **Nightly orchestrator:** re-runs the full CI suite on master each night (catches breakage from upstream changes between PRs)
+- **wolfSSL-versions matrix:** nightly compatibility check against every wolfSSL 5.x release
 
 The `wolfcose_tool` CLI ships with the project and round-trip tests every algorithm with `wolfcose_tool test --all`.
 
@@ -135,7 +139,7 @@ wolfCOSE eliminates that dependency entirely. wolfBoot can verify `COSE_Sign1` f
 git clone https://github.com/aidangarske/wolfCOSE
 cd wolfCOSE
 make && make test
-./tools/wolfcose_tool test --all
+make tool && ./tools/wolfcose_tool test --all
 ```
 
 Repo: <https://github.com/aidangarske/wolfCOSE>
@@ -145,4 +149,4 @@ GPLv3, with commercial licensing available from wolfSSL upon adoption. For inter
 
 `github.com/aidangarske/wolfCOSE | facts@wolfssl.com`
 
-Numbers measured March 2026. Methodology, raw `size` and `cloc` outputs, and build commands for every comparison library are in `docs/comparison.md`.
+Numbers measured March 2026 on a Raspberry Pi 5 (aarch64, GCC 14.2, `-Os`); every library was built from master with its default release flags. File an issue if you spot a build flag we got wrong on your favorite library and we will re-run.

@@ -56,8 +56,9 @@ wc_CoseKey_SetDilithium(&coseKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
 uint8_t scratch[8192];
 int ret = wc_CoseSign1_Sign(&coseKey, WOLFCOSE_ALG_ML_DSA_44,
+                            NULL, 0,                    /* kid, kidLen */
                             payload, payloadLen,
-                            NULL, 0, NULL, 0,
+                            NULL, 0, NULL, 0,           /* detached payload, ext-AAD */
                             scratch, sizeof(scratch),
                             out, sizeof(out), &outLen, &rng);
 ```
@@ -71,6 +72,8 @@ The reason wolfCOSE has full `COSE_Sign` support (not just `Sign1`) is that the 
 Here is a firmware manifest signed by both ES256 (today's verifier) and ML-DSA-65 (tomorrow's verifier), in one COSE structure:
 
 ```c
+/* eccKey and mlDsaKey are WOLFCOSE_KEY*, set up earlier via
+   wc_CoseKey_SetEcc() and wc_CoseKey_SetDilithium() respectively. */
 WOLFCOSE_SIGNATURE signers[2] = {
     { .algId  = WOLFCOSE_ALG_ES256,
       .key    = &eccKey,
@@ -87,7 +90,7 @@ ret = wc_CoseSign_Sign(signers, 2,
                        out, sizeof(out), &outLen, &rng);
 ```
 
-Devices in the field that still only know ES256 verify signature index 0 and ignore index 1. Newer devices verify the ML-DSA signature and ignore the ECC one. When everyone has migrated, you drop the classical signer and your code path is one line shorter. No re-signing campaigns, no flag-day cutovers.
+Per RFC 9052 §4.1, the verifier walks the `COSE_Signature` array and selects the signer to validate by matching the `alg` and `kid` headers it knows about — not by array position. Devices in the field that still only know ES256 select the `vendor-classic` signer and skip the ML-DSA one. Newer devices select the `vendor-pqc` signer and skip the ECC one. When everyone has migrated, you drop the classical signer and your code path is one line shorter. No re-signing campaigns, no flag-day cutovers.
 
 ## The Wire-Size Impact
 
@@ -95,7 +98,7 @@ Post-quantum signatures are not a free lunch. The wire-size impact is real and w
 
 | Algorithm | Public Key | Signature | NIST Level |
 |---|---|---|---|
-| ES256 (P-256) | 64 B | 64–72 B | (classical 128) |
+| ES256 (P-256) | 64 B | 64 B | (classical 128) |
 | Ed25519 | 32 B | 64 B | (classical 128) |
 | ML-DSA-44 | 1,312 B | 2,420 B | 2 |
 | ML-DSA-65 | 1,952 B | 3,293 B | 3 |
@@ -120,14 +123,14 @@ Build wolfSSL with `--enable-dilithium` (or `--enable-cryptonly --enable-dilithi
 ```bash
 git clone https://github.com/aidangarske/wolfCOSE
 cd wolfCOSE
-make
+make tool
 ./tools/wolfcose_tool keygen -a ML-DSA-44 -o pqc.key
 ./tools/wolfcose_tool sign -k pqc.key -a ML-DSA-44 -i data.bin -o data.cose
 ./tools/wolfcose_tool verify -k pqc.key -i data.cose
 ./tools/wolfcose_tool test -a ML-DSA-87
 ```
 
-A complete demo lives in `examples/lifecycle_demo.c` (run `make demo DEMO_ALG=ML-DSA-65`).
+A complete keygen / sign / verify lifecycle for ML-DSA-44 lives in `examples/lifecycle_demo.c` and runs via `make demo`. ML-DSA-65 and ML-DSA-87 round-trips go through the CLI: `./tools/wolfcose_tool test -a ML-DSA-65`.
 
 ## What Is Next
 
