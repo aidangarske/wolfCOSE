@@ -1,0 +1,61 @@
+name: Nightly CI
+
+on:
+  schedule:
+    # 2:00 AM UTC daily (offset from Coverity's 0:00 UTC)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  trigger:
+    name: Trigger All CI Workflows
+    runs-on: ubuntu-latest
+    if: github.repository == 'aidangarske/wolfCOSE'
+
+    steps:
+    - name: Dispatch all workflows
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const workflows = [
+            'build-test.yml',
+            'codespell.yml',
+            'comprehensive-tests.yml',
+            'coverage.yml',
+            'examples.yml',
+            'minimal-build.yml',
+            'misra-2012.yml',
+            'misra-2023.yml',
+            'multi-compiler.yml',
+            'sanitizer.yml',
+            'scenarios.yml',
+            'static-analysis.yml',
+            'wolfssl-versions.yml',
+          ];
+
+          const results = [];
+          for (const workflow of workflows) {
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: workflow,
+                ref: 'master',
+              });
+              results.push(`  OK  ${workflow}`);
+              core.info(`Triggered ${workflow}`);
+            } catch (error) {
+              results.push(`  FAIL  ${workflow}: ${error.message}`);
+              core.warning(`Failed to trigger ${workflow}: ${error.message}`);
+            }
+          }
+
+          // Job summary
+          let summary = '## Nightly CI Dispatch\n\n';
+          for (const r of results) {
+            summary += r + '\n';
+          }
+          await core.summary.addRaw(summary).write();

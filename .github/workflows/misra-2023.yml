@@ -9,6 +9,7 @@ on:
     branches: [ 'master', 'main', 'release/**' ]
   pull_request:
     branches: [ '*' ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -80,7 +81,7 @@ jobs:
         #   -Wdouble-promotion   Rule 10.x  implicit float-to-double
         #   -Wnull-dereference   Safety     null pointer dereference
         #   -Wsign-conversion    Rule 10.x  signed/unsigned conversion
-        MISRA_FLAGS="-std=c99 -Os \
+        MISRA_FLAGS="-std=c11 -Os \
             -Wall -Wextra -Wpedantic -Wshadow -Wconversion \
             -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes \
             -Wold-style-definition -Wdeclaration-after-statement \
@@ -205,9 +206,14 @@ jobs:
         # -misc-include-cleaner: Flags transitive header includes which
         #   are by design (wolfcose_internal.h includes wolfcose.h).
         #
+        # -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling:
+        #   Suggests C11 Annex K *_s functions (memcpy_s, memset_s) which
+        #   are not portable. wolfSSL's XMEMCPY/XMEMSET wrappers use the
+        #   standard C functions and are the project-wide convention.
+        #
         clang-tidy src/*.c \
-            -checks='-*,bugprone-*,cert-*,clang-analyzer-*,misc-*,-misc-include-cleaner,-bugprone-branch-clone,-bugprone-easily-swappable-parameters' \
-            -- -std=c99 -I./include -I$WOLFSSL_DIR/include \
+            -checks='-*,bugprone-*,cert-*,clang-analyzer-*,misc-*,-misc-include-cleaner,-bugprone-branch-clone,-bugprone-easily-swappable-parameters,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling' \
+            -- -std=c11 -I./include -I$WOLFSSL_DIR/include \
             -DHAVE_ECC -DHAVE_ED25519 -DHAVE_ED448 \
             -DWC_RSA_PSS -DHAVE_DILITHIUM \
             -DHAVE_AESGCM -DHAVE_AESCCM \

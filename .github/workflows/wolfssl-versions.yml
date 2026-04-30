@@ -1,0 +1,103 @@
+name: wolfSSL Version Matrix
+
+on:
+  push:
+    branches: [ 'master', 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wolfssl-version-test:
+    name: wolfSSL ${{ matrix.wolfssl-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # wolfCOSE minimum supported wolfSSL: v5.7.4
+          # (first release with FIPS 204 final ML-DSA + wc_dilithium_*_ctx_msg
+          # APIs and the WOLFSSL_DILITHIUM_NO_CTX gating macro). Earlier
+          # versions only ship the legacy draft-FIPS-204 dispatch.
+          # ed25519_key/ed448_key privKeySet field is also required.
+          - wolfssl-version: 'v5.7.6-stable'
+            wolfssl-ref: 'v5.7.6-stable'
+            cache-key: 'wolfssl-version-v5.7.6-v1'
+          - wolfssl-version: 'v5.8.4-stable'
+            wolfssl-ref: 'v5.8.4-stable'
+            cache-key: 'wolfssl-version-v5.8.4-v1'
+          - wolfssl-version: 'v5.9.1-stable'
+            wolfssl-ref: 'v5.9.1-stable'
+            cache-key: 'wolfssl-version-v5.9.1-v1'
+          # --- Bleeding edge (no cache — always rebuilds) ---
+          - wolfssl-version: 'HEAD'
+            wolfssl-ref: 'master'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool
+
+    # Cache stable versions only — HEAD must always rebuild to catch regressions
+    - name: Cache wolfSSL (${{ matrix.wolfssl-version }})
+      if: matrix.wolfssl-version != 'HEAD'
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: ${{ matrix.cache-key }}
+
+    - name: Build wolfSSL (${{ matrix.wolfssl-version }})
+      if: matrix.wolfssl-version == 'HEAD' || steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 --branch ${{ matrix.wolfssl-ref }} \
+            https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
+                    --enable-curve25519 --enable-curve448 \
+                    --enable-aesgcm --enable-aesccm --enable-aescbc \
+                    --enable-sha384 --enable-sha512 \
+                    --enable-keygen --enable-hkdf --enable-aeskeywrap \
+                    --enable-chacha --enable-poly1305 \
+                    --enable-dilithium --enable-rsapss \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Build wolfCOSE
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        make CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+             LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run unit tests
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+                  LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run tool round-trip test
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make tool-test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+                       LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: wolfSSL version info
+      if: always()
+      run: |
+        echo "=== wolfSSL Version ==="
+        echo "Ref: ${{ matrix.wolfssl-ref }}"
+        if [ -f ~/wolfssl-install/include/wolfssl/version.h ]; then
+          grep LIBWOLFSSL_VERSION_STRING ~/wolfssl-install/include/wolfssl/version.h || true
+        fi

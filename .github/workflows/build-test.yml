@@ -5,6 +5,7 @@ on:
     branches: [ 'master', 'main', 'release/**' ]
   pull_request:
     branches: [ '*' ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -60,7 +61,7 @@ jobs:
     - name: Build wolfCOSE
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
-        make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run unit tests
@@ -68,7 +69,7 @@ jobs:
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         export DYLD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make test CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run tool round-trip test
@@ -76,7 +77,7 @@ jobs:
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         export DYLD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make tool-test CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make tool-test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
   coverage:
@@ -120,14 +121,14 @@ jobs:
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         make clean
-        make CFLAGS="-std=c99 -Os --coverage -I./include -I$WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c11 -Os --coverage -I./include -I$WOLFSSL_DIR/include" \
              LDFLAGS="--coverage -L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run tests with coverage
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make test CFLAGS="-std=c99 -Os --coverage -I./include -I$WOLFSSL_DIR/include" \
+        make test CFLAGS="-std=c11 -Os --coverage -I./include -I$WOLFSSL_DIR/include" \
                   LDFLAGS="--coverage -L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Generate coverage report

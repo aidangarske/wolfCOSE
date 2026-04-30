@@ -76,6 +76,66 @@ static int g_failures = 0;
     }                                                          \
 } while (0)
 
+/* ----- Internal helper tests ----- */
+static void test_wolfcose_force_zero(void)
+{
+    uint8_t buf[64];
+    size_t i;
+    int allZero;
+    int prefixZero;
+    int suffixUntouched;
+
+    printf("  [wolfCose_ForceZero]\n");
+
+    /* Fill with non-zero pattern, zero, verify all bytes cleared */
+    for (i = 0; i < sizeof(buf); i++) {
+        buf[i] = 0xAAu;
+    }
+    wolfCose_ForceZero(buf, sizeof(buf));
+    allZero = 1;
+    for (i = 0; i < sizeof(buf); i++) {
+        if (buf[i] != 0u) {
+            allZero = 0;
+            break;
+        }
+    }
+    TEST_ASSERT(allZero == 1, "ForceZero clears full buffer");
+
+    /* Partial-length: only the first N bytes should be zeroed */
+    for (i = 0; i < sizeof(buf); i++) {
+        buf[i] = 0xBBu;
+    }
+    wolfCose_ForceZero(buf, 16);
+    prefixZero = 1;
+    for (i = 0; i < 16; i++) {
+        if (buf[i] != 0u) {
+            prefixZero = 0;
+            break;
+        }
+    }
+    suffixUntouched = 1;
+    for (i = 16; i < sizeof(buf); i++) {
+        if (buf[i] != 0xBBu) {
+            suffixUntouched = 0;
+            break;
+        }
+    }
+    TEST_ASSERT(prefixZero == 1, "ForceZero prefix zeroed");
+    TEST_ASSERT(suffixUntouched == 1, "ForceZero suffix untouched");
+
+    /* len == 0: no-op, must not crash, must not modify buffer */
+    for (i = 0; i < sizeof(buf); i++) {
+        buf[i] = 0xCCu;
+    }
+    wolfCose_ForceZero(buf, 0u);
+    TEST_ASSERT(buf[0] == 0xCCu, "ForceZero len=0 is no-op");
+
+    /* NULL pointer: must not crash */
+    wolfCose_ForceZero(NULL, 0u);
+    wolfCose_ForceZero(NULL, 32u);
+    TEST_ASSERT(1, "ForceZero NULL pointer safe");
+}
+
 /* ----- COSE Key API tests ----- */
 static void test_cose_key_init(void)
 {
@@ -11360,6 +11420,9 @@ static void test_sign_verify_bad_array_count(void)
 int test_cose(void)
 {
     g_failures = 0;
+
+    /* Internal helper tests */
+    test_wolfcose_force_zero();
 
     /* Key tests */
     test_cose_key_init();

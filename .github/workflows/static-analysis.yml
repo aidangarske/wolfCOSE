@@ -5,6 +5,7 @@ on:
     branches: [ 'master', 'main', 'release/**' ]
   pull_request:
     branches: [ '*' ]
+  workflow_dispatch:
 
 jobs:
   cppcheck:
@@ -96,7 +97,7 @@ jobs:
     - name: Run scan-build
       run: |
         scan-build --status-bugs -o scan-results \
-          make CC=clang CFLAGS="-std=c99 -Os -Wall -Wextra -I./include -I$HOME/wolfssl-install/include" \
+          make CC=clang CFLAGS="-std=c11 -Os -Wall -Wextra -I./include -I$HOME/wolfssl-install/include" \
                LDFLAGS="-L$HOME/wolfssl-install/lib -lwolfssl"
 
     - name: Upload scan-build results
@@ -144,5 +145,5 @@ jobs:
     - name: Build with -fanalyzer
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
-        make CC=gcc CFLAGS="-std=c99 -Os -Wall -Wextra -fanalyzer -Werror -I./include -I$WOLFSSL_DIR/include" \
+        make CC=gcc CFLAGS="-std=c11 -Os -Wall -Wextra -fanalyzer -Werror -I./include -I$WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"

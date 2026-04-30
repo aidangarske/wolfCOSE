@@ -16,7 +16,7 @@
 
 CC       ?= gcc
 AR       ?= ar
-CFLAGS    = -std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion
+CFLAGS    = -std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion
 CFLAGS   += -fstack-usage
 CFLAGS   += -I./include -I/usr/local/include
 CFLAGS   += $(EXTRA_CFLAGS)

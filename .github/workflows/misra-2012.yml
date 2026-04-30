@@ -8,6 +8,7 @@ on:
     branches: [ 'master', 'main', 'release/**' ]
   pull_request:
     branches: [ '*' ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -99,6 +100,12 @@ jobs:
         #              overlap as a potential issue but memmove handles
         #              it correctly by design.
         #
+        # Rule 11.5  — wolfCose_ForceZero takes void* so it can accept any
+        #              buffer type, then casts internally to volatile
+        #              unsigned char* for byte-wise secure zeroing. The
+        #              void*->byte cast is the standard pattern for
+        #              generic memory APIs.
+        #
         cppcheck --addon=misra \
                  --enable=all \
                  --suppress=misra-config \
@@ -108,6 +115,7 @@ jobs:
                  --suppress=*:$HOME/wolfssl-install/include/* \
                  --suppress=misra-c2012-2.5 \
                  --suppress=misra-c2012-8.7 \
+                 --suppress=misra-c2012-11.5 \
                  --suppress=misra-c2012-11.8 \
                  --suppress=misra-c2012-19.2 \
                  --suppress=misra-c2012-21.15 \

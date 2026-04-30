@@ -55,4 +55,4 @@ jobs:
         token: ${{ secrets.COVERITY_SCAN_TOKEN }}
         email: ${{ secrets.COVERITY_SCAN_EMAIL }}
         command: |
-          make CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$HOME/wolfssl-install/include" LDFLAGS="-L$HOME/wolfssl-install/lib -lwolfssl"
+          make CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$HOME/wolfssl-install/include" LDFLAGS="-L$HOME/wolfssl-install/lib -lwolfssl"

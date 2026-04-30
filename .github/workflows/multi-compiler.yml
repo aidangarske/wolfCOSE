@@ -5,6 +5,7 @@ on:
     branches: [ 'master', 'main', 'release/**' ]
   pull_request:
     branches: [ '*' ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -61,7 +62,7 @@ jobs:
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         make CC=${{ matrix.cc }} \
-             CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Werror -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+             CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Werror -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run unit tests
@@ -69,5 +70,5 @@ jobs:
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         make test CC=${{ matrix.cc }} \
-             CFLAGS="-std=c99 -Os -Wall -Wextra -Wpedantic -Werror -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+             CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Werror -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"

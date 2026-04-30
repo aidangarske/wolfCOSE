@@ -22,11 +22,13 @@ wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.r
 
 ## Prerequisites (wolfSSL)
 
-wolfCOSE requires [wolfSSL](https://www.wolfssl.com/) 5.x as its crypto backend. Choose between a minimal build (ECC + AES-GCM only) or a full build that enables all 26 algorithms wolfCOSE supports.
+wolfCOSE requires [wolfSSL](https://www.wolfssl.com/) as its crypto backend. **Minimum recommended version: v5.7.4** (first release with FIPS 204 final ML-DSA + the context-aware `wc_dilithium_*_ctx_msg` APIs). Older 5.x releases can technically be supported but require source-level changes; contact [wolfSSL](https://www.wolfssl.com/contact/) for commercial support.
+
+Choose a build configuration based on the algorithms you need.
 
 ### Minimal Build (ECC + AES-GCM)
 
-This gives you COSE Sign1 (ES256/384/512) and Encrypt0 (AES-GCM) — the most common COSE operations for IoT:
+This gives you COSE Sign1 (ES256/384/512) and Encrypt0 (AES-GCM):
 
 ```bash
 cd wolfssl
@@ -38,6 +40,21 @@ sudo ldconfig
 ```
 
 **Algorithms enabled:** ES256, ES384, ES512, AES-GCM-128/192/256
+
+### Minimal Build (Post-Quantum / ML-DSA only)
+
+For pure post-quantum signing with ML-DSA-44/65/87:
+
+```bash
+cd wolfssl
+./autogen.sh
+./configure --enable-cryptonly --enable-dilithium
+make && sudo make install
+sudo ldconfig
+```
+
+**Algorithms enabled:** ML-DSA-44, ML-DSA-65, ML-DSA-87
+(SHAKE-128/256 are pulled in automatically by `--enable-dilithium`.)
 
 ### Full Build (All Algorithms)
 
