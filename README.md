@@ -5,12 +5,22 @@ wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.r
 ## Main Features
 
 - **Complete RFC 9052 message set**: all six COSE message types, including multi-signer `COSE_Sign` and multi-recipient `COSE_Encrypt` / `COSE_Mac`
-- **Post-quantum signing**: ML-DSA (Dilithium) at all three security levels — first COSE library with native PQC
+- **Post-quantum signing**: ML-DSA (Dilithium) at all three security levels
 - **40 algorithms** across signing, encryption, MAC, and key distribution
 - **Zero dynamic allocation**: all operations use caller-provided buffers
 - **Tiny footprint**: 7.5 KB `.text` minimal build (Sign1+ECC), 25.6 KB full (40 algorithms), zero `.data`/`.bss`
-- **Full COSE lifecycle in <1KB RAM** (excluding wolfCrypt internals)
+- **Full COSE lifecycle in ~<1KB RAM** (excluding wolfCrypt internals)
 - **Path to FIPS 140-3** via wolfCrypt FIPS Certificate #4718 (sole crypto dependency)
+
+## Supported Algorithms
+
+**Signing:** `ES256, ES384, ES512, EdDSA (Ed25519/Ed448), PS256/384/512, ML-DSA-44/65/87`
+
+**Encryption:** `AES-GCM (128/192/256), ChaCha20-Poly1305, AES-CCM variants`
+
+**MAC:** `HMAC-SHA256/384/512, AES-MAC`
+
+**Key Distribution:** `Direct, AES Key Wrap, ECDH-ES+HKDF`
 
 ## COSE Message Types (RFC 9052)
 
@@ -25,16 +35,6 @@ wolfCOSE has implemented all RFC 9052 messages both single-actor and multi-actor
 | `COSE_Mac0` | Sec. 6.2 | `wc_CoseMac0_Create` / `wc_CoseMac0_Verify` | Single-recipient MAC |
 | `COSE_Mac` | Sec. 6.1 | `wc_CoseMac_Create` / `wc_CoseMac_Verify` | **Multi-recipient** MAC (shared MAC key, distributed to recipients) |
 | `COSE_Key` / `COSE_KeySet` | Sec. 7 | `wc_CoseKey_Encode` / `wc_CoseKey_Decode` | Key serialization for all key types |
-
-## Supported Algorithms
-
-**Signing:** ES256, ES384, ES512, EdDSA (Ed25519/Ed448), PS256/384/512, ML-DSA-44/65/87
-
-**Encryption:** AES-GCM (128/192/256), ChaCha20-Poly1305, AES-CCM variants
-
-**MAC:** HMAC-SHA256/384/512, AES-MAC
-
-**Key Distribution:** Direct, AES Key Wrap, ECDH-ES+HKDF
 
 ## Prerequisites (wolfSSL)
 
@@ -123,34 +123,6 @@ See `examples/` for complete working code:
 - `lifecycle_demo.c`: full edge-to-cloud workflow
 - `comprehensive/`: algorithm matrix tests
 - `scenarios/`: firmware signing, attestation, fleet config
-
-## CLI Tool
-
-```bash
-# Generate keys
-./tools/wolfcose_tool keygen -a ES256 -o ec.key
-./tools/wolfcose_tool keygen -a ML-DSA-44 -o pqc.key
-
-# Sign and verify
-./tools/wolfcose_tool sign -k ec.key -a ES256 -i data.bin -o data.cose
-./tools/wolfcose_tool verify -k ec.key -i data.cose
-
-# Encrypt and decrypt
-./tools/wolfcose_tool keygen -a A128GCM -o sym.key
-./tools/wolfcose_tool enc -k sym.key -a A128GCM -i secret.bin -o secret.cose
-./tools/wolfcose_tool dec -k sym.key -i secret.cose -o recovered.bin
-
-# MAC
-./tools/wolfcose_tool keygen -a HMAC256 -o hmac.key
-./tools/wolfcose_tool mac -k hmac.key -a HMAC256 -i data.bin -o data.mac
-./tools/wolfcose_tool macverify -k hmac.key -i data.mac
-
-# Inspect structure
-./tools/wolfcose_tool info -i data.cose
-
-# Self-test all algorithms
-./tools/wolfcose_tool test --all
-```
 
 ## CI / Testing
 
