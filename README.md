@@ -134,6 +134,7 @@ Runs on every push and PR:
 - **MISRA C 2012**: cppcheck `--addon=misra` checking all wolfCOSE code paths
 - **MISRA C 2023**: strict GCC warnings and clang-tidy (`bugprone-*`, `cert-*`, `clang-analyzer-*`, `misc-*`)
 - **Coverity Scan**: nightly defect analysis
+- **Advanced Internal Static Analysis:** Fenrir wolfssl advanced static analysis tools
 - **Code Coverage**: 99.3% for wolfcose.c, 100% for wolfcose_cbor.c
 
 ```bash
@@ -144,6 +145,11 @@ make coverage-force-failure    # Include crypto failure path testing
 <a href="https://scan.coverity.com/projects/wolfcose">
   <img alt="Coverity Scan Build Status"
        src="https://scan.coverity.com/projects/32918/badge.svg"/>
+</a>
+<a href="https://github.com/wolfssl/skoll">                                                                                                              <img alt="Skoll Review" src="https://img.shields.io/badge/skoll-passed-blue"/>                                                                     
+</a>                                                                                                                                                 
+<a href="https://github.com/wolfssl/fenrir">                                                                                                         
+  <img alt="Fenrir Review" src="https://img.shields.io/badge/fenrir-passed-blueviolet"/>
 </a>
 
 ## Documentation
