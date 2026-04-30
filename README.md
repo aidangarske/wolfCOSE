@@ -4,11 +4,27 @@ wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.r
 
 ## Main Features
 
-- **Post-quantum signing**: ML-DSA (Dilithium) at all three security levels
-- **26 algorithms** across signing, encryption, and MAC
+- **Complete RFC 9052 message set**: all six COSE message types, including multi-signer `COSE_Sign` and multi-recipient `COSE_Encrypt` / `COSE_Mac`
+- **Post-quantum signing**: ML-DSA (Dilithium) at all three security levels — first COSE library with native PQC
+- **40 algorithms** across signing, encryption, MAC, and key distribution
 - **Zero dynamic allocation**: all operations use caller-provided buffers
-- **Tiny footprint**: core library is ~15KB `.text`, zero `.data`/`.bss`
+- **Tiny footprint**: 7.5 KB `.text` minimal build (Sign1+ECC), 25.6 KB full (40 algorithms), zero `.data`/`.bss`
 - **Full COSE lifecycle in <1KB RAM** (excluding wolfCrypt internals)
+- **Path to FIPS 140-3** via wolfCrypt FIPS Certificate #4718 (sole crypto dependency)
+
+## COSE Message Types (RFC 9052)
+
+wolfCOSE has implemented all RFC 9052 messages both single-actor and multi-actor variants:
+
+| Message | RFC 9052 | API | Purpose |
+|---|---|---|---|
+| `COSE_Sign1` | Sec. 4.2 | `wc_CoseSign1_Sign` / `wc_CoseSign1_Verify` | Single-signer signature |
+| `COSE_Sign` | Sec. 4.1 | `wc_CoseSign_Sign` / `wc_CoseSign_Verify` | **Multi-signer** (independent signatures over the same payload) |
+| `COSE_Encrypt0` | Sec. 5.2 | `wc_CoseEncrypt0_Encrypt` / `wc_CoseEncrypt0_Decrypt` | Single-recipient AEAD |
+| `COSE_Encrypt` | Sec. 5.1 | `wc_CoseEncrypt_Encrypt` / `wc_CoseEncrypt_Decrypt` | **Multi-recipient** (one ciphertext, many recipients via Direct / AES-KW / ECDH-ES) |
+| `COSE_Mac0` | Sec. 6.2 | `wc_CoseMac0_Create` / `wc_CoseMac0_Verify` | Single-recipient MAC |
+| `COSE_Mac` | Sec. 6.1 | `wc_CoseMac_Create` / `wc_CoseMac_Verify` | **Multi-recipient** MAC (shared MAC key, distributed to recipients) |
+| `COSE_Key` / `COSE_KeySet` | Sec. 7 | `wc_CoseKey_Encode` / `wc_CoseKey_Decode` | Key serialization for all key types |
 
 ## Supported Algorithms
 
@@ -163,7 +179,8 @@ make coverage-force-failure    # Include crypto failure path testing
 Full documentation is available in the [Wiki](https://github.com/aidangarske/wolfCOSE/wiki):
 
 - [Getting Started](https://github.com/aidangarske/wolfCOSE/wiki/Getting-Started): Build instructions and first steps
-- [Algorithms](https://github.com/aidangarske/wolfCOSE/wiki/Algorithms): Complete list of 26 supported algorithms with COSE IDs
+- [Message Types](https://github.com/aidangarske/wolfCOSE/wiki/Message-Types): All six RFC 9052 messages (Sign1, Sign, Encrypt0, Encrypt, Mac0, Mac) with code samples
+- [Algorithms](https://github.com/aidangarske/wolfCOSE/wiki/Algorithms): Complete list of 40 supported algorithms with COSE IDs
 - [API Reference](https://github.com/aidangarske/wolfCOSE/wiki/API-Reference): Function signatures, data structures, error codes
 - [Macros](https://github.com/aidangarske/wolfCOSE/wiki/Macros): Compile-time configuration options
 - [Testing](https://github.com/aidangarske/wolfCOSE/wiki/Testing): Test infrastructure, coverage, and failure injection
