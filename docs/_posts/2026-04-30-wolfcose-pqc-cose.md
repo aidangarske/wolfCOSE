@@ -90,7 +90,7 @@ ret = wc_CoseSign_Sign(signers, 2,
                        out, sizeof(out), &outLen, &rng);
 ```
 
-Per RFC 9052 §4.1, the verifier walks the `COSE_Signature` array and selects the signer to validate by matching the `alg` and `kid` headers it knows about — not by array position. Devices in the field that still only know ES256 select the `vendor-classic` signer and skip the ML-DSA one. Newer devices select the `vendor-pqc` signer and skip the ECC one. When everyone has migrated, you drop the classical signer and your code path is one line shorter. No re-signing campaigns, no flag-day cutovers.
+Per RFC 9052 §4.1, the verifier walks the `COSE_Signature` array and selects the signer to validate by matching the `alg` and `kid` headers it knows about, not by array position. Devices in the field that still only know ES256 select the `vendor-classic` signer and skip the ML-DSA one. Newer devices select the `vendor-pqc` signer and skip the ECC one. When everyone has migrated, you drop the classical signer and your code path is one line shorter. No re-signing campaigns, no flag-day cutovers.
 
 ## The Wire-Size Impact
 

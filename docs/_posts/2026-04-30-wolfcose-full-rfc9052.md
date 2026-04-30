@@ -4,7 +4,7 @@ title: "The Smallest Complete COSE Library for Embedded"
 date: 2026-04-30 10:00:00
 ---
 
-*Sign, Encrypt, and MAC — Single-Actor and Multi-Actor — In One Library*
+*Single-Actor and Multi-Actor Sign, Encrypt, and MAC in One Library*
 
 wolfCOSE now has full multi-signer and multi-recipient support, making it the smallest C COSE library to implement the entire RFC 9052 message set: `COSE_Sign1`, `COSE_Sign`, `COSE_Encrypt0`, `COSE_Encrypt`, `COSE_Mac0`, `COSE_Mac`. No malloc, no external CBOR dependency, no caveats.
 
