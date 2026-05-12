@@ -8193,6 +8193,724 @@ static void test_cose_build_sig_structure_context(void)
                 "Mac0 context bytes");
 }
 
+/* ----- Coverage boost: exercise multi-signer / multi-recipient paths
+ *       added by recent hardening so the CI coverage threshold of
+ *       99% on src/wolfcose.c is preserved. -----
+ */
+
+#if defined(WC_RSA_PSS) && defined(WOLFCOSE_SIGN) && \
+    defined(WOLFSSL_KEY_GEN)
+static void test_cose_sign_multi_pss_roundtrip(void)
+{
+    WOLFCOSE_KEY key;
+    RsaKey rsaKey;
+    WC_RNG rng;
+    WOLFCOSE_SIGNATURE signers[1];
+    WOLFCOSE_HDR hdr;
+    int ret;
+    uint8_t out[2048];
+    uint8_t scratch[2048];
+    size_t outLen = 0;
+    const uint8_t payload[] = "Multi-signer PSS payload";
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+
+    printf("  [Sign Multi PSS roundtrip]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "multi pss rng init");
+    ret = wc_InitRsaKey(&rsaKey, NULL);
+    TEST_ASSERT(ret == 0, "multi pss rsa init");
+    ret = wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng);
+    TEST_ASSERT(ret == 0, "multi pss keygen");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetRsa(&key, &rsaKey);
+    TEST_ASSERT(ret == 0, "multi pss key set");
+
+    signers[0].algId = WOLFCOSE_ALG_PS256;
+    signers[0].key = &key;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+
+    ret = wc_CoseSign_Sign(signers, 1,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "multi pss sign");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseSign_Verify(&key, 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "multi pss verify");
+    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1,
+                "multi pss payload len");
+    TEST_ASSERT(memcmp(decPayload, payload, decPayloadLen) == 0,
+                "multi pss payload match");
+    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_PS256, "multi pss hdr alg");
+
+    wc_CoseKey_Free(&key);
+    wc_FreeRsaKey(&rsaKey);
+    wc_FreeRng(&rng);
+}
+#endif
+
+#if defined(HAVE_DILITHIUM) && defined(WOLFCOSE_SIGN)
+static void test_cose_sign_multi_dilithium_roundtrip(void)
+{
+    WOLFCOSE_KEY key;
+    dilithium_key dlKey;
+    WC_RNG rng;
+    WOLFCOSE_SIGNATURE signers[1];
+    WOLFCOSE_HDR hdr;
+    int ret;
+    uint8_t out[3072];
+    uint8_t scratch[8192];
+    size_t outLen = 0;
+    const uint8_t payload[] = "Multi-signer ML-DSA payload";
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+
+    printf("  [Sign Multi ML-DSA-44 roundtrip]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "multi dl rng init");
+    ret = wc_dilithium_init(&dlKey);
+    TEST_ASSERT(ret == 0, "multi dl init");
+    ret = wc_dilithium_set_level(&dlKey, WC_ML_DSA_44);
+    TEST_ASSERT(ret == 0, "multi dl set level");
+    ret = wc_dilithium_make_key(&dlKey, &rng);
+    TEST_ASSERT(ret == 0, "multi dl keygen");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    TEST_ASSERT(ret == 0, "multi dl key set");
+
+    signers[0].algId = WOLFCOSE_ALG_ML_DSA_44;
+    signers[0].key = &key;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+
+    ret = wc_CoseSign_Sign(signers, 1,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "multi dl sign");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseSign_Verify(&key, 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "multi dl verify");
+    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1,
+                "multi dl payload len");
+    TEST_ASSERT(memcmp(decPayload, payload, decPayloadLen) == 0,
+                "multi dl payload match");
+
+    wc_CoseKey_Free(&key);
+    wc_dilithium_free(&dlKey);
+    wc_FreeRng(&rng);
+}
+#endif
+
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESCCM)
+static void test_cose_encrypt_multi_ccm_roundtrip(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipients[1];
+    WOLFCOSE_HDR hdr;
+    int ret;
+    uint8_t keyBytes[16] = {0};
+    uint8_t iv[13] = {0}; /* CCM 13-byte nonce for L=2 */
+    uint8_t out[256];
+    uint8_t scratch[512];
+    uint8_t plaintext[64];
+    size_t outLen = 0;
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "CCM multi-recipient payload";
+
+    printf("  [Encrypt Multi AES-CCM roundtrip]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+    TEST_ASSERT(ret == 0, "ccm multi key set");
+
+    recipients[0].algId = 0;
+    recipients[0].key = &key;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(recipients, 1,
+        WOLFCOSE_ALG_AES_CCM_16_128_128,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, NULL);
+    TEST_ASSERT(ret == 0, "ccm multi encrypt");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(&recipients[0], 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == 0, "ccm multi decrypt");
+    TEST_ASSERT(plaintextLen == sizeof(payload) - 1, "ccm multi pt len");
+    TEST_ASSERT(memcmp(plaintext, payload, plaintextLen) == 0,
+                "ccm multi pt match");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+static void test_cose_encrypt_multi_chacha_roundtrip(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipients[1];
+    WOLFCOSE_HDR hdr;
+    int ret;
+    uint8_t keyBytes[WOLFCOSE_CHACHA_KEY_SZ] = {0};
+    uint8_t iv[WOLFCOSE_CHACHA_NONCE_SZ] = {0};
+    uint8_t out[256];
+    uint8_t scratch[512];
+    uint8_t plaintext[64];
+    size_t outLen = 0;
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "ChaCha multi-recipient payload";
+
+    printf("  [Encrypt Multi ChaCha20-Poly1305 roundtrip]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+    TEST_ASSERT(ret == 0, "chacha multi key set");
+
+    recipients[0].algId = 0;
+    recipients[0].key = &key;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(recipients, 1,
+        WOLFCOSE_ALG_CHACHA20_POLY1305,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, NULL);
+    TEST_ASSERT(ret == 0, "chacha multi encrypt");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(&recipients[0], 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == 0, "chacha multi decrypt");
+    TEST_ASSERT(plaintextLen == sizeof(payload) - 1,
+                "chacha multi pt len");
+    TEST_ASSERT(memcmp(plaintext, payload, plaintextLen) == 0,
+                "chacha multi pt match");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(HAVE_AESCCM)
+static void test_cose_encrypt0_detached_ccm(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t keyBytes[16] = {0};
+    uint8_t iv[13] = {0};
+    uint8_t out[128];
+    uint8_t scratch[512];
+    uint8_t detached[64];
+    size_t outLen = 0;
+    size_t detachedLen = 0;
+    const uint8_t payload[] = "CCM detached payload";
+
+    printf("  [Encrypt0 detached AES-CCM]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+    TEST_ASSERT(ret == 0, "ccm det key set");
+
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_AES_CCM_16_128_128,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        detached, sizeof(detached), &detachedLen,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "ccm det encrypt");
+    TEST_ASSERT(detachedLen == sizeof(payload) - 1 + 16,
+                "ccm det length");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
+    defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+static void test_cose_encrypt0_detached_chacha(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t keyBytes[WOLFCOSE_CHACHA_KEY_SZ] = {0};
+    uint8_t iv[WOLFCOSE_CHACHA_NONCE_SZ] = {0};
+    uint8_t out[128];
+    uint8_t scratch[512];
+    uint8_t detached[64];
+    size_t outLen = 0;
+    size_t detachedLen = 0;
+    const uint8_t payload[] = "ChaCha detached payload";
+
+    printf("  [Encrypt0 detached ChaCha20-Poly1305]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+    TEST_ASSERT(ret == 0, "chacha det key set");
+
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_CHACHA20_POLY1305,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        detached, sizeof(detached), &detachedLen,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "chacha det encrypt");
+    TEST_ASSERT(detachedLen == sizeof(payload) - 1 + 16,
+                "chacha det length");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(WOLFCOSE_MAC) && defined(HAVE_AES_CBC)
+static void test_cose_mac_multi_aescbc_roundtrip(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipients[1];
+    WOLFCOSE_HDR hdr;
+    int ret;
+    uint8_t keyBytes[16] = {0};
+    uint8_t out[256];
+    uint8_t scratch[512];
+    size_t outLen = 0;
+    const uint8_t payload[] = "AES-CBC-MAC multi-recipient payload";
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+
+    printf("  [Mac Multi AES-CBC-MAC roundtrip]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+    TEST_ASSERT(ret == 0, "aescbc multi key set");
+
+    recipients[0].algId = 0;
+    recipients[0].key = &key;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+
+    ret = wc_CoseMac_Create(recipients, 1,
+        WOLFCOSE_ALG_AES_MAC_128_128,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "aescbc multi create");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac_Verify(&recipients[0], 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "aescbc multi verify");
+    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1,
+                "aescbc multi payload len");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(HAVE_ECC) && \
+    defined(WOLFCOSE_KEY_ENCODE) && defined(WOLFCOSE_KEY_DECODE)
+static void test_cose_key_kid_alg_roundtrip(void)
+{
+    WOLFCOSE_KEY srcKey;
+    WOLFCOSE_KEY dstKey;
+    ecc_key srcEcc;
+    ecc_key dstEcc;
+    WC_RNG rng;
+    int ret;
+    uint8_t encoded[256];
+    size_t encodedLen = 0;
+    const uint8_t kid[] = "ec2-key-1";
+
+    printf("  [COSE_Key roundtrip with kid + alg]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "key kidAlg rng");
+    ret = wc_ecc_init(&srcEcc);
+    TEST_ASSERT(ret == 0, "key kidAlg ecc init src");
+    ret = wc_ecc_make_key(&rng, 32, &srcEcc);
+    TEST_ASSERT(ret == 0, "key kidAlg ecc keygen");
+
+    wc_CoseKey_Init(&srcKey);
+    ret = wc_CoseKey_SetEcc(&srcKey, WOLFCOSE_CRV_P256, &srcEcc);
+    TEST_ASSERT(ret == 0, "key kidAlg src set");
+    srcKey.kid = kid;
+    srcKey.kidLen = sizeof(kid) - 1;
+    srcKey.alg = WOLFCOSE_ALG_ES256;
+
+    ret = wc_CoseKey_Encode(&srcKey, encoded, sizeof(encoded), &encodedLen);
+    TEST_ASSERT(ret == 0, "key kidAlg encode");
+
+    ret = wc_ecc_init(&dstEcc);
+    TEST_ASSERT(ret == 0, "key kidAlg ecc init dst");
+    wc_CoseKey_Init(&dstKey);
+    dstKey.key.ecc = &dstEcc;
+    ret = wc_CoseKey_Decode(&dstKey, encoded, encodedLen);
+    TEST_ASSERT(ret == 0, "key kidAlg decode");
+    TEST_ASSERT(dstKey.alg == WOLFCOSE_ALG_ES256,
+                "key kidAlg alg preserved");
+    TEST_ASSERT(dstKey.kidLen == sizeof(kid) - 1,
+                "key kidAlg kidLen preserved");
+    TEST_ASSERT((dstKey.kidLen > 0u) &&
+                (memcmp(dstKey.kid, kid, dstKey.kidLen) == 0),
+                "key kidAlg kid bytes preserved");
+
+    wc_CoseKey_Free(&srcKey);
+    wc_CoseKey_Free(&dstKey);
+    wc_ecc_free(&srcEcc);
+    wc_ecc_free(&dstEcc);
+    wc_FreeRng(&rng);
+}
+#endif
+
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
+    defined(HAVE_HKDF) && defined(WOLFSSL_SHA512)
+static void test_cose_encrypt_ecdh_es_hkdf512(void)
+{
+    WOLFCOSE_KEY recipientKey;
+    ecc_key recipientEcc;
+    WOLFCOSE_RECIPIENT recipients[1];
+    WOLFCOSE_HDR hdr;
+    WC_RNG rng;
+    int ret;
+    uint8_t iv[12] = {0};
+    uint8_t out[1024];
+    uint8_t scratch[1024];
+    uint8_t plaintext[64];
+    size_t outLen = 0;
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "ECDH-ES HKDF-512 payload";
+
+    printf("  [Encrypt Multi ECDH-ES HKDF-512]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "ecdh512 rng init");
+    ret = wc_ecc_init(&recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh512 ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh512 keygen");
+
+    wc_CoseKey_Init(&recipientKey);
+    ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh512 key set");
+    recipientKey.hasPrivate = 1u;
+
+    recipients[0].algId = WOLFCOSE_ALG_ECDH_ES_HKDF_512;
+    recipients[0].key = &recipientKey;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(recipients, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == 0, "ecdh512 encrypt");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(&recipients[0], 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == 0, "ecdh512 decrypt");
+    TEST_ASSERT(plaintextLen == sizeof(payload) - 1,
+                "ecdh512 plaintext len");
+    TEST_ASSERT(memcmp(plaintext, payload, plaintextLen) == 0,
+                "ecdh512 plaintext match");
+
+    wc_CoseKey_Free(&recipientKey);
+    wc_ecc_free(&recipientEcc);
+    wc_FreeRng(&rng);
+}
+#endif
+
+#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+static void test_cose_sign_multi_alg_key_mismatch(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    WOLFCOSE_SIGNATURE signers[1];
+    int ret;
+    uint8_t out[512];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t payload[] = "alg/key mismatch";
+
+    printf("  [Sign Multi alg vs key->alg mismatch]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "mismatch rng init");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "mismatch ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "mismatch keygen");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "mismatch key set");
+    key.alg = WOLFCOSE_ALG_ES384; /* key declares ES384 */
+
+    signers[0].algId = WOLFCOSE_ALG_ES256; /* but signer says ES256 */
+    signers[0].key = &key;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+
+    ret = wc_CoseSign_Sign(signers, 1,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Sign_Sign rejects key->alg mismatch");
+
+    wc_CoseKey_Free(&key);
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+#endif
+
+#if defined(WOLFCOSE_SIGN) && defined(WC_RSA_PSS) && \
+    defined(HAVE_ECC) && defined(WOLFSSL_KEY_GEN)
+static void test_cose_sign_multi_wrong_kty_for_pss(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    WOLFCOSE_SIGNATURE signers[1];
+    int ret;
+    uint8_t out[512];
+    uint8_t scratch[2048];
+    size_t outLen = 0;
+    const uint8_t payload[] = "wrong kty for PS256";
+
+    printf("  [Sign Multi PSS requires RSA key]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "pss-wrong-kty rng");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "pss-wrong-kty ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "pss-wrong-kty keygen");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "pss-wrong-kty key set");
+
+    signers[0].algId = WOLFCOSE_ALG_PS256;
+    signers[0].key = &key;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+
+    ret = wc_CoseSign_Sign(signers, 1,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Sign_Sign rejects ECC key for PS256");
+
+    wc_CoseKey_Free(&key);
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+#endif
+
+#if defined(WOLFCOSE_SIGN) && defined(HAVE_ED448)
+static void test_cose_sign_multi_ed448_roundtrip(void)
+{
+    WOLFCOSE_KEY key;
+    ed448_key edKey;
+    WC_RNG rng;
+    WOLFCOSE_SIGNATURE signers[1];
+    WOLFCOSE_HDR hdr;
+    int ret;
+    uint8_t out[512];
+    uint8_t scratch[512];
+    size_t outLen = 0;
+    const uint8_t payload[] = "Ed448 multi-signer payload";
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+
+    printf("  [Sign Multi Ed448 roundtrip]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "multi ed448 rng init");
+    ret = wc_ed448_init(&edKey);
+    TEST_ASSERT(ret == 0, "multi ed448 init");
+    ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edKey);
+    TEST_ASSERT(ret == 0, "multi ed448 keygen");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEd448(&key, &edKey);
+    TEST_ASSERT(ret == 0, "multi ed448 key set");
+
+    signers[0].algId = WOLFCOSE_ALG_EDDSA;
+    signers[0].key = &key;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+
+    ret = wc_CoseSign_Sign(signers, 1,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "multi ed448 sign");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseSign_Verify(&key, 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "multi ed448 verify");
+    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1,
+                "multi ed448 payload len");
+    TEST_ASSERT(memcmp(decPayload, payload, decPayloadLen) == 0,
+                "multi ed448 payload match");
+
+    wc_CoseKey_Free(&key);
+    wc_ed448_free(&edKey);
+    wc_FreeRng(&rng);
+}
+#endif
+
+static void test_cose_sigsize_known_algs(void)
+{
+    /* Cover the wolfCose_SigSize switch cases that the actual signing
+     * paths route around. */
+    int ret;
+    size_t sz = 0;
+
+    printf("  [SigSize known algorithms]\n");
+
+#ifdef HAVE_ECC
+    ret = wolfCose_SigSize(WOLFCOSE_ALG_ES256, &sz);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (sz == 64u),
+                "SigSize ES256 -> 64");
+#ifdef WOLFSSL_SHA384
+    ret = wolfCose_SigSize(WOLFCOSE_ALG_ES384, &sz);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (sz == 96u),
+                "SigSize ES384 -> 96");
+#endif
+#endif
+#if defined(HAVE_ED25519) || defined(HAVE_ED448)
+    ret = wolfCose_SigSize(WOLFCOSE_ALG_EDDSA, &sz);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && ((sz == 64u) || (sz == 114u)),
+                "SigSize EDDSA returns curve max");
+#endif
+}
+
+static void test_cose_decode_tstr_alg_values(void)
+{
+    /* Cover the tstr-alg fallthrough in each map decoder so the
+     * `wc_CBOR_Skip(&ctx)` branches at the alg labels are reached. */
+    int ret;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX ctx;
+    /* Protected hdr {1: "X"} — tstr alg */
+    uint8_t protTstrAlg[] = {0xA1u, 0x01u, 0x61u, 'X'};
+    /* Unprotected hdr {1: "X"} */
+    uint8_t unprotTstrAlg[] = {0xA1u, 0x01u, 0x61u, 'X'};
+
+    printf("  [tstr alg values skipped]\n");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(protTstrAlg, sizeof(protTstrAlg), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeProtectedHdr tolerates tstr alg");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ctx.cbuf = unprotTstrAlg;
+    ctx.bufSz = sizeof(unprotTstrAlg);
+    ctx.idx = 0;
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeUnprotectedHdr tolerates tstr alg");
+}
+
+static void test_cose_decode_unprotected_tstr_label(void)
+{
+    /* Cover the tstr-skip + dup-detection paths in
+     * wolfCose_DecodeUnprotectedHdr that the protected-hdr test
+     * exercised on the other side. */
+    int ret;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX ctx;
+    /* {1: -7, "x": 0} */
+    uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
+
+    printf("  [DecodeUnprotectedHdr: tstr label skipped]\n");
+    memset(&hdr, 0, sizeof(hdr));
+    ctx.cbuf = tstrLabel;
+    ctx.bufSz = sizeof(tstrLabel);
+    ctx.idx = 0;
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeUnprotectedHdr tolerates tstr label");
+    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256,
+                "DecodeUnprotectedHdr alg after tstr skip");
+}
+
 /* ----- Internal helper function tests ----- */
 static void test_internal_helpers(void)
 {
@@ -10848,7 +11566,8 @@ static void test_key_decode_bad_kty(void)
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS || ret < 0, "key decode invalid kty");
 }
 
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF) && defined(WOLFSSL_SHA512)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
+    defined(HAVE_HKDF) && defined(WOLFSSL_SHA512)
 static void test_ecdh_es_hkdf_512(void)
 {
     WOLFCOSE_RECIPIENT recipient;
@@ -12206,6 +12925,51 @@ int test_cose(void)
     test_cose_encrypt0_nonce_length();
     test_cose_encrypt0_empty_payload_roundtrip();
 #endif
+#if defined(WC_RSA_PSS) && defined(WOLFCOSE_SIGN) && \
+    defined(WOLFSSL_KEY_GEN)
+    test_cose_sign_multi_pss_roundtrip();
+#endif
+#if defined(HAVE_DILITHIUM) && defined(WOLFCOSE_SIGN)
+    test_cose_sign_multi_dilithium_roundtrip();
+#endif
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESCCM)
+    test_cose_encrypt_multi_ccm_roundtrip();
+#endif
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+    test_cose_encrypt_multi_chacha_roundtrip();
+#endif
+#if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(HAVE_AESCCM)
+    test_cose_encrypt0_detached_ccm();
+#endif
+#if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
+    defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+    test_cose_encrypt0_detached_chacha();
+#endif
+#if defined(WOLFCOSE_MAC) && defined(HAVE_AES_CBC)
+    test_cose_mac_multi_aescbc_roundtrip();
+#endif
+#if defined(HAVE_ECC) && \
+    defined(WOLFCOSE_KEY_ENCODE) && defined(WOLFCOSE_KEY_DECODE)
+    test_cose_key_kid_alg_roundtrip();
+#endif
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
+    defined(HAVE_HKDF) && defined(WOLFSSL_SHA512)
+    test_cose_encrypt_ecdh_es_hkdf512();
+#endif
+#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+    test_cose_sign_multi_alg_key_mismatch();
+#endif
+#if defined(WOLFCOSE_SIGN) && defined(WC_RSA_PSS) && \
+    defined(HAVE_ECC) && defined(WOLFSSL_KEY_GEN)
+    test_cose_sign_multi_wrong_kty_for_pss();
+#endif
+    test_cose_decode_unprotected_tstr_label();
+    test_cose_sigsize_known_algs();
+    test_cose_decode_tstr_alg_values();
+#if defined(WOLFCOSE_SIGN) && defined(HAVE_ED448)
+    test_cose_sign_multi_ed448_roundtrip();
+#endif
     test_internal_helpers();
 
     /* Hardened / error-path tests */
@@ -12350,7 +13114,8 @@ int test_cose(void)
     test_dilithium_key_encode_buffer_small();
 #endif
     test_key_decode_bad_kty();
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF) && defined(WOLFSSL_SHA512)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
+    defined(HAVE_HKDF) && defined(WOLFSSL_SHA512)
     test_ecdh_es_hkdf_512();
 #endif
 #if defined(WOLFCOSE_KEY_WRAP) && defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)

@@ -3836,12 +3836,16 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         size_t hashLen = 0;
         const uint8_t* sigPtr = sigBuf;
 
-        /* Get signature and hash info for this signer's algorithm */
-        if (ret == WOLFCOSE_SUCCESS) {
-            ret = wolfCose_SigSize(signer->algId, &sigSz);
-        }
-
-        if (ret == WOLFCOSE_SUCCESS) {
+        /* Hash type for the signer's algorithm. SigSize is queried
+         * inside each algorithm branch so this dispatch tolerates
+         * algorithms whose signature size is computed dynamically
+         * (RSA-PSS) or whose entry is gated by a different feature
+         * macro (ML-DSA). ML-DSA signs the Sig_structure directly
+         * without a pre-hash so the hash type lookup is skipped. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (signer->algId != WOLFCOSE_ALG_ML_DSA_44) &&
+            (signer->algId != WOLFCOSE_ALG_ML_DSA_65) &&
+            (signer->algId != WOLFCOSE_ALG_ML_DSA_87)) {
             ret = wolfCose_AlgToHashType(signer->algId, &hashType);
         }
 
@@ -3863,11 +3867,13 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
                 scratch, scratchSz, &sigStructLen);
         }
 
-        /* Hash the Sig_structure (skipped for EdDSA which signs the
-         * Sig_structure directly, but we still need digestSz/hashLen for
-         * RSA-PSS later so always compute when the algorithm uses one). */
+        /* Hash the Sig_structure for algorithms that pre-hash. EdDSA
+         * and ML-DSA sign the structure directly. */
         if ((ret == WOLFCOSE_SUCCESS) &&
-            (signer->algId != WOLFCOSE_ALG_EDDSA)) {
+            (signer->algId != WOLFCOSE_ALG_EDDSA) &&
+            (signer->algId != WOLFCOSE_ALG_ML_DSA_44) &&
+            (signer->algId != WOLFCOSE_ALG_ML_DSA_65) &&
+            (signer->algId != WOLFCOSE_ALG_ML_DSA_87)) {
             int digestSz = wc_HashGetDigestSize(hashType);
             if (digestSz <= 0) {
                 ret = WOLFCOSE_E_CRYPTO;
@@ -4257,15 +4263,23 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
             scratch, scratchSz, &sigStructLen);
     }
 
-    /* Get hash type for algorithm */
-    if (ret == WOLFCOSE_SUCCESS) {
+    /* Get hash type for algorithms that pre-hash. EdDSA and ML-DSA
+     * verify against the raw Sig_structure so the hash type lookup is
+     * skipped (also avoids WOLFCOSE_E_COSE_BAD_ALG for ML-DSA since
+     * the algorithm has no external hash). */
+    if ((ret == WOLFCOSE_SUCCESS) && (alg != WOLFCOSE_ALG_EDDSA) &&
+        (alg != WOLFCOSE_ALG_ML_DSA_44) &&
+        (alg != WOLFCOSE_ALG_ML_DSA_65) &&
+        (alg != WOLFCOSE_ALG_ML_DSA_87)) {
         ret = wolfCose_AlgToHashType(alg, &hashType);
     }
 
-    /* Hash the Sig_structure (EdDSA signs the whole structure directly,
-     * but the hash function dispatch below still consumes hashBuf/hashLen
-     * for algorithms that pre-hash). */
-    if ((ret == WOLFCOSE_SUCCESS) && (alg != WOLFCOSE_ALG_EDDSA)) {
+    /* Hash the Sig_structure for algorithms that pre-hash. EdDSA and
+     * ML-DSA verify the structure directly. */
+    if ((ret == WOLFCOSE_SUCCESS) && (alg != WOLFCOSE_ALG_EDDSA) &&
+        (alg != WOLFCOSE_ALG_ML_DSA_44) &&
+        (alg != WOLFCOSE_ALG_ML_DSA_65) &&
+        (alg != WOLFCOSE_ALG_ML_DSA_87)) {
         int digestSz = wc_HashGetDigestSize(hashType);
         if (digestSz <= 0) {
             ret = WOLFCOSE_E_CRYPTO;
