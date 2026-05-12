@@ -1990,43 +1990,38 @@ int wolfCose_BuildToBeSignedMaced(
     WOLFCOSE_CBOR_CTX ctx;
     size_t arrayLen;
 
-    ctx.buf = scratch;
-    ctx.bufSz = scratchSz;
-    ctx.idx = 0;
-
-    /* 4 elements normally, 5 if sign_protected is present (multi-signer) */
-    arrayLen = (size_t)((signProtected != NULL) ? 5u : 4u);
-
-    ret = wc_CBOR_EncodeArrayStart(&ctx, arrayLen);
-
-    /* 1. context string */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeTstr(&ctx, context, contextLen);
+    if ((context == NULL) || (scratch == NULL) || (structLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
     }
+    else {
+        ctx.buf = scratch;
+        ctx.bufSz = scratchSz;
+        ctx.idx = 0;
 
-    /* 2. body_protected (serialized protected headers) */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeBstr(&ctx, bodyProtected, bodyProtectedLen);
-    }
+        /* 4 elements normally, 5 if sign_protected is present (multi-signer) */
+        arrayLen = (size_t)((signProtected != NULL) ? 5u : 4u);
 
-    /* 3. sign_protected (only for multi-signer) */
-    if ((ret == WOLFCOSE_SUCCESS) && (signProtected != NULL)) {
-        ret = wc_CBOR_EncodeBstr(&ctx, signProtected, signProtectedLen);
-    }
+        ret = wc_CBOR_EncodeArrayStart(&ctx, arrayLen);
 
-    /* 4. external_aad */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeBstr(&ctx, extAad,
-                                  (extAad != NULL) ? extAadLen : 0u);
-    }
-
-    /* 5. payload */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeBstr(&ctx, payload, payloadLen);
-    }
-
-    if (ret == WOLFCOSE_SUCCESS) {
-        *structLen = ctx.idx;
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeTstr(&ctx, context, contextLen);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeBstr(&ctx, bodyProtected, bodyProtectedLen);
+        }
+        if ((ret == WOLFCOSE_SUCCESS) && (signProtected != NULL)) {
+            ret = wc_CBOR_EncodeBstr(&ctx, signProtected, signProtectedLen);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeBstr(&ctx, extAad,
+                                      (extAad != NULL) ? extAadLen : 0u);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeBstr(&ctx, payload, payloadLen);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            *structLen = ctx.idx;
+        }
     }
     return ret;
 }
@@ -2046,30 +2041,29 @@ int wolfCose_BuildEncStructure(
     int ret;
     WOLFCOSE_CBOR_CTX ctx;
 
-    ctx.buf = scratch;
-    ctx.bufSz = scratchSz;
-    ctx.idx = 0;
-
-    ret = wc_CBOR_EncodeArrayStart(&ctx, 3);
-
-    /* 1. context string */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeTstr(&ctx, context, contextLen);
+    if ((context == NULL) || (scratch == NULL) || (structLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
     }
+    else {
+        ctx.buf = scratch;
+        ctx.bufSz = scratchSz;
+        ctx.idx = 0;
 
-    /* 2. body_protected */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeBstr(&ctx, bodyProtected, bodyProtectedLen);
-    }
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 3);
 
-    /* 3. external_aad */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeBstr(&ctx, extAad,
-                                  (extAad != NULL) ? extAadLen : 0u);
-    }
-
-    if (ret == WOLFCOSE_SUCCESS) {
-        *structLen = ctx.idx;
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeTstr(&ctx, context, contextLen);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeBstr(&ctx, bodyProtected, bodyProtectedLen);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeBstr(&ctx, extAad,
+                                      (extAad != NULL) ? extAadLen : 0u);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            *structLen = ctx.idx;
+        }
     }
     return ret;
 }
@@ -2272,67 +2266,71 @@ static int wolfCose_KdfContextEncode(int32_t contentAlgId,
     int ret;
     WOLFCOSE_CBOR_CTX ctx;
 
-    ctx.buf = out;
-    ctx.bufSz = outSz;
-    ctx.idx = 0;
+    if ((out == NULL) || (outLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        ctx.buf = out;
+        ctx.bufSz = outSz;
+        ctx.idx = 0;
 
-    /* COSE_KDF_Context = [
-     *   AlgorithmID,
-     *   PartyUInfo : [nil, nil, nil],
-     *   PartyVInfo : [nil, nil, nil],
-     *   SuppPubInfo : [keyDataLength, recipient protected]
-     * ]
-     * RFC 9053 Section 5.2: SuppPubInfo's protected field MUST carry the
-     * serialised content of the recipient's protected header bucket. */
-    ret = wc_CBOR_EncodeArrayStart(&ctx, 4);
+        /* COSE_KDF_Context = [
+         *   AlgorithmID,
+         *   PartyUInfo : [nil, nil, nil],
+         *   PartyVInfo : [nil, nil, nil],
+         *   SuppPubInfo : [keyDataLength, recipient protected]
+         * ]
+         * RFC 9053 Section 5.2: SuppPubInfo's protected field MUST carry the
+         * serialised content of the recipient's protected header bucket. */
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 4);
 
-    /* AlgorithmID */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeInt(&ctx, (int64_t)contentAlgId);
-    }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeInt(&ctx, (int64_t)contentAlgId);
+        }
 
-    /* PartyUInfo: [nil, nil, nil] */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeArrayStart(&ctx, 3);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeNull(&ctx);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeNull(&ctx);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeNull(&ctx);
-    }
+        /* PartyUInfo: [nil, nil, nil] */
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeArrayStart(&ctx, 3);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeNull(&ctx);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeNull(&ctx);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeNull(&ctx);
+        }
 
-    /* PartyVInfo: [nil, nil, nil] */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeArrayStart(&ctx, 3);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeNull(&ctx);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeNull(&ctx);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeNull(&ctx);
-    }
+        /* PartyVInfo: [nil, nil, nil] */
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeArrayStart(&ctx, 3);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeNull(&ctx);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeNull(&ctx);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeNull(&ctx);
+        }
 
-    /* SuppPubInfo: [keyDataLength, recipient_protected] */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeArrayStart(&ctx, 2);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeUint(&ctx, (uint64_t)keyDataLengthBits);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_EncodeBstr(&ctx, recipientProtected,
-                                  recipientProtectedLen);
-    }
+        /* SuppPubInfo: [keyDataLength, recipient_protected] */
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeArrayStart(&ctx, 2);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeUint(&ctx, (uint64_t)keyDataLengthBits);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeBstr(&ctx, recipientProtected,
+                                      recipientProtectedLen);
+        }
 
-    if (ret == WOLFCOSE_SUCCESS) {
-        *outLen = ctx.idx;
+        if (ret == WOLFCOSE_SUCCESS) {
+            *outLen = ctx.idx;
+        }
     }
     return ret;
 }
@@ -2946,9 +2944,19 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
          ((kid == NULL) && (kidLen != 0u)))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
+    /* Caller may not pass both an inline payload and a detached payload. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (payload != NULL) && (detachedPayload != NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
 
     if ((ret == WOLFCOSE_SUCCESS) && (key->hasPrivate != 1u)) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
+    /* RFC 9052 Section 7: a key declaring an alg must be used with it. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (key->alg != 0) && (key->alg != alg)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
     /* Encode protected headers: {1: alg} */
@@ -3712,6 +3720,10 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         else if (((signers[i].kid != NULL) && (signers[i].kidLen == 0u)) ||
                  ((signers[i].kid == NULL) && (signers[i].kidLen != 0u))) {
             ret = WOLFCOSE_E_INVALID_ARG;
+        }
+        else if ((signers[i].key->alg != 0) &&
+                 (signers[i].key->alg != signers[i].algId)) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
 #ifdef HAVE_ECC
         else if ((signers[i].algId == WOLFCOSE_ALG_ES256) ||
@@ -4514,6 +4526,11 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
 
     if ((ret == WOLFCOSE_SUCCESS) && (key->kty != WOLFCOSE_KTY_SYMMETRIC)) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
+    /* RFC 9052 Section 7: a key declaring an alg must be used with it. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (key->alg != 0) && (key->alg != alg)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
     if (ret == WOLFCOSE_SUCCESS) {
@@ -6387,7 +6404,7 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
             (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
             ret = wc_CBOR_DecodeTag(&ctx, &tag);
             if ((ret == WOLFCOSE_SUCCESS) && (tag != WOLFCOSE_TAG_ENCRYPT)) {
-                ret = WOLFCOSE_E_CBOR_TYPE;
+                ret = WOLFCOSE_E_COSE_BAD_TAG;
             }
         }
     }
@@ -6397,7 +6414,7 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         ret = wc_CBOR_DecodeArrayStart(&ctx, &arrayCount);
     }
     if ((ret == WOLFCOSE_SUCCESS) && (arrayCount != 4u)) {
-        ret = WOLFCOSE_E_CBOR_TYPE;
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
 
     /* [0] protected header */
@@ -6469,7 +6486,7 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         ret = wc_CBOR_DecodeArrayStart(&ctx, &arrayCount);
     }
     if ((ret == WOLFCOSE_SUCCESS) && (arrayCount != 3u)) {
-        ret = WOLFCOSE_E_CBOR_TYPE;
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
 
     /* [0] recipient protected header */
