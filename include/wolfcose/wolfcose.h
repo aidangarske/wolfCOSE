@@ -228,14 +228,7 @@ extern "C" {
 #define WOLFCOSE_E_MAC_FAIL         (-9022)
 #define WOLFCOSE_E_DETACHED_PAYLOAD (-9023)
 
-/* ----- Configurable limits -----
- *
- * Scratch buffers must hold the Sig_structure / Enc_structure /
- * MAC_structure for the operation plus, for algorithms that place the
- * signature in scratch (RSA-PSS, ML-DSA), the signature output. When
- * ML-DSA is enabled the default needs to be large enough for the
- * 4627-byte ML-DSA-87 signature plus the structure.
- */
+/* ----- Configurable limits ----- */
 #ifndef WOLFCOSE_MAX_SCRATCH_SZ
     #if defined(HAVE_DILITHIUM)
         #define WOLFCOSE_MAX_SCRATCH_SZ      8192u
@@ -312,9 +305,6 @@ extern "C" {
 #define WOLFCOSE_HDR_EPHEMERAL_KEY (-1)  /* Ephemeral COSE_Key for ECDH */
 
 /* Algorithms */
-/* Sentinel used for "no algorithm bound to this key/recipient yet".
- * Explicit int32_t so comparisons against WOLFCOSE_KEY::alg satisfy
- * MISRA C Rule 10.4 (same width-explicit essential type). */
 #define WOLFCOSE_ALG_UNSET      ((int32_t)0)
 #define WOLFCOSE_ALG_ES256      (-7)
 #define WOLFCOSE_ALG_ES384      (-35)
@@ -363,9 +353,6 @@ extern "C" {
 #define WOLFCOSE_ALG_ECDH_ES_A192KW    (-30)  /* ECDH-ES + A192KW */
 #define WOLFCOSE_ALG_ECDH_ES_A256KW    (-31)  /* ECDH-ES + A256KW */
 
-/* ML-DSA algorithm identifiers are exposed unconditionally so callers
- * can dispatch on them in mixed builds; the corresponding sign/verify
- * paths only compile when HAVE_DILITHIUM is set. */
 #define WOLFCOSE_ALG_ML_DSA_44   (-48)   /* ML-DSA (Dilithium) Level 2 */
 #define WOLFCOSE_ALG_ML_DSA_65   (-49)   /* ML-DSA Level 3 */
 #define WOLFCOSE_ALG_ML_DSA_87   (-50)   /* ML-DSA Level 5 */
@@ -431,11 +418,8 @@ typedef struct WOLFCOSE_CBOR_ITEM {
 /**
  * \brief Parsed COSE headers. Zero-copy pointers into the encoded message.
  *
- * Callers must zero-initialise the entire structure (e.g. via XMEMSET or
- * `WOLFCOSE_HDR hdr = {0};`) before passing it to the protected or
- * unprotected decoders. The decoders accumulate state in `labelsSeen` and
- * read it back to detect cross-bucket duplicates; an uninitialised value
- * here would violate MISRA C Rule 9.1.
+ * Callers must zero-initialise the whole struct before the first decoder
+ * call; `labelsSeen` is read across both header buckets.
  */
 typedef struct WOLFCOSE_HDR {
     int32_t        alg;           /**< Algorithm (from protected or unprotected) */

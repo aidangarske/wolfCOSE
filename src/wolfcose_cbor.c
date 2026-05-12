@@ -201,8 +201,7 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
 
-        /* RFC 8949 Section 3.3: two-byte simple values (mt=7, AI=1B) with
-         * arg < 32 are not well-formed and a decoder MUST reject them. */
+        /* RFC 8949: 2-byte simple values with arg < 32 are malformed. */
         if ((ret == WOLFCOSE_SUCCESS) &&
             (item->majorType == WOLFCOSE_CBOR_SIMPLE) &&
             (ai == WOLFCOSE_CBOR_AI_1BYTE) &&
@@ -210,10 +209,7 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
 
-        /* For bstr/tstr, advance past the data bytes (zero-copy). The
-         * bounds check is overflow-safe: we never add item->val to
-         * ctx->idx in case the sum wraps; instead compare against the
-         * remaining space. */
+        /* Advance past bstr/tstr bytes using overflow-safe bounds. */
         if (ret == WOLFCOSE_SUCCESS) {
             if ((item->majorType == WOLFCOSE_CBOR_BSTR) ||
                 (item->majorType == WOLFCOSE_CBOR_TSTR)) {
@@ -275,16 +271,12 @@ static int wolfCose_CBOR_EncodeBytes(WOLFCOSE_CBOR_CTX* ctx,
 {
     int ret;
 
-    /* Reject NULL data paired with a non-zero length so the function
-     * cannot leak uninitialised buffer contents. */
     if ((data == NULL) && (len > 0u)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
         ret = wolfCose_CBOR_EncodeHead(ctx, majorType, (uint64_t)len);
         if (ret == WOLFCOSE_SUCCESS) {
-            /* Overflow-safe: never compute idx + len when len could be
-             * near SIZE_MAX. */
             if (len > (ctx->bufSz - ctx->idx)) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }

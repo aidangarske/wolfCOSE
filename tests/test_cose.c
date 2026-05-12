@@ -3237,17 +3237,7 @@ static void test_cose_sign_multi_signer(void)
     wc_FreeRng(&rng);
 }
 
-/*
- * Multi-signer Sign_Verify with the recipient verify key pinned to a
- * different algorithm than the one inside the message. Forces the
- * verify-side key->alg binding check.
- */
 #if defined(HAVE_DILITHIUM) && defined(WOLFCOSE_SIGN)
-/*
- * Multi-signer Sign with an ML-DSA-44 key whose algId says ML-DSA-65.
- * The level/algId binding check must reject this with BAD_ALG before
- * any signing happens.
- */
 static void test_cose_sign_ml_dsa_level_mismatch(void)
 {
     WOLFCOSE_KEY signKey;
@@ -3357,11 +3347,6 @@ static void test_cose_sign_verify_key_alg_mismatch(void)
     wc_FreeRng(&rng);
 }
 
-/*
- * Encrypt0_Decrypt key->alg binding. Encrypt with a clean key (no
- * alg pin) so the message is well-formed, then attempt to decrypt
- * with a pinned-mismatch key and expect WOLFCOSE_E_COSE_BAD_ALG.
- */
 static void test_cose_encrypt0_decrypt_key_alg_mismatch(void)
 {
     WOLFCOSE_KEY encKey;
@@ -3416,9 +3401,6 @@ static void test_cose_encrypt0_decrypt_key_alg_mismatch(void)
     wc_FreeRng(&rng);
 }
 
-/*
- * Mac0_Verify key->alg binding.
- */
 static void test_cose_mac0_verify_key_alg_mismatch(void)
 {
     WOLFCOSE_KEY macKey;
@@ -4519,11 +4501,6 @@ static void test_cose_encrypt_a128kw(void)
     wc_FreeRng(&rng);
 }
 
-/*
- * Multi-recipient A128KW: same random CEK wrapped to two recipients
- * with distinct KEKs. Each recipient must independently unwrap and
- * recover the same plaintext; crossing the KEK indices must fail.
- */
 static void test_cose_encrypt_a128kw_multi_recipient(void)
 {
     WOLFCOSE_KEY kek1;
@@ -9634,12 +9611,6 @@ static void test_cose_sign1_key_alg_mismatch(void)
     wc_FreeRng(&rng);
 }
 
-/*
- * Verify the verify-side key->alg binding fires when a caller pins a
- * key to one algorithm and asks Sign1_Verify to use another. The Sign
- * step uses a clean key (no alg pin) so the message is well-formed;
- * the verify step uses a key locked to ES384.
- */
 static void test_cose_sign1_verify_key_alg_mismatch(void)
 {
     WOLFCOSE_KEY signKey;
@@ -9823,12 +9794,6 @@ static void test_cose_key_decode_symmetric_missing_k(void)
 }
 
 #if defined(HAVE_ECC)
-/*
- * CoseKey_Decode of an EC2 key whose x bstr is one byte shorter than
- * the curve's coordinate size must be rejected. Without this the
- * wc_ecc_import_unsigned call would consume curve-sized windows from
- * the tmp stack buffer.
- */
 static void test_cose_key_decode_ec2_short_coord(void)
 {
     WOLFCOSE_KEY key;
