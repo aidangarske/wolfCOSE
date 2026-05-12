@@ -106,6 +106,12 @@ WOLFCOSE_LOCAL int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx,
 WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx,
                                              WOLFCOSE_CBOR_ITEM* item);
 
+/* ----- RFC 9052 context-string byte arrays (see wolfcose.c) ----- */
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_SIGNATURE1[10];
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_SIGNATURE[9];
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_MAC0[4];
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_MAC[3];
+
 /* ----- COSE internal helpers ----- */
 
 /**
@@ -206,7 +212,7 @@ WOLFCOSE_LOCAL int wolfCose_CrvToWcCurve(int32_t crv, int* wcCrv);
  * \return WOLFCOSE_SUCCESS or error code
  */
 WOLFCOSE_LOCAL int wolfCose_BuildToBeSignedMaced(
-    const char* context, size_t contextLen,
+    const uint8_t* context, size_t contextLen,
     const uint8_t* bodyProtected, size_t bodyProtectedLen,
     const uint8_t* signProtected, size_t signProtectedLen,
     const uint8_t* extAad, size_t extAadLen,

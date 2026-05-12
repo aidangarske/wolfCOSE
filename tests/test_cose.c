@@ -3183,6 +3183,7 @@ static void test_cose_sign_multi_signer(void)
     TEST_ASSERT(ret == 0, "sign verify signer 0");
     TEST_ASSERT(decPayloadLen == sizeof(payload) - 1, "sign payload len 0");
     TEST_ASSERT(memcmp(decPayload, payload, decPayloadLen) == 0, "sign payload match 0");
+    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256, "sign verify hdr alg 0");
 
     /* Verify second signer */
     memset(&hdr, 0, sizeof(hdr));
@@ -3196,6 +3197,7 @@ static void test_cose_sign_multi_signer(void)
     TEST_ASSERT(ret == 0, "sign verify signer 1");
     TEST_ASSERT(decPayloadLen == sizeof(payload) - 1, "sign payload len 1");
     TEST_ASSERT(memcmp(decPayload, payload, decPayloadLen) == 0, "sign payload match 1");
+    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256, "sign verify hdr alg 1");
 
     /* Wrong key for signer 0 should fail */
     ret = wc_CoseSign_Verify(&key2, 0,  /* key2 for signer 0 */
@@ -7799,6 +7801,261 @@ static void test_cose_iv_partial_iv(void)
                 "DecodeUnprotectedHdr rejects IV+PartialIV");
 }
 
+/* ----- Signature path compliance tests ----- */
+#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
+static void test_cose_sign1_alg_curve_mismatch(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t payload[] = "Test";
+
+    printf("  [Sign1: ECDSA alg-curve mismatch]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "rng init");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "ecc keygen P-256");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "set ECC key P-256");
+
+    /* Ask for ES384 with a P-256 key -> bad alg */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES384,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Sign1 rejects ES384 with P-256 key");
+
+    wc_CoseKey_Free(&key);
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+
+static void test_cose_sign1_inconsistent_kid(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t payload[] = "Test";
+    const uint8_t kid[] = "k";
+
+    printf("  [Sign1: inconsistent (kid, kidLen)]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "rng init");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "ecc keygen");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "set ECC key");
+
+    /* kid non-NULL but kidLen == 0 */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+        kid, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "Sign1 rejects non-NULL kid with kidLen 0");
+
+    /* kid NULL but kidLen != 0 */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+        NULL, 4,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "Sign1 rejects NULL kid with non-zero kidLen");
+
+    wc_CoseKey_Free(&key);
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+#endif /* HAVE_ECC && WOLFCOSE_SIGN1_SIGN */
+
+#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+static void test_cose_sign_multi_public_only_key(void)
+{
+    WOLFCOSE_KEY key1, key2;
+    ecc_key eccKey1, eccKey2;
+    WOLFCOSE_SIGNATURE signers[2];
+    WC_RNG rng;
+    int ret;
+    uint8_t out[512];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t payload[] = "Multi-signer pub-only test";
+
+    printf("  [Sign Multi: public-only key rejected]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "rng init");
+    ret = wc_ecc_init(&eccKey1);
+    TEST_ASSERT(ret == 0, "ecc1 init");
+    ret = wc_ecc_init(&eccKey2);
+    TEST_ASSERT(ret == 0, "ecc2 init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey1);
+    TEST_ASSERT(ret == 0, "ecc1 keygen");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey2);
+    TEST_ASSERT(ret == 0, "ecc2 keygen");
+
+    wc_CoseKey_Init(&key1);
+    wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
+    (void)wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
+    key2.hasPrivate = 0u; /* second signer is public-only */
+
+    signers[0].algId = WOLFCOSE_ALG_ES256;
+    signers[0].key = &key1;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+    signers[1].algId = WOLFCOSE_ALG_ES256;
+    signers[1].key = &key2;
+    signers[1].kid = NULL;
+    signers[1].kidLen = 0;
+
+    ret = wc_CoseSign_Sign(signers, 2,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Sign_Sign rejects public-only signer");
+
+    wc_CoseKey_Free(&key1);
+    wc_CoseKey_Free(&key2);
+    wc_ecc_free(&eccKey1);
+    wc_ecc_free(&eccKey2);
+    wc_FreeRng(&rng);
+}
+#endif /* WOLFCOSE_SIGN && HAVE_ECC */
+
+static void test_cose_alg_to_hash_constants(void)
+{
+    int ret;
+    enum wc_HashType ht;
+
+    printf("  [Algorithm-to-hash constants]\n");
+
+#ifdef HAVE_ECC
+    ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_ES256, &ht);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA256),
+                "AlgToHashType ES256 -> SHA-256");
+#ifdef WOLFSSL_SHA384
+    ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_ES384, &ht);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA384),
+                "AlgToHashType ES384 -> SHA-384");
+#endif
+#ifdef WOLFSSL_SHA512
+    ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_ES512, &ht);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA512),
+                "AlgToHashType ES512 -> SHA-512");
+#endif
+#endif /* HAVE_ECC */
+#ifdef WC_RSA_PSS
+    ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_PS256, &ht);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA256),
+                "AlgToHashType PS256 -> SHA-256");
+#ifdef WOLFSSL_SHA384
+    ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_PS384, &ht);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA384),
+                "AlgToHashType PS384 -> SHA-384");
+#endif
+#ifdef WOLFSSL_SHA512
+    ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_PS512, &ht);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA512),
+                "AlgToHashType PS512 -> SHA-512");
+#endif
+#endif /* WC_RSA_PSS */
+}
+
+static void test_cose_build_sig_structure_context(void)
+{
+    int ret;
+    uint8_t scratch[64];
+    size_t structLen = 0;
+    /* Use a 1-byte protected-hdr placeholder, no AAD, 1-byte payload. */
+    const uint8_t protectedHdr[1] = {0x40}; /* h'' bstr inside, body opaque */
+    const uint8_t payload[1] = {0x00};
+
+    printf("  [BuildToBeSignedMaced: context bytes]\n");
+
+    /* Sign1 path: expect array(4), tstr "Signature1", bstr<protected>,
+     * bstr<extAad=empty>, bstr<payload>. The first two bytes for an
+     * array of 4 + tstr(10) prefix should be 0x84 then 0x6A. */
+    ret = wolfCose_BuildToBeSignedMaced(
+        WOLFCOSE_CTX_SIGNATURE1, sizeof(WOLFCOSE_CTX_SIGNATURE1),
+        protectedHdr, sizeof(protectedHdr),
+        NULL, 0,
+        NULL, 0,
+        payload, sizeof(payload),
+        scratch, sizeof(scratch), &structLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "BuildToBeSignedMaced Sign1 ok");
+    TEST_ASSERT(structLen >= 12u, "Sign1 struct length");
+    TEST_ASSERT(scratch[0] == 0x84u, "Sign1 array(4) header");
+    TEST_ASSERT(scratch[1] == 0x6Au, "Sign1 tstr(10) header");
+    TEST_ASSERT(memcmp(&scratch[2], "Signature1", 10) == 0,
+                "Sign1 context bytes");
+
+    /* Sign multi-signer path: array(5), tstr(9) "Signature". */
+    ret = wolfCose_BuildToBeSignedMaced(
+        WOLFCOSE_CTX_SIGNATURE, sizeof(WOLFCOSE_CTX_SIGNATURE),
+        protectedHdr, sizeof(protectedHdr),
+        protectedHdr, sizeof(protectedHdr),
+        NULL, 0,
+        payload, sizeof(payload),
+        scratch, sizeof(scratch), &structLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "BuildToBeSignedMaced Sign multi ok");
+    TEST_ASSERT(scratch[0] == 0x85u, "Sign multi array(5) header");
+    TEST_ASSERT(scratch[1] == 0x69u, "Sign multi tstr(9) header");
+    TEST_ASSERT(memcmp(&scratch[2], "Signature", 9) == 0,
+                "Sign multi context bytes");
+
+    /* Mac0 path: array(4), tstr(4) "MAC0". */
+    ret = wolfCose_BuildToBeSignedMaced(
+        WOLFCOSE_CTX_MAC0, sizeof(WOLFCOSE_CTX_MAC0),
+        protectedHdr, sizeof(protectedHdr),
+        NULL, 0,
+        NULL, 0,
+        payload, sizeof(payload),
+        scratch, sizeof(scratch), &structLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "BuildToBeSignedMaced Mac0 ok");
+    TEST_ASSERT(scratch[1] == 0x64u, "Mac0 tstr(4) header");
+    TEST_ASSERT(memcmp(&scratch[2], "MAC0", 4) == 0,
+                "Mac0 context bytes");
+}
+
 /* ----- Internal helper function tests ----- */
 static void test_internal_helpers(void)
 {
@@ -11797,6 +12054,15 @@ int test_cose(void)
     test_cose_protected_hdr_crit();
     test_cose_cross_bucket_dup();
     test_cose_iv_partial_iv();
+#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
+    test_cose_sign1_alg_curve_mismatch();
+    test_cose_sign1_inconsistent_kid();
+#endif
+#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+    test_cose_sign_multi_public_only_key();
+#endif
+    test_cose_alg_to_hash_constants();
+    test_cose_build_sig_structure_context();
     test_internal_helpers();
 
     /* Hardened / error-path tests */
