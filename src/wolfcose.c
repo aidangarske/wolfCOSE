@@ -2368,6 +2368,7 @@ static int wolfCose_EcdhEsDirect(int32_t alg,
     int ret = WOLFCOSE_SUCCESS;
     ecc_key ephemKey;
     int ephemInited = 0;
+    int rngSetOnRecipient = 0;
     uint8_t sharedSecret[66]; /* Max for P-521 */
     word32 sharedSecretLen = sizeof(sharedSecret);
     uint8_t kdfContext[64];
@@ -2438,13 +2439,16 @@ static int wolfCose_EcdhEsDirect(int32_t alg,
         }
     }
 
-    /* Set RNG on recipient key for ECDH (required by wolfSSL).
-     * Note: this modifies the caller's key object by setting its RNG pointer.
-     * The RNG must remain valid for the duration of the ECDH operation. */
+    /* Set RNG on recipient key for ECDH (required by wolfSSL). Tracked
+     * with rngSetOnRecipient so the cleanup path restores the caller's
+     * key only when this function installed the RNG. */
     if (ret == WOLFCOSE_SUCCESS) {
         int eccRet = wc_ecc_set_rng(recipientPub->key.ecc, rng);
         if (eccRet != 0) {
             ret = WOLFCOSE_E_CRYPTO;
+        }
+        else {
+            rngSetOnRecipient = 1;
         }
     }
 
@@ -2506,6 +2510,10 @@ static int wolfCose_EcdhEsDirect(int32_t alg,
     /* Cleanup: always executed */
     if (ephemInited != 0) {
         (void)wc_ecc_free(&ephemKey);
+    }
+    if (rngSetOnRecipient != 0) {
+        /* Clear the dangling RNG pointer from the caller's key. */
+        (void)wc_ecc_set_rng(recipientPub->key.ecc, NULL);
     }
     (void)wolfCose_ForceZero(sharedSecret, sizeof(sharedSecret));
 
