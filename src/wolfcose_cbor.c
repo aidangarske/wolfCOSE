@@ -201,14 +201,26 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
 
-        /* For bstr/tstr, advance past the data bytes (zero-copy) */
+        /* RFC 8949 Section 3.3: two-byte simple values (mt=7, AI=1B) with
+         * arg < 32 are not well-formed and a decoder MUST reject them. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (item->majorType == WOLFCOSE_CBOR_SIMPLE) &&
+            (ai == WOLFCOSE_CBOR_AI_1BYTE) &&
+            (item->val < 32u)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+
+        /* For bstr/tstr, advance past the data bytes (zero-copy). The
+         * bounds check is overflow-safe: we never add item->val to
+         * ctx->idx in case the sum wraps; instead compare against the
+         * remaining space. */
         if (ret == WOLFCOSE_SUCCESS) {
             if ((item->majorType == WOLFCOSE_CBOR_BSTR) ||
                 (item->majorType == WOLFCOSE_CBOR_TSTR)) {
                 if (item->val > (uint64_t)SIZE_MAX) {
                     ret = WOLFCOSE_E_CBOR_OVERFLOW;
                 }
-                else if ((ctx->idx + (size_t)item->val) > ctx->bufSz) {
+                else if ((size_t)item->val > (ctx->bufSz - ctx->idx)) {
                     ret = WOLFCOSE_E_CBOR_MALFORMED;
                 }
                 else {
@@ -263,16 +275,25 @@ static int wolfCose_CBOR_EncodeBytes(WOLFCOSE_CBOR_CTX* ctx,
 {
     int ret;
 
-    ret = wolfCose_CBOR_EncodeHead(ctx, majorType, (uint64_t)len);
-    if (ret == WOLFCOSE_SUCCESS) {
-        if ((ctx->idx + len) > ctx->bufSz) {
-            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
-        }
-        else {
-            if ((len > 0u) && (data != NULL)) {
-                (void)XMEMMOVE(&ctx->buf[ctx->idx], data, len);
+    /* Reject NULL data paired with a non-zero length so the function
+     * cannot leak uninitialised buffer contents. */
+    if ((data == NULL) && (len > 0u)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        ret = wolfCose_CBOR_EncodeHead(ctx, majorType, (uint64_t)len);
+        if (ret == WOLFCOSE_SUCCESS) {
+            /* Overflow-safe: never compute idx + len when len could be
+             * near SIZE_MAX. */
+            if (len > (ctx->bufSz - ctx->idx)) {
+                ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
-            ctx->idx += len;
+            else {
+                if (len > 0u) {
+                    (void)XMEMMOVE(&ctx->buf[ctx->idx], data, len);
+                }
+                ctx->idx += len;
+            }
         }
     }
     return ret;

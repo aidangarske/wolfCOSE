@@ -535,6 +535,97 @@ static void test_cbor_skip(void)
     TEST_ASSERT(ret == 0 && uval == 77, "skip read after tagged");
 }
 
+static void test_cbor_skip_depth(void)
+{
+    /* Construct a CBOR value with array nesting deeper than
+     * WOLFCOSE_CBOR_MAX_DEPTH (8). wc_CBOR_Skip must reject it instead
+     * of overflowing its stack-local depth tracker. */
+    uint8_t deep[12];
+    WOLFCOSE_CBOR_CTX dec;
+    size_t i;
+    int ret;
+
+    printf("  [Skip: depth limit]\n");
+    for (i = 0; i < sizeof(deep); i++) {
+        deep[i] = 0x81u; /* array(1) */
+    }
+
+    dec.cbuf = deep;
+    dec.bufSz = sizeof(deep);
+    dec.idx = 0;
+    ret = wc_CBOR_Skip(&dec);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_DEPTH,
+                "wc_CBOR_Skip rejects deeply nested CBOR");
+}
+
+static void test_cbor_skip_tainted_count(void)
+{
+    /* Array header claiming more items than the buffer can possibly
+     * hold must be rejected by wc_CBOR_Skip. Use AI=27 (8-byte arg)
+     * with value 0xFFFFFFFFFFFFFFFF to exercise both the
+     * `val > bufSz` and `val > SIZE_MAX/2` sanity gates. */
+    uint8_t tainted[10];
+    WOLFCOSE_CBOR_CTX dec;
+    int ret;
+
+    printf("  [Skip: tainted item count]\n");
+    tainted[0] = 0x9Bu; /* array(8-byte) */
+    tainted[1] = 0xFFu;
+    tainted[2] = 0xFFu;
+    tainted[3] = 0xFFu;
+    tainted[4] = 0xFFu;
+    tainted[5] = 0xFFu;
+    tainted[6] = 0xFFu;
+    tainted[7] = 0xFFu;
+    tainted[8] = 0xFFu;
+    tainted[9] = 0x00u;
+
+    dec.cbuf = tainted;
+    dec.bufSz = sizeof(tainted);
+    dec.idx = 0;
+    ret = wc_CBOR_Skip(&dec);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "wc_CBOR_Skip rejects tainted item count");
+}
+
+static void test_cbor_decode_simple_not_well_formed(void)
+{
+    /* RFC 8949 Section 3.3: two-byte 0xF8 simple value with arg < 32 is
+     * not well-formed. */
+    uint8_t badSimple[2];
+    WOLFCOSE_CBOR_CTX dec;
+    WOLFCOSE_CBOR_ITEM item;
+    int ret;
+
+    printf("  [Decode: not-well-formed simple value]\n");
+    badSimple[0] = 0xF8u;
+    badSimple[1] = 0x10u; /* value 16, < 32 */
+
+    dec.cbuf = badSimple;
+    dec.bufSz = sizeof(badSimple);
+    dec.idx = 0;
+    ret = wc_CBOR_DecodeHead(&dec, &item);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "DecodeHead rejects 0xF8 simple value < 32");
+}
+
+static void test_cbor_encode_bstr_null_with_len(void)
+{
+    /* EncodeBstr with NULL data and non-zero length must reject the
+     * call instead of emitting uninitialised buffer contents. */
+    uint8_t out[32];
+    WOLFCOSE_CBOR_CTX enc;
+    int ret;
+
+    printf("  [Encode: NULL bstr with non-zero length]\n");
+    enc.buf = out;
+    enc.bufSz = sizeof(out);
+    enc.idx = 0;
+    ret = wc_CBOR_EncodeBstr(&enc, NULL, 4);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "EncodeBstr rejects NULL data with positive length");
+}
+
 /* ----- Error cases ----- */
 static void test_cbor_errors(void)
 {
@@ -709,6 +800,10 @@ int test_cbor(void)
     test_cbor_roundtrip();
     test_cbor_nested();
     test_cbor_skip();
+    test_cbor_skip_depth();
+    test_cbor_skip_tainted_count();
+    test_cbor_decode_simple_not_well_formed();
+    test_cbor_encode_bstr_null_with_len();
     test_cbor_errors();
     test_cbor_negative_map_keys();
 
