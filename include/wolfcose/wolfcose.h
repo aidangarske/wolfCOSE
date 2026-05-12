@@ -228,26 +228,37 @@ extern "C" {
 #define WOLFCOSE_E_MAC_FAIL         (-9022)
 #define WOLFCOSE_E_DETACHED_PAYLOAD (-9023)
 
-/* ----- Configurable limits ----- */
+/* ----- Configurable limits -----
+ *
+ * Scratch buffers must hold the Sig_structure / Enc_structure /
+ * MAC_structure for the operation plus, for algorithms that place the
+ * signature in scratch (RSA-PSS, ML-DSA), the signature output. When
+ * ML-DSA is enabled the default needs to be large enough for the
+ * 4627-byte ML-DSA-87 signature plus the structure.
+ */
 #ifndef WOLFCOSE_MAX_SCRATCH_SZ
-    #define WOLFCOSE_MAX_SCRATCH_SZ      512
+    #if defined(HAVE_DILITHIUM)
+        #define WOLFCOSE_MAX_SCRATCH_SZ      8192u
+    #else
+        #define WOLFCOSE_MAX_SCRATCH_SZ      512u
+    #endif
 #endif
 #ifndef WOLFCOSE_PROTECTED_HDR_MAX
-    #define WOLFCOSE_PROTECTED_HDR_MAX    64
+    #define WOLFCOSE_PROTECTED_HDR_MAX    64u
 #endif
 #ifndef WOLFCOSE_CBOR_MAX_DEPTH
-    #define WOLFCOSE_CBOR_MAX_DEPTH        8
+    #define WOLFCOSE_CBOR_MAX_DEPTH        8u
 #endif
 #ifndef WOLFCOSE_MAX_MAP_ITEMS
-    #define WOLFCOSE_MAX_MAP_ITEMS        16
+    #define WOLFCOSE_MAX_MAP_ITEMS        16u
 #endif
 #ifndef WOLFCOSE_MAX_SIG_SZ
     #if defined(HAVE_DILITHIUM)
-        #define WOLFCOSE_MAX_SIG_SZ  4627
+        #define WOLFCOSE_MAX_SIG_SZ  4627u
     #elif defined(WC_RSA_PSS)
-        #define WOLFCOSE_MAX_SIG_SZ  512
+        #define WOLFCOSE_MAX_SIG_SZ  512u
     #else
-        #define WOLFCOSE_MAX_SIG_SZ  132
+        #define WOLFCOSE_MAX_SIG_SZ  132u
     #endif
 #endif
 

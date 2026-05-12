@@ -591,7 +591,7 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
-        int depth = 0;
+        unsigned int depth = 0u;
         size_t remaining = 1; /* Start: need to skip 1 item */
         ret = WOLFCOSE_SUCCESS;
 
