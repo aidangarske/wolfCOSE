@@ -87,7 +87,9 @@ static int wolfCose_ConstantCompare(const byte* a, const byte* b,
                                      word32 length)
 {
     word32 i;
-    unsigned int result = 0;
+    /* volatile prevents the compiler from converting the OR-accumulate
+     * loop into an early-exit comparison once result is non-zero. */
+    volatile unsigned int result = 0;
 
     for (i = 0; i < length; i++) {
         result |= (unsigned int)a[i] ^ (unsigned int)b[i];
@@ -5216,21 +5218,23 @@ static int wolfCose_AesCbcMac(const uint8_t* key, size_t keyLen,
         }
     }
 
-    /* Process last partial block with zero padding */
-    if ((ret == WOLFCOSE_SUCCESS) && ((lastBlockLen > 0u) || (dataLen == 0u))) {
-        /* Pad with zeros */
+    /* RFC 9053 Section 3.2 requires ISO/IEC 9797-1 Padding Method 2:
+     * append a single 0x80 byte followed by zero bytes to fill the
+     * block. The padded block is always processed, even when the input
+     * is block-aligned or empty (in which case the padded block holds
+     * only the 0x80 delimiter and 15 zero bytes). */
+    if (ret == WOLFCOSE_SUCCESS) {
         (void)XMEMSET(inBlock, 0, sizeof(inBlock));
         for (i = 0; i < lastBlockLen; i++) {
             inBlock[i] = data[(numBlocks * AES_BLOCK_SIZE) + i];
         }
+        inBlock[lastBlockLen] = 0x80u;
 
-        /* Set key and IV */
         aesRet = wc_AesSetKey(&aes, key, (word32)keyLen, iv, AES_ENCRYPTION);
         if (aesRet != 0) {
             ret = WOLFCOSE_E_CRYPTO;
         }
 
-        /* Encrypt final block */
         if (ret == WOLFCOSE_SUCCESS) {
             aesRet = wc_AesCbcEncrypt(&aes, outBlock, inBlock, AES_BLOCK_SIZE);
             if (aesRet != 0) {
@@ -5303,30 +5307,48 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
     size_t tagSz = 0;
     uint8_t tagBuf[WC_MAX_DIGEST_SIZE];
     WOLFCOSE_CBOR_CTX outCtx;
-    const uint8_t* macPayload;
-    size_t macPayloadLen;
-    int isDetached;
+    const uint8_t* macPayload = NULL;
+    size_t macPayloadLen = 0;
+    uint8_t isDetached;
     size_t unprotectedEntries;
 
-    /* Determine which payload to use for MAC */
+    /* Determine which payload to use for MAC. A zero-length inline
+     * payload (NULL, 0) is valid: it authenticates only the protected
+     * headers and external AAD. */
     if (detachedPayload != NULL) {
         macPayload = detachedPayload;
         macPayloadLen = detachedLen;
-        isDetached = 1;
+        isDetached = 1u;
     }
     else {
         macPayload = payload;
         macPayloadLen = payloadLen;
-        isDetached = 0;
+        isDetached = 0u;
     }
 
-    if ((key == NULL) || (macPayload == NULL) || (scratch == NULL) ||
+    if ((key == NULL) || (scratch == NULL) ||
         (out == NULL) || (outLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    /* Only reject NULL payload paired with a non-zero length. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (macPayload == NULL) && (macPayloadLen > 0u)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    /* Reject inconsistent (kid, kidLen) so the kid is never silently dropped. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (((kid != NULL) && (kidLen == 0u)) ||
+         ((kid == NULL) && (kidLen != 0u)))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
     if ((ret == WOLFCOSE_SUCCESS) && (key->kty != WOLFCOSE_KTY_SYMMETRIC)) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
+    /* RFC 9052 §7: when key->alg is set it MUST match the message alg. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (key->alg != 0) && (key->alg != alg)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
     /* Get tag size for this algorithm (works for both HMAC and AES-CBC-MAC) */
@@ -5351,7 +5373,13 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
     /* Compute MAC based on algorithm type */
 #ifndef NO_HMAC
     if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_IsHmacAlg(alg) != 0)) {
-        ret = wolfCose_HmacType(alg, &hmacType);
+        /* RFC 9053 Section 3.1 binds HMAC key length to the algorithm. */
+        if (key->key.symm.keyLen != tagSz) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_HmacType(alg, &hmacType);
+        }
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
             if (ret != 0) {
@@ -5475,6 +5503,9 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
     if (scratch != NULL) {
         (void)wolfCose_ForceZero(scratch, scratchSz);
     }
+    if ((ret != WOLFCOSE_SUCCESS) && (out != NULL)) {
+        (void)wolfCose_ForceZero(out, outSz);
+    }
 
     return ret;
 }
@@ -5510,7 +5541,6 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
     int32_t alg = 0;
     const uint8_t* verifyPayload = NULL;
     size_t verifyPayloadLen = 0;
-    int isDetached = 0;
 
     if ((key == NULL) || (in == NULL) || (scratch == NULL) || (hdr == NULL) ||
         (payload == NULL) || (payloadLen == NULL)) {
@@ -5568,7 +5598,6 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
             ctx.idx++; /* consume the null byte */
             payloadData = NULL;
             payloadDataLen = 0;
-            isDetached = 1;
             hdr->flags |= WOLFCOSE_HDR_FLAG_DETACHED;
 
             /* Must have detached payload provided */
@@ -5583,7 +5612,6 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
         else {
             ret = wc_CBOR_DecodeBstr(&ctx, &payloadData, &payloadDataLen);
             if (ret == WOLFCOSE_SUCCESS) {
-                isDetached = 0;
                 verifyPayload = payloadData;
                 verifyPayloadLen = payloadDataLen;
             }
@@ -5597,7 +5625,12 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
 
     if (ret == WOLFCOSE_SUCCESS) {
         alg = hdr->alg;
-        /* Get expected tag size for this algorithm */
+        /* RFC 9052 §7: key->alg, when set, must match message alg. */
+        if ((key->alg != 0) && (key->alg != alg)) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_MacTagSize(alg, &expectedTagSz);
     }
 
@@ -5613,12 +5646,16 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
                                           scratch, scratchSz, &macStructLen);
     }
 
-    (void)isDetached; /* May be used in future for additional checks */
-
     /* Compute MAC based on algorithm type */
 #ifndef NO_HMAC
     if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_IsHmacAlg(alg) != 0)) {
-        ret = wolfCose_HmacType(alg, &hmacType);
+        /* RFC 9053 Section 3.1 binds HMAC key length to the algorithm. */
+        if (key->key.symm.keyLen != expectedTagSz) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_HmacType(alg, &hmacType);
+        }
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
             if (ret != 0) {
@@ -5680,10 +5717,19 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
         }
     }
 
-    /* Return zero-copy payload pointer into input buffer */
+    /* Return zero-copy payload pointer into input buffer. Clear on
+     * failure so callers that skip the return code do not consume
+     * stale data. */
     if (ret == WOLFCOSE_SUCCESS) {
         *payload = payloadData;
         *payloadLen = payloadDataLen;
+    }
+    else if ((payload != NULL) && (payloadLen != NULL)) {
+        *payload = NULL;
+        *payloadLen = 0;
+    }
+    else {
+        /* No action required */
     }
 
     /* Cleanup: always executed */
@@ -6678,7 +6724,7 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
 
 /* ----- COSE_Mac Multi-Recipient API (RFC 9052 Section 6.1) ----- */
 
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && (!defined(NO_HMAC) || defined(HAVE_AES_CBC))
 
 /**
  * Build the MAC_structure for COSE_Mac (context = "MAC"):
@@ -6728,17 +6774,29 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
     size_t macStructLen = 0;
     uint8_t macTag[WC_MAX_DIGEST_SIZE];
     size_t macTagLen = 0;
-    const uint8_t* macPayload;
-    size_t macPayloadLen;
+    const uint8_t* macPayload = NULL;
+    size_t macPayloadLen = 0;
     size_t i;
+#ifndef NO_HMAC
     Hmac hmac;
     int hashType = 0;
     int hmacInited = 0;
+#endif
 
     /* Parameter validation */
     if ((recipients == NULL) || (recipientCount == 0u) ||
         (out == NULL) || (outLen == NULL) || (scratch == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
+    }
+
+    /* Reject inconsistent (kid, kidLen) per recipient. */
+    if (ret == WOLFCOSE_SUCCESS) {
+        for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
+            if (((recipients[i].kid != NULL) && (recipients[i].kidLen == 0u)) ||
+                ((recipients[i].kid == NULL) && (recipients[i].kidLen != 0u))) {
+                ret = WOLFCOSE_E_INVALID_ARG;
+            }
+        }
     }
 
     /* Must have either payload or detached */
@@ -6759,21 +6817,21 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
         }
     }
 
-    /* Validate first recipient has correct key */
+    /* Validate first recipient has correct key and key->alg matches. */
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((recipients[0].key == NULL) ||
         (recipients[0].key->kty != WOLFCOSE_KTY_SYMMETRIC))) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
     }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipients[0].key->alg != 0) &&
+        (recipients[0].key->alg != macAlgId)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
 
     /* Get tag size for algorithm */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_MacTagSize(macAlgId, &macTagLen);
-    }
-
-    /* Map algorithm to HMAC type */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wolfCose_HmacType(macAlgId, &hashType);
     }
 
     /* Encode body protected header: {1: alg} */
@@ -6790,42 +6848,74 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
                                                scratch, scratchSz, &macStructLen);
     }
 
-    /* Compute HMAC */
-    if (ret == WOLFCOSE_SUCCESS) {
-        int hmacRet = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
-        if (hmacRet != 0) {
-            ret = WOLFCOSE_E_CRYPTO;
+    /* Compute MAC: dispatch by algorithm class. */
+#ifndef NO_HMAC
+    if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_IsHmacAlg(macAlgId) != 0)) {
+        size_t expectedKeyLen = (size_t)macTagLen;
+        if (recipients[0].key->key.symm.keyLen != expectedKeyLen) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
-        else {
-            hmacInited = 1;
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_HmacType(macAlgId, &hashType);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            int hmacRet = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
+            if (hmacRet != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+            else {
+                hmacInited = 1;
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            int hmacRet = wc_HmacSetKey(&hmac, hashType,
+                             recipients[0].key->key.symm.key,
+                             (word32)recipients[0].key->key.symm.keyLen);
+            if (hmacRet != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            int hmacRet = wc_HmacUpdate(&hmac, scratch, (word32)macStructLen);
+            if (hmacRet != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            int hmacRet = wc_HmacFinal(&hmac, macTag);
+            if (hmacRet != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+        }
+        if (hmacInited != 0) {
+            wc_HmacFree(&hmac);
+            hmacInited = 0;
         }
     }
-
-    if (ret == WOLFCOSE_SUCCESS) {
-        int hmacRet = wc_HmacSetKey(&hmac, hashType,
-                         recipients[0].key->key.symm.key,
-                         (word32)recipients[0].key->key.symm.keyLen);
-        if (hmacRet != 0) {
-            ret = WOLFCOSE_E_CRYPTO;
+    else
+#endif /* !NO_HMAC */
+#ifdef HAVE_AES_CBC
+    if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_IsAesCbcMacAlg(macAlgId) != 0)) {
+        size_t expectedKeyLen = 0;
+        ret = wolfCose_AesCbcMacKeySize(macAlgId, &expectedKeyLen);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (recipients[0].key->key.symm.keyLen != expectedKeyLen)) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_AesCbcMac(recipients[0].key->key.symm.key,
+                                      recipients[0].key->key.symm.keyLen,
+                                      scratch, macStructLen,
+                                      macTag, macTagLen);
         }
     }
-
+    else
+#endif /* HAVE_AES_CBC */
     if (ret == WOLFCOSE_SUCCESS) {
-        int hmacRet = wc_HmacUpdate(&hmac, scratch, (word32)macStructLen);
-        if (hmacRet != 0) {
-            ret = WOLFCOSE_E_CRYPTO;
-        }
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
-
-    if (ret == WOLFCOSE_SUCCESS) {
-        int hmacRet = wc_HmacFinal(&hmac, macTag);
-        if (hmacRet != 0) {
-            ret = WOLFCOSE_E_CRYPTO;
-        }
-    }
-
-    if (hmacInited != 0) {
-        wc_HmacFree(&hmac);
+    else {
+        /* No action required */
     }
 
     /* Initialize CBOR encoder */
@@ -6923,9 +7013,17 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
         *outLen = ctx.idx;
     }
 
+#ifndef NO_HMAC
+    if (hmacInited != 0) {
+        wc_HmacFree(&hmac);
+    }
+#endif
     (void)wolfCose_ForceZero(macTag, sizeof(macTag));
     if (scratch != NULL) {
         (void)wolfCose_ForceZero(scratch, scratchSz);
+    }
+    if ((ret != WOLFCOSE_SUCCESS) && (out != NULL)) {
+        (void)wolfCose_ForceZero(out, outSz);
     }
     return ret;
 }
@@ -6961,11 +7059,13 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     size_t macStructLen = 0;
     size_t expectedTagLen = 0;
     uint8_t computedTag[WC_MAX_DIGEST_SIZE];
+#ifndef NO_HMAC
     Hmac hmac;
     int hashType = 0;
+    int hmacInited = 0;
+#endif
     const uint8_t* verifyPayload = NULL;
     size_t verifyPayloadLen = 0;
-    int hmacInited = 0;
 
     /* Parameter validation */
     if ((recipient == NULL) || (in == NULL) || (inSz == 0u) ||
@@ -6998,7 +7098,7 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         ret = wc_CBOR_DecodeArrayStart(&ctx, &arrayCount);
     }
     if ((ret == WOLFCOSE_SUCCESS) && (arrayCount != 5u)) {
-        ret = WOLFCOSE_E_CBOR_TYPE;
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
 
     /* [0] Decode protected header bstr */
@@ -7075,11 +7175,15 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         ret = wc_CBOR_Skip(&ctx);
     }
 
-    /* Validate key */
+    /* Validate key and enforce key->alg agreement with the message. */
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((recipient->key == NULL) ||
         (recipient->key->kty != WOLFCOSE_KTY_SYMMETRIC))) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipient->key->alg != 0) && (recipient->key->alg != alg)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
     /* Get expected tag size */
@@ -7091,11 +7195,6 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         ret = WOLFCOSE_E_MAC_FAIL;
     }
 
-    /* Map algorithm to HMAC type */
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wolfCose_HmacType(alg, &hashType);
-    }
-
     /* Build MAC_structure */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_BuildMacStructureMulti(protectedData, protectedLen,
@@ -7104,42 +7203,73 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
                                                scratch, scratchSz, &macStructLen);
     }
 
-    /* Compute HMAC */
-    if (ret == WOLFCOSE_SUCCESS) {
-        int hmacRet = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
-        if (hmacRet != 0) {
-            ret = WOLFCOSE_E_CRYPTO;
+    /* Compute MAC: dispatch by algorithm class. */
+#ifndef NO_HMAC
+    if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_IsHmacAlg(alg) != 0)) {
+        if (recipient->key->key.symm.keyLen != expectedTagLen) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
-        else {
-            hmacInited = 1;
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_HmacType(alg, &hashType);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            int hmacRet = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
+            if (hmacRet != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+            else {
+                hmacInited = 1;
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            int hmacRet = wc_HmacSetKey(&hmac, hashType,
+                             recipient->key->key.symm.key,
+                             (word32)recipient->key->key.symm.keyLen);
+            if (hmacRet != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            int hmacRet = wc_HmacUpdate(&hmac, scratch, (word32)macStructLen);
+            if (hmacRet != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            int hmacRet = wc_HmacFinal(&hmac, computedTag);
+            if (hmacRet != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+        }
+        if (hmacInited != 0) {
+            wc_HmacFree(&hmac);
+            hmacInited = 0;
         }
     }
-
-    if (ret == WOLFCOSE_SUCCESS) {
-        int hmacRet = wc_HmacSetKey(&hmac, hashType,
-                         recipient->key->key.symm.key,
-                         (word32)recipient->key->key.symm.keyLen);
-        if (hmacRet != 0) {
-            ret = WOLFCOSE_E_CRYPTO;
+    else
+#endif /* !NO_HMAC */
+#ifdef HAVE_AES_CBC
+    if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_IsAesCbcMacAlg(alg) != 0)) {
+        size_t expectedKeyLen = 0;
+        ret = wolfCose_AesCbcMacKeySize(alg, &expectedKeyLen);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (recipient->key->key.symm.keyLen != expectedKeyLen)) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_AesCbcMac(recipient->key->key.symm.key,
+                                      recipient->key->key.symm.keyLen,
+                                      scratch, macStructLen,
+                                      computedTag, expectedTagLen);
         }
     }
-
+    else
+#endif /* HAVE_AES_CBC */
     if (ret == WOLFCOSE_SUCCESS) {
-        int hmacRet = wc_HmacUpdate(&hmac, scratch, (word32)macStructLen);
-        if (hmacRet != 0) {
-            ret = WOLFCOSE_E_CRYPTO;
-        }
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
-
-    if (ret == WOLFCOSE_SUCCESS) {
-        int hmacRet = wc_HmacFinal(&hmac, computedTag);
-        if (hmacRet != 0) {
-            ret = WOLFCOSE_E_CRYPTO;
-        }
-    }
-
-    if (hmacInited != 0) {
-        wc_HmacFree(&hmac);
+    else {
+        /* No action required */
     }
 
     /* Constant-time comparison */
@@ -7150,19 +7280,31 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         }
     }
 
+#ifndef NO_HMAC
+    if (hmacInited != 0) {
+        wc_HmacFree(&hmac);
+    }
+#endif
     (void)wolfCose_ForceZero(computedTag, sizeof(computedTag));
     if (scratch != NULL) {
         (void)wolfCose_ForceZero(scratch, scratchSz);
     }
 
-    /* Return payload pointer */
+    /* Return payload pointer. Clear on failure to avoid stale data. */
     if (ret == WOLFCOSE_SUCCESS) {
         *payload = payloadData;
         *payloadLen = payloadDataLen;
+    }
+    else if ((payload != NULL) && (payloadLen != NULL)) {
+        *payload = NULL;
+        *payloadLen = 0;
+    }
+    else {
+        /* No action required */
     }
 
     return ret;
 }
 #endif /* WOLFCOSE_MAC_VERIFY */
 
-#endif /* WOLFCOSE_MAC && !NO_HMAC */
+#endif /* WOLFCOSE_MAC && (!NO_HMAC || HAVE_AES_CBC) */

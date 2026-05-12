@@ -8041,6 +8041,30 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
 }
 #endif /* HAVE_AESGCM && encrypt0 */
 
+static void test_cose_hmac_type_constants(void)
+{
+    int ret;
+    int hmacType = 0;
+
+    printf("  [HmacType constants]\n");
+
+#ifndef NO_HMAC
+    ret = wolfCose_HmacType(WOLFCOSE_ALG_HMAC_256_256, &hmacType);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (hmacType == WC_SHA256),
+                "HmacType HMAC-256 -> WC_SHA256");
+#ifdef WOLFSSL_SHA384
+    ret = wolfCose_HmacType(WOLFCOSE_ALG_HMAC_384_384, &hmacType);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (hmacType == WC_SHA384),
+                "HmacType HMAC-384 -> WC_SHA384");
+#endif
+#ifdef WOLFSSL_SHA512
+    ret = wolfCose_HmacType(WOLFCOSE_ALG_HMAC_512_512, &hmacType);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (hmacType == WC_SHA512),
+                "HmacType HMAC-512 -> WC_SHA512");
+#endif
+#endif /* !NO_HMAC */
+}
+
 static void test_cose_aead_tag_len(void)
 {
     int ret;
@@ -12177,6 +12201,7 @@ int test_cose(void)
     test_cose_alg_to_hash_constants();
     test_cose_build_sig_structure_context();
     test_cose_aead_tag_len();
+    test_cose_hmac_type_constants();
 #if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
     test_cose_encrypt0_nonce_length();
     test_cose_encrypt0_empty_payload_roundtrip();
