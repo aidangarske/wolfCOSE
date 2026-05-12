@@ -641,7 +641,7 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
             }
 
             /* Unwind stack when current level is exhausted */
-            while ((remaining == 0u) && (depth > 0)) {
+            while ((remaining == 0u) && (depth > 0u)) {
                 depth--;
                 remaining = stack[depth];
             }

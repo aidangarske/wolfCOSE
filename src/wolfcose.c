@@ -584,7 +584,7 @@ static uint32_t wolfCose_LabelBit(int64_t label)
         bit = (uint32_t)1u << shift;
     }
     else if ((label <= -1) && (label >= -16)) {
-        shift = (uint32_t)(16 - (int32_t)label) - 1u;
+        shift = (uint32_t)(-(int32_t)label) + 15u;
         bit = (uint32_t)1u << shift;
     }
     else {
@@ -702,13 +702,13 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
 
             ret = wc_CBOR_DecodeInt(&ctx, &label);
             if (ret != WOLFCOSE_SUCCESS) {
-                break;
+                continue;
             }
 
             bit = wolfCose_LabelBit(label);
             if ((bit != 0u) && ((protSeen & bit) != 0u)) {
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
-                break;
+                continue;
             }
             protSeen |= bit;
 
@@ -736,25 +736,27 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
                     ret = WOLFCOSE_E_COSE_BAD_HDR;
                 }
                 for (k = 0; (ret == WOLFCOSE_SUCCESS) && (k < critCount); k++) {
-                    uint32_t critBit;
                     if ((ctx.idx >= ctx.bufSz) ||
                         (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TSTR)) {
                         ret = WOLFCOSE_E_COSE_BAD_HDR;
-                        break;
                     }
-                    ret = wc_CBOR_DecodeInt(&ctx, &critLabel);
+                    else {
+                        ret = wc_CBOR_DecodeInt(&ctx, &critLabel);
+                    }
                     if (ret == WOLFCOSE_SUCCESS) {
                         /* crit labels limited to ones wolfCOSE processes. */
                         if ((critLabel < 1) || (critLabel > 6)) {
                             ret = WOLFCOSE_E_COSE_BAD_HDR;
-                            break;
                         }
-                        critBit = wolfCose_LabelBit(critLabel);
-                        if (critBit == 0u) {
-                            ret = WOLFCOSE_E_COSE_BAD_HDR;
-                            break;
+                        else {
+                            uint32_t critBit = wolfCose_LabelBit(critLabel);
+                            if (critBit == 0u) {
+                                ret = WOLFCOSE_E_COSE_BAD_HDR;
+                            }
+                            else {
+                                critLabels |= critBit;
+                            }
                         }
-                        critLabels |= critBit;
                     }
                 }
             }
@@ -824,7 +826,6 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
     int64_t label;
     const uint8_t* bstrData;
     size_t bstrLen;
-    uint32_t unprotSeen = 0u;
     int skipped;
 
     if ((ctx == NULL) || (hdr == NULL)) {
@@ -832,6 +833,7 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
     }
     else {
         size_t i;
+        uint32_t unprotSeen = 0u;
         ret = wc_CBOR_DecodeMapStart(ctx, &mapCount);
 
         if ((ret == WOLFCOSE_SUCCESS) && (mapCount > (size_t)WOLFCOSE_MAX_MAP_ITEMS)) {
@@ -850,13 +852,13 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
 
             ret = wc_CBOR_DecodeInt(ctx, &label);
             if (ret != WOLFCOSE_SUCCESS) {
-                break;
+                continue;
             }
 
             /* crit MUST live in the protected bucket. */
             if (label == WOLFCOSE_HDR_CRIT) {
                 ret = WOLFCOSE_E_COSE_BAD_HDR;
-                break;
+                continue;
             }
 
             bit = wolfCose_LabelBit(label);
@@ -864,7 +866,7 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
                 (((unprotSeen & bit) != 0u) ||
                  ((hdr->labelsSeen & bit) != 0u))) {
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
-                break;
+                continue;
             }
             unprotSeen |= bit;
 
@@ -1131,7 +1133,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             /* Map: kty [, kid] [, alg], crv, x, y [, d]. Optional kid and
              * alg are emitted when set so the decode/encode roundtrip
              * preserves them. */
-            mapEntries = (key->hasPrivate != 0u) ? 5u : 4u;
+            mapEntries = (key->hasPrivate != 0u) ? (size_t)5 : (size_t)4;
             if ((key->kid != NULL) && (key->kidLen > 0u)) {
                 mapEntries++;
             }
@@ -1228,7 +1230,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             size_t mapEntries;
 
             /* Get n directly into output buffer, e into small stack buf */
-            mapEntries = (key->hasPrivate != 0u) ? 4u : 3u;
+            mapEntries = (key->hasPrivate != 0u) ? (size_t)4 : (size_t)3;
             ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
 
             /* 1: kty */
@@ -1377,7 +1379,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             word32 dlKeyLen;
             size_t hdrPos;
 
-            dlMapEntries = (key->hasPrivate != 0u) ? 4u : 3u;
+            dlMapEntries = (key->hasPrivate != 0u) ? (size_t)4 : (size_t)3;
             ret = wc_CBOR_EncodeMapStart(&ctx, dlMapEntries);
 
             /* 1: kty = OKP (1) */
@@ -1513,7 +1515,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 ret = WOLFCOSE_E_COSE_BAD_ALG;
             }
 
-            mapEntries = (key->hasPrivate != 0u) ? 4u : 3u;
+            mapEntries = (key->hasPrivate != 0u) ? (size_t)4 : (size_t)3;
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
             }
@@ -1672,14 +1674,14 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 
             ret = wc_CBOR_DecodeInt(&ctx, &label);
             if (ret != WOLFCOSE_SUCCESS) {
-                break;
+                continue;
             }
 
             /* Reject duplicate labels within the COSE_Key map. */
             bit = wolfCose_LabelBit(label);
             if ((bit != 0u) && ((keyLabelsSeen & bit) != 0u)) {
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
-                break;
+                continue;
             }
             keyLabelsSeen |= bit;
 
@@ -2030,18 +2032,18 @@ int wolfCose_BuildToBeSignedMaced(
 {
     int ret;
     WOLFCOSE_CBOR_CTX ctx;
-    size_t arrayLen;
 
     if ((context == NULL) || (scratch == NULL) || (structLen == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
+        size_t arrayLen;
         ctx.buf = scratch;
         ctx.bufSz = scratchSz;
         ctx.idx = 0;
 
         /* 4 elements normally, 5 if sign_protected is present (multi-signer) */
-        arrayLen = (size_t)((signProtected != NULL) ? 5u : 4u);
+        arrayLen = (signProtected != NULL) ? (size_t)5 : (size_t)4;
 
         ret = wc_CBOR_EncodeArrayStart(&ctx, arrayLen);
 
@@ -2846,14 +2848,14 @@ static int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
 
         ret = wc_CBOR_DecodeInt(ctx, &label);
         if (ret != WOLFCOSE_SUCCESS) {
-            break;
+            continue;
         }
 
         /* Reject duplicate labels within the ephemeral COSE_Key map. */
         bit = wolfCose_LabelBit(label);
         if ((bit != 0u) && ((ephemSeen & bit) != 0u)) {
             ret = WOLFCOSE_E_CBOR_MALFORMED;
-            break;
+            continue;
         }
         ephemSeen |= bit;
 
@@ -3310,9 +3312,9 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
         }
     }
 
-    /* payload (RFC 9052 Section 2: nil if detached) */
+    /* payload (nil if detached) */
     if (ret == WOLFCOSE_SUCCESS) {
-        if (isDetached != 0) {
+        if (isDetached != 0u) {
             ret = wc_CBOR_EncodeNull(&outCtx);
         }
         else {
@@ -3897,7 +3899,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
 
     /* 3. Payload (nil if detached) */
     if (ret == WOLFCOSE_SUCCESS) {
-        if (isDetached != 0) {
+        if (isDetached != 0u) {
             ret = wc_CBOR_EncodeNull(&outCtx);
         }
         else {
@@ -4618,7 +4620,7 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
     size_t aeadTagLen = 0;
     WOLFCOSE_CBOR_CTX outCtx;
     size_t ciphertextTotalLen = 0;
-    size_t ciphertextOffset = 0;
+    size_t ciphertextOffset;
     int isDetached;
 
     /* Determine if detached mode */
@@ -5213,6 +5215,9 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
     else if (plaintextLen != NULL) {
         *plaintextLen = 0u;
     }
+    else {
+        /* No action required */
+    }
 
     /* Cleanup: always executed */
 #if defined(HAVE_AESGCM) || defined(HAVE_AESCCM)
@@ -5667,9 +5672,9 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
         }
     }
 
-    /* payload (RFC 9052 Section 2: nil if detached) */
+    /* payload (nil if detached) */
     if (ret == WOLFCOSE_SUCCESS) {
-        if (isDetached != 0) {
+        if (isDetached != 0u) {
             ret = wc_CBOR_EncodeNull(&outCtx);
         }
         else {
