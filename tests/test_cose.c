@@ -7958,6 +7958,119 @@ static void test_cose_sign_multi_public_only_key(void)
 }
 #endif /* WOLFCOSE_SIGN && HAVE_ECC */
 
+#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
+static void test_cose_encrypt0_nonce_length(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t keyBytes[16] = {0};
+    const uint8_t shortIv[7] = {0};
+    const uint8_t payload[] = "Test";
+
+    printf("  [Encrypt0: nonce length validation]\n");
+
+    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+
+    /* AES-128-GCM requires a 12-byte nonce; passing 7 must be rejected. */
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
+        shortIv, sizeof(shortIv),
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "Encrypt0_Encrypt rejects short IV");
+
+    wc_CoseKey_Free(&key);
+}
+
+static void test_cose_encrypt0_empty_payload_roundtrip(void)
+{
+    WOLFCOSE_KEY encKey, decKey;
+    int ret;
+    uint8_t out[256];
+    uint8_t scratch[256];
+    uint8_t pt[16];
+    size_t outLen = 0;
+    size_t ptLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t keyBytes[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
+    const uint8_t iv[12] = {0};
+
+    printf("  [Encrypt0: empty payload roundtrip]\n");
+
+    wc_CoseKey_Init(&encKey);
+    wc_CoseKey_Init(&decKey);
+    (void)wc_CoseKey_SetSymmetric(&encKey, keyBytes, sizeof(keyBytes));
+    (void)wc_CoseKey_SetSymmetric(&decKey, keyBytes, sizeof(keyBytes));
+
+    /* Encrypt empty payload */
+    ret = wc_CoseEncrypt0_Encrypt(&encKey, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        NULL, 0,
+        NULL, 0, NULL,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    /* NULL payload + 0 length is accepted as zero-length plaintext path
+     * only when isDetached is unset; the encrypt API allows this. */
+    if (ret == WOLFCOSE_SUCCESS) {
+        memset(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt0_Decrypt(&decKey, out, outLen,
+            NULL, 0,
+            NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, pt, sizeof(pt), &ptLen);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "Encrypt0_Decrypt empty payload");
+        TEST_ASSERT(ptLen == 0u, "Encrypt0 empty payload length");
+    }
+    else {
+        /* API rejects NULL payload outright; that is acceptable too. */
+        TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                    "Encrypt0 empty payload reject");
+    }
+
+    wc_CoseKey_Free(&encKey);
+    wc_CoseKey_Free(&decKey);
+}
+#endif /* HAVE_AESGCM && encrypt0 */
+
+static void test_cose_aead_tag_len(void)
+{
+    int ret;
+    size_t tagLen = 0;
+
+    printf("  [AeadTagLen constants]\n");
+
+#ifdef HAVE_AESGCM
+    ret = wolfCose_AeadTagLen(WOLFCOSE_ALG_A128GCM, &tagLen);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (tagLen == 16u),
+                "A128GCM tag length");
+    ret = wolfCose_AeadTagLen(WOLFCOSE_ALG_A256GCM, &tagLen);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (tagLen == 16u),
+                "A256GCM tag length");
+#endif
+#ifdef HAVE_AESCCM
+    ret = wolfCose_AeadTagLen(WOLFCOSE_ALG_AES_CCM_16_64_128, &tagLen);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (tagLen == 8u),
+                "AES-CCM-64 short tag length");
+    ret = wolfCose_AeadTagLen(WOLFCOSE_ALG_AES_CCM_16_128_128, &tagLen);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (tagLen == 16u),
+                "AES-CCM-128 tag length");
+#endif
+#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+    ret = wolfCose_AeadTagLen(WOLFCOSE_ALG_CHACHA20_POLY1305, &tagLen);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (tagLen == 16u),
+                "ChaCha20-Poly1305 tag length");
+#endif
+}
+
 static void test_cose_alg_to_hash_constants(void)
 {
     int ret;
@@ -12063,6 +12176,11 @@ int test_cose(void)
 #endif
     test_cose_alg_to_hash_constants();
     test_cose_build_sig_structure_context();
+    test_cose_aead_tag_len();
+#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
+    test_cose_encrypt0_nonce_length();
+    test_cose_encrypt0_empty_payload_roundtrip();
+#endif
     test_internal_helpers();
 
     /* Hardened / error-path tests */

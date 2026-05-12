@@ -111,6 +111,8 @@ WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_SIGNATURE1[10];
 WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_SIGNATURE[9];
 WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_MAC0[4];
 WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_MAC[3];
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_ENCRYPT0[8];
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_ENCRYPT[7];
 
 /* ----- COSE internal helpers ----- */
 
@@ -237,7 +239,7 @@ WOLFCOSE_LOCAL int wolfCose_BuildToBeSignedMaced(
  * \return WOLFCOSE_SUCCESS or error code
  */
 WOLFCOSE_LOCAL int wolfCose_BuildEncStructure(
-    const char* context, size_t contextLen,
+    const uint8_t* context, size_t contextLen,
     const uint8_t* bodyProtected, size_t bodyProtectedLen,
     const uint8_t* extAad, size_t extAadLen,
     uint8_t* scratch, size_t scratchSz,
