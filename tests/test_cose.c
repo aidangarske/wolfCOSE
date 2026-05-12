@@ -4247,6 +4247,120 @@ static void test_cose_encrypt_a128kw(void)
     wc_FreeRng(&rng);
 }
 
+/*
+ * Multi-recipient A128KW: same random CEK wrapped to two recipients
+ * with distinct KEKs. Each recipient must independently unwrap and
+ * recover the same plaintext; crossing the KEK indices must fail.
+ */
+static void test_cose_encrypt_a128kw_multi_recipient(void)
+{
+    WOLFCOSE_KEY kek1;
+    WOLFCOSE_KEY kek2;
+    WOLFCOSE_RECIPIENT recipients[2];
+    WOLFCOSE_RECIPIENT cross;
+    WOLFCOSE_HDR hdr;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[512];
+    size_t outLen;
+    uint8_t scratch[512];
+    uint8_t plain1[64];
+    uint8_t plain2[64];
+    size_t plain1Len = 0;
+    size_t plain2Len = 0;
+    const uint8_t payload[] = "Multi-KW payload";
+    uint8_t iv[12];
+    const uint8_t kek1Data[16] = {
+        0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,
+        0x18,0x19,0x1A,0x1B,0x1C,0x1D,0x1E,0x1F
+    };
+    const uint8_t kek2Data[16] = {
+        0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,
+        0x28,0x29,0x2A,0x2B,0x2C,0x2D,0x2E,0x2F
+    };
+
+    printf("  [Encrypt A128KW Multi-Recipient]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "kw-multi rng init");
+    wc_CoseKey_Init(&kek1);
+    wc_CoseKey_Init(&kek2);
+    ret = wc_CoseKey_SetSymmetric(&kek1, kek1Data, sizeof(kek1Data));
+    TEST_ASSERT(ret == 0, "kw-multi set kek1");
+    ret = wc_CoseKey_SetSymmetric(&kek2, kek2Data, sizeof(kek2Data));
+    TEST_ASSERT(ret == 0, "kw-multi set kek2");
+
+    recipients[0].algId = WOLFCOSE_ALG_A128KW;
+    recipients[0].key = &kek1;
+    recipients[0].kid = (const uint8_t*)"kw-r0";
+    recipients[0].kidLen = 5;
+    recipients[1].algId = WOLFCOSE_ALG_A128KW;
+    recipients[1].key = &kek2;
+    recipients[1].kid = (const uint8_t*)"kw-r1";
+    recipients[1].kidLen = 5;
+
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    TEST_ASSERT(ret == 0, "kw-multi iv");
+
+    ret = wc_CoseEncrypt_Encrypt(
+        recipients, 2,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "kw-multi encrypt");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(
+        &recipients[0], 0,
+        out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr,
+        plain1, sizeof(plain1), &plain1Len);
+    TEST_ASSERT(ret == 0, "kw-multi decrypt r0");
+    TEST_ASSERT(plain1Len == sizeof(payload) - 1, "kw-multi r0 len");
+    TEST_ASSERT(memcmp(plain1, payload, plain1Len) == 0,
+                "kw-multi r0 match");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(
+        &recipients[1], 1,
+        out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr,
+        plain2, sizeof(plain2), &plain2Len);
+    TEST_ASSERT(ret == 0, "kw-multi decrypt r1");
+    TEST_ASSERT(plain2Len == plain1Len, "kw-multi same len");
+    TEST_ASSERT(memcmp(plain1, plain2, plain1Len) == 0,
+                "kw-multi same plaintext");
+
+    /* Crossing the KEK index must fail because the wrapped CEK at
+     * index 0 was wrapped under kek1, not kek2. */
+    cross.algId = WOLFCOSE_ALG_A128KW;
+    cross.key = &kek2;
+    cross.kid = NULL;
+    cross.kidLen = 0;
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(
+        &cross, 0,
+        out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr,
+        plain1, sizeof(plain1), &plain1Len);
+    TEST_ASSERT(ret != 0, "kw-multi cross index rejected");
+
+    wc_CoseKey_Free(&kek1);
+    wc_CoseKey_Free(&kek2);
+    wc_FreeRng(&rng);
+}
+
 /**
  * Test COSE_Encrypt with A192KW key wrap algorithm.
  */
@@ -13332,6 +13446,7 @@ int test_cose(void)
 #endif
 #if defined(WOLFCOSE_KEY_WRAP)
     test_cose_encrypt_a128kw();
+    test_cose_encrypt_a128kw_multi_recipient();
     test_cose_encrypt_a192kw();
     test_cose_encrypt_a256kw();
     test_cose_encrypt_kw_wrong_keysize();
