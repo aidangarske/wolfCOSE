@@ -2654,6 +2654,7 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
     WC_RNG rng;
     int rngInited = 0;
     int rngSetOnRecipient = 0;
+    WC_RNG* priorRecipientRng = NULL;
 
     /* Parameter validation */
     if ((recipientKey == NULL) || (ephemPubX == NULL) || (ephemPubY == NULL) ||
@@ -2751,11 +2752,13 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
         }
     }
 
-    /* Set RNG on recipient key for ECDH.
-     * Note: this modifies the caller's key object by setting its RNG pointer.
-     * The cleanup path restores it only when this assignment succeeded. */
+    /* Set RNG on recipient key for ECDH. Save whatever the caller had
+     * attached so the cleanup path can put it back; the local rng
+     * here is stack-local and would dangle if we left it installed. */
     if (ret == WOLFCOSE_SUCCESS) {
-        int eccRet = wc_ecc_set_rng(recipientKey->key.ecc, &rng);
+        int eccRet;
+        priorRecipientRng = recipientKey->key.ecc->rng;
+        eccRet = wc_ecc_set_rng(recipientKey->key.ecc, &rng);
         if (eccRet != 0) {
             ret = WOLFCOSE_E_CRYPTO;
         }
@@ -2798,11 +2801,13 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
     if (ephemInited != 0) {
         (void)wc_ecc_free(&ephemPub);
     }
-    if (rngSetOnRecipient != 0) {
-        /* Restore the recipient key only when this function actually
-         * installed the stack-local RNG. Otherwise the caller's prior
-         * RNG pointer would be clobbered. */
-        (void)wc_ecc_set_rng(recipientKey->key.ecc, NULL);
+    if ((rngSetOnRecipient != 0) && (recipientKey != NULL) &&
+        (recipientKey->key.ecc != NULL)) {
+        /* Restore the caller's RNG pointer. The local rng here was
+         * stack-local; leaving it installed would dangle, but writing
+         * NULL would silently drop a hardware DEVID or personalised
+         * DRBG that the caller had attached before this call. */
+        recipientKey->key.ecc->rng = priorRecipientRng;
     }
     if (rngInited != 0) {
         (void)wc_FreeRng(&rng);

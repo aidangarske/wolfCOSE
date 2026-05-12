@@ -3237,6 +3237,179 @@ static void test_cose_sign_multi_signer(void)
     wc_FreeRng(&rng);
 }
 
+/*
+ * Multi-signer Sign_Verify with the recipient verify key pinned to a
+ * different algorithm than the one inside the message. Forces the
+ * verify-side key->alg binding check.
+ */
+static void test_cose_sign_verify_key_alg_mismatch(void)
+{
+    WOLFCOSE_KEY signKey;
+    WOLFCOSE_KEY verifyKey;
+    ecc_key eccKey;
+    WOLFCOSE_SIGNATURE signers[1];
+    WC_RNG rng;
+    int ret;
+    uint8_t out[512];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "sv-mismatch";
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+
+    printf("  [Sign_Verify key->alg mismatch]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "sv-mismatch rng");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "sv-mismatch ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "sv-mismatch keygen");
+
+    wc_CoseKey_Init(&signKey);
+    ret = wc_CoseKey_SetEcc(&signKey, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "sv-mismatch sign key set");
+    signers[0].algId = WOLFCOSE_ALG_ES256;
+    signers[0].key = &signKey;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+
+    ret = wc_CoseSign_Sign(signers, 1,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "sv-mismatch sign");
+
+    wc_CoseKey_Init(&verifyKey);
+    ret = wc_CoseKey_SetEcc(&verifyKey, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "sv-mismatch verify key set");
+    verifyKey.alg = WOLFCOSE_ALG_ES384;
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseSign_Verify(&verifyKey, 0, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Sign_Verify rejects pinned-alg mismatch");
+
+    wc_CoseKey_Free(&signKey);
+    wc_CoseKey_Free(&verifyKey);
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+
+/*
+ * Encrypt0_Decrypt key->alg binding. Encrypt with a clean key (no
+ * alg pin) so the message is well-formed, then attempt to decrypt
+ * with a pinned-mismatch key and expect WOLFCOSE_E_COSE_BAD_ALG.
+ */
+static void test_cose_encrypt0_decrypt_key_alg_mismatch(void)
+{
+    WOLFCOSE_KEY encKey;
+    WOLFCOSE_KEY decKey;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    uint8_t plaintext[128];
+    size_t plaintextLen = 0;
+    uint8_t key16[16] = {0};
+    uint8_t iv[12] = {0};
+    WOLFCOSE_HDR hdr;
+    const uint8_t payload[] = "e0-mismatch";
+
+    printf("  [Encrypt0_Decrypt key->alg mismatch]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "e0-mismatch rng");
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    TEST_ASSERT(ret == 0, "e0-mismatch iv");
+
+    wc_CoseKey_Init(&encKey);
+    ret = wc_CoseKey_SetSymmetric(&encKey, key16, sizeof(key16));
+    TEST_ASSERT(ret == 0, "e0-mismatch enc key");
+
+    ret = wc_CoseEncrypt0_Encrypt(&encKey, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "e0-mismatch encrypt");
+
+    wc_CoseKey_Init(&decKey);
+    ret = wc_CoseKey_SetSymmetric(&decKey, key16, sizeof(key16));
+    TEST_ASSERT(ret == 0, "e0-mismatch dec key");
+    decKey.alg = WOLFCOSE_ALG_A256GCM;
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt0_Decrypt(&decKey, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Encrypt0_Decrypt rejects pinned-alg mismatch");
+
+    wc_CoseKey_Free(&encKey);
+    wc_CoseKey_Free(&decKey);
+    wc_FreeRng(&rng);
+}
+
+/*
+ * Mac0_Verify key->alg binding.
+ */
+static void test_cose_mac0_verify_key_alg_mismatch(void)
+{
+    WOLFCOSE_KEY macKey;
+    WOLFCOSE_KEY verifyKey;
+    int ret;
+    uint8_t out[128];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    uint8_t hmacKey[32] = {0};
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    const uint8_t payload[] = "m0v-mismatch";
+
+    printf("  [Mac0_Verify key->alg mismatch]\n");
+
+    wc_CoseKey_Init(&macKey);
+    ret = wc_CoseKey_SetSymmetric(&macKey, hmacKey, sizeof(hmacKey));
+    TEST_ASSERT(ret == 0, "m0v-mismatch mac key");
+
+    ret = wc_CoseMac0_Create(&macKey, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "m0v-mismatch create");
+
+    wc_CoseKey_Init(&verifyKey);
+    ret = wc_CoseKey_SetSymmetric(&verifyKey, hmacKey, sizeof(hmacKey));
+    TEST_ASSERT(ret == 0, "m0v-mismatch verify key");
+    verifyKey.alg = WOLFCOSE_ALG_HMAC_512_512;
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac0_Verify(&verifyKey, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Mac0_Verify rejects pinned-alg mismatch");
+
+    wc_CoseKey_Free(&macKey);
+    wc_CoseKey_Free(&verifyKey);
+}
+
 static void test_cose_sign_both_payloads(void)
 {
     WOLFCOSE_KEY key;
@@ -13563,6 +13736,9 @@ int test_cose(void)
 #if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
     test_cose_sign_multi_signer();
     test_cose_sign_both_payloads();
+    test_cose_sign_verify_key_alg_mismatch();
+    test_cose_encrypt0_decrypt_key_alg_mismatch();
+    test_cose_mac0_verify_key_alg_mismatch();
     test_cose_sign_with_aad();
     test_cose_sign_detached();
 #ifdef HAVE_ED25519
