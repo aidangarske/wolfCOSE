@@ -577,12 +577,20 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
 static uint32_t wolfCose_LabelBit(int64_t label)
 {
     uint32_t bit;
+    uint32_t shift;
 
+    /* Convert each operand to an unsigned type before the subtraction so
+     * the composite expression is itself unsigned (avoids a cast across
+     * essential-type categories per MISRA C Rule 10.8). The earlier range
+     * checks bound the operand to [1, 16] / [-16, -1], so the cast is
+     * always exact. */
     if ((label >= 1) && (label <= 16)) {
-        bit = (uint32_t)1u << (uint32_t)(label - 1);
+        shift = (uint32_t)label - 1u;
+        bit = (uint32_t)1u << shift;
     }
     else if ((label <= -1) && (label >= -16)) {
-        bit = (uint32_t)1u << (uint32_t)((16 - label) - 1);
+        shift = (uint32_t)(16 - (int32_t)label) - 1u;
+        bit = (uint32_t)1u << shift;
     }
     else {
         bit = 0u;
@@ -664,9 +672,14 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
     }
     else if ((data == NULL) || (dataLen == 0u)) {
         /* Empty protected header is valid */
+        hdr->labelsSeen = 0u;
         ret = WOLFCOSE_SUCCESS;
     }
     else {
+        /* Defensive: zero the bookkeeping field before any OR so the
+         * function does not depend on the caller pre-zeroing the
+         * struct. */
+        hdr->labelsSeen = 0u;
         ctx.cbuf = data;
         ctx.bufSz = dataLen;
         ctx.idx = 0;
@@ -805,6 +818,10 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
     if ((ctx == NULL) || (hdr == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
+    /* Precondition: hdr was zero-initialised by the caller (or filled in
+     * by an earlier wolfCose_DecodeProtectedHdr call). labelsSeen is the
+     * accumulator across both header buckets; reading it before being
+     * written is the caller's responsibility. */
     else {
         size_t i;
         ret = wc_CBOR_DecodeMapStart(ctx, &mapCount);
