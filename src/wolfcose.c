@@ -98,23 +98,24 @@ static int wolfCose_ConstantCompare(const byte* a, const byte* b,
 }
 
 /* ----- RFC 9052 context strings (byte arrays so callers do not cast
- *       from char* and trigger MISRA Rule 11.3) ----- */
-const uint8_t WOLFCOSE_CTX_SIGNATURE1[10] = {
+ *       from char* and trigger MISRA Rule 11.3). Visibility matches the
+ *       extern declarations in wolfcose_internal.h. ----- */
+WOLFCOSE_LOCAL const uint8_t WOLFCOSE_CTX_SIGNATURE1[10] = {
     'S','i','g','n','a','t','u','r','e','1'
 };
-const uint8_t WOLFCOSE_CTX_SIGNATURE[9] = {
+WOLFCOSE_LOCAL const uint8_t WOLFCOSE_CTX_SIGNATURE[9] = {
     'S','i','g','n','a','t','u','r','e'
 };
-const uint8_t WOLFCOSE_CTX_MAC0[4] = {
+WOLFCOSE_LOCAL const uint8_t WOLFCOSE_CTX_MAC0[4] = {
     'M','A','C','0'
 };
-const uint8_t WOLFCOSE_CTX_MAC[3] = {
+WOLFCOSE_LOCAL const uint8_t WOLFCOSE_CTX_MAC[3] = {
     'M','A','C'
 };
-const uint8_t WOLFCOSE_CTX_ENCRYPT0[8] = {
+WOLFCOSE_LOCAL const uint8_t WOLFCOSE_CTX_ENCRYPT0[8] = {
     'E','n','c','r','y','p','t','0'
 };
-const uint8_t WOLFCOSE_CTX_ENCRYPT[7] = {
+WOLFCOSE_LOCAL const uint8_t WOLFCOSE_CTX_ENCRYPT[7] = {
     'E','n','c','r','y','p','t'
 };
 
@@ -3686,7 +3687,10 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
     WC_RNG* rng)
 {
     int ret = WOLFCOSE_SUCCESS;
-    const uint8_t bodyProtectedBuf[WOLFCOSE_PROTECTED_HDR_MAX] = {0};
+    /* Body-protected header is always empty for multi-signer (RFC 9052
+     * Section 4.1). Passing NULL with length 0 to the encoder is safe and
+     * keeps the encoder's NULL-with-positive-length guard happy. */
+    const uint8_t* bodyProtectedBuf = NULL;
     size_t bodyProtectedLen = 0;
     uint8_t signerProtectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
     size_t signerProtectedLen = 0;
