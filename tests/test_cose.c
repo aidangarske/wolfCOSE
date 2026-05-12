@@ -3278,10 +3278,53 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
         out, sizeof(out), &outLen,
         &rng);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
-                "Sign_Sign rejects ML-DSA level mismatch");
+                "Sign_Sign rejects ML-DSA-65 vs key-44 mismatch");
 
     wc_CoseKey_Free(&signKey);
     wc_dilithium_free(&dlKey);
+
+    /* Level-3 key with ML-DSA-44 algId */
+    ret = wc_dilithium_init(&dlKey);
+    TEST_ASSERT(ret == 0, "ml-dsa3 init");
+    ret = wc_dilithium_set_level(&dlKey, 3);
+    TEST_ASSERT(ret == 0, "ml-dsa3 set level");
+    ret = wc_dilithium_make_key(&dlKey, &rng);
+    TEST_ASSERT(ret == 0, "ml-dsa3 keygen");
+    wc_CoseKey_Init(&signKey);
+    ret = wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_65, &dlKey);
+    TEST_ASSERT(ret == 0, "ml-dsa3 set key");
+    signers[0].algId = WOLFCOSE_ALG_ML_DSA_44;
+    signers[0].key = &signKey;
+    ret = wc_CoseSign_Sign(signers, 1,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Sign_Sign rejects ML-DSA-44 vs key-65 mismatch");
+    wc_CoseKey_Free(&signKey);
+    wc_dilithium_free(&dlKey);
+
+    /* Level-5 key with ML-DSA-44 algId */
+    ret = wc_dilithium_init(&dlKey);
+    TEST_ASSERT(ret == 0, "ml-dsa5 init");
+    ret = wc_dilithium_set_level(&dlKey, 5);
+    TEST_ASSERT(ret == 0, "ml-dsa5 set level");
+    ret = wc_dilithium_make_key(&dlKey, &rng);
+    TEST_ASSERT(ret == 0, "ml-dsa5 keygen");
+    wc_CoseKey_Init(&signKey);
+    ret = wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_87, &dlKey);
+    TEST_ASSERT(ret == 0, "ml-dsa5 set key");
+    signers[0].algId = WOLFCOSE_ALG_ML_DSA_44;
+    signers[0].key = &signKey;
+    ret = wc_CoseSign_Sign(signers, 1,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Sign_Sign rejects ML-DSA-44 vs key-87 mismatch");
+    wc_CoseKey_Free(&signKey);
+    wc_dilithium_free(&dlKey);
+
     wc_FreeRng(&rng);
 }
 #endif
@@ -4036,6 +4079,93 @@ static void test_cose_encrypt_a256gcm(void)
  * - Decrypt with recipient's EC private key
  * - Verify roundtrip works correctly
  */
+/* ECDH-ES roundtrip with kid set on the recipient, plus a
+ * recipient-key alg-mismatch decrypt that must be rejected. Covers
+ * the kid-encode branch and recipient->key->alg pin in
+ * Encrypt_Decrypt. */
+static void test_cose_encrypt_ecdh_es_kid_and_alg_pin(void)
+{
+    WOLFCOSE_KEY recipientKey;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    ecc_key recipientEcc;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[1024];
+    size_t outLen = 0;
+    uint8_t scratch[1024];
+    uint8_t plaintext[128];
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "ECDH-ES kid payload";
+    uint8_t iv[12];
+
+    printf("  [Encrypt ECDH-ES kid + alg-pin]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "ecdh-es-kid rng");
+    ret = wc_ecc_init(&recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-kid ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-kid keygen");
+
+    wc_CoseKey_Init(&recipientKey);
+    ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-kid set key");
+    recipientKey.hasPrivate = 0;
+
+    recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+    recipient.key = &recipientKey;
+    recipient.kid = (const uint8_t*)"alice";
+    recipient.kidLen = 5;
+
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    TEST_ASSERT(ret == 0, "ecdh-es-kid iv");
+
+    ret = wc_CoseEncrypt_Encrypt(
+        &recipient, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "ecdh-es-kid encrypt");
+
+    recipientKey.hasPrivate = 1;
+
+    /* Reject decrypt when recipient->key->alg disagrees with algId. */
+    recipientKey.alg = WOLFCOSE_ALG_ECDH_ES_HKDF_512;
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(
+        &recipient, 0,
+        out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Encrypt_Decrypt rejects recipient alg mismatch");
+
+    /* Clear the pin and decrypt the success path. */
+    recipientKey.alg = WOLFCOSE_ALG_UNSET;
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(
+        &recipient, 0,
+        out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == 0, "ecdh-es-kid decrypt");
+    TEST_ASSERT(plaintextLen == sizeof(payload) - 1,
+                "ecdh-es-kid plaintext len");
+
+    wc_CoseKey_Free(&recipientKey);
+    wc_ecc_free(&recipientEcc);
+    wc_FreeRng(&rng);
+}
+
 static void test_cose_encrypt_ecdh_es_hkdf_256(void)
 {
     WOLFCOSE_KEY recipientKey;
@@ -13813,6 +13943,7 @@ int test_cose(void)
     test_cose_encrypt_with_aad();
     test_cose_encrypt_a256gcm();
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+    test_cose_encrypt_ecdh_es_kid_and_alg_pin();
     test_cose_encrypt_ecdh_es_hkdf_256();
     test_cose_encrypt_ecdh_es_wrong_key();
     test_cose_encrypt_ecdh_es_p384();
