@@ -792,6 +792,28 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
                     }
                 }
             }
+            else if (label == WOLFCOSE_HDR_IV) {
+                /* IV is permitted in the protected bucket per RFC 9052
+                 * Section 3.1. Capturing it here also makes the
+                 * IV-vs-Partial-IV mutual-exclusion check visible across
+                 * both buckets. */
+                const uint8_t* ivData;
+                size_t ivBstrLen;
+                ret = wc_CBOR_DecodeBstr(&ctx, &ivData, &ivBstrLen);
+                if (ret == WOLFCOSE_SUCCESS) {
+                    hdr->iv = ivData;
+                    hdr->ivLen = ivBstrLen;
+                }
+            }
+            else if (label == WOLFCOSE_HDR_PARTIAL_IV) {
+                const uint8_t* pivData;
+                size_t pivBstrLen;
+                ret = wc_CBOR_DecodeBstr(&ctx, &pivData, &pivBstrLen);
+                if (ret == WOLFCOSE_SUCCESS) {
+                    hdr->partialIv = pivData;
+                    hdr->partialIvLen = pivBstrLen;
+                }
+            }
             else {
                 /* Skip unknown header */
                 ret = wc_CBOR_Skip(&ctx);
@@ -801,6 +823,15 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
         /* Every label listed in crit must appear in the protected header. */
         if ((ret == WOLFCOSE_SUCCESS) &&
             ((critLabels & ~protSeen) != 0u)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+
+        /* RFC 9052 Section 3.1: IV and Partial IV MUST NOT both appear,
+         * even when split across the protected and unprotected buckets.
+         * Catch the in-protected duplication here before the unprotected
+         * decoder runs. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (hdr->iv != NULL) && (hdr->partialIv != NULL)) {
             ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
 
