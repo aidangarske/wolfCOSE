@@ -8911,6 +8911,417 @@ static void test_cose_decode_unprotected_tstr_label(void)
                 "DecodeUnprotectedHdr alg after tstr skip");
 }
 
+/* ----- Negative-path tests for caller-error rejection logic ----- */
+
+#if defined(HAVE_ECC)
+static void test_cose_setecc_invalid_curve(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    int ret;
+
+    printf("  [SetEcc invalid curve]\n");
+
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "setecc invalid ecc init");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_ED25519, &eccKey);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "SetEcc rejects ED25519 curve");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, 0, &eccKey);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "SetEcc rejects zero curve");
+
+    wc_ecc_free(&eccKey);
+}
+#endif
+
+#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE)
+static void test_cose_mac0_hmac_wrong_key_length(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t shortKey[16] = {0};
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t payload[] = "wrong key length";
+
+    printf("  [Mac0 HMAC wrong key length]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, shortKey, sizeof(shortKey));
+    TEST_ASSERT(ret == 0, "mac0 wrong keylen set");
+
+    /* HMAC-256/256 requires 32-byte key; 16-byte key must be rejected. */
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac0_Create rejects 16B key for HMAC-256/256");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE) && \
+    defined(WOLFCOSE_MAC0_VERIFY)
+static void test_cose_mac0_verify_wrong_key_length(void)
+{
+    WOLFCOSE_KEY signKey;
+    WOLFCOSE_KEY verifyKey;
+    int ret;
+    uint8_t goodKey[32] = {0};
+    uint8_t shortKey[16] = {0};
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    const uint8_t msg[] = "verify wrong keylen";
+
+    printf("  [Mac0 verify wrong key length]\n");
+
+    wc_CoseKey_Init(&signKey);
+    ret = wc_CoseKey_SetSymmetric(&signKey, goodKey, sizeof(goodKey));
+    TEST_ASSERT(ret == 0, "verify keylen sign key set");
+
+    ret = wc_CoseMac0_Create(&signKey, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0,
+        msg, sizeof(msg) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "verify keylen create ok");
+
+    wc_CoseKey_Init(&verifyKey);
+    ret = wc_CoseKey_SetSymmetric(&verifyKey, shortKey, sizeof(shortKey));
+    TEST_ASSERT(ret == 0, "verify keylen short key set");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac0_Verify(&verifyKey, out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac0_Verify rejects 16B key for HMAC-256/256");
+
+    wc_CoseKey_Free(&signKey);
+    wc_CoseKey_Free(&verifyKey);
+}
+#endif
+
+#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE)
+static void test_cose_mac0_create_key_alg_mismatch(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t keyBytes[32] = {0};
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t payload[] = "mismatch";
+
+    printf("  [Mac0_Create key->alg mismatch]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+    TEST_ASSERT(ret == 0, "mac0 mismatch key set");
+    key.alg = WOLFCOSE_ALG_HMAC_384_384; /* key declares HMAC-384 */
+
+    /* Caller asks for HMAC-256 -> RFC 9052 §7 rejection. */
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Mac0_Create rejects key->alg mismatch");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
+static void test_cose_encrypt0_key_alg_mismatch(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t keyBytes[16] = {0};
+    uint8_t iv[12] = {0};
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t payload[] = "mismatch";
+
+    printf("  [Encrypt0 key->alg mismatch]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+    TEST_ASSERT(ret == 0, "enc0 mismatch key set");
+    key.alg = WOLFCOSE_ALG_A256GCM; /* key declares A256GCM */
+
+    /* Caller asks for A128GCM -> RFC 9052 §7 rejection. */
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Encrypt0_Encrypt rejects key->alg mismatch");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
+static void test_cose_sign1_key_alg_mismatch(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t payload[] = "mismatch";
+
+    printf("  [Sign1 key->alg mismatch]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "sign1 mismatch rng");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "sign1 mismatch ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "sign1 mismatch keygen");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "sign1 mismatch key set");
+    key.alg = WOLFCOSE_ALG_ES256;
+
+    /* Pass ES384 to a key that declares ES256 -> reject. */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES384,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Sign1_Sign rejects key->alg mismatch");
+
+    wc_CoseKey_Free(&key);
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+
+static void test_cose_sign1_both_payloads(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t inline_payload[] = "inline";
+    const uint8_t detached_payload[] = "detached";
+
+    printf("  [Sign1 inline + detached rejected]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "sign1 both rng");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "sign1 both ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "sign1 both keygen");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "sign1 both key set");
+
+    /* Both payload and detachedPayload non-NULL must be rejected. */
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+        NULL, 0,
+        inline_payload, sizeof(inline_payload) - 1,
+        detached_payload, sizeof(detached_payload) - 1,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "Sign1_Sign rejects both inline and detached");
+
+    wc_CoseKey_Free(&key);
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+#endif
+
+#if defined(WOLFCOSE_KEY_DECODE)
+static void test_cose_key_decode_missing_kty(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    /* CBOR map with only label 3 (alg) -> no kty present. */
+    uint8_t noKty[] = {0xA1u, 0x03u, 0x26u};
+
+    printf("  [CoseKey_Decode missing kty]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, noKty, sizeof(noKty));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "CoseKey_Decode rejects missing kty");
+}
+
+static void test_cose_key_decode_trailing_bytes(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    /* {1: 4, -1: h'00...'} symmetric key followed by trailing garbage. */
+    uint8_t buf[] = {
+        0xA2u, 0x01u, 0x04u, 0x20u, 0x50u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0xFFu /* trailing byte */
+    };
+
+    printf("  [CoseKey_Decode trailing bytes]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, buf, sizeof(buf));
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "CoseKey_Decode rejects trailing bytes");
+}
+
+static void test_cose_key_decode_symmetric_missing_k(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    /* {1: 4} -> kty=Symmetric but no k label (-1). */
+    uint8_t noK[] = {0xA1u, 0x01u, 0x04u};
+
+    printf("  [CoseKey_Decode symmetric without k]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, noK, sizeof(noK));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "CoseKey_Decode rejects symmetric w/o k");
+}
+#endif
+
+#if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(HAVE_AESCCM)
+static void test_cose_encrypt0_detached_ccm_roundtrip(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t keyBytes[16] = {0};
+    uint8_t iv[13] = {0};
+    uint8_t out[128];
+    uint8_t scratch[512];
+    uint8_t detached[64];
+    uint8_t plaintext[64];
+    size_t outLen = 0;
+    size_t detachedLen = 0;
+    size_t plaintextLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t payload[] = "ccm detached roundtrip";
+
+    printf("  [Encrypt0 detached AES-CCM roundtrip]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+    TEST_ASSERT(ret == 0, "ccm rt key set");
+
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_AES_CCM_16_128_128,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        detached, sizeof(detached), &detachedLen,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "ccm rt encrypt");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
+        detached, detachedLen,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == 0, "ccm rt decrypt");
+    TEST_ASSERT(plaintextLen == sizeof(payload) - 1, "ccm rt pt len");
+    TEST_ASSERT(memcmp(plaintext, payload, plaintextLen) == 0,
+                "ccm rt pt match");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && \
+    defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+static void test_cose_encrypt0_detached_chacha_roundtrip(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t keyBytes[WOLFCOSE_CHACHA_KEY_SZ] = {0};
+    uint8_t iv[WOLFCOSE_CHACHA_NONCE_SZ] = {0};
+    uint8_t out[128];
+    uint8_t scratch[512];
+    uint8_t detached[64];
+    uint8_t plaintext[64];
+    size_t outLen = 0;
+    size_t detachedLen = 0;
+    size_t plaintextLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t payload[] = "chacha detached roundtrip";
+
+    printf("  [Encrypt0 detached ChaCha20-Poly1305 roundtrip]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+    TEST_ASSERT(ret == 0, "chacha rt key set");
+
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_CHACHA20_POLY1305,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        detached, sizeof(detached), &detachedLen,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "chacha rt encrypt");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
+        detached, detachedLen,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == 0, "chacha rt decrypt");
+    TEST_ASSERT(plaintextLen == sizeof(payload) - 1, "chacha rt pt len");
+    TEST_ASSERT(memcmp(plaintext, payload, plaintextLen) == 0,
+                "chacha rt pt match");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
 /* ----- Internal helper function tests ----- */
 static void test_internal_helpers(void)
 {
@@ -12969,6 +13380,38 @@ int test_cose(void)
     test_cose_decode_tstr_alg_values();
 #if defined(WOLFCOSE_SIGN) && defined(HAVE_ED448)
     test_cose_sign_multi_ed448_roundtrip();
+#endif
+#if defined(HAVE_ECC)
+    test_cose_setecc_invalid_curve();
+#endif
+#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE)
+    test_cose_mac0_hmac_wrong_key_length();
+    test_cose_mac0_create_key_alg_mismatch();
+#endif
+#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE) && \
+    defined(WOLFCOSE_MAC0_VERIFY)
+    test_cose_mac0_verify_wrong_key_length();
+#endif
+#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
+    test_cose_encrypt0_key_alg_mismatch();
+#endif
+#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
+    test_cose_sign1_key_alg_mismatch();
+    test_cose_sign1_both_payloads();
+#endif
+#if defined(WOLFCOSE_KEY_DECODE)
+    test_cose_key_decode_missing_kty();
+    test_cose_key_decode_trailing_bytes();
+    test_cose_key_decode_symmetric_missing_k();
+#endif
+#if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(HAVE_AESCCM)
+    test_cose_encrypt0_detached_ccm_roundtrip();
+#endif
+#if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && \
+    defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+    test_cose_encrypt0_detached_chacha_roundtrip();
 #endif
     test_internal_helpers();
 
