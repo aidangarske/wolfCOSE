@@ -312,6 +312,10 @@ extern "C" {
 #define WOLFCOSE_HDR_EPHEMERAL_KEY (-1)  /* Ephemeral COSE_Key for ECDH */
 
 /* Algorithms */
+/* Sentinel used for "no algorithm bound to this key/recipient yet".
+ * Explicit int32_t so comparisons against WOLFCOSE_KEY::alg satisfy
+ * MISRA C Rule 10.4 (same width-explicit essential type). */
+#define WOLFCOSE_ALG_UNSET      ((int32_t)0)
 #define WOLFCOSE_ALG_ES256      (-7)
 #define WOLFCOSE_ALG_ES384      (-35)
 #define WOLFCOSE_ALG_ES512      (-36)
@@ -425,6 +429,12 @@ typedef struct WOLFCOSE_CBOR_ITEM {
 
 /**
  * \brief Parsed COSE headers. Zero-copy pointers into the encoded message.
+ *
+ * Callers must zero-initialise the entire structure (e.g. via XMEMSET or
+ * `WOLFCOSE_HDR hdr = {0};`) before passing it to the protected or
+ * unprotected decoders. The decoders accumulate state in `labelsSeen` and
+ * read it back to detect cross-bucket duplicates; an uninitialised value
+ * here would violate MISRA C Rule 9.1.
  */
 typedef struct WOLFCOSE_HDR {
     int32_t        alg;           /**< Algorithm (from protected or unprotected) */

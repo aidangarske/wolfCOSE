@@ -1169,7 +1169,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             if ((key->kid != NULL) && (key->kidLen > 0u)) {
                 mapEntries++;
             }
-            if (key->alg != 0) {
+            if (key->alg != WOLFCOSE_ALG_UNSET) {
                 mapEntries++;
             }
             if (ret == WOLFCOSE_SUCCESS) {
@@ -1193,7 +1193,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 }
             }
             /* 3: alg (optional) */
-            if ((ret == WOLFCOSE_SUCCESS) && (key->alg != 0)) {
+            if ((ret == WOLFCOSE_SUCCESS) && (key->alg != WOLFCOSE_ALG_UNSET)) {
                 ret = wc_CBOR_EncodeUint(&ctx,
                     (uint64_t)WOLFCOSE_KEY_LABEL_ALG);
                 if (ret == WOLFCOSE_SUCCESS) {
@@ -3031,7 +3031,7 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
     }
     /* RFC 9052 Section 7: a key declaring an alg must be used with it. */
     if ((ret == WOLFCOSE_SUCCESS) &&
-        (key->alg != 0) && (key->alg != alg)) {
+        (key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
@@ -3800,7 +3800,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
                  ((signers[i].kid == NULL) && (signers[i].kidLen != 0u))) {
             ret = WOLFCOSE_E_INVALID_ARG;
         }
-        else if ((signers[i].key->alg != 0) &&
+        else if ((signers[i].key->alg != WOLFCOSE_ALG_UNSET) &&
                  (signers[i].key->alg != signers[i].algId)) {
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
@@ -4622,7 +4622,7 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
     }
     /* RFC 9052 Section 7: a key declaring an alg must be used with it. */
     if ((ret == WOLFCOSE_SUCCESS) &&
-        (key->alg != 0) && (key->alg != alg)) {
+        (key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
@@ -5509,7 +5509,7 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
     }
     /* RFC 9052 §7: when key->alg is set it MUST match the message alg. */
     if ((ret == WOLFCOSE_SUCCESS) &&
-        (key->alg != 0) && (key->alg != alg)) {
+        (key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
@@ -5788,7 +5788,7 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
     if (ret == WOLFCOSE_SUCCESS) {
         alg = hdr->alg;
         /* RFC 9052 §7: key->alg, when set, must match message alg. */
-        if ((key->alg != 0) && (key->alg != alg)) {
+        if ((key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
     }
@@ -6310,7 +6310,7 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         /* COSE_recipient = [protected, unprotected, ciphertext] */
 
         /* Encode recipient protected header */
-        if (recipients[i].algId != 0) {
+        if (recipients[i].algId != WOLFCOSE_ALG_UNSET) {
             ret = wolfCose_EncodeProtectedHdr(recipients[i].algId,
                 recipientProtectedBuf, sizeof(recipientProtectedBuf),
                 &recipientProtectedLen);
@@ -6986,7 +6986,7 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
     }
     if ((ret == WOLFCOSE_SUCCESS) &&
-        (recipients[0].key->alg != 0) &&
+        (recipients[0].key->alg != WOLFCOSE_ALG_UNSET) &&
         (recipients[0].key->alg != macAlgId)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
@@ -7128,7 +7128,7 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
     /* Encode each recipient */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
         /* Encode recipient protected header */
-        if (recipients[i].algId != 0) {
+        if (recipients[i].algId != WOLFCOSE_ALG_UNSET) {
             ret = wolfCose_EncodeProtectedHdr(recipients[i].algId,
                 recipientProtectedBuf, sizeof(recipientProtectedBuf),
                 &recipientProtectedLen);
@@ -7344,7 +7344,7 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
     }
     if ((ret == WOLFCOSE_SUCCESS) &&
-        (recipient->key->alg != 0) && (recipient->key->alg != alg)) {
+        (recipient->key->alg != WOLFCOSE_ALG_UNSET) && (recipient->key->alg != alg)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 

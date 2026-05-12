@@ -7660,7 +7660,7 @@ static void test_cose_protected_hdr_empty_map(void)
     /* RFC 9052 Section 3: empty protected header must be h'', not h'A0'. */
     int ret;
     WOLFCOSE_HDR hdr;
-    uint8_t emptyMap[] = {0xA0};
+    uint8_t emptyMap[] = {0xA0u};
 
     printf("  [Protected Header: empty serialized map]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -7673,7 +7673,7 @@ static void test_cose_protected_hdr_trailing(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
-    uint8_t trailing[] = {0xA1, 0x01, 0x26, 0xFF}; /* {1: -7}, garbage */
+    uint8_t trailing[] = {0xA1u, 0x01u, 0x26u, 0xFFu}; /* {1: -7}, garbage */
 
     printf("  [Protected Header: trailing bytes]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -7686,8 +7686,8 @@ static void test_cose_protected_hdr_content_type(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
-    uint8_t ctHdr[] = {0xA1, 0x03, 0x18, 0x32}; /* {3: 50} */
-    uint8_t ctTstr[] = {0xA1, 0x03, 0x69,
+    uint8_t ctHdr[] = {0xA1u, 0x03u, 0x18u, 0x32u}; /* {3: 50} */
+    uint8_t ctTstr[] = {0xA1u, 0x03u, 0x69u,
                          'a','p','p','l','i','c','a','t','e'};
 
     printf("  [Protected Header: content-type]\n");
@@ -7709,7 +7709,7 @@ static void test_cose_protected_hdr_tstr_label(void)
     int ret;
     WOLFCOSE_HDR hdr;
     /* {1: -7, "x": 0} : alg ES256, plus an unknown tstr label */
-    uint8_t tstrLabel[] = {0xA2, 0x01, 0x26, 0x61, 'x', 0x00};
+    uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
 
     printf("  [Protected Header: tstr-labeled entry]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -7724,7 +7724,7 @@ static void test_cose_protected_hdr_dup_label(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
-    uint8_t dupLabel[] = {0xA2, 0x01, 0x26, 0x01, 0x26};
+    uint8_t dupLabel[] = {0xA2u, 0x01u, 0x26u, 0x01u, 0x26u};
 
     printf("  [Protected Header: duplicate label]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -7738,11 +7738,11 @@ static void test_cose_protected_hdr_crit(void)
     int ret;
     WOLFCOSE_HDR hdr;
     /* {1: -7, 2: [1]} : crit lists alg (present in protected) */
-    uint8_t critOk[] = {0xA2, 0x01, 0x26, 0x02, 0x81, 0x01};
+    uint8_t critOk[] = {0xA2u, 0x01u, 0x26u, 0x02u, 0x81u, 0x01u};
     /* {1: -7, 2: [99]} : crit lists an unknown label */
-    uint8_t critBad[] = {0xA2, 0x01, 0x26, 0x02, 0x81, 0x18, 0x63};
+    uint8_t critBad[] = {0xA2u, 0x01u, 0x26u, 0x02u, 0x81u, 0x18u, 0x63u};
     /* {1: -7, 2: [5]} : crit lists IV but IV is not in protected */
-    uint8_t critMissing[] = {0xA2, 0x01, 0x26, 0x02, 0x81, 0x05};
+    uint8_t critMissing[] = {0xA2u, 0x01u, 0x26u, 0x02u, 0x81u, 0x05u};
 
     printf("  [Protected Header: crit]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -7766,8 +7766,8 @@ static void test_cose_cross_bucket_dup(void)
     int ret;
     WOLFCOSE_HDR hdr;
     WOLFCOSE_CBOR_CTX ctx;
-    uint8_t protAlg[] = {0xA1, 0x01, 0x26};
-    uint8_t unprotAlg[] = {0xA1, 0x01, 0x26};
+    uint8_t protAlg[] = {0xA1u, 0x01u, 0x26u};
+    uint8_t unprotAlg[] = {0xA1u, 0x01u, 0x26u};
 
     printf("  [Header: duplicate alg across buckets]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -7789,7 +7789,7 @@ static void test_cose_crit_in_unprotected(void)
     WOLFCOSE_HDR hdr;
     WOLFCOSE_CBOR_CTX ctx;
     /* {2: [1]} : crit in unprotected bucket - RFC 9052 forbids this. */
-    uint8_t critUnprot[] = {0xA1, 0x02, 0x81, 0x01};
+    uint8_t critUnprot[] = {0xA1u, 0x02u, 0x81u, 0x01u};
 
     printf("  [Unprotected Header: crit rejected]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -7807,7 +7807,7 @@ static void test_cose_iv_partial_iv(void)
     WOLFCOSE_HDR hdr;
     WOLFCOSE_CBOR_CTX ctx;
     /* {5: h'01', 6: h'02'} : IV and Partial IV both present */
-    uint8_t ivPiv[] = {0xA2, 0x05, 0x41, 0x01, 0x06, 0x41, 0x02};
+    uint8_t ivPiv[] = {0xA2u, 0x05u, 0x41u, 0x01u, 0x06u, 0x41u, 0x02u};
 
     printf("  [Unprotected Header: IV + Partial IV]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
