@@ -9355,6 +9355,69 @@ static void test_cose_sign1_key_alg_mismatch(void)
     wc_FreeRng(&rng);
 }
 
+/*
+ * Verify the verify-side key->alg binding fires when a caller pins a
+ * key to one algorithm and asks Sign1_Verify to use another. The Sign
+ * step uses a clean key (no alg pin) so the message is well-formed;
+ * the verify step uses a key locked to ES384.
+ */
+static void test_cose_sign1_verify_key_alg_mismatch(void)
+{
+    WOLFCOSE_KEY signKey;
+    WOLFCOSE_KEY verifyKey;
+    ecc_key eccKey;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t payload[] = "verify-mismatch";
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+
+    printf("  [Sign1_Verify key->alg mismatch]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "v-mismatch rng");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "v-mismatch ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "v-mismatch keygen");
+
+    wc_CoseKey_Init(&signKey);
+    ret = wc_CoseKey_SetEcc(&signKey, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "v-mismatch sign key set");
+
+    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ES256,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "v-mismatch sign");
+
+    wc_CoseKey_Init(&verifyKey);
+    ret = wc_CoseKey_SetEcc(&verifyKey, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "v-mismatch verify key set");
+    verifyKey.alg = WOLFCOSE_ALG_ES384;
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseSign1_Verify(&verifyKey, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Sign1_Verify rejects pinned-alg mismatch");
+
+    wc_CoseKey_Free(&signKey);
+    wc_CoseKey_Free(&verifyKey);
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+
 static void test_cose_sign1_both_payloads(void)
 {
     WOLFCOSE_KEY key;
@@ -13656,6 +13719,7 @@ int test_cose(void)
 #endif
 #if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
     test_cose_sign1_key_alg_mismatch();
+    test_cose_sign1_verify_key_alg_mismatch();
     test_cose_sign1_both_payloads();
 #endif
 #if defined(WOLFCOSE_MAC0_CREATE) && !defined(NO_HMAC)

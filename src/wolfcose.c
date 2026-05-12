@@ -3830,6 +3830,14 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
+    /* Inline and detached payloads address the same Sig_structure
+     * input, so refuse to silently pick one over the other when both
+     * are supplied. Matches the Sign1 / Mac0 contract. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (payload != NULL) && (detachedPayload != NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+
     /* Verify all signers have valid keys and alg-key type consistency.
      * Cross-validation here lets us fail fast before any hashing or
      * encoding starts. */
