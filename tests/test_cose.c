@@ -3242,6 +3242,60 @@ static void test_cose_sign_multi_signer(void)
  * different algorithm than the one inside the message. Forces the
  * verify-side key->alg binding check.
  */
+#if defined(HAVE_DILITHIUM) && defined(WOLFCOSE_SIGN)
+/*
+ * Multi-signer Sign with an ML-DSA-44 key whose algId says ML-DSA-65.
+ * The level/algId binding check must reject this with BAD_ALG before
+ * any signing happens.
+ */
+static void test_cose_sign_ml_dsa_level_mismatch(void)
+{
+    WOLFCOSE_KEY signKey;
+    dilithium_key dlKey;
+    WOLFCOSE_SIGNATURE signers[1];
+    WC_RNG rng;
+    int ret;
+    uint8_t out[64];
+    size_t outLen = 0;
+    uint8_t scratch[128];
+    const uint8_t payload[] = "mldsa-level";
+
+    printf("  [Sign multi-signer ML-DSA level mismatch]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "ml-dsa rng");
+    ret = wc_dilithium_init(&dlKey);
+    TEST_ASSERT(ret == 0, "ml-dsa init");
+    ret = wc_dilithium_set_level(&dlKey, 2);
+    TEST_ASSERT(ret == 0, "ml-dsa set level 2");
+    ret = wc_dilithium_make_key(&dlKey, &rng);
+    TEST_ASSERT(ret == 0, "ml-dsa keygen");
+
+    wc_CoseKey_Init(&signKey);
+    ret = wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    TEST_ASSERT(ret == 0, "ml-dsa set key");
+
+    /* algId says ML-DSA-65 but the key is level 2 (ML-DSA-44). */
+    signers[0].algId = WOLFCOSE_ALG_ML_DSA_65;
+    signers[0].key = &signKey;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+
+    ret = wc_CoseSign_Sign(signers, 1,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Sign_Sign rejects ML-DSA level mismatch");
+
+    wc_CoseKey_Free(&signKey);
+    wc_dilithium_free(&dlKey);
+    wc_FreeRng(&rng);
+}
+#endif
+
 static void test_cose_sign_verify_key_alg_mismatch(void)
 {
     WOLFCOSE_KEY signKey;
@@ -9767,6 +9821,38 @@ static void test_cose_key_decode_symmetric_missing_k(void)
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "CoseKey_Decode rejects symmetric w/o k");
 }
+
+#if defined(HAVE_ECC)
+/*
+ * CoseKey_Decode of an EC2 key whose x bstr is one byte shorter than
+ * the curve's coordinate size must be rejected. Without this the
+ * wc_ecc_import_unsigned call would consume curve-sized windows from
+ * the tmp stack buffer.
+ */
+static void test_cose_key_decode_ec2_short_coord(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    /* COSE EC2 P-256 with x = 31 bytes, y = 32 bytes.
+     * map(4): {1:2 (kty=EC2), -1:1 (crv=P256),
+     *          -2: bstr(31) of zeros, -3: bstr(32) of zeros} */
+    uint8_t shortX[] = {
+        0xA4u, 0x01u, 0x02u, 0x20u, 0x01u,
+        0x21u, 0x58u, 0x1Fu,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,
+        0x22u, 0x58u, 0x20u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    };
+
+    printf("  [CoseKey_Decode EC2 short x coord rejected]\n");
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, shortX, sizeof(shortX));
+    TEST_ASSERT(ret != WOLFCOSE_SUCCESS,
+                "CoseKey_Decode rejects short EC2 coord");
+}
+#endif
 #endif
 
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
@@ -13743,6 +13829,9 @@ int test_cose(void)
 #if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
     test_cose_sign_multi_signer();
     test_cose_sign_both_payloads();
+#if defined(HAVE_DILITHIUM) && defined(WOLFCOSE_SIGN)
+    test_cose_sign_ml_dsa_level_mismatch();
+#endif
     test_cose_sign_verify_key_alg_mismatch();
     test_cose_encrypt0_decrypt_key_alg_mismatch();
     test_cose_mac0_verify_key_alg_mismatch();
@@ -13958,6 +14047,9 @@ int test_cose(void)
     test_cose_key_decode_missing_kty();
     test_cose_key_decode_trailing_bytes();
     test_cose_key_decode_symmetric_missing_k();
+#if defined(HAVE_ECC)
+    test_cose_key_decode_ec2_short_coord();
+#endif
 #endif
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
     defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(HAVE_AESCCM)
