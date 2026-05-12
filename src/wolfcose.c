@@ -539,6 +539,51 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
 
 /* ----- Internal: Protected/Unprotected header encode/decode ----- */
 
+/* Map a COSE header/key label to a tracking bit. Returns 0 if the label
+ * is outside the small known range and should be ignored for tracking. */
+static uint32_t wolfCose_LabelBit(int64_t label)
+{
+    uint32_t bit;
+
+    if ((label >= 1) && (label <= 16)) {
+        bit = (uint32_t)1u << (uint32_t)(label - 1);
+    }
+    else if ((label <= -1) && (label >= -16)) {
+        bit = (uint32_t)1u << (uint32_t)((16 - label) - 1);
+    }
+    else {
+        bit = 0u;
+    }
+    return bit;
+}
+
+/* If the next decoder item is a tstr (text-string label, per RFC 9052
+ * label = int / tstr), skip both the label and its corresponding value
+ * and advance the loop counter. Returns WOLFCOSE_SUCCESS on skip,
+ * a positive value (1) if the next item is not a tstr (caller decodes
+ * as int), or a negative error code. */
+static int wolfCose_SkipIfTstrLabel(WOLFCOSE_CBOR_CTX* ctx, int* skipped)
+{
+    int ret;
+
+    *skipped = 0;
+    if (ctx->idx >= ctx->bufSz) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    else if (wc_CBOR_PeekType(ctx) == WOLFCOSE_CBOR_TSTR) {
+        /* Skip the tstr label, then skip the value. */
+        ret = wc_CBOR_Skip(ctx);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_Skip(ctx);
+        }
+        *skipped = 1;
+    }
+    else {
+        ret = WOLFCOSE_SUCCESS;
+    }
+    return ret;
+}
+
 int wolfCose_EncodeProtectedHdr(int32_t alg, uint8_t* buf, size_t bufSz,
                                  size_t* outLen)
 {
@@ -577,6 +622,9 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
     size_t i;
     int64_t label;
     int64_t intVal;
+    uint32_t critLabels = 0u;
+    uint32_t protSeen = 0u;
+    int skipped;
 
     if (hdr == NULL) {
         ret = WOLFCOSE_E_INVALID_ARG;
@@ -597,28 +645,115 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
             mapCount = 0; /* Coverity: clear tainted loop bound */
         }
 
+        /* RFC 9052 Section 3: an empty protected header must be encoded as
+         * a zero-length bstr, not as a serialized empty CBOR map. Reject
+         * the latter to enforce deterministic encoding. */
+        if ((ret == WOLFCOSE_SUCCESS) && (mapCount == 0u)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+
         for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < mapCount); i++) {
+            uint32_t bit;
+
+            /* RFC 9052: label = int / tstr. Tolerate tstr-labeled
+             * entries by skipping label + value. */
+            ret = wolfCose_SkipIfTstrLabel(&ctx, &skipped);
+            if ((ret != WOLFCOSE_SUCCESS) || (skipped != 0)) {
+                continue;
+            }
+
             ret = wc_CBOR_DecodeInt(&ctx, &label);
             if (ret != WOLFCOSE_SUCCESS) {
                 break;
             }
 
+            /* Reject duplicate labels within the same map (RFC 9052 Section 3). */
+            bit = wolfCose_LabelBit(label);
+            if ((bit != 0u) && ((protSeen & bit) != 0u)) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
+                break;
+            }
+            protSeen |= bit;
+
             if (label == WOLFCOSE_HDR_ALG) {
-                ret = wc_CBOR_DecodeInt(&ctx, &intVal);
-                if (ret == WOLFCOSE_SUCCESS) {
-                    hdr->alg = (int32_t)intVal;
+                /* alg value type is int / tstr per RFC 9052 Section 3.1. */
+                if ((ctx.idx < ctx.bufSz) &&
+                    (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TSTR)) {
+                    ret = wc_CBOR_Skip(&ctx);
+                }
+                else {
+                    ret = wc_CBOR_DecodeInt(&ctx, &intVal);
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        hdr->alg = (int32_t)intVal;
+                    }
+                }
+            }
+            else if (label == WOLFCOSE_HDR_CRIT) {
+                /* RFC 9052 Section 3.1: crit MUST be a non-empty array of
+                 * labels that the recipient must understand. Walk the array,
+                 * require integer entries in the set wolfCOSE recognizes,
+                 * defer the "label also present in protected" check until
+                 * the surrounding map is fully parsed. */
+                size_t critCount = 0;
+                size_t k;
+                int64_t critLabel;
+
+                ret = wc_CBOR_DecodeArrayStart(&ctx, &critCount);
+                if ((ret == WOLFCOSE_SUCCESS) &&
+                    ((critCount == 0u) ||
+                     (critCount > (size_t)WOLFCOSE_MAX_MAP_ITEMS))) {
+                    ret = WOLFCOSE_E_COSE_BAD_HDR;
+                }
+                for (k = 0; (ret == WOLFCOSE_SUCCESS) && (k < critCount); k++) {
+                    uint32_t critBit;
+                    if ((ctx.idx >= ctx.bufSz) ||
+                        (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TSTR)) {
+                        ret = WOLFCOSE_E_COSE_BAD_HDR;
+                        break;
+                    }
+                    ret = wc_CBOR_DecodeInt(&ctx, &critLabel);
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        critBit = wolfCose_LabelBit(critLabel);
+                        if (critBit == 0u) {
+                            ret = WOLFCOSE_E_COSE_BAD_HDR;
+                            break;
+                        }
+                        critLabels |= critBit;
+                    }
                 }
             }
             else if (label == WOLFCOSE_HDR_CONTENT_TYPE) {
-                ret = wc_CBOR_DecodeInt(&ctx, &intVal);
-                if (ret == WOLFCOSE_SUCCESS) {
-                    hdr->contentType = (int32_t)intVal;
+                /* content type value is uint / tstr per RFC 9052 Section 3.1. */
+                if ((ctx.idx < ctx.bufSz) &&
+                    (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TSTR)) {
+                    ret = wc_CBOR_Skip(&ctx);
+                }
+                else {
+                    ret = wc_CBOR_DecodeInt(&ctx, &intVal);
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        hdr->contentType = (int32_t)intVal;
+                    }
                 }
             }
             else {
                 /* Skip unknown header */
                 ret = wc_CBOR_Skip(&ctx);
             }
+        }
+
+        /* Every label listed in crit must appear in the protected header. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((critLabels & ~protSeen) != 0u)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+
+        /* Reject trailing data after the protected header map. */
+        if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+
+        if (ret == WOLFCOSE_SUCCESS) {
+            hdr->labelsSeen |= protSeen;
         }
     }
     return ret;
@@ -631,6 +766,8 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
     int64_t label;
     const uint8_t* bstrData;
     size_t bstrLen;
+    uint32_t unprotSeen = 0u;
+    int skipped;
 
     if ((ctx == NULL) || (hdr == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
@@ -645,10 +782,29 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
         }
 
         for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < mapCount); i++) {
+            uint32_t bit;
+
+            /* RFC 9052: label = int / tstr. Skip tstr-labeled entries. */
+            ret = wolfCose_SkipIfTstrLabel(ctx, &skipped);
+            if ((ret != WOLFCOSE_SUCCESS) || (skipped != 0)) {
+                continue;
+            }
+
             ret = wc_CBOR_DecodeInt(ctx, &label);
             if (ret != WOLFCOSE_SUCCESS) {
                 break;
             }
+
+            /* Reject duplicates within this map, and reject any label
+             * already seen in the protected header (RFC 9052 Section 3). */
+            bit = wolfCose_LabelBit(label);
+            if ((bit != 0u) &&
+                (((unprotSeen & bit) != 0u) ||
+                 ((hdr->labelsSeen & bit) != 0u))) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
+                break;
+            }
+            unprotSeen |= bit;
 
             if (label == WOLFCOSE_HDR_KID) {
                 ret = wc_CBOR_DecodeBstr(ctx, &bstrData, &bstrLen);
@@ -672,16 +828,32 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
                 }
             }
             else if (label == WOLFCOSE_HDR_ALG) {
-                /* Alg can appear in unprotected too (if not in protected) */
-                int64_t algVal;
-                ret = wc_CBOR_DecodeInt(ctx, &algVal);
-                if ((ret == WOLFCOSE_SUCCESS) && (hdr->alg == 0)) {
-                    hdr->alg = (int32_t)algVal;
+                /* alg value is int / tstr per RFC 9052 Section 3.1. */
+                if ((ctx->idx < ctx->bufSz) &&
+                    (wc_CBOR_PeekType(ctx) == WOLFCOSE_CBOR_TSTR)) {
+                    ret = wc_CBOR_Skip(ctx);
+                }
+                else {
+                    int64_t algVal;
+                    ret = wc_CBOR_DecodeInt(ctx, &algVal);
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        hdr->alg = (int32_t)algVal;
+                    }
                 }
             }
             else {
                 ret = wc_CBOR_Skip(ctx);
             }
+        }
+
+        /* RFC 9052 Section 3.1: IV and Partial IV MUST NOT both appear. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (hdr->iv != NULL) && (hdr->partialIv != NULL)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+
+        if (ret == WOLFCOSE_SUCCESS) {
+            hdr->labelsSeen |= unprotSeen;
         }
     }
     return ret;
@@ -1368,6 +1540,7 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
     size_t dLen = 0;
     const uint8_t* nData = NULL;  /* RSA: n (modulus) */
     size_t nLen = 0;
+    uint32_t keyLabelsSeen = 0u;
 
     if ((key == NULL) || (in == NULL) || (inSz == 0u)) {
         ret = WOLFCOSE_E_INVALID_ARG;
@@ -1385,10 +1558,27 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
         }
 
         for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < mapCount); i++) {
+            int keySkipped = 0;
+            uint32_t bit;
+
+            /* RFC 9052: COSE_Key labels follow label = int / tstr. */
+            ret = wolfCose_SkipIfTstrLabel(&ctx, &keySkipped);
+            if ((ret != WOLFCOSE_SUCCESS) || (keySkipped != 0)) {
+                continue;
+            }
+
             ret = wc_CBOR_DecodeInt(&ctx, &label);
             if (ret != WOLFCOSE_SUCCESS) {
                 break;
             }
+
+            /* Reject duplicate labels within the COSE_Key map. */
+            bit = wolfCose_LabelBit(label);
+            if ((bit != 0u) && ((keyLabelsSeen & bit) != 0u)) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
+                break;
+            }
+            keyLabelsSeen |= bit;
 
             if (label == WOLFCOSE_KEY_LABEL_KTY) {
                 ret = wc_CBOR_DecodeUint(&ctx, &uval);
@@ -1404,10 +1594,17 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 }
             }
             else if (label == WOLFCOSE_KEY_LABEL_ALG) {
-                int64_t algVal;
-                ret = wc_CBOR_DecodeInt(&ctx, &algVal);
-                if (ret == WOLFCOSE_SUCCESS) {
-                    key->alg = (int32_t)algVal;
+                /* alg value is int / tstr per RFC 9052 Section 7.1. */
+                if ((ctx.idx < ctx.bufSz) &&
+                    (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TSTR)) {
+                    ret = wc_CBOR_Skip(&ctx);
+                }
+                else {
+                    int64_t algVal;
+                    ret = wc_CBOR_DecodeInt(&ctx, &algVal);
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        key->alg = (int32_t)algVal;
+                    }
                 }
             }
             else if (label == WOLFCOSE_KEY_LABEL_CRV) {
@@ -2463,9 +2660,12 @@ static int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
     int haveCrv = 0;
     int haveX = 0;
     int haveY = 0;
+    int haveKty = 0;
     const uint8_t* data;
     size_t dataLen;
     int64_t intVal;
+    uint32_t ephemSeen = 0u;
+    int skipped;
 
     ret = wc_CBOR_DecodeMapStart(ctx, &mapCount);
 
@@ -2475,62 +2675,82 @@ static int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
     }
 
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < mapCount); i++) {
-        ret = wc_CBOR_DecodeInt(ctx, &label);
+        uint32_t bit;
 
-        if (ret == WOLFCOSE_SUCCESS) {
-            if (label == 1) {
-                /* kty - verify it's EC2 */
-                ret = wc_CBOR_DecodeInt(ctx, &intVal);
-                if ((ret == WOLFCOSE_SUCCESS) &&
-                    (intVal != WOLFCOSE_KTY_EC2)) {
-                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        ret = wolfCose_SkipIfTstrLabel(ctx, &skipped);
+        if ((ret != WOLFCOSE_SUCCESS) || (skipped != 0)) {
+            continue;
+        }
+
+        ret = wc_CBOR_DecodeInt(ctx, &label);
+        if (ret != WOLFCOSE_SUCCESS) {
+            break;
+        }
+
+        /* Reject duplicate labels within the ephemeral COSE_Key map. */
+        bit = wolfCose_LabelBit(label);
+        if ((bit != 0u) && ((ephemSeen & bit) != 0u)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+            break;
+        }
+        ephemSeen |= bit;
+
+        if (label == 1) {
+            /* kty - verify it's EC2 */
+            ret = wc_CBOR_DecodeInt(ctx, &intVal);
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (intVal != WOLFCOSE_KTY_EC2)) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                haveKty = 1;
+            }
+        }
+        else if (label == -1) {
+            /* crv */
+            ret = wc_CBOR_DecodeInt(ctx, &intVal);
+            if (ret == WOLFCOSE_SUCCESS) {
+                *crv = (int)intVal;
+                haveCrv = 1;
+            }
+        }
+        else if (label == -2) {
+            /* x coordinate */
+            ret = wc_CBOR_DecodeBstr(ctx, &data, &dataLen);
+            if (ret == WOLFCOSE_SUCCESS) {
+                if (dataLen > xSz) {
+                    ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+                }
+                else {
+                    (void)XMEMCPY(x, data, dataLen);
+                    *xLen = dataLen;
+                    haveX = 1;
                 }
             }
-            else if (label == -1) {
-                /* crv */
-                ret = wc_CBOR_DecodeInt(ctx, &intVal);
-                if (ret == WOLFCOSE_SUCCESS) {
-                    *crv = (int)intVal;
-                    haveCrv = 1;
+        }
+        else if (label == -3) {
+            /* y coordinate */
+            ret = wc_CBOR_DecodeBstr(ctx, &data, &dataLen);
+            if (ret == WOLFCOSE_SUCCESS) {
+                if (dataLen > ySz) {
+                    ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+                }
+                else {
+                    (void)XMEMCPY(y, data, dataLen);
+                    *yLen = dataLen;
+                    haveY = 1;
                 }
             }
-            else if (label == -2) {
-                /* x coordinate */
-                ret = wc_CBOR_DecodeBstr(ctx, &data, &dataLen);
-                if (ret == WOLFCOSE_SUCCESS) {
-                    if (dataLen > xSz) {
-                        ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
-                    }
-                    else {
-                        (void)XMEMCPY(x, data, dataLen);
-                        *xLen = dataLen;
-                        haveX = 1;
-                    }
-                }
-            }
-            else if (label == -3) {
-                /* y coordinate */
-                ret = wc_CBOR_DecodeBstr(ctx, &data, &dataLen);
-                if (ret == WOLFCOSE_SUCCESS) {
-                    if (dataLen > ySz) {
-                        ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
-                    }
-                    else {
-                        (void)XMEMCPY(y, data, dataLen);
-                        *yLen = dataLen;
-                        haveY = 1;
-                    }
-                }
-            }
-            else {
-                /* Unknown label - skip */
-                ret = wc_CBOR_Skip(ctx);
-            }
+        }
+        else {
+            /* Unknown label - skip */
+            ret = wc_CBOR_Skip(ctx);
         }
     }
 
     if (ret == WOLFCOSE_SUCCESS) {
-        if ((haveCrv == 0) || (haveX == 0) || (haveY == 0)) {
+        if ((haveKty == 0) || (haveCrv == 0) ||
+            (haveX == 0) || (haveY == 0)) {
             ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
     }
@@ -5500,6 +5720,7 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     size_t ephemPubYLen = 0;
     int ephemCrv = 0;
     int useEcdhEs = 0;
+    int haveEphemKey = 0;
 #endif
 #if defined(WOLFCOSE_KEY_WRAP)
     uint8_t cekKeyWrap[32];
@@ -5642,12 +5863,27 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
 
         for (j = 0; (ret == WOLFCOSE_SUCCESS) && (j < mapCount); j++) {
             int64_t label;
+            int recipSkipped = 0;
+
+            ret = wolfCose_SkipIfTstrLabel(&ctx, &recipSkipped);
+            if ((ret != WOLFCOSE_SUCCESS) || (recipSkipped != 0)) {
+                continue;
+            }
+
             ret = wc_CBOR_DecodeInt(&ctx, &label);
             if (ret == WOLFCOSE_SUCCESS) {
                 if (label == WOLFCOSE_HDR_EPHEMERAL_KEY) {
-                    ret = wolfCose_DecodeEphemeralKey(&ctx, &ephemCrv,
-                        ephemPubX, sizeof(ephemPubX), &ephemPubXLen,
-                        ephemPubY, sizeof(ephemPubY), &ephemPubYLen);
+                    if (haveEphemKey != 0) {
+                        ret = WOLFCOSE_E_CBOR_MALFORMED;
+                    }
+                    else {
+                        ret = wolfCose_DecodeEphemeralKey(&ctx, &ephemCrv,
+                            ephemPubX, sizeof(ephemPubX), &ephemPubXLen,
+                            ephemPubY, sizeof(ephemPubY), &ephemPubYLen);
+                        if (ret == WOLFCOSE_SUCCESS) {
+                            haveEphemKey = 1;
+                        }
+                    }
                 }
                 else {
                     ret = wc_CBOR_Skip(&ctx);

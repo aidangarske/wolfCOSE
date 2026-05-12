@@ -7652,6 +7652,153 @@ static void test_cbor_edge_cases(void)
     }
 }
 
+/* ----- Header processing compliance tests ----- */
+static void test_cose_protected_hdr_empty_map(void)
+{
+    /* RFC 9052 Section 3: empty protected header must be h'', not h'A0'. */
+    int ret;
+    WOLFCOSE_HDR hdr;
+    uint8_t emptyMap[] = {0xA0};
+
+    printf("  [Protected Header: empty serialized map]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(emptyMap, sizeof(emptyMap), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "DecodeProtectedHdr rejects serialized empty map");
+}
+
+static void test_cose_protected_hdr_trailing(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    uint8_t trailing[] = {0xA1, 0x01, 0x26, 0xFF}; /* {1: -7}, garbage */
+
+    printf("  [Protected Header: trailing bytes]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(trailing, sizeof(trailing), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "DecodeProtectedHdr rejects trailing bytes");
+}
+
+static void test_cose_protected_hdr_content_type(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    uint8_t ctHdr[] = {0xA1, 0x03, 0x18, 0x32}; /* {3: 50} */
+    uint8_t ctTstr[] = {0xA1, 0x03, 0x69,
+                         'a','p','p','l','i','c','a','t','e'};
+
+    printf("  [Protected Header: content-type]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(ctHdr, sizeof(ctHdr), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeProtectedHdr content-type uint");
+    TEST_ASSERT(hdr.contentType == 50,
+                "DecodeProtectedHdr stores content-type");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(ctTstr, sizeof(ctTstr), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeProtectedHdr tolerates tstr content-type");
+}
+
+static void test_cose_protected_hdr_tstr_label(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    /* {1: -7, "x": 0} : alg ES256, plus an unknown tstr label */
+    uint8_t tstrLabel[] = {0xA2, 0x01, 0x26, 0x61, 'x', 0x00};
+
+    printf("  [Protected Header: tstr-labeled entry]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(tstrLabel, sizeof(tstrLabel), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeProtectedHdr skips tstr labels");
+    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256,
+                "DecodeProtectedHdr alg after tstr skip");
+}
+
+static void test_cose_protected_hdr_dup_label(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    uint8_t dupLabel[] = {0xA2, 0x01, 0x26, 0x01, 0x26};
+
+    printf("  [Protected Header: duplicate label]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(dupLabel, sizeof(dupLabel), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "DecodeProtectedHdr rejects duplicate labels");
+}
+
+static void test_cose_protected_hdr_crit(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    /* {1: -7, 2: [1]} : crit lists alg (present in protected) */
+    uint8_t critOk[] = {0xA2, 0x01, 0x26, 0x02, 0x81, 0x01};
+    /* {1: -7, 2: [99]} : crit lists an unknown label */
+    uint8_t critBad[] = {0xA2, 0x01, 0x26, 0x02, 0x81, 0x18, 0x63};
+    /* {1: -7, 2: [5]} : crit lists IV but IV is not in protected */
+    uint8_t critMissing[] = {0xA2, 0x01, 0x26, 0x02, 0x81, 0x05};
+
+    printf("  [Protected Header: crit]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(critOk, sizeof(critOk), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeProtectedHdr crit with known label");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(critBad, sizeof(critBad), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "DecodeProtectedHdr crit with unknown label");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(critMissing, sizeof(critMissing), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "DecodeProtectedHdr crit missing referenced label");
+}
+
+static void test_cose_cross_bucket_dup(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX ctx;
+    uint8_t protAlg[] = {0xA1, 0x01, 0x26};
+    uint8_t unprotAlg[] = {0xA1, 0x01, 0x26};
+
+    printf("  [Header: duplicate alg across buckets]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(protAlg, sizeof(protAlg), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeProtectedHdr alg in protected");
+
+    ctx.cbuf = unprotAlg;
+    ctx.bufSz = sizeof(unprotAlg);
+    ctx.idx = 0;
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "DecodeUnprotectedHdr rejects cross-bucket dup");
+}
+
+static void test_cose_iv_partial_iv(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX ctx;
+    /* {5: h'01', 6: h'02'} : IV and Partial IV both present */
+    uint8_t ivPiv[] = {0xA2, 0x05, 0x41, 0x01, 0x06, 0x41, 0x02};
+
+    printf("  [Unprotected Header: IV + Partial IV]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ctx.cbuf = ivPiv;
+    ctx.bufSz = sizeof(ivPiv);
+    ctx.idx = 0;
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "DecodeUnprotectedHdr rejects IV+PartialIV");
+}
+
 /* ----- Internal helper function tests ----- */
 static void test_internal_helpers(void)
 {
@@ -7923,6 +8070,7 @@ static void test_internal_helpers(void)
             ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
             TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "DecodeUnprotectedHdr map>16");
         }
+
     }
 
     (void)hashType;
@@ -11641,6 +11789,14 @@ int test_cose(void)
     test_cose_mac0_key_sizes();
 #endif
     test_cbor_edge_cases();
+    test_cose_protected_hdr_empty_map();
+    test_cose_protected_hdr_trailing();
+    test_cose_protected_hdr_content_type();
+    test_cose_protected_hdr_tstr_label();
+    test_cose_protected_hdr_dup_label();
+    test_cose_protected_hdr_crit();
+    test_cose_cross_bucket_dup();
+    test_cose_iv_partial_iv();
     test_internal_helpers();
 
     /* Hardened / error-path tests */
