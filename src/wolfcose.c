@@ -1009,6 +1009,7 @@ int wc_CoseKey_SetEcc(WOLFCOSE_KEY* key, int32_t crv, ecc_key* eccKey)
     else {
         key->kty = WOLFCOSE_KTY_EC2;
         key->crv = crv;
+        key->alg = WOLFCOSE_ALG_UNSET;
         key->key.ecc = eccKey;
         /* Check if private key is present */
         key->hasPrivate = ((wc_ecc_size(eccKey) > 0) &&
@@ -1030,6 +1031,7 @@ int wc_CoseKey_SetEd25519(WOLFCOSE_KEY* key, ed25519_key* edKey)
     else {
         key->kty = WOLFCOSE_KTY_OKP;
         key->crv = WOLFCOSE_CRV_ED25519;
+        key->alg = WOLFCOSE_ALG_UNSET;
         key->key.ed25519 = edKey;
         key->hasPrivate = (edKey->privKeySet != 0u) ? 1u : 0u;
         ret = WOLFCOSE_SUCCESS;
@@ -1049,6 +1051,7 @@ int wc_CoseKey_SetEd448(WOLFCOSE_KEY* key, ed448_key* edKey)
     else {
         key->kty = WOLFCOSE_KTY_OKP;
         key->crv = WOLFCOSE_CRV_ED448;
+        key->alg = WOLFCOSE_ALG_UNSET;
         key->key.ed448 = edKey;
         key->hasPrivate = (edKey->privKeySet != 0u) ? 1u : 0u;
         ret = WOLFCOSE_SUCCESS;
@@ -1101,6 +1104,7 @@ int wc_CoseKey_SetRsa(WOLFCOSE_KEY* key, RsaKey* rsaKey)
     }
     else {
         key->kty = WOLFCOSE_KTY_RSA;
+        key->alg = WOLFCOSE_ALG_UNSET;
         key->key.rsa = rsaKey;
         key->hasPrivate = ((wc_RsaEncryptSize(rsaKey) > 0) &&
                            (rsaKey->type == RSA_PRIVATE)) ? 1u : 0u;
@@ -1120,6 +1124,7 @@ int wc_CoseKey_SetSymmetric(WOLFCOSE_KEY* key, const uint8_t* data,
     }
     else {
         key->kty = WOLFCOSE_KTY_SYMMETRIC;
+        key->alg = WOLFCOSE_ALG_UNSET;
         key->key.symm.key = data;
         key->key.symm.keyLen = dataLen;
         key->hasPrivate = 1;

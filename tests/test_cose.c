@@ -8139,6 +8139,8 @@ static void test_cose_protected_hdr_crit(void)
     uint8_t critBad[] = {0xA2u, 0x01u, 0x26u, 0x02u, 0x81u, 0x18u, 0x63u};
     /* {1: -7, 2: [5]} : crit lists IV but IV is not in protected */
     uint8_t critMissing[] = {0xA2u, 0x01u, 0x26u, 0x02u, 0x81u, 0x05u};
+    /* {1: -7, 2: []} : crit is an empty array -> RFC 9052 rejects */
+    uint8_t critEmpty[] = {0xA2u, 0x01u, 0x26u, 0x02u, 0x80u};
 
     printf("  [Protected Header: crit]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -8155,6 +8157,11 @@ static void test_cose_protected_hdr_crit(void)
     ret = wolfCose_DecodeProtectedHdr(critMissing, sizeof(critMissing), &hdr);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "DecodeProtectedHdr crit missing referenced label");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(critEmpty, sizeof(critEmpty), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "DecodeProtectedHdr crit empty array");
 }
 
 static void test_cose_cross_bucket_dup(void)
