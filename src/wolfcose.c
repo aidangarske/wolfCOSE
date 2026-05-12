@@ -923,6 +923,13 @@ int wc_CoseKey_SetEcc(WOLFCOSE_KEY* key, int32_t crv, ecc_key* eccKey)
     if ((key == NULL) || (eccKey == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
+    /* Only RFC 9053 EC2 curves are valid here. Catch misuse such as
+     * passing an OKP curve identifier at the point of mistake rather
+     * than several layers later when a coordinate size is needed. */
+    else if ((crv != WOLFCOSE_CRV_P256) && (crv != WOLFCOSE_CRV_P384) &&
+             (crv != WOLFCOSE_CRV_P521)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
     else {
         key->kty = WOLFCOSE_KTY_EC2;
         key->crv = crv;
@@ -1069,7 +1076,12 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             size_t coordSz;
             size_t mapEntries;
 
-            ret = wolfCose_CrvKeySize(key->crv, &coordSz);
+            if (key->key.ecc == NULL) {
+                ret = WOLFCOSE_E_INVALID_ARG;
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_CrvKeySize(key->crv, &coordSz);
+            }
 
             if (ret == WOLFCOSE_SUCCESS) {
                 INJECT_FAILURE(WOLF_FAIL_ECC_EXPORT_X963, -1)
@@ -1082,8 +1094,16 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 }
             }
 
-            /* Map: kty, crv, x, y [, d] */
-            mapEntries = key->hasPrivate ? 5u : 4u;
+            /* Map: kty [, kid] [, alg], crv, x, y [, d]. Optional kid and
+             * alg are emitted when set so the decode/encode roundtrip
+             * preserves them. */
+            mapEntries = (key->hasPrivate != 0u) ? 5u : 4u;
+            if ((key->kid != NULL) && (key->kidLen > 0u)) {
+                mapEntries++;
+            }
+            if (key->alg != 0) {
+                mapEntries++;
+            }
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
             }
@@ -1094,6 +1114,23 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             }
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wc_CBOR_EncodeUint(&ctx, (uint64_t)key->kty);
+            }
+            /* 2: kid (optional) */
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (key->kid != NULL) && (key->kidLen > 0u)) {
+                ret = wc_CBOR_EncodeUint(&ctx,
+                    (uint64_t)WOLFCOSE_KEY_LABEL_KID);
+                if (ret == WOLFCOSE_SUCCESS) {
+                    ret = wc_CBOR_EncodeBstr(&ctx, key->kid, key->kidLen);
+                }
+            }
+            /* 3: alg (optional) */
+            if ((ret == WOLFCOSE_SUCCESS) && (key->alg != 0)) {
+                ret = wc_CBOR_EncodeUint(&ctx,
+                    (uint64_t)WOLFCOSE_KEY_LABEL_ALG);
+                if (ret == WOLFCOSE_SUCCESS) {
+                    ret = wc_CBOR_EncodeInt(&ctx, (int64_t)key->alg);
+                }
             }
             /* -1: crv */
             if (ret == WOLFCOSE_SUCCESS) {
@@ -1157,7 +1194,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             size_t mapEntries;
 
             /* Get n directly into output buffer, e into small stack buf */
-            mapEntries = key->hasPrivate ? 4u : 3u;
+            mapEntries = (key->hasPrivate != 0u) ? 4u : 3u;
             ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
 
             /* 1: kty */
@@ -1306,7 +1343,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             word32 dlKeyLen;
             size_t hdrPos;
 
-            dlMapEntries = key->hasPrivate ? 4u : 3u;
+            dlMapEntries = (key->hasPrivate != 0u) ? 4u : 3u;
             ret = wc_CBOR_EncodeMapStart(&ctx, dlMapEntries);
 
             /* 1: kty = OKP (1) */
@@ -1442,7 +1479,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 ret = WOLFCOSE_E_COSE_BAD_ALG;
             }
 
-            mapEntries = key->hasPrivate ? 4u : 3u;
+            mapEntries = (key->hasPrivate != 0u) ? 4u : 3u;
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
             }
@@ -1861,16 +1898,34 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             else
 #endif /* HAVE_ED25519 || HAVE_ED448 */
             if (key->kty == WOLFCOSE_KTY_SYMMETRIC) {
-                /* nData holds the symmetric k value (parsed from label -1) */
-                if (nData != NULL) {
+                /* nData holds the symmetric k value (parsed from label -1).
+                 * Reject the message when the mandatory k parameter is
+                 * absent so callers cannot end up with an empty key. */
+                if (nData == NULL) {
+                    ret = WOLFCOSE_E_COSE_BAD_HDR;
+                }
+                else {
                     key->key.symm.key = nData;
                     key->key.symm.keyLen = nLen;
                     key->hasPrivate = 1;
                 }
             }
             else {
-                /* Unknown key type but we parsed OK -- leave it */
+                /* Other key types (EC2/OKP/RSA) without a caller-attached
+                 * wolfCrypt key reach this fall-through; the metadata
+                 * (kty, crv, alg, kid) is still populated so the caller
+                 * can inspect it. Nothing to do here. */
             }
+        }
+
+        /* RFC 9052 Section 7.1: kty is required in every COSE_Key. */
+        if ((ret == WOLFCOSE_SUCCESS) && (key->kty == 0)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+
+        /* RFC 8949 Section 5.3.1: reject trailing data after the map. */
+        if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
     }
 
