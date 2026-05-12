@@ -9192,6 +9192,38 @@ static void test_cose_sign1_both_payloads(void)
 }
 #endif
 
+#if defined(WOLFCOSE_MAC0_CREATE) && !defined(NO_HMAC)
+static void test_cose_mac0_both_payloads(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t hmacKey[32] = {0};
+    uint8_t out[128];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t inline_payload[] = "inline";
+    const uint8_t detached_payload[] = "detached";
+
+    printf("  [Mac0 inline + detached rejected]\n");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, hmacKey, sizeof(hmacKey));
+    TEST_ASSERT(ret == 0, "mac0 both key set");
+
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0,
+        inline_payload, sizeof(inline_payload) - 1,
+        detached_payload, sizeof(detached_payload) - 1,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "Mac0_Create rejects both inline and detached");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
 #if defined(WOLFCOSE_KEY_DECODE)
 static void test_cose_key_decode_missing_kty(void)
 {
@@ -13417,6 +13449,9 @@ int test_cose(void)
 #if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
     test_cose_sign1_key_alg_mismatch();
     test_cose_sign1_both_payloads();
+#endif
+#if defined(WOLFCOSE_MAC0_CREATE) && !defined(NO_HMAC)
+    test_cose_mac0_both_payloads();
 #endif
 #if defined(WOLFCOSE_KEY_DECODE)
     test_cose_key_decode_missing_kty();

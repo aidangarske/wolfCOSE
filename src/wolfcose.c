@@ -1792,18 +1792,30 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 }
                 else {
                     int wcCrv;
+                    size_t coordSz = 0;
                     ret = wolfCose_CrvToWcCurve(key->crv, &wcCrv);
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        ret = wolfCose_CrvKeySize(key->crv, &coordSz);
+                    }
                     if (ret == WOLFCOSE_SUCCESS) {
                         byte tmpX[MAX_ECC_BYTES];
                         byte tmpY[MAX_ECC_BYTES];
                         byte tmpD[MAX_ECC_BYTES];
 
-                        if ((xLen > sizeof(tmpX)) || (yLen > sizeof(tmpY)) ||
-                            ((dData != NULL) && (dLen > sizeof(tmpD)))) {
-                            ret = WOLFCOSE_E_INVALID_ARG;
+                        /* Coordinates must match the curve exactly so
+                         * wc_ecc_import_unsigned (which reads coordSz
+                         * bytes per coordinate) does not consume any
+                         * uninitialised stack data. */
+                        if ((coordSz > sizeof(tmpX)) ||
+                            (xLen != coordSz) || (yLen != coordSz) ||
+                            ((dData != NULL) && (dLen != coordSz))) {
+                            ret = WOLFCOSE_E_COSE_BAD_HDR;
                         }
 
                         if (ret == WOLFCOSE_SUCCESS) {
+                            (void)XMEMSET(tmpX, 0, sizeof(tmpX));
+                            (void)XMEMSET(tmpY, 0, sizeof(tmpY));
+                            (void)XMEMSET(tmpD, 0, sizeof(tmpD));
                             (void)XMEMCPY(tmpX, xData, xLen);
                             (void)XMEMCPY(tmpY, yData, yLen);
                             if (dData != NULL) {
@@ -2691,12 +2703,23 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
     if (ret == WOLFCOSE_SUCCESS) {
         byte tmpX[MAX_ECC_BYTES];
         byte tmpY[MAX_ECC_BYTES];
+        size_t coordSz = 0;
 
-        if (ephemPubLen > sizeof(tmpX)) {
-            ret = WOLFCOSE_E_INVALID_ARG;
+        /* wc_ecc_import_unsigned reads exactly key->dp->size bytes per
+         * coordinate with no length argument, so any short bstr from the
+         * sender would otherwise leak uninitialised stack contents into
+         * the imported point. Reject anything that is not the curve's
+         * exact coordinate length and zero the buffers for defence in
+         * depth before the copy. */
+        ret = wolfCose_CrvKeySize(recipientKey->crv, &coordSz);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((ephemPubLen != coordSz) || (coordSz > sizeof(tmpX)))) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
         if (ret == WOLFCOSE_SUCCESS) {
             int eccRet;
+            (void)XMEMSET(tmpX, 0, sizeof(tmpX));
+            (void)XMEMSET(tmpY, 0, sizeof(tmpY));
             (void)XMEMCPY(tmpX, ephemPubX, ephemPubLen);
             (void)XMEMCPY(tmpY, ephemPubY, ephemPubLen);
             eccRet = wc_ecc_import_unsigned(&ephemPub,
@@ -2932,6 +2955,19 @@ static int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
     if (ret == WOLFCOSE_SUCCESS) {
         if ((haveKty == 0) || (haveCrv == 0) ||
             (haveX == 0) || (haveY == 0)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+    }
+
+    /* RFC 9052 Section 7.1 fixes the EC2 coordinate length at the
+     * curve's full byte size. Reject any ephemeral COSE_Key whose x
+     * or y bstr departs from that size so downstream importers that
+     * read a curve-sized window cannot pick up uninitialised bytes. */
+    if (ret == WOLFCOSE_SUCCESS) {
+        size_t coordSz = 0;
+        ret = wolfCose_CrvKeySize(*crv, &coordSz);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((*xLen != coordSz) || (*yLen != coordSz))) {
             ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
     }
@@ -5484,6 +5520,13 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
 
     if ((key == NULL) || (scratch == NULL) ||
         (out == NULL) || (outLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    /* Inline and detached payloads address the same MAC input; refuse
+     * any caller that supplies both so we never silently choose one
+     * over the other. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (payload != NULL) && (detachedPayload != NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     /* Only reject NULL payload paired with a non-zero length. */
