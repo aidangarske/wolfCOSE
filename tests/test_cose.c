@@ -4147,7 +4147,9 @@ static void test_cose_encrypt_ecdh_es_kid_and_alg_pin(void)
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                 "Encrypt_Decrypt rejects recipient alg mismatch");
 
-    /* Clear the pin and decrypt the success path. */
+    /* Clear the pin and decrypt the success path. The wc_CoseEncrypt_Decrypt
+     * call above reads recipientKey.alg, but cppcheck cannot see through it. */
+    /* cppcheck-suppress redundantAssignment */
     recipientKey.alg = WOLFCOSE_ALG_UNSET;
     memset(&hdr, 0, sizeof(hdr));
     ret = wc_CoseEncrypt_Decrypt(
