@@ -5171,6 +5171,70 @@ static void test_cose_sign1_tampered_payload_byte(void)
     }
 }
 
+static void test_cose_sign1_tampered_protected_hdr(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
+    uint8_t payload[] = "Protected hdr tamper test";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+
+    printf("  [Sign1 Tampered Protected Header Byte]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) { rngInited = 1; }
+
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
+
+    if (ret == 0) {
+        wc_CoseKey_Init(&key);
+        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "sign for protected hdr tamper test");
+    }
+
+    /* Flip the inner alg byte: layout is 0xD2 (tag) 0x84 (array4)
+     * 0x43 (bstr3) 0xA1 0x01 0x26 ... protected map. Byte 5 is the alg
+     * value (0x26 == -7). The flip must change the protected-bstr
+     * contents so Sig_structure reconstruction picks up the tampered
+     * bytes and the signature check fails. */
+    if (ret == 0) {
+        int verifyRet;
+        if (outLen > 6) {
+            out[5] ^= 0x01;
+        }
+
+        verifyRet = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(verifyRet != WOLFCOSE_SUCCESS,
+                    "tampered protected hdr rejected");
+    }
+
+    if (eccInited != 0) { wc_ecc_free(&eccKey); }
+    if (rngInited != 0) { wc_FreeRng(&rng); }
+}
+
 static void test_cose_sign1_truncated_sig(void)
 {
     WOLFCOSE_KEY key;
@@ -13302,6 +13366,7 @@ int test_cose(void)
     printf("\n--- Negative Crypto Tests ---\n");
 #ifdef HAVE_ECC
     test_cose_sign1_tampered_sig_byte();
+    test_cose_sign1_tampered_protected_hdr();
     test_cose_sign1_tampered_payload_byte();
     test_cose_sign1_truncated_sig();
 #endif
