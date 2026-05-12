@@ -507,6 +507,14 @@ int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
+            else if (((size_t)rLen > coordSz) ||
+                     ((size_t)sLen > coordSz)) {
+                /* wc_ecc_sig_to_rs is documented to write at most
+                 * coordSz bytes per scalar, but guard against any
+                 * future breakage so the unconditional right-justify
+                 * below cannot underflow size_t. */
+                ret = WOLFCOSE_E_CRYPTO;
+            }
             else {
                 /* Right-justify r and s. Operations execute unconditionally
                  * to remove the branch on whether r or s had leading zero
@@ -2448,6 +2456,8 @@ static int wolfCose_EcdhEsDirect(int32_t alg,
     int ret = WOLFCOSE_SUCCESS;
     ecc_key ephemKey;
     int ephemInited = 0;
+    WC_RNG* priorRecipientRng = NULL;
+    int recipientRngSwapped = 0;
     uint8_t sharedSecret[66]; /* Max for P-521 */
     word32 sharedSecretLen = sizeof(sharedSecret);
     uint8_t kdfContext[64];
@@ -2518,15 +2528,19 @@ static int wolfCose_EcdhEsDirect(int32_t alg,
         }
     }
 
-    /* Set RNG on recipient key for ECDH (required by wolfSSL). The
-     * pointer references the caller's RNG, which outlives this call,
-     * so nothing here needs to be undone on the cleanup path; clearing
-     * the slot would silently strip RNG state that the caller may have
-     * installed before invoking wolfCOSE. */
+    /* Set RNG on recipient key for ECDH (required by wolfSSL). Save
+     * any RNG the caller had attached so we can put it back on exit;
+     * otherwise wolfCOSE would silently strip a hardware DEVID handle
+     * or personalised DRBG that survives across calls. */
     if (ret == WOLFCOSE_SUCCESS) {
-        int eccRet = wc_ecc_set_rng(recipientPub->key.ecc, rng);
+        int eccRet;
+        priorRecipientRng = recipientPub->key.ecc->rng;
+        eccRet = wc_ecc_set_rng(recipientPub->key.ecc, rng);
         if (eccRet != 0) {
             ret = WOLFCOSE_E_CRYPTO;
+        }
+        else {
+            recipientRngSwapped = 1;
         }
     }
 
@@ -2588,6 +2602,12 @@ static int wolfCose_EcdhEsDirect(int32_t alg,
     /* Cleanup: always executed */
     if (ephemInited != 0) {
         (void)wc_ecc_free(&ephemKey);
+    }
+    /* Restore whatever RNG the caller had attached so the recipient
+     * key looks identical to its pre-call state. */
+    if ((recipientRngSwapped != 0) && (recipientPub != NULL) &&
+        (recipientPub->key.ecc != NULL)) {
+        recipientPub->key.ecc->rng = priorRecipientRng;
     }
     (void)wolfCose_ForceZero(sharedSecret, sizeof(sharedSecret));
 

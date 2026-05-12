@@ -3237,6 +3237,51 @@ static void test_cose_sign_multi_signer(void)
     wc_FreeRng(&rng);
 }
 
+static void test_cose_sign_both_payloads(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WOLFCOSE_SIGNATURE signers[1];
+    WC_RNG rng;
+    int ret;
+    uint8_t out[256];
+    uint8_t scratch[256];
+    size_t outLen = 0;
+    const uint8_t inline_payload[] = "inline";
+    const uint8_t detached_payload[] = "detached";
+
+    printf("  [Sign multi-signer both payloads rejected]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "sign-both rng");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "sign-both ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "sign-both keygen");
+
+    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "sign-both key set");
+    signers[0].algId = WOLFCOSE_ALG_ES256;
+    signers[0].key = &key;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+
+    ret = wc_CoseSign_Sign(signers, 1,
+        inline_payload, sizeof(inline_payload) - 1,
+        detached_payload, sizeof(detached_payload) - 1,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "Sign_Sign rejects both inline and detached");
+
+    wc_CoseKey_Free(&key);
+    wc_ecc_free(&eccKey);
+    wc_FreeRng(&rng);
+}
+
 static void test_cose_sign_with_aad(void)
 {
     WOLFCOSE_KEY key;
@@ -13517,6 +13562,7 @@ int test_cose(void)
     /* Multi-signer tests */
 #if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
     test_cose_sign_multi_signer();
+    test_cose_sign_both_payloads();
     test_cose_sign_with_aad();
     test_cose_sign_detached();
 #ifdef HAVE_ED25519
