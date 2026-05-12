@@ -5882,7 +5882,7 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
     size_t encStructLen = 0;
     Aes aes;
     int aesInited = 0;
-    size_t keyLen;
+    size_t keyLen = 0;
     size_t aeadTagLen = 0;
     size_t ciphertextLen = 0;
     const uint8_t* encryptPayload = NULL;
