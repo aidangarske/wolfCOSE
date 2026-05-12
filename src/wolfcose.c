@@ -3891,6 +3891,20 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
                  (signers[i].key->kty != WOLFCOSE_KTY_OKP)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
+        /* Bind ML-DSA level to algId: a key declaring level k must not
+         * sign with algId for any other level k'. */
+        else if ((signers[i].algId == WOLFCOSE_ALG_ML_DSA_44) &&
+                 (signers[i].key->crv != WOLFCOSE_CRV_ML_DSA_44)) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+        else if ((signers[i].algId == WOLFCOSE_ALG_ML_DSA_65) &&
+                 (signers[i].key->crv != WOLFCOSE_CRV_ML_DSA_65)) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+        else if ((signers[i].algId == WOLFCOSE_ALG_ML_DSA_87) &&
+                 (signers[i].key->crv != WOLFCOSE_CRV_ML_DSA_87)) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
 #endif
         else {
             /* No action required */
@@ -5243,6 +5257,12 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
     if (ret == WOLFCOSE_SUCCESS) {
         *plaintextLen = payloadSz;
     }
+    else if (plaintextLen != NULL) {
+        /* Keep *plaintextLen consistent with the zeroed plaintext on
+         * failure so a caller that ignores ret cannot observe a stale
+         * non-zero length next to scrubbed bytes. */
+        *plaintextLen = 0u;
+    }
 
     /* Cleanup: always executed */
 #if defined(HAVE_AESGCM) || defined(HAVE_AESCCM)
@@ -6585,11 +6605,14 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     }
 
     /* Honour the recipient key->alg binding on the decrypt path
-     * (RFC 9052 Section 7). */
+     * (RFC 9052 Section 7). The recipient's key is bound to the
+     * recipient-layer algorithm (e.g. ECDH-ES-HKDF-256 or A128KW),
+     * not the content AEAD algorithm, so compare against
+     * recipient->algId rather than the body alg. */
     if ((ret == WOLFCOSE_SUCCESS) && (recipient != NULL) &&
         (recipient->key != NULL) &&
         (recipient->key->alg != WOLFCOSE_ALG_UNSET) &&
-        (recipient->key->alg != alg)) {
+        (recipient->key->alg != recipient->algId)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
@@ -6947,6 +6970,9 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     if (ret != WOLFCOSE_SUCCESS) {
         if (plaintext != NULL) {
             (void)wolfCose_ForceZero(plaintext, plaintextSz);
+        }
+        if (plaintextLen != NULL) {
+            *plaintextLen = 0u;
         }
     }
     else {
