@@ -3491,7 +3491,18 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
 
     if (ret == WOLFCOSE_SUCCESS) {
         alg = hdr->alg;
+    }
 
+    /* Mirror the producer-side key->alg binding. RFC 9052 Section 7
+     * lets a key declare the algorithm it is intended for; honour it
+     * on the verify path as well so a key locked to ES256 is not
+     * silently usable to verify, e.g., ES384 messages. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+
+    if (ret == WOLFCOSE_SUCCESS) {
         /* Rebuild Sig_structure in scratch using appropriate payload */
         ret = wolfCose_BuildSigStructure(protectedData, protectedLen,
                                           extAad, extAadLen,
@@ -4343,6 +4354,14 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         }
     }
 
+    /* Apply the producer-side key->alg binding on the verify path too
+     * (RFC 9052 Section 7). */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (verifyKey->alg != WOLFCOSE_ALG_UNSET) &&
+        (verifyKey->alg != alg)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+
     /* Signer unprotected headers (skip for now) */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wc_CBOR_Skip(&ctx);
@@ -5069,6 +5088,16 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
 
     if (ret == WOLFCOSE_SUCCESS) {
         alg = hdr->alg;
+    }
+
+    /* Honour the producer-side key->alg binding on the decrypt path
+     * (RFC 9052 Section 7). */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+
+    if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_AeadKeyLen(alg, &aeadKeyLen);
     }
 
@@ -6553,6 +6582,15 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     }
     if (ret == WOLFCOSE_SUCCESS) {
         alg = hdr->alg;
+    }
+
+    /* Honour the recipient key->alg binding on the decrypt path
+     * (RFC 9052 Section 7). */
+    if ((ret == WOLFCOSE_SUCCESS) && (recipient != NULL) &&
+        (recipient->key != NULL) &&
+        (recipient->key->alg != WOLFCOSE_ALG_UNSET) &&
+        (recipient->key->alg != alg)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
     /* [1] unprotected header */
