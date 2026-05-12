@@ -887,6 +887,14 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr)
                 break;
             }
 
+            /* RFC 9052 Section 3.1: crit MUST appear only in the
+             * protected header. Reject any sender that places it in
+             * the unprotected bucket. */
+            if (label == WOLFCOSE_HDR_CRIT) {
+                ret = WOLFCOSE_E_COSE_BAD_HDR;
+                break;
+            }
+
             /* Reject duplicates within this map, and reject any label
              * already seen in the protected header (RFC 9052 Section 3). */
             bit = wolfCose_LabelBit(label);
@@ -5375,16 +5383,14 @@ static int wolfCose_AesCbcMac(const uint8_t* key, size_t keyLen,
         }
     }
 
-    /* RFC 9053 Section 3.2 does not pin a specific padding scheme;
-     * wolfCOSE uses ISO/IEC 9797-1 Padding Method 2 (append 0x80 then
-     * zeros, always emit a padded block including for block-aligned or
-     * empty inputs) so MAC inputs round-trip unambiguously. */
-    if (ret == WOLFCOSE_SUCCESS) {
+    /* RFC 9053 Section 3.2 references FIPS PUB 113 zero padding:
+     * partial trailing blocks are zero-padded to the block size, and
+     * block-aligned inputs receive no extra padding block. */
+    if ((ret == WOLFCOSE_SUCCESS) && (lastBlockLen > 0u)) {
         (void)XMEMSET(inBlock, 0, sizeof(inBlock));
         for (i = 0; i < lastBlockLen; i++) {
             inBlock[i] = data[(numBlocks * AES_BLOCK_SIZE) + i];
         }
-        inBlock[lastBlockLen] = 0x80u;
 
         aesRet = wc_AesSetKey(&aes, key, (word32)keyLen, iv, AES_ENCRYPTION);
         if (aesRet != 0) {

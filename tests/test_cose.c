@@ -7783,6 +7783,24 @@ static void test_cose_cross_bucket_dup(void)
                 "DecodeUnprotectedHdr rejects cross-bucket dup");
 }
 
+static void test_cose_crit_in_unprotected(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX ctx;
+    /* {2: [1]} : crit in unprotected bucket - RFC 9052 forbids this. */
+    uint8_t critUnprot[] = {0xA1, 0x02, 0x81, 0x01};
+
+    printf("  [Unprotected Header: crit rejected]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ctx.cbuf = critUnprot;
+    ctx.bufSz = sizeof(critUnprot);
+    ctx.idx = 0;
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "DecodeUnprotectedHdr rejects crit");
+}
+
 static void test_cose_iv_partial_iv(void)
 {
     int ret;
@@ -13320,6 +13338,7 @@ int test_cose(void)
     test_cose_protected_hdr_dup_label();
     test_cose_protected_hdr_crit();
     test_cose_cross_bucket_dup();
+    test_cose_crit_in_unprotected();
     test_cose_iv_partial_iv();
 #if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
     test_cose_sign1_alg_curve_mismatch();
