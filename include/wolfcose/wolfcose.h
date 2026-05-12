@@ -363,11 +363,12 @@ extern "C" {
 #define WOLFCOSE_ALG_ECDH_ES_A192KW    (-30)  /* ECDH-ES + A192KW */
 #define WOLFCOSE_ALG_ECDH_ES_A256KW    (-31)  /* ECDH-ES + A256KW */
 
-#ifdef HAVE_DILITHIUM
+/* ML-DSA algorithm identifiers are exposed unconditionally so callers
+ * can dispatch on them in mixed builds; the corresponding sign/verify
+ * paths only compile when HAVE_DILITHIUM is set. */
 #define WOLFCOSE_ALG_ML_DSA_44   (-48)   /* ML-DSA (Dilithium) Level 2 */
 #define WOLFCOSE_ALG_ML_DSA_65   (-49)   /* ML-DSA Level 3 */
 #define WOLFCOSE_ALG_ML_DSA_87   (-50)   /* ML-DSA Level 5 */
-#endif
 
 /* Key types */
 #define WOLFCOSE_KTY_OKP         1
