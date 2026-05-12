@@ -7986,6 +7986,13 @@ static void test_cose_iv_partial_iv(void)
     WOLFCOSE_CBOR_CTX ctx;
     /* {5: h'01', 6: h'02'} : IV and Partial IV both present */
     uint8_t ivPiv[] = {0xA2u, 0x05u, 0x41u, 0x01u, 0x06u, 0x41u, 0x02u};
+    /* {5: h'01020304'} : IV only (protected, valid) */
+    uint8_t ivOnlyProt[] = {0xA1u, 0x05u, 0x44u, 0x01u, 0x02u, 0x03u, 0x04u};
+    /* {6: h'07'} : Partial IV only (protected, valid) */
+    uint8_t pivOnlyProt[] = {0xA1u, 0x06u, 0x41u, 0x07u};
+    /* {5: h'01', 6: h'02'} in protected: forbidden cross-bucket pair */
+    uint8_t ivPivProt[] = {0xA2u, 0x05u, 0x41u, 0x01u,
+                            0x06u, 0x41u, 0x02u};
 
     printf("  [Unprotected Header: IV + Partial IV]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -7995,6 +8002,27 @@ static void test_cose_iv_partial_iv(void)
     ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "DecodeUnprotectedHdr rejects IV+PartialIV");
+
+    /* IV inside the protected header bucket must surface in hdr->iv
+     * so cross-bucket Partial-IV detection works. */
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(ivOnlyProt, sizeof(ivOnlyProt), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeProtectedHdr IV-only");
+    TEST_ASSERT((hdr.iv != NULL) && (hdr.ivLen == 4u),
+                "DecodeProtectedHdr surfaces IV");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(pivOnlyProt, sizeof(pivOnlyProt), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeProtectedHdr Partial-IV only");
+    TEST_ASSERT((hdr.partialIv != NULL) && (hdr.partialIvLen == 1u),
+                "DecodeProtectedHdr surfaces Partial-IV");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(ivPivProt, sizeof(ivPivProt), &hdr);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "DecodeProtectedHdr rejects IV+PartialIV in same bucket");
 }
 
 /* ----- Signature path compliance tests ----- */
