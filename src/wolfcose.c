@@ -759,6 +759,17 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
                     }
                     ret = wc_CBOR_DecodeInt(&ctx, &critLabel);
                     if (ret == WOLFCOSE_SUCCESS) {
+                        /* RFC 9052 Section 3.1: every label listed in
+                         * crit must be one wolfCOSE actually processes.
+                         * The standard COSE header labels we understand
+                         * are alg (1), crit (2), content type (3),
+                         * kid (4), iv (5), partial iv (6). Anything
+                         * outside that set is unknown to us and the
+                         * message must be rejected. */
+                        if ((critLabel < 1) || (critLabel > 6)) {
+                            ret = WOLFCOSE_E_COSE_BAD_HDR;
+                            break;
+                        }
                         critBit = wolfCose_LabelBit(critLabel);
                         if (critBit == 0u) {
                             ret = WOLFCOSE_E_COSE_BAD_HDR;
@@ -5333,11 +5344,10 @@ static int wolfCose_AesCbcMac(const uint8_t* key, size_t keyLen,
         }
     }
 
-    /* RFC 9053 Section 3.2 requires ISO/IEC 9797-1 Padding Method 2:
-     * append a single 0x80 byte followed by zero bytes to fill the
-     * block. The padded block is always processed, even when the input
-     * is block-aligned or empty (in which case the padded block holds
-     * only the 0x80 delimiter and 15 zero bytes). */
+    /* RFC 9053 Section 3.2 does not pin a specific padding scheme;
+     * wolfCOSE uses ISO/IEC 9797-1 Padding Method 2 (append 0x80 then
+     * zeros, always emit a padded block including for block-aligned or
+     * empty inputs) so MAC inputs round-trip unambiguously. */
     if (ret == WOLFCOSE_SUCCESS) {
         (void)XMEMSET(inBlock, 0, sizeof(inBlock));
         for (i = 0; i < lastBlockLen; i++) {
