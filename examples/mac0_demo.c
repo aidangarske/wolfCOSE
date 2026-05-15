@@ -207,6 +207,9 @@ static int demo_mac0_with_aad(void)
     size_t outLen = 0;
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
+    static const uint8_t wrongAad[] = {
+        0x57u, 0x72u, 0x6Fu, 0x6Eu, 0x67u, 0x20u, 0x41u, 0x41u, 0x44u
+    };
     WOLFCOSE_HDR hdr;
     int ret;
 
@@ -237,7 +240,6 @@ static int demo_mac0_with_aad(void)
     DEMO_ASSERT(ret == 0, "Verify with correct AAD");
 
     /* Verify wrong AAD fails */
-    uint8_t wrongAad[] = "Wrong AAD";
     ret = wc_CoseMac0_Verify(&key, out, outLen,
         NULL, 0,                           /* detachedPayload, detachedLen */
         wrongAad, sizeof(wrongAad) - 1,    /* extAad, extAadLen */

@@ -41,10 +41,16 @@
 static int demo_random_iv(uint8_t* iv, size_t ivLen)
 {
     WC_RNG rng;
-    int ret = wc_InitRng(&rng);
+    int freeRet;
+    int ret;
+
+    ret = wc_InitRng(&rng);
     if (ret == 0) {
         ret = wc_RNG_GenerateBlock(&rng, iv, (word32)ivLen);
-        (void)wc_FreeRng(&rng);
+        freeRet = wc_FreeRng(&rng);
+        if ((ret == 0) && (freeRet != 0)) {
+            ret = freeRet;
+        }
     }
     return ret;
 }
@@ -211,6 +217,9 @@ static int demo_encrypt0_with_aad(void)
     size_t outLen = 0;
     uint8_t plaintext[128];
     size_t plaintextLen = 0;
+    static const uint8_t wrongAad[] = {
+        0x57u, 0x72u, 0x6Fu, 0x6Eu, 0x67u, 0x20u, 0x41u, 0x41u, 0x44u
+    };
     WOLFCOSE_HDR hdr;
     int ret;
 
@@ -242,7 +251,6 @@ static int demo_encrypt0_with_aad(void)
     DEMO_ASSERT(ret == 0, "Decrypt with correct AAD");
 
     /* Verify wrong AAD fails */
-    uint8_t wrongAad[] = "Wrong AAD";
     ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
         NULL, 0,                           /* detachedCt, detachedCtLen */
         wrongAad, sizeof(wrongAad) - 1,    /* extAad, extAadLen */

@@ -51,7 +51,7 @@ static int g_failures = 0;
     }                                                          \
 } while (0)
 
-#define TEST_ASSERT_EQ(a, b, name) TEST_ASSERT((a) == (b), name)
+#define TEST_ASSERT_EQ(a, b, name) TEST_ASSERT((a) == (b), (name))
 
 /* Helper: encode then compare output bytes to expected hex */
 static int check_encode_hex(const uint8_t* buf, size_t len,
@@ -175,9 +175,15 @@ static void test_cbor_encode_vectors(void)
     /* [1, 2, 3] -> 0x83 0x01 0x02 0x03 */
     ctx.idx = 0;
     ret = wc_CBOR_EncodeArrayStart(&ctx, 3);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&ctx, 1);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&ctx, 2);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&ctx, 3);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&ctx, 1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&ctx, 2);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&ctx, 3);
+    }
     { const uint8_t exp[] = {0x83, 0x01, 0x02, 0x03};
       TEST_ASSERT(ret == 0 && check_encode_hex(buf, ctx.idx, exp, 4),
                   "array [1,2,3]"); }
@@ -387,15 +393,25 @@ static void test_cbor_roundtrip(void)
     /* Encode a complex structure: Tag(99) [42, -7, h'DEADBEEF', "hello", {}] */
     enc.buf = buf; enc.bufSz = sizeof(buf); enc.idx = 0;
     ret = wc_CBOR_EncodeTag(&enc, 99);
-    if (ret == 0) ret = wc_CBOR_EncodeArrayStart(&enc, 5);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 42);
-    if (ret == 0) ret = wc_CBOR_EncodeInt(&enc, -7);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 5);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 42);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, -7);
+    }
     if (ret == 0) {
         const uint8_t bdata[] = {0xDE, 0xAD, 0xBE, 0xEF};
         ret = wc_CBOR_EncodeBstr(&enc, bdata, 4);
     }
-    if (ret == 0) ret = wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"hello", 5);
-    if (ret == 0) ret = wc_CBOR_EncodeMapStart(&enc, 0);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"hello", 5);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 0);
+    }
     TEST_ASSERT(ret == 0, "rt encode complex");
 
     /* Decode it back */
@@ -442,12 +458,24 @@ static void test_cbor_nested(void)
     /* {1: [10, 20], 2: "abc"} */
     enc.buf = buf; enc.bufSz = sizeof(buf); enc.idx = 0;
     ret = wc_CBOR_EncodeMapStart(&enc, 2);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 1);
-    if (ret == 0) ret = wc_CBOR_EncodeArrayStart(&enc, 2);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 10);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 20);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 2);
-    if (ret == 0) ret = wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"abc", 3);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 2);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 10);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 20);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 2);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"abc", 3);
+    }
     TEST_ASSERT(ret == 0, "nested encode");
 
     /* Decode it */
@@ -488,17 +516,37 @@ static void test_cbor_skip(void)
      * Skip the middle map, then read 99 */
     enc.buf = buf; enc.bufSz = sizeof(buf); enc.idx = 0;
     ret = wc_CBOR_EncodeArrayStart(&enc, 3);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 42);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 42);
+    }
     /* map {1: "foo", 2: [10, 20, 30]} */
-    if (ret == 0) ret = wc_CBOR_EncodeMapStart(&enc, 2);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 1);
-    if (ret == 0) ret = wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"foo", 3);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 2);
-    if (ret == 0) ret = wc_CBOR_EncodeArrayStart(&enc, 3);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 10);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 20);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 30);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 99);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 2);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"foo", 3);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 2);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 3);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 10);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 20);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 30);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 99);
+    }
     TEST_ASSERT(ret == 0, "skip encode");
 
     dec.cbuf = buf; dec.bufSz = enc.idx; dec.idx = 0;
@@ -524,7 +572,9 @@ static void test_cbor_skip(void)
         uint8_t b = 0xAA;
         ret = wc_CBOR_EncodeBstr(&enc, &b, 1);
     }
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 77);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 77);
+    }
     TEST_ASSERT(ret == 0, "skip tagged encode");
 
     dec.cbuf = buf; dec.bufSz = enc.idx; dec.idx = 0;
@@ -758,13 +808,25 @@ static void test_cbor_negative_map_keys(void)
     /* {1: 2, -1: 1, -2: h'AA'} -- COSE Key style */
     enc.buf = buf; enc.bufSz = sizeof(buf); enc.idx = 0;
     ret = wc_CBOR_EncodeMapStart(&enc, 3);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 1);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 2);
-    if (ret == 0) ret = wc_CBOR_EncodeInt(&enc, -1);
-    if (ret == 0) ret = wc_CBOR_EncodeUint(&enc, 1);
-    if (ret == 0) ret = wc_CBOR_EncodeInt(&enc, -2);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 2);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, -1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, 1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, -2);
+    }
     { uint8_t b = 0xAA;
-      if (ret == 0) ret = wc_CBOR_EncodeBstr(&enc, &b, 1); }
+      if (ret == 0) {
+          ret = wc_CBOR_EncodeBstr(&enc, &b, 1);
+      } }
     TEST_ASSERT(ret == 0, "neg keys encode");
 
     dec.cbuf = buf; dec.bufSz = enc.idx; dec.idx = 0;

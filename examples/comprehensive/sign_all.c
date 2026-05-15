@@ -59,6 +59,7 @@
 /* ----- Test Macros ----- */
 #define PRINT_TEST(name) printf("  Testing: %s... ", (name))
 #define CHECK_RESULT(r, name) do {                      \
+    (void)(name);                                       \
     if ((r) == 0) {                                     \
         printf("PASS\n");                               \
         passed++;                                       \
@@ -158,12 +159,12 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
     if (ret == 0) {
         ret = wc_CoseSign1_Sign(&cosKey, alg,
             NULL, 0,  /* kid */
-            detached ? NULL : payload,
-            detached ? 0 : sizeof(payload) - 1,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? NULL : payload,
+            (detached != 0) ? 0u : (sizeof(payload) - 1u),
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
     }
@@ -171,16 +172,16 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
     /* Verify */
     if (ret == 0) {
         ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
     }
 
     /* Validate payload if inline */
-    if (ret == 0 && detached == 0) {
+    if ((ret == 0) && (detached == 0)) {
         if (decPayloadLen != sizeof(payload) - 1) {
             ret = -1;
         }
@@ -190,7 +191,7 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
     }
 
     /* Validate algorithm */
-    if (ret == 0 && hdr.alg != alg) {
+    if ((ret == 0) && (hdr.alg != alg)) {
         ret = -3;
     }
 
@@ -312,12 +313,12 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
     /* Sign with both signers */
     if (ret == 0) {
         ret = wc_CoseSign_Sign(signers, 2,
-            detached ? NULL : payload,
-            detached ? 0 : sizeof(payload) - 1,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? NULL : payload,
+            (detached != 0) ? 0u : (sizeof(payload) - 1u),
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
     }
@@ -325,10 +326,10 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
     /* Verify signer 0 */
     if (ret == 0) {
         ret = wc_CoseSign_Verify(&cosKey1, 0, out, outLen,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
     }
@@ -336,10 +337,10 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
     /* Verify signer 1 */
     if (ret == 0) {
         ret = wc_CoseSign_Verify(&cosKey2, 1, out, outLen,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
     }
@@ -415,7 +416,7 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
     edInits[0] = &ed1Init; edInits[1] = &ed2Init; edInits[2] = &ed3Init;
 #endif
 
-    for (i = 0; ret == 0 && i < 3; i++) {
+    for (i = 0; (ret == 0) && (i < 3); i++) {
         if (keySizes[i] == 0) {
 #ifdef HAVE_ED25519
             ret = wc_ed25519_init(edKeys[i]);
@@ -458,23 +459,23 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
     /* Sign */
     if (ret == 0) {
         ret = wc_CoseSign_Sign(signers, 3,
-            detached ? NULL : payload,
-            detached ? 0 : sizeof(payload) - 1,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? NULL : payload,
+            (detached != 0) ? 0u : (sizeof(payload) - 1u),
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
     }
 
     /* Verify each signer */
-    for (i = 0; ret == 0 && i < 3; i++) {
+    for (i = 0; (ret == 0) && (i < 3); i++) {
         ret = wc_CoseSign_Verify(cosKeys[i], (size_t)i, out, outLen,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
     }
@@ -600,12 +601,12 @@ static int test_sign_multi_4(int detached, int useAad)
     /* Sign */
     if (ret == 0) {
         ret = wc_CoseSign_Sign(signers, 4,
-            detached ? NULL : payload,
-            detached ? 0 : sizeof(payload) - 1,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? NULL : payload,
+            (detached != 0) ? 0u : (sizeof(payload) - 1u),
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
     }
@@ -613,29 +614,37 @@ static int test_sign_multi_4(int detached, int useAad)
     /* Verify each signer */
     if (ret == 0) {
         ret = wc_CoseSign_Verify(&cosKey256, 0, out, outLen,
-            detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
     }
 
     if (ret == 0) {
         ret = wc_CoseSign_Verify(&cosKey384, 1, out, outLen,
-            detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
     }
 
     if (ret == 0) {
         ret = wc_CoseSign_Verify(&cosKey521, 2, out, outLen,
-            detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
     }
 
     if (ret == 0) {
         ret = wc_CoseSign_Verify(&cosKeyEd, 3, out, outLen,
-            detached ? payload : NULL, detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL, useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
     }
 

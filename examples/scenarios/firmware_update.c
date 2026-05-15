@@ -129,6 +129,7 @@ static int oem_sign_firmware(WOLFCOSE_KEY* signingKey, int32_t alg,
                               size_t* manifestLen, WC_RNG* rng)
 {
     int ret;
+    int i;
     uint8_t scratch[8192];  /* Larger for PQC */
     uint8_t kid[] = "OEM-firmware-signing-key-v1";
     uint8_t firmwareHash[32];
@@ -139,10 +140,14 @@ static int oem_sign_firmware(WOLFCOSE_KEY* signingKey, int32_t alg,
     /* Hash the firmware for logging (not required by COSE) */
     ret = wc_InitSha256(&sha);
     if (ret == 0) {
-        wc_Sha256Update(&sha, firmware, (word32)firmwareSz);
-        wc_Sha256Final(&sha, firmwareHash);
+        ret = wc_Sha256Update(&sha, firmware, (word32)firmwareSz);
+    }
+    if (ret == 0) {
+        ret = wc_Sha256Final(&sha, firmwareHash);
+    }
+    if (ret == 0) {
         printf("  Firmware SHA-256: ");
-        for (int i = 0; i < 8; i++) {
+        for (i = 0; i < 8; i++) {
             printf("%02X", firmwareHash[i]);
         }
         printf("...\n");

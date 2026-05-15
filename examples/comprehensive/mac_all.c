@@ -53,6 +53,7 @@
 /* ----- Test Macros ----- */
 #define PRINT_TEST(name) printf("  Testing: %s... ", (name))
 #define CHECK_RESULT(r, name) do {                      \
+    (void)(name);                                       \
     if ((r) == 0) {                                     \
         printf("PASS\n");                               \
         passed++;                                       \
@@ -99,12 +100,12 @@ static int test_mac0(int32_t alg, int keySz, int detached, int useAad)
     if (ret == 0) {
         ret = wc_CoseMac0_Create(&cosKey, alg,
             NULL, 0,  /* kid */
-            detached ? NULL : payload,
-            detached ? 0 : sizeof(payload) - 1,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? NULL : payload,
+            (detached != 0) ? 0u : (sizeof(payload) - 1u),
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen);
     }
@@ -112,10 +113,10 @@ static int test_mac0(int32_t alg, int keySz, int detached, int useAad)
     /* Verify */
     if (ret == 0) {
         ret = wc_CoseMac0_Verify(&cosKey, out, outLen,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
     }
@@ -128,7 +129,7 @@ static int test_mac0(int32_t alg, int keySz, int detached, int useAad)
     }
 
     /* Validate payload if inline */
-    if (ret == 0 && detached == 0) {
+    if ((ret == 0) && (detached == 0)) {
         if (decPayloadLen != sizeof(payload) - 1) {
             ret = -2;
         }
@@ -154,11 +155,12 @@ static int test_mac_multi_direct(int32_t macAlg, int keySz,
     uint8_t scratch[512];
     uint8_t payload[] = "multi-recipient MAC payload";
     uint8_t aad[] = "multi-recipient mac aad";
+    static const uint8_t recipKid[] = { 0x6Du, 0x61u, 0x63u, 0x58u };
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
     size_t outLen = 0;
+    size_t i;
     WOLFCOSE_HDR hdr;
-    int i;
 
     if (recipCount > 4) {
         return WOLFCOSE_E_INVALID_ARG;
@@ -172,11 +174,11 @@ static int test_mac_multi_direct(int32_t macAlg, int keySz,
 
     /* Setup recipients with direct key */
     if (ret == 0) {
-        for (i = 0; i < recipCount; i++) {
+        for (i = 0u; i < (size_t)recipCount; i++) {
             recipients[i].algId = WOLFCOSE_ALG_DIRECT;
             recipients[i].key = &macKey;
-            recipients[i].kid = (const uint8_t*)"macX";
-            recipients[i].kidLen = 4;
+            recipients[i].kid = recipKid;
+            recipients[i].kidLen = sizeof(recipKid);
         }
     }
 
@@ -184,23 +186,23 @@ static int test_mac_multi_direct(int32_t macAlg, int keySz,
     if (ret == 0) {
         ret = wc_CoseMac_Create(recipients, (size_t)recipCount,
             macAlg,
-            detached ? NULL : payload,
-            detached ? 0 : sizeof(payload) - 1,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? NULL : payload,
+            (detached != 0) ? 0u : (sizeof(payload) - 1u),
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen);
     }
 
     /* Verify with each recipient */
-    for (i = 0; i < recipCount && ret == 0; i++) {
-        ret = wc_CoseMac_Verify(&recipients[i], (size_t)i, out, outLen,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+    for (i = 0u; (i < (size_t)recipCount) && (ret == 0); i++) {
+        ret = wc_CoseMac_Verify(&recipients[i], i, out, outLen,
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
     }

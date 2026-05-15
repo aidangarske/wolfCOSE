@@ -431,7 +431,7 @@ typedef struct WOLFCOSE_HDR {
     size_t         partialIvLen;  /**< Partial IV length */
     int32_t        contentType;   /**< Content type, 0 if absent */
     uint8_t        flags;         /**< Header flags (see WOLFCOSE_HDR_FLAG_*) */
-    uint32_t       labelsSeen;    /**< Bitmask of labels seen across header buckets */
+    uint32_t       labelsSeen;    /**< Internal decode bookkeeping across header buckets */
 } WOLFCOSE_HDR;
 
 /** \brief Flag indicating payload is detached (RFC 9052 Section 2) */
@@ -682,7 +682,10 @@ WOLFCOSE_API int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx);
  * \param ctx  Decoder context. Must have idx < bufSz.
  * \return Major type (0-7).
  */
-#define wc_CBOR_PeekType(ctx) ((ctx)->cbuf[(ctx)->idx] >> 5u)
+static inline uint8_t wc_CBOR_PeekType(const WOLFCOSE_CBOR_CTX* ctx)
+{
+    return (uint8_t)(((uint32_t)ctx->cbuf[ctx->idx]) >> 5u);
+}
 
 #endif /* WOLFCOSE_CBOR_DECODE */
 

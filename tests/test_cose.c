@@ -59,7 +59,9 @@
 #ifdef WC_RSA_PSS
     #include <wolfssl/wolfcrypt/rsa.h>
 #endif
-#include <stdio.h>
+#ifdef WOLFCOSE_TEST_LOG_ENABLE
+    #include <stdio.h>
+#endif
 #include <string.h>
 #ifdef WOLFCOSE_FORCE_FAILURE
     #include "force_failure.h"
@@ -67,12 +69,20 @@
 
 static int g_failures = 0;
 
+#ifdef WOLFCOSE_TEST_LOG_ENABLE
+    #define TEST_LOG(...) do {               \
+        (void)printf(__VA_ARGS__);           \
+    } while (0)
+#else
+    #define TEST_LOG(...) do { } while (0)
+#endif
+
 #define TEST_ASSERT(cond, name) do {                           \
     if (!(cond)) {                                             \
-        printf("  FAIL: %s (line %d)\n", (name), __LINE__);   \
+        TEST_LOG("  FAIL: %s (line %d)\n", (name), __LINE__); \
         g_failures++;                                          \
     } else {                                                   \
-        printf("  PASS: %s\n", (name));                        \
+        TEST_LOG("  PASS: %s\n", (name));                      \
     }                                                          \
 } while (0)
 
@@ -85,7 +95,7 @@ static void test_wolfcose_force_zero(void)
     int prefixZero;
     int suffixUntouched;
 
-    printf("  [wolfCose_ForceZero]\n");
+    TEST_LOG("  [wolfCose_ForceZero]\n");
 
     /* Fill with non-zero pattern, zero, verify all bytes cleared */
     for (i = 0; i < sizeof(buf); i++) {
@@ -142,7 +152,7 @@ static void test_cose_key_init(void)
     WOLFCOSE_KEY key;
     int ret;
 
-    printf("  [Key Init/Free]\n");
+    TEST_LOG("  [Key Init/Free]\n");
 
     ret = wc_CoseKey_Init(&key);
     TEST_ASSERT(ret == 0 && key.kty == 0 && key.alg == 0 &&
@@ -166,21 +176,31 @@ static void test_cose_key_ecc(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [Key ECC]\n");
+    TEST_LOG("  [Key ECC]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "rng init");
-    if (ret != 0) return;
+    if (ret != 0) {
+        return;
+    }
 
     ret = wc_ecc_init(&eccKey);
     TEST_ASSERT(ret == 0, "ecc init");
-    if (ret != 0) { wc_FreeRng(&rng); return; }
+    if (ret != 0) {
+        (void)wc_FreeRng(&rng);
+        return;
+    }
 
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "ecc keygen P-256");
-    if (ret != 0) { wc_ecc_free(&eccKey); wc_FreeRng(&rng); return; }
+    if (ret != 0) {
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
+        return;
+    }
 
-    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Init(&key);
+    TEST_ASSERT(ret == 0, "key init");
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_EC2 &&
                 key.crv == WOLFCOSE_CRV_P256 && key.hasPrivate == 1,
@@ -193,6 +213,7 @@ static void test_cose_key_ecc(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "key set ecc null ecckey");
 
     /* Encode/decode round-trip */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t cbuf[256];
         size_t cLen = 0;
@@ -202,19 +223,21 @@ static void test_cose_key_ecc(void)
         ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
         TEST_ASSERT(ret == 0 && cLen > 0, "key ecc encode");
 
-        wc_ecc_init(&eccKey2);
-        wc_CoseKey_Init(&key2);
+        ret = wc_ecc_init(&eccKey2);
+        TEST_ASSERT(ret == 0, "ecc2 init");
+        ret = wc_CoseKey_Init(&key2);
+        TEST_ASSERT(ret == 0, "key2 init");
         key2.key.ecc = &eccKey2;
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_EC2 &&
                     key2.crv == WOLFCOSE_CRV_P256 && key2.hasPrivate == 1,
                     "key ecc decode");
-        wc_ecc_free(&eccKey2);
+        (void)wc_ecc_free(&eccKey2);
     }
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC */
 
@@ -226,25 +249,38 @@ static void test_cose_key_ed25519(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [Key Ed25519]\n");
+    TEST_LOG("  [Key Ed25519]\n");
 
     ret = wc_InitRng(&rng);
-    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    if (ret != 0) {
+        TEST_ASSERT(0, "rng init");
+        return;
+    }
 
     ret = wc_ed25519_init(&edKey);
-    if (ret != 0) { TEST_ASSERT(0, "ed init"); wc_FreeRng(&rng); return; }
+    if (ret != 0) {
+        TEST_ASSERT(0, "ed init");
+        (void)wc_FreeRng(&rng);
+        return;
+    }
 
     ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
     TEST_ASSERT(ret == 0, "ed keygen");
-    if (ret != 0) { wc_ed25519_free(&edKey); wc_FreeRng(&rng); return; }
+    if (ret != 0) {
+        (void)wc_ed25519_free(&edKey);
+        (void)wc_FreeRng(&rng);
+        return;
+    }
 
-    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Init(&key);
+    TEST_ASSERT(ret == 0, "ed key init");
     ret = wc_CoseKey_SetEd25519(&key, &edKey);
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_OKP &&
                 key.crv == WOLFCOSE_CRV_ED25519 && key.hasPrivate == 1,
                 "key set ed25519");
 
     /* Encode/decode round-trip */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t cbuf[256];
         size_t cLen = 0;
@@ -254,19 +290,21 @@ static void test_cose_key_ed25519(void)
         ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
         TEST_ASSERT(ret == 0 && cLen > 0, "key ed encode");
 
-        wc_ed25519_init(&edKey2);
-        wc_CoseKey_Init(&key2);
+        ret = wc_ed25519_init(&edKey2);
+        TEST_ASSERT(ret == 0, "ed2 init");
+        ret = wc_CoseKey_Init(&key2);
+        TEST_ASSERT(ret == 0, "ed key2 init");
         key2.key.ed25519 = &edKey2;
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_OKP &&
                     key2.hasPrivate == 1,
                     "key ed decode");
-        wc_ed25519_free(&edKey2);
+        (void)wc_ed25519_free(&edKey2);
     }
 
     wc_CoseKey_Free(&key);
-    wc_ed25519_free(&edKey);
-    wc_FreeRng(&rng);
+    (void)wc_ed25519_free(&edKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ED25519 */
 
@@ -279,9 +317,10 @@ static void test_cose_key_symmetric(void)
     };
     int ret;
 
-    printf("  [Key Symmetric]\n");
+    TEST_LOG("  [Key Symmetric]\n");
 
-    wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Init(&key);
+    TEST_ASSERT(ret == 0, "sym key init");
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_SYMMETRIC &&
                 key.hasPrivate == 1, "key set symmetric");
@@ -296,18 +335,22 @@ static void test_cose_key_symmetric(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "key set symm zero len");
 
     /* Encode/decode round-trip */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t cbuf[64];
         size_t cLen = 0;
         WOLFCOSE_KEY key2;
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+        ret = wc_CoseKey_Init(&key);
+        TEST_ASSERT(ret == 0, "sym key reinit");
+        ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+        TEST_ASSERT(ret == 0, "sym key reset");
 
         ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
         TEST_ASSERT(ret == 0 && cLen > 0, "key symm encode");
 
-        wc_CoseKey_Init(&key2);
+        ret = wc_CoseKey_Init(&key2);
+        TEST_ASSERT(ret == 0, "sym key2 init");
         key2.kty = WOLFCOSE_KTY_SYMMETRIC; /* hint for decoder */
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_SYMMETRIC &&
@@ -339,7 +382,7 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 %s]\n", label);
+    TEST_LOG("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -348,25 +391,33 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
     }
 
     if (ret == 0) {
-        wc_ecc_init(&eccKey);
-        eccInited = 1;
-        ret = wc_ecc_make_key(&rng, keySz, &eccKey);
+        ret = wc_ecc_init(&eccKey);
+        if (ret == 0) {
+            eccInited = 1;
+        }
+        ret = (ret == 0) ? wc_ecc_make_key(&rng, keySz, &eccKey) : ret;
         if (ret != 0) { TEST_ASSERT(0, "ecc keygen"); }
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&signKey);
-        wc_CoseKey_SetEcc(&signKey, crv, &eccKey);
+        ret = wc_CoseKey_Init(&signKey);
+        TEST_ASSERT(ret == 0, "sign key init");
+        if (ret == 0) {
+            ret = wc_CoseKey_SetEcc(&signKey, crv, &eccKey);
+            TEST_ASSERT(ret == 0, "sign key set ecc");
+        }
 
         /* Sign */
-        ret = wc_CoseSign1_Sign(&signKey, alg,
-            kid, sizeof(kid) - 1,
-            payload, sizeof(payload) - 1,
-            NULL, 0, /* detachedPayload, detachedLen */
-            NULL, 0, /* extAad, extAadLen */
-            scratch, sizeof(scratch),
-            out, sizeof(out), &outLen, &rng);
-        TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ecc sign");
+        if (ret == 0) {
+            ret = wc_CoseSign1_Sign(&signKey, alg,
+                kid, sizeof(kid) - 1,
+                payload, sizeof(payload) - 1,
+                NULL, 0, /* detachedPayload, detachedLen */
+                NULL, 0, /* extAad, extAadLen */
+                scratch, sizeof(scratch),
+                out, sizeof(out), &outLen, &rng);
+            TEST_ASSERT(ret == 0 && outLen > 0, "sign1 ecc sign");
+        }
     }
 
     if (ret == 0) {
@@ -394,14 +445,14 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
         wc_ecc_init(&eccWrong);
         wrongRet = wc_ecc_make_key(&rng, keySz, &eccWrong);
         if (wrongRet == 0) {
-            wc_CoseKey_Init(&wrongKey);
-            wc_CoseKey_SetEcc(&wrongKey, crv, &eccWrong);
+            (void)wc_CoseKey_Init(&wrongKey);
+            (void)wc_CoseKey_SetEcc(&wrongKey, crv, &eccWrong);
             wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &decPayload, &decPayloadLen);
             TEST_ASSERT(wrongRet != 0, "sign1 ecc wrong key fails");
         }
-        wc_ecc_free(&eccWrong);
+        (void)wc_ecc_free(&eccWrong);
     }
 
     if (ret == 0) {
@@ -409,7 +460,7 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
         uint8_t tampered[512];
         int tamperedRet;
         memcpy(tampered, out, outLen);
-        if (outLen > 20) {
+        if (outLen > 20u) {
             tampered[outLen / 2] ^= 0xFF;
         }
         tamperedRet = wc_CoseSign1_Verify(&signKey, tampered, outLen,
@@ -435,7 +486,7 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
         /* Error: no private key */
         WOLFCOSE_KEY pubOnly;
         int pubRet;
-        wc_CoseKey_Init(&pubOnly);
+        (void)wc_CoseKey_Init(&pubOnly);
         pubOnly.kty = WOLFCOSE_KTY_EC2;
         pubOnly.hasPrivate = 0;
         pubOnly.key.ecc = &eccKey;
@@ -447,10 +498,10 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* HAVE_ECC */
@@ -472,7 +523,7 @@ static void test_cose_sign1_eddsa(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 EdDSA]\n");
+    TEST_LOG("  [Sign1 EdDSA]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -488,8 +539,8 @@ static void test_cose_sign1_eddsa(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&signKey);
-        wc_CoseKey_SetEd25519(&signKey, &edKey);
+        (void)wc_CoseKey_Init(&signKey);
+        (void)wc_CoseKey_SetEd25519(&signKey, &edKey);
 
         /* Sign */
         ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA,
@@ -522,22 +573,22 @@ static void test_cose_sign1_eddsa(void)
         wc_ed25519_init(&edWrong);
         wrongRet = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edWrong);
         if (wrongRet == 0) {
-            wc_CoseKey_Init(&wrongKey);
-            wc_CoseKey_SetEd25519(&wrongKey, &edWrong);
+            (void)wc_CoseKey_Init(&wrongKey);
+            (void)wc_CoseKey_SetEd25519(&wrongKey, &edWrong);
             wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &decPayload, &decPayloadLen);
             TEST_ASSERT(wrongRet != 0, "sign1 eddsa wrong key fails");
         }
-        wc_ed25519_free(&edWrong);
+        (void)wc_ed25519_free(&edWrong);
     }
 
     /* Cleanup */
     if (edInited != 0) {
-        wc_ed25519_free(&edKey);
+        (void)wc_ed25519_free(&edKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* HAVE_ED25519 */
@@ -559,7 +610,7 @@ static void test_cose_sign1_ed448(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 Ed448]\n");
+    TEST_LOG("  [Sign1 Ed448]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -575,8 +626,8 @@ static void test_cose_sign1_ed448(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&signKey);
-        wc_CoseKey_SetEd448(&signKey, &edKey);
+        (void)wc_CoseKey_Init(&signKey);
+        (void)wc_CoseKey_SetEd448(&signKey, &edKey);
 
         /* Sign */
         ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA,
@@ -611,8 +662,8 @@ static void test_cose_sign1_ed448(void)
         wc_ed448_init(&edWrong);
         wrongRet = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edWrong);
         if (wrongRet == 0) {
-            wc_CoseKey_Init(&wrongKey);
-            wc_CoseKey_SetEd448(&wrongKey, &edWrong);
+            (void)wc_CoseKey_Init(&wrongKey);
+            (void)wc_CoseKey_SetEd448(&wrongKey, &edWrong);
             wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, /* detachedPayload, detachedLen */
                 NULL, 0, /* extAad, extAadLen */
@@ -620,7 +671,7 @@ static void test_cose_sign1_ed448(void)
                 &hdr, &decPayload, &decPayloadLen);
             TEST_ASSERT(wrongRet != 0, "sign1 ed448 wrong key fails");
         }
-        wc_ed448_free(&edWrong);
+        (void)wc_ed448_free(&edWrong);
     }
 
     if (ret == 0) {
@@ -636,21 +687,21 @@ static void test_cose_sign1_ed448(void)
 
         if (encRet == 0) {
             wc_ed448_init(&decEdKey);
-            wc_CoseKey_Init(&decKey);
+            (void)wc_CoseKey_Init(&decKey);
             decKey.key.ed448 = &decEdKey;
             encRet = wc_CoseKey_Decode(&decKey, keyBuf, keyLen);
             TEST_ASSERT(encRet == 0 && decKey.kty == WOLFCOSE_KTY_OKP &&
                         decKey.crv == WOLFCOSE_CRV_ED448, "key ed448 decode");
-            wc_ed448_free(&decEdKey);
+            (void)wc_ed448_free(&decEdKey);
         }
     }
 
     /* Cleanup */
     if (edInited != 0) {
-        wc_ed448_free(&edKey);
+        (void)wc_ed448_free(&edKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* HAVE_ED448 */
@@ -677,10 +728,10 @@ static void test_cose_encrypt0_a128gcm(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 A128GCM]\n");
+    TEST_LOG("  [Encrypt0 A128GCM]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Encrypt */
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
@@ -707,10 +758,11 @@ static void test_cose_encrypt0_a128gcm(void)
     TEST_ASSERT(hdr.ivLen == sizeof(iv), "enc0 a128gcm hdr iv");
 
     /* Tampered ciphertext should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tampered[512];
         memcpy(tampered, out, outLen);
-        if (outLen > 20) {
+        if (outLen > 20u) {
             tampered[outLen - 5] ^= 0xFF; /* flip byte near end (in tag) */
         }
         ret = wc_CoseEncrypt0_Decrypt(&key, tampered, outLen,
@@ -726,9 +778,10 @@ static void test_cose_encrypt0_a128gcm(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "enc0 null key");
 
     /* Error: wrong key type */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY badKey;
-        wc_CoseKey_Init(&badKey);
+        (void)wc_CoseKey_Init(&badKey);
         badKey.kty = WOLFCOSE_KTY_EC2;
         ret = wc_CoseEncrypt0_Encrypt(&badKey, WOLFCOSE_ALG_A128GCM,
             iv, sizeof(iv), payload, sizeof(payload), NULL, 0, NULL, NULL, 0,
@@ -737,11 +790,12 @@ static void test_cose_encrypt0_a128gcm(void)
     }
 
     /* Error: wrong key length */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY shortKey;
         uint8_t shortData[8] = {0};
-        wc_CoseKey_Init(&shortKey);
-        wc_CoseKey_SetSymmetric(&shortKey, shortData, sizeof(shortData));
+        (void)wc_CoseKey_Init(&shortKey);
+        (void)wc_CoseKey_SetSymmetric(&shortKey, shortData, sizeof(shortData));
         ret = wc_CoseEncrypt0_Encrypt(&shortKey, WOLFCOSE_ALG_A128GCM,
             iv, sizeof(iv), payload, sizeof(payload), NULL, 0, NULL, NULL, 0,
             scratch, sizeof(scratch), out, sizeof(out), &outLen);
@@ -771,10 +825,10 @@ static void test_cose_encrypt0_a256gcm(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 A256GCM]\n");
+    TEST_LOG("  [Encrypt0 A256GCM]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A256GCM,
         iv, sizeof(iv),
@@ -819,10 +873,10 @@ static void test_cose_encrypt0_with_aad(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 with external AAD]\n");
+    TEST_LOG("  [Encrypt0 with external AAD]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
@@ -843,6 +897,7 @@ static void test_cose_encrypt0_with_aad(void)
                 "enc0 aad decrypt ok");
 
     /* Decrypt with wrong AAD should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t wrongAad[] = "wrong-aad";
         ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
@@ -886,10 +941,10 @@ static void test_cose_encrypt0_chacha20(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 ChaCha20-Poly1305]\n");
+    TEST_LOG("  [Encrypt0 ChaCha20-Poly1305]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Encrypt */
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_CHACHA20_POLY1305,
@@ -916,10 +971,11 @@ static void test_cose_encrypt0_chacha20(void)
                 "enc0 chacha20 hdr alg");
 
     /* Tampered ciphertext should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tampered[512];
         memcpy(tampered, out, outLen);
-        if (outLen > 20) {
+        if (outLen > 20u) {
             tampered[outLen - 5] ^= 0xFF;
         }
         ret = wc_CoseEncrypt0_Decrypt(&key, tampered, outLen,
@@ -929,11 +985,12 @@ static void test_cose_encrypt0_chacha20(void)
     }
 
     /* Wrong key length should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY shortKey;
         uint8_t shortData[16] = {0};
-        wc_CoseKey_Init(&shortKey);
-        wc_CoseKey_SetSymmetric(&shortKey, shortData, sizeof(shortData));
+        (void)wc_CoseKey_Init(&shortKey);
+        (void)wc_CoseKey_SetSymmetric(&shortKey, shortData, sizeof(shortData));
         ret = wc_CoseEncrypt0_Encrypt(&shortKey,
             WOLFCOSE_ALG_CHACHA20_POLY1305,
             iv, sizeof(iv), payload, sizeof(payload), NULL, 0, NULL, NULL, 0,
@@ -966,10 +1023,10 @@ static void test_cose_encrypt0_chacha20_with_aad(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 ChaCha20-Poly1305 with AAD]\n");
+    TEST_LOG("  [Encrypt0 ChaCha20-Poly1305 with AAD]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Encrypt with external AAD */
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_CHACHA20_POLY1305,
@@ -994,6 +1051,7 @@ static void test_cose_encrypt0_chacha20_with_aad(void)
                 "enc0 chacha20 aad payload match");
 
     /* Decrypt with wrong AAD should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t wrongAad[] = "wrong-aad";
         ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
@@ -1041,11 +1099,11 @@ static void test_cose_encrypt0_aes_ccm(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 AES-CCM]\n");
+    TEST_LOG("  [Encrypt0 AES-CCM]\n");
 
     /* --- AES-CCM-16-128-128: key=16, nonce=13, tag=16 --- */
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData16, sizeof(keyData16));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData16, sizeof(keyData16));
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_AES_CCM_16_128_128,
         nonce13, sizeof(nonce13),
@@ -1070,10 +1128,11 @@ static void test_cose_encrypt0_aes_ccm(void)
                 "enc0 ccm-16-128-128 hdr alg");
 
     /* Tampered ciphertext should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tampered[512];
         memcpy(tampered, out, outLen);
-        if (outLen > 20) {
+        if (outLen > 20u) {
             tampered[outLen - 5] ^= 0xFF;
         }
         ret = wc_CoseEncrypt0_Decrypt(&key, tampered, outLen,
@@ -1146,7 +1205,7 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 %s]\n", label);
+    TEST_LOG("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -1168,8 +1227,8 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&signKey);
-        wc_CoseKey_SetRsa(&signKey, &rsaKey);
+        (void)wc_CoseKey_Init(&signKey);
+        (void)wc_CoseKey_SetRsa(&signKey, &rsaKey);
 
         /* Sign */
         ret = wc_CoseSign1_Sign(&signKey, alg,
@@ -1204,8 +1263,8 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
         wc_InitRsaKey(&rsaWrong, NULL);
         wrongRet = wc_MakeRsaKey(&rsaWrong, 2048, WC_RSA_EXPONENT, &rng);
         if (wrongRet == 0) {
-            wc_CoseKey_Init(&wrongKey);
-            wc_CoseKey_SetRsa(&wrongKey, &rsaWrong);
+            (void)wc_CoseKey_Init(&wrongKey);
+            (void)wc_CoseKey_SetRsa(&wrongKey, &rsaWrong);
             wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, /* detachedPayload, detachedLen */
                 NULL, 0, /* extAad, extAadLen */
@@ -1213,15 +1272,15 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
                 &hdr, &decPayload, &decPayloadLen);
             TEST_ASSERT(wrongRet != 0, "sign1 pss wrong key fails");
         }
-        wc_FreeRsaKey(&rsaWrong);
+        (void)wc_FreeRsaKey(&rsaWrong);
     }
 
     /* Cleanup */
     if (rsaInited != 0) {
-        wc_FreeRsaKey(&rsaKey);
+        (void)wc_FreeRsaKey(&rsaKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
@@ -1244,7 +1303,7 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 %s]\n", label);
+    TEST_LOG("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -1271,8 +1330,8 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&signKey);
-        wc_CoseKey_SetDilithium(&signKey, alg, &dlKey);
+        (void)wc_CoseKey_Init(&signKey);
+        (void)wc_CoseKey_SetDilithium(&signKey, alg, &dlKey);
 
         /* Sign */
         ret = wc_CoseSign1_Sign(&signKey, alg,
@@ -1308,8 +1367,8 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
         wc_dilithium_set_level(&dlWrong, level);
         wrongRet = wc_dilithium_make_key(&dlWrong, &rng);
         if (wrongRet == 0) {
-            wc_CoseKey_Init(&wrongKey);
-            wc_CoseKey_SetDilithium(&wrongKey, alg, &dlWrong);
+            (void)wc_CoseKey_Init(&wrongKey);
+            (void)wc_CoseKey_SetDilithium(&wrongKey, alg, &dlWrong);
             wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, /* detachedPayload, detachedLen */
                 NULL, 0, /* extAad, extAadLen */
@@ -1317,15 +1376,15 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
                 &hdr, &decPayload, &decPayloadLen);
             TEST_ASSERT(wrongRet != 0, "sign1 ml-dsa wrong key fails");
         }
-        wc_dilithium_free(&dlWrong);
+        (void)wc_dilithium_free(&dlWrong);
     }
 
     /* Cleanup */
     if (dlInited != 0) {
-        wc_dilithium_free(&dlKey);
+        (void)wc_dilithium_free(&dlKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* HAVE_DILITHIUM */
@@ -1349,7 +1408,7 @@ static void test_cose_sign1_with_aad(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 with external AAD]\n");
+    TEST_LOG("  [Sign1 with external AAD]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -1365,8 +1424,8 @@ static void test_cose_sign1_with_aad(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0,
@@ -1402,10 +1461,10 @@ static void test_cose_sign1_with_aad(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif
@@ -1419,7 +1478,7 @@ static void test_cose_key_rsa(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [Key RSA]\n");
+    TEST_LOG("  [Key RSA]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -1431,7 +1490,7 @@ static void test_cose_key_rsa(void)
     TEST_ASSERT(ret == 0, "rsa keygen 2048");
     if (ret != 0) { wc_FreeRsaKey(&rsaKey); wc_FreeRng(&rng); return; }
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetRsa(&key, &rsaKey);
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_RSA &&
                 key.hasPrivate == 1, "key set rsa");
@@ -1439,6 +1498,7 @@ static void test_cose_key_rsa(void)
     /* Encode/decode round-trip.
      * Buffer must be large enough for private key encoding scratch:
      * CBOR overhead + n + e + d + temporary p/q workspace. */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t cbuf[2048];
         size_t cLen = 0;
@@ -1449,13 +1509,14 @@ static void test_cose_key_rsa(void)
         TEST_ASSERT(ret == 0 && cLen > 0, "key rsa encode");
 
         wc_InitRsaKey(&rsaKey2, NULL);
-        wc_CoseKey_Init(&key2);
+        (void)wc_CoseKey_Init(&key2);
         key2.key.rsa = &rsaKey2;
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_RSA,
                     "key rsa decode");
 
         /* Verify decoded key can sign/verify */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             uint8_t payload[] = "RSA key round-trip";
             uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
@@ -1483,12 +1544,12 @@ static void test_cose_key_rsa(void)
             TEST_ASSERT(ret == 0, "key rsa rt verify");
         }
 
-        wc_FreeRsaKey(&rsaKey2);
+        (void)wc_FreeRsaKey(&rsaKey2);
     }
 
     wc_CoseKey_Free(&key);
-    wc_FreeRsaKey(&rsaKey);
-    wc_FreeRng(&rng);
+    (void)wc_FreeRsaKey(&rsaKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
@@ -1502,7 +1563,7 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
     WC_RNG rng;
     int ret;
 
-    printf("  [Key %s]\n", label);
+    TEST_LOG("  [Key %s]\n", label);
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -1513,18 +1574,19 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
     ret = wc_dilithium_set_level(&dlKey, (byte)level);
     if (ret != 0) {
         TEST_ASSERT(0, "dl set level");
-        wc_dilithium_free(&dlKey); wc_FreeRng(&rng); return;
+        (void)wc_dilithium_free(&dlKey); wc_FreeRng(&rng); return;
     }
 
     ret = wc_dilithium_make_key(&dlKey, &rng);
     TEST_ASSERT(ret == 0, "dl keygen");
     if (ret != 0) { wc_dilithium_free(&dlKey); wc_FreeRng(&rng); return; }
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetDilithium(&key, alg, &dlKey);
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_OKP, "key set dl");
 
     /* Encode/decode round-trip */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t cbuf[8192];
         size_t cLen = 0;
@@ -1535,7 +1597,7 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
         TEST_ASSERT(ret == 0 && cLen > 0, "key dl encode");
 
         wc_dilithium_init(&dlKey2);
-        wc_CoseKey_Init(&key2);
+        (void)wc_CoseKey_Init(&key2);
         key2.key.dilithium = &dlKey2;
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_OKP &&
@@ -1543,6 +1605,7 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
                     "key dl decode");
 
         /* Verify decoded key can sign/verify */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             uint8_t payload[] = "Dilithium key round-trip";
             uint8_t scratch[8192];
@@ -1570,12 +1633,12 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
             TEST_ASSERT(ret == 0, "key dl rt verify");
         }
 
-        wc_dilithium_free(&dlKey2);
+        (void)wc_dilithium_free(&dlKey2);
     }
 
     wc_CoseKey_Free(&key);
-    wc_dilithium_free(&dlKey);
-    wc_FreeRng(&rng);
+    (void)wc_dilithium_free(&dlKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_DILITHIUM */
 
@@ -1599,10 +1662,10 @@ static void test_cose_mac0_hmac256(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 HMAC-256/256]\n");
+    TEST_LOG("  [Mac0 HMAC-256/256]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Create Mac0 */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
@@ -1627,11 +1690,12 @@ static void test_cose_mac0_hmac256(void)
     TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_256_256, "mac0 hmac256 hdr alg");
 
     /* Verify with wrong key should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY wrongKey;
         uint8_t wrongKeyData[32] = {0};
-        wc_CoseKey_Init(&wrongKey);
-        wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
+        (void)wc_CoseKey_Init(&wrongKey);
+        (void)wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
         ret = wc_CoseMac0_Verify(&wrongKey, out, outLen,
             NULL, 0, NULL, 0, scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
@@ -1639,10 +1703,11 @@ static void test_cose_mac0_hmac256(void)
     }
 
     /* Tampered message should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tampered[512];
         memcpy(tampered, out, outLen);
-        if (outLen > 20) {
+        if (outLen > 20u) {
             tampered[outLen - 5] ^= 0xFF; /* flip byte in tag */
         }
         ret = wc_CoseMac0_Verify(&key, tampered, outLen,
@@ -1664,9 +1729,10 @@ static void test_cose_mac0_hmac256(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "mac0 verify null key");
 
     /* Error: wrong key type */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY badKey;
-        wc_CoseKey_Init(&badKey);
+        (void)wc_CoseKey_Init(&badKey);
         badKey.kty = WOLFCOSE_KTY_EC2;
         ret = wc_CoseMac0_Create(&badKey, WOLFCOSE_ALG_HMAC_256_256,
             NULL, 0, /* kid, kidLen */
@@ -1690,11 +1756,11 @@ static void test_cose_mac0_hmac384(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 HMAC-384/384]\n");
+    TEST_LOG("  [Mac0 HMAC-384/384]\n");
 
     memset(keyData, 0xAB, sizeof(keyData));
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_384_384,
         NULL, 0, /* kid, kidLen */
@@ -1728,11 +1794,11 @@ static void test_cose_mac0_hmac512(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 HMAC-512/512]\n");
+    TEST_LOG("  [Mac0 HMAC-512/512]\n");
 
     memset(keyData, 0xCD, sizeof(keyData));
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_512_512,
         NULL, 0, /* kid, kidLen */
@@ -1771,10 +1837,10 @@ static void test_cose_mac0_with_aad(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 with external AAD]\n");
+    TEST_LOG("  [Mac0 with external AAD]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0, /* kid, kidLen */
@@ -1794,6 +1860,7 @@ static void test_cose_mac0_with_aad(void)
     TEST_ASSERT(ret == 0, "mac0 aad verify ok");
 
     /* Verify with wrong AAD should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t wrongAad[] = "wrong-aad";
         ret = wc_CoseMac0_Verify(&key, out, outLen,
@@ -1827,13 +1894,13 @@ static void test_cose_sign1_buffer_too_small(void)
     const uint8_t payload[] = "test";
     int ret;
 
-    printf("  [Sign1 Buffer Errors]\n");
+    TEST_LOG("  [Sign1 Buffer Errors]\n");
 
     wc_InitRng(&rng);
     wc_ecc_init(&eccKey);
     wc_ecc_make_key(&rng, 32, &eccKey);
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
     /* scratch too small */
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256, NULL, 0,
@@ -1890,8 +1957,8 @@ static void test_cose_sign1_buffer_too_small(void)
     }
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 
 /* ----- Detached Payload tests (RFC 9052 Section 2) ----- */
@@ -1911,7 +1978,7 @@ static void test_cose_sign1_detached(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 Detached Payload]\n");
+    TEST_LOG("  [Sign1 Detached Payload]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -1927,8 +1994,8 @@ static void test_cose_sign1_detached(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         /* Sign with detached payload (payload in message is null) */
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
@@ -1975,10 +2042,10 @@ static void test_cose_sign1_detached(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* HAVE_ECC */
@@ -1995,12 +2062,12 @@ static void test_cose_encrypt0_buffer_errors(void)
     const uint8_t payload[] = "test";
     int ret;
 
-    printf("  [Encrypt0 Buffer Errors]\n");
+    TEST_LOG("  [Encrypt0 Buffer Errors]\n");
 
     memset(keyData, 0xAA, sizeof(keyData));
     memset(nonce, 0xBB, sizeof(nonce));
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* scratch too small */
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
@@ -2055,11 +2122,11 @@ static void test_cose_mac0_buffer_errors(void)
     const uint8_t payload[] = "test";
     int ret;
 
-    printf("  [Mac0 Buffer Errors]\n");
+    TEST_LOG("  [Mac0 Buffer Errors]\n");
 
     memset(keyData, 0xCC, sizeof(keyData));
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* scratch too small */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
@@ -2107,16 +2174,20 @@ static void test_cose_key_encode_errors(void)
     size_t len;
     int ret;
 
-    printf("  [Key Encode/Decode Errors]\n");
+    TEST_LOG("  [Key Encode/Decode Errors]\n");
 
     /* encode uninitialized key (kty=0) */
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_Encode(&key, buf, sizeof(buf), &len);
     TEST_ASSERT(ret != 0, "encode unknown kty");
 
     /* encode with buffer too small */
     key.kty = WOLFCOSE_KTY_SYMMETRIC;
-    key.key.symm.key = (const uint8_t*)"\x01\x02\x03\x04";
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        static const uint8_t keyBytes[] = {0x01u, 0x02u, 0x03u, 0x04u};
+        key.key.symm.key = keyBytes;
+    }
     key.key.symm.keyLen = 4;
     ret = wc_CoseKey_Encode(&key, buf, 3, &len);
     TEST_ASSERT(ret != 0, "encode buf too small");
@@ -2144,6 +2215,7 @@ static void test_cose_key_encode_errors(void)
 
 #ifdef HAVE_ECC
     /* ECC key encode with buffer too small */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         ecc_key eccKey;
         WC_RNG rng;
@@ -2152,20 +2224,21 @@ static void test_cose_key_encode_errors(void)
         wc_ecc_init(&eccKey);
         wc_ecc_make_key(&rng, 32, &eccKey);
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         /* Very small buffer should fail */
         ret = wc_CoseKey_Encode(&key, buf, 10, &len);
         TEST_ASSERT(ret != 0, "ecc encode buf too small");
 
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
     }
 #endif
 
 #if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
     /* RSA key encode with buffer too small */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         RsaKey rsaKey;
         WC_RNG rng;
@@ -2174,8 +2247,8 @@ static void test_cose_key_encode_errors(void)
         wc_InitRsaKey(&rsaKey, NULL);
         wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng);
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetRsa(&key, &rsaKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetRsa(&key, &rsaKey);
 
         /* Very small buffer should fail - need at least space for modulus header */
         ret = wc_CoseKey_Encode(&key, buf, 20, &len);
@@ -2185,13 +2258,14 @@ static void test_cose_key_encode_errors(void)
         ret = wc_CoseKey_Encode(&key, buf, 50, &len);
         TEST_ASSERT(ret != 0, "rsa encode buf too small for n");
 
-        wc_FreeRsaKey(&rsaKey);
-        wc_FreeRng(&rng);
+        (void)wc_FreeRsaKey(&rsaKey);
+        (void)wc_FreeRng(&rng);
     }
 #endif
 
 #ifdef HAVE_DILITHIUM
     /* Dilithium key encode with buffer too small */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         dilithium_key dlKey;
         WC_RNG rng;
@@ -2201,15 +2275,15 @@ static void test_cose_key_encode_errors(void)
         wc_dilithium_set_level(&dlKey, 2);
         wc_dilithium_make_key(&dlKey, &rng);
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
         /* Very small buffer should fail */
         ret = wc_CoseKey_Encode(&key, buf, 10, &len);
         TEST_ASSERT(ret != 0, "dilithium encode buf too small");
 
-        wc_dilithium_free(&dlKey);
-        wc_FreeRng(&rng);
+        (void)wc_dilithium_free(&dlKey);
+        (void)wc_FreeRng(&rng);
     }
 #endif
 }
@@ -2221,9 +2295,9 @@ static void test_cose_key_set_dilithium_errors(void)
     dilithium_key dlKey;
     int ret;
 
-    printf("  [SetDilithium Errors]\n");
+    TEST_LOG("  [SetDilithium Errors]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     wc_dilithium_init(&dlKey);
 
     /* NULL args */
@@ -2238,7 +2312,7 @@ static void test_cose_key_set_dilithium_errors(void)
     ret = wc_CoseKey_SetDilithium(&key, 0, &dlKey);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "set dl zero alg");
 
-    wc_dilithium_free(&dlKey);
+    (void)wc_dilithium_free(&dlKey);
 }
 #endif /* HAVE_DILITHIUM */
 
@@ -2252,21 +2326,21 @@ static void test_cose_key_ed25519_public_only(void)
     size_t len;
     int ret;
 
-    printf("  [Key Ed25519 Public-Only]\n");
+    TEST_LOG("  [Key Ed25519 Public-Only]\n");
 
     wc_InitRng(&rng);
     wc_ed25519_init(&edKey);
     wc_ed25519_init(&edKey2);
     wc_ed25519_make_key(&rng, 32, &edKey);
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEd25519(&key, &edKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd25519(&key, &edKey);
 
     /* Encode with private */
     ret = wc_CoseKey_Encode(&key, buf, sizeof(buf), &len);
     TEST_ASSERT(ret == 0, "ed pub encode");
 
     /* Decode into fresh key — should have private */
-    wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_Init(&key2);
     key2.kty = WOLFCOSE_KTY_OKP;
     key2.key.ed25519 = &edKey2;
     ret = wc_CoseKey_Decode(&key2, buf, len);
@@ -2274,6 +2348,7 @@ static void test_cose_key_ed25519_public_only(void)
     TEST_ASSERT(key2.hasPrivate == 1, "ed has priv");
 
     /* Now export public-only: make a CBOR map without d label */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         /* Build a minimal OKP key with only x (public) */
         uint8_t pubBuf[256];
@@ -2294,20 +2369,20 @@ static void test_cose_key_ed25519_public_only(void)
         wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_X);
         wc_CBOR_EncodeBstr(&enc, xBuf, xSz);
 
-        wc_CoseKey_Init(&key2);
+        (void)wc_CoseKey_Init(&key2);
         key2.kty = WOLFCOSE_KTY_OKP;
         key2.key.ed25519 = &edKey3;
         ret = wc_CoseKey_Decode(&key2, pubBuf, enc.idx);
         TEST_ASSERT(ret == 0, "ed pub-only decode");
         TEST_ASSERT(key2.hasPrivate == 0, "ed pub-only no priv");
 
-        wc_ed25519_free(&edKey3);
+        (void)wc_ed25519_free(&edKey3);
     }
 
     wc_CoseKey_Free(&key);
-    wc_ed25519_free(&edKey);
-    wc_ed25519_free(&edKey2);
-    wc_FreeRng(&rng);
+    (void)wc_ed25519_free(&edKey);
+    (void)wc_ed25519_free(&edKey2);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ED25519 */
 
@@ -2323,7 +2398,7 @@ static void test_cose_key_ed448_public_only(void)
     word32 xSz = sizeof(xBuf);
     int ret;
 
-    printf("  [Key Ed448 Public-Only]\n");
+    TEST_LOG("  [Key Ed448 Public-Only]\n");
 
     wc_InitRng(&rng);
     wc_ed448_init(&edKey);
@@ -2341,16 +2416,16 @@ static void test_cose_key_ed448_public_only(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_X);
     wc_CBOR_EncodeBstr(&enc, xBuf, xSz);
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     key.kty = WOLFCOSE_KTY_OKP;
     key.key.ed448 = &edKey2;
     ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
     TEST_ASSERT(ret == 0, "ed448 pub-only decode");
     TEST_ASSERT(key.hasPrivate == 0, "ed448 pub-only no priv");
 
-    wc_ed448_free(&edKey);
-    wc_ed448_free(&edKey2);
-    wc_FreeRng(&rng);
+    (void)wc_ed448_free(&edKey);
+    (void)wc_ed448_free(&edKey2);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ED448 */
 
@@ -2366,7 +2441,7 @@ static void test_cose_key_dilithium_public_only(void)
     word32 xSz = sizeof(xBuf);
     int ret;
 
-    printf("  [Key ML-DSA-44 Public-Only]\n");
+    TEST_LOG("  [Key ML-DSA-44 Public-Only]\n");
 
     wc_InitRng(&rng);
     wc_dilithium_init(&dlKey);
@@ -2385,7 +2460,7 @@ static void test_cose_key_dilithium_public_only(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_X);
     wc_CBOR_EncodeBstr(&enc, xBuf, (size_t)xSz);
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     key.kty = WOLFCOSE_KTY_OKP;
     key.key.dilithium = &dlKey2;
     ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
@@ -2393,6 +2468,7 @@ static void test_cose_key_dilithium_public_only(void)
     TEST_ASSERT(key.hasPrivate == 0, "dl pub-only no priv");
 
     /* Verify with public-only key */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY signKey;
         uint8_t scratch[8192];
@@ -2403,8 +2479,8 @@ static void test_cose_key_dilithium_public_only(void)
         const uint8_t* dec;
         size_t decLen;
 
-        wc_CoseKey_Init(&signKey);
-        wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+        (void)wc_CoseKey_Init(&signKey);
+        (void)wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
         ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44, NULL, 0,
             payload, sizeof(payload),
@@ -2423,9 +2499,9 @@ static void test_cose_key_dilithium_public_only(void)
     }
 
     wc_CoseKey_Free(&key);
-    wc_dilithium_free(&dlKey);
-    wc_dilithium_free(&dlKey2);
-    wc_FreeRng(&rng);
+    (void)wc_dilithium_free(&dlKey);
+    (void)wc_dilithium_free(&dlKey2);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_DILITHIUM */
 
@@ -2442,7 +2518,7 @@ static void test_cose_key_ecc_public_only(void)
     word32 xLen = sizeof(xBuf), yLen = sizeof(yBuf);
     int ret;
 
-    printf("  [Key ECC Public-Only]\n");
+    TEST_LOG("  [Key ECC Public-Only]\n");
 
     wc_InitRng(&rng);
     wc_ecc_init(&eccKey);
@@ -2462,15 +2538,15 @@ static void test_cose_key_ecc_public_only(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_Y);
     wc_CBOR_EncodeBstr(&enc, yBuf, (size_t)yLen);
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     key.key.ecc = &eccKey2;
     ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
     TEST_ASSERT(ret == 0, "ecc pub-only decode");
     TEST_ASSERT(key.hasPrivate == 0, "ecc pub-only no priv");
 
-    wc_ecc_free(&eccKey);
-    wc_ecc_free(&eccKey2);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_ecc_free(&eccKey2);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC */
 
@@ -2484,7 +2560,7 @@ static void test_cose_key_decode_optional_labels(void)
     const uint8_t symmKey[] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
     int ret;
 
-    printf("  [Key Decode Optional Labels]\n");
+    TEST_LOG("  [Key Decode Optional Labels]\n");
 
     /* Build a symmetric key with kid(2), alg(3), and an unknown label(99) */
     enc.buf = buf; enc.bufSz = sizeof(buf); enc.idx = 0;
@@ -2510,7 +2586,7 @@ static void test_cose_key_decode_optional_labels(void)
     wc_CBOR_EncodeInt(&enc, 99);
     wc_CBOR_EncodeUint(&enc, 42);
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_Decode(&key, buf, enc.idx);
     TEST_ASSERT(ret == 0, "key decode with labels");
     TEST_ASSERT(key.kty == WOLFCOSE_KTY_SYMMETRIC, "key decode kty");
@@ -2566,7 +2642,7 @@ static void test_rfc_sign1_ecdsa_01(void)
     size_t decPayloadLen = 0;
     int ret;
 
-    printf("  [RFC ecdsa-sig-01 (ES256)]\n");
+    TEST_LOG("  [RFC ecdsa-sig-01 (ES256)]\n");
 
     /* Import known public key */
     wc_ecc_init(&eccKey);
@@ -2575,8 +2651,8 @@ static void test_rfc_sign1_ecdsa_01(void)
     TEST_ASSERT(ret == 0, "rfc es256 key import");
     if (ret != 0) { wc_ecc_free(&eccKey); return; }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     key.hasPrivate = 0; /* public-only for verify */
 
     /* Verify the known test vector */
@@ -2591,7 +2667,7 @@ static void test_rfc_sign1_ecdsa_01(void)
                 "rfc es256 payload match");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
+    (void)wc_ecc_free(&eccKey);
 }
 #endif /* HAVE_ECC */
 
@@ -2628,10 +2704,10 @@ static void test_rfc_mac0_hmac_01(void)
     size_t decPayloadLen = 0;
     int ret;
 
-    printf("  [RFC HMac-01 (HMAC-256)]\n");
+    TEST_LOG("  [RFC HMac-01 (HMAC-256)]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, tvKey, sizeof(tvKey));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, tvKey, sizeof(tvKey));
 
     /* Verify the known test vector */
     ret = wc_CoseMac0_Verify(&key, tvCbor, sizeof(tvCbor),
@@ -2671,10 +2747,10 @@ static void test_cose_encrypt0_detached(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 Detached Ciphertext]\n");
+    TEST_LOG("  [Encrypt0 Detached Ciphertext]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Encrypt with detached ciphertext */
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
@@ -2701,12 +2777,14 @@ static void test_cose_encrypt0_detached(void)
         NULL, 0, scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == 0, "enc0 detached decrypt ok");
-    TEST_ASSERT(hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED, "enc0 detached flag set");
+    TEST_ASSERT((hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED) != 0u,
+                "enc0 detached flag set");
     TEST_ASSERT(plaintextLen == sizeof(payload) - 1 &&
                 memcmp(plaintext, payload, plaintextLen) == 0,
                 "enc0 detached payload match");
 
     /* Decrypt with tampered detached ciphertext should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tamperedCt[256];
         memcpy(tamperedCt, detachedCt, detachedCtLen);
@@ -2739,10 +2817,10 @@ static void test_cose_mac0_detached(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 Detached Payload]\n");
+    TEST_LOG("  [Mac0 Detached Payload]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Create Mac0 with detached payload */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
@@ -2767,10 +2845,12 @@ static void test_cose_mac0_detached(void)
         NULL, 0, scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == 0, "mac0 detached verify ok");
-    TEST_ASSERT(hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED, "mac0 detached flag set");
+    TEST_ASSERT((hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED) != 0u,
+                "mac0 detached flag set");
     TEST_ASSERT(decPayload == NULL && decPayloadLen == 0, "mac0 detached payload null");
 
     /* Verify with wrong detached payload should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t wrongPayload[] = "Wrong payload data";
         ret = wc_CoseMac0_Verify(&key, out, outLen,
@@ -2800,10 +2880,10 @@ static void test_cose_mac0_detached_with_aad(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 Detached with AAD]\n");
+    TEST_LOG("  [Mac0 Detached with AAD]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Create with detached payload and external AAD */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
@@ -2824,6 +2904,7 @@ static void test_cose_mac0_detached_with_aad(void)
     TEST_ASSERT(ret == 0, "mac0 detached+aad verify ok");
 
     /* Verify with wrong AAD should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t wrongAad[] = "wrong";
         ret = wc_CoseMac0_Verify(&key, out, outLen,
@@ -2862,12 +2943,12 @@ static void test_cose_mac0_aes_cbc_mac(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 AES-CBC-MAC]\n");
+    TEST_LOG("  [Mac0 AES-CBC-MAC]\n");
 
-    wc_CoseKey_Init(&key128);
-    wc_CoseKey_SetSymmetric(&key128, keyData128, sizeof(keyData128));
-    wc_CoseKey_Init(&key256);
-    wc_CoseKey_SetSymmetric(&key256, keyData256, sizeof(keyData256));
+    (void)wc_CoseKey_Init(&key128);
+    (void)wc_CoseKey_SetSymmetric(&key128, keyData128, sizeof(keyData128));
+    (void)wc_CoseKey_Init(&key256);
+    (void)wc_CoseKey_SetSymmetric(&key256, keyData256, sizeof(keyData256));
 
     /* Test AES-MAC-128/64 */
     ret = wc_CoseMac0_Create(&key128, WOLFCOSE_ALG_AES_MAC_128_64,
@@ -2937,11 +3018,12 @@ static void test_cose_mac0_aes_cbc_mac(void)
     TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_AES_MAC_256_128, "mac0 aes-256/128 alg");
 
     /* Wrong key should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY wrongKey;
         uint8_t wrongKeyData[16] = {0};
-        wc_CoseKey_Init(&wrongKey);
-        wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
+        (void)wc_CoseKey_Init(&wrongKey);
+        (void)wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
         ret = wc_CoseMac0_Verify(&wrongKey, out, outLen,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
@@ -2950,10 +3032,11 @@ static void test_cose_mac0_aes_cbc_mac(void)
     }
 
     /* Tampered message should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tampered[512];
         memcpy(tampered, out, outLen);
-        if (outLen > 20) {
+        if (outLen > 20u) {
             tampered[outLen - 5] ^= 0xFF;
         }
         ret = wc_CoseMac0_Verify(&key256, tampered, outLen,
@@ -2964,6 +3047,7 @@ static void test_cose_mac0_aes_cbc_mac(void)
     }
 
     /* Wrong key length for algorithm should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         /* Using 128-bit key with 256-bit algorithm */
         ret = wc_CoseMac0_Create(&key128, WOLFCOSE_ALG_AES_MAC_256_64,
@@ -2996,10 +3080,10 @@ static void test_cose_mac0_aes_cbc_mac_with_aad(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 AES-CBC-MAC with AAD]\n");
+    TEST_LOG("  [Mac0 AES-CBC-MAC with AAD]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Create with AAD */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_AES_MAC_128_128,
@@ -3020,6 +3104,7 @@ static void test_cose_mac0_aes_cbc_mac_with_aad(void)
     TEST_ASSERT(ret == 0, "mac0 aes aad verify ok");
 
     /* Verify with wrong AAD should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t wrongAad[] = "wrong-aad";
         ret = wc_CoseMac0_Verify(&key, out, outLen,
@@ -3057,10 +3142,10 @@ static void test_cose_mac0_aes_cbc_mac_detached(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 AES-CBC-MAC Detached]\n");
+    TEST_LOG("  [Mac0 AES-CBC-MAC Detached]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Create with detached payload */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_AES_MAC_128_64,
@@ -3087,10 +3172,12 @@ static void test_cose_mac0_aes_cbc_mac_detached(void)
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == 0, "mac0 aes detached verify ok");
-    TEST_ASSERT(hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED, "mac0 aes detached flag set");
+    TEST_ASSERT((hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED) != 0u,
+                "mac0 aes detached flag set");
     TEST_ASSERT(decPayload == NULL, "mac0 aes detached payload null");
 
     /* Verify with wrong detached payload should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t wrongPayload[] = "wrong payload";
         ret = wc_CoseMac0_Verify(&key, out, outLen,
@@ -3122,7 +3209,7 @@ static void test_cose_sign_multi_signer(void)
     const uint8_t* decPayload;
     size_t decPayloadLen;
 
-    printf("  [Sign Multi-Signer ES256]\n");
+    TEST_LOG("  [Sign Multi-Signer ES256]\n");
 
     /* Initialize RNG and keys */
     ret = wc_InitRng(&rng);
@@ -3142,11 +3229,11 @@ static void test_cose_sign_multi_signer(void)
     TEST_ASSERT(ret == 0, "sign ecc2 keygen");
 
     /* Setup COSE keys */
-    wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_Init(&key1);
     ret = wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
     TEST_ASSERT(ret == 0, "sign key1 set");
 
-    wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_Init(&key2);
     ret = wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
     TEST_ASSERT(ret == 0, "sign key2 set");
 
@@ -3232,9 +3319,9 @@ static void test_cose_sign_multi_signer(void)
     /* Cleanup */
     wc_CoseKey_Free(&key1);
     wc_CoseKey_Free(&key2);
-    wc_ecc_free(&eccKey1);
-    wc_ecc_free(&eccKey2);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey1);
+    (void)wc_ecc_free(&eccKey2);
+    (void)wc_FreeRng(&rng);
 }
 
 #if defined(HAVE_DILITHIUM) && defined(WOLFCOSE_SIGN)
@@ -3250,7 +3337,7 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
     uint8_t scratch[128];
     const uint8_t payload[] = "mldsa-level";
 
-    printf("  [Sign multi-signer ML-DSA level mismatch]\n");
+    TEST_LOG("  [Sign multi-signer ML-DSA level mismatch]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "ml-dsa rng");
@@ -3261,7 +3348,7 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
     ret = wc_dilithium_make_key(&dlKey, &rng);
     TEST_ASSERT(ret == 0, "ml-dsa keygen");
 
-    wc_CoseKey_Init(&signKey);
+    (void)wc_CoseKey_Init(&signKey);
     ret = wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
     TEST_ASSERT(ret == 0, "ml-dsa set key");
 
@@ -3281,7 +3368,7 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
                 "Sign_Sign rejects ML-DSA-65 vs key-44 mismatch");
 
     wc_CoseKey_Free(&signKey);
-    wc_dilithium_free(&dlKey);
+    (void)wc_dilithium_free(&dlKey);
 
     /* Level-3 key with ML-DSA-44 algId */
     ret = wc_dilithium_init(&dlKey);
@@ -3290,7 +3377,7 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
     TEST_ASSERT(ret == 0, "ml-dsa3 set level");
     ret = wc_dilithium_make_key(&dlKey, &rng);
     TEST_ASSERT(ret == 0, "ml-dsa3 keygen");
-    wc_CoseKey_Init(&signKey);
+    (void)wc_CoseKey_Init(&signKey);
     ret = wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_65, &dlKey);
     TEST_ASSERT(ret == 0, "ml-dsa3 set key");
     signers[0].algId = WOLFCOSE_ALG_ML_DSA_44;
@@ -3302,7 +3389,7 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                 "Sign_Sign rejects ML-DSA-44 vs key-65 mismatch");
     wc_CoseKey_Free(&signKey);
-    wc_dilithium_free(&dlKey);
+    (void)wc_dilithium_free(&dlKey);
 
     /* Level-5 key with ML-DSA-44 algId */
     ret = wc_dilithium_init(&dlKey);
@@ -3311,7 +3398,7 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
     TEST_ASSERT(ret == 0, "ml-dsa5 set level");
     ret = wc_dilithium_make_key(&dlKey, &rng);
     TEST_ASSERT(ret == 0, "ml-dsa5 keygen");
-    wc_CoseKey_Init(&signKey);
+    (void)wc_CoseKey_Init(&signKey);
     ret = wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_87, &dlKey);
     TEST_ASSERT(ret == 0, "ml-dsa5 set key");
     signers[0].algId = WOLFCOSE_ALG_ML_DSA_44;
@@ -3323,9 +3410,9 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                 "Sign_Sign rejects ML-DSA-44 vs key-87 mismatch");
     wc_CoseKey_Free(&signKey);
-    wc_dilithium_free(&dlKey);
+    (void)wc_dilithium_free(&dlKey);
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -3345,7 +3432,7 @@ static void test_cose_sign_verify_key_alg_mismatch(void)
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
 
-    printf("  [Sign_Verify key->alg mismatch]\n");
+    TEST_LOG("  [Sign_Verify key->alg mismatch]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "sv-mismatch rng");
@@ -3354,7 +3441,7 @@ static void test_cose_sign_verify_key_alg_mismatch(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "sv-mismatch keygen");
 
-    wc_CoseKey_Init(&signKey);
+    (void)wc_CoseKey_Init(&signKey);
     ret = wc_CoseKey_SetEcc(&signKey, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "sv-mismatch sign key set");
     signers[0].algId = WOLFCOSE_ALG_ES256;
@@ -3371,7 +3458,7 @@ static void test_cose_sign_verify_key_alg_mismatch(void)
         &rng);
     TEST_ASSERT(ret == 0, "sv-mismatch sign");
 
-    wc_CoseKey_Init(&verifyKey);
+    (void)wc_CoseKey_Init(&verifyKey);
     ret = wc_CoseKey_SetEcc(&verifyKey, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "sv-mismatch verify key set");
     verifyKey.alg = WOLFCOSE_ALG_ES384;
@@ -3386,8 +3473,8 @@ static void test_cose_sign_verify_key_alg_mismatch(void)
 
     wc_CoseKey_Free(&signKey);
     wc_CoseKey_Free(&verifyKey);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_cose_encrypt0_decrypt_key_alg_mismatch(void)
@@ -3406,14 +3493,14 @@ static void test_cose_encrypt0_decrypt_key_alg_mismatch(void)
     WOLFCOSE_HDR hdr;
     const uint8_t payload[] = "e0-mismatch";
 
-    printf("  [Encrypt0_Decrypt key->alg mismatch]\n");
+    TEST_LOG("  [Encrypt0_Decrypt key->alg mismatch]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "e0-mismatch rng");
     ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
     TEST_ASSERT(ret == 0, "e0-mismatch iv");
 
-    wc_CoseKey_Init(&encKey);
+    (void)wc_CoseKey_Init(&encKey);
     ret = wc_CoseKey_SetSymmetric(&encKey, key16, sizeof(key16));
     TEST_ASSERT(ret == 0, "e0-mismatch enc key");
 
@@ -3426,7 +3513,7 @@ static void test_cose_encrypt0_decrypt_key_alg_mismatch(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret == 0, "e0-mismatch encrypt");
 
-    wc_CoseKey_Init(&decKey);
+    (void)wc_CoseKey_Init(&decKey);
     ret = wc_CoseKey_SetSymmetric(&decKey, key16, sizeof(key16));
     TEST_ASSERT(ret == 0, "e0-mismatch dec key");
     decKey.alg = WOLFCOSE_ALG_A256GCM;
@@ -3441,7 +3528,7 @@ static void test_cose_encrypt0_decrypt_key_alg_mismatch(void)
 
     wc_CoseKey_Free(&encKey);
     wc_CoseKey_Free(&decKey);
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_cose_mac0_verify_key_alg_mismatch(void)
@@ -3458,9 +3545,9 @@ static void test_cose_mac0_verify_key_alg_mismatch(void)
     size_t decPayloadLen = 0;
     const uint8_t payload[] = "m0v-mismatch";
 
-    printf("  [Mac0_Verify key->alg mismatch]\n");
+    TEST_LOG("  [Mac0_Verify key->alg mismatch]\n");
 
-    wc_CoseKey_Init(&macKey);
+    (void)wc_CoseKey_Init(&macKey);
     ret = wc_CoseKey_SetSymmetric(&macKey, hmacKey, sizeof(hmacKey));
     TEST_ASSERT(ret == 0, "m0v-mismatch mac key");
 
@@ -3472,7 +3559,7 @@ static void test_cose_mac0_verify_key_alg_mismatch(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret == 0, "m0v-mismatch create");
 
-    wc_CoseKey_Init(&verifyKey);
+    (void)wc_CoseKey_Init(&verifyKey);
     ret = wc_CoseKey_SetSymmetric(&verifyKey, hmacKey, sizeof(hmacKey));
     TEST_ASSERT(ret == 0, "m0v-mismatch verify key");
     verifyKey.alg = WOLFCOSE_ALG_HMAC_512_512;
@@ -3502,7 +3589,7 @@ static void test_cose_sign_both_payloads(void)
     const uint8_t inline_payload[] = "inline";
     const uint8_t detached_payload[] = "detached";
 
-    printf("  [Sign multi-signer both payloads rejected]\n");
+    TEST_LOG("  [Sign multi-signer both payloads rejected]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "sign-both rng");
@@ -3511,7 +3598,7 @@ static void test_cose_sign_both_payloads(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "sign-both keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "sign-both key set");
     signers[0].algId = WOLFCOSE_ALG_ES256;
@@ -3530,8 +3617,8 @@ static void test_cose_sign_both_payloads(void)
                 "Sign_Sign rejects both inline and detached");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_cose_sign_with_aad(void)
@@ -3551,7 +3638,7 @@ static void test_cose_sign_with_aad(void)
     const uint8_t* decPayload;
     size_t decPayloadLen;
 
-    printf("  [Sign with external AAD]\n");
+    TEST_LOG("  [Sign with external AAD]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "sign aad rng init");
@@ -3562,7 +3649,7 @@ static void test_cose_sign_with_aad(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "sign aad keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "sign aad key set");
 
@@ -3613,8 +3700,8 @@ static void test_cose_sign_with_aad(void)
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL, "sign missing aad fails");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_cose_sign_detached(void)
@@ -3633,7 +3720,7 @@ static void test_cose_sign_detached(void)
     const uint8_t* decPayload;
     size_t decPayloadLen;
 
-    printf("  [Sign Detached Payload]\n");
+    TEST_LOG("  [Sign Detached Payload]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "sign detached rng init");
@@ -3644,7 +3731,7 @@ static void test_cose_sign_detached(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "sign detached keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "sign detached key set");
 
@@ -3697,8 +3784,8 @@ static void test_cose_sign_detached(void)
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL, "sign detached wrong payload fails");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 
 #ifdef HAVE_ED25519
@@ -3718,7 +3805,7 @@ static void test_cose_sign_mixed_algorithms(void)
     const uint8_t* decPayload;
     size_t decPayloadLen;
 
-    printf("  [Sign Mixed Algorithms ES256+EdDSA]\n");
+    TEST_LOG("  [Sign Mixed Algorithms ES256+EdDSA]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "sign mixed rng init");
@@ -3730,7 +3817,7 @@ static void test_cose_sign_mixed_algorithms(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "sign mixed ecc keygen");
 
-    wc_CoseKey_Init(&keyEc);
+    (void)wc_CoseKey_Init(&keyEc);
     ret = wc_CoseKey_SetEcc(&keyEc, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "sign mixed ecc key set");
 
@@ -3741,7 +3828,7 @@ static void test_cose_sign_mixed_algorithms(void)
     ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
     TEST_ASSERT(ret == 0, "sign mixed ed keygen");
 
-    wc_CoseKey_Init(&keyEd);
+    (void)wc_CoseKey_Init(&keyEd);
     ret = wc_CoseKey_SetEd25519(&keyEd, &edKey);
     TEST_ASSERT(ret == 0, "sign mixed ed key set");
 
@@ -3802,15 +3889,81 @@ static void test_cose_sign_mixed_algorithms(void)
 
     wc_CoseKey_Free(&keyEc);
     wc_CoseKey_Free(&keyEd);
-    wc_ecc_free(&eccKey);
-    wc_ed25519_free(&edKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_ed25519_free(&edKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ED25519 */
 #endif /* WOLFCOSE_SIGN && HAVE_ECC */
 
 /* ----- COSE_Encrypt Multi-Recipient Tests (RFC 9052 Section 5.1) ----- */
 #if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
+    uint8_t algByte)
+{
+    int ret = -1;
+    WOLFCOSE_CBOR_CTX ctx;
+    uint64_t count = 0;
+    const uint8_t* protectedData = NULL;
+    size_t protectedLen = 0;
+    size_t protectedOffset = 0u;
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.cbuf = msg;
+    ctx.bufSz = msgLen;
+
+    if ((ctx.idx < ctx.bufSz) &&
+        (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
+        ret = wc_CBOR_DecodeTag(&ctx, &count);
+    }
+    else {
+        ret = 0;
+    }
+
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+        if ((ret != 0) || (count != 4u)) {
+            ret = -1;
+        }
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_Skip(&ctx);
+        if (ret == 0) {
+            ret = wc_CBOR_Skip(&ctx);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_Skip(&ctx);
+        }
+        if (ret != 0) {
+            ret = -1;
+        }
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+        if ((ret != 0) || (count < 1u)) {
+            ret = -1;
+        }
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+        if ((ret != 0) || (count != 3u)) {
+            ret = -1;
+        }
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &protectedData, &protectedLen);
+        if ((ret != 0) || (protectedLen < 3u)) {
+            ret = -1;
+        }
+    }
+    if (ret == 0) {
+        protectedOffset = (size_t)(protectedData - msg);
+        msg[protectedOffset + protectedLen - 1u] = algByte;
+    }
+
+    return ret;
+}
+
 static void test_cose_encrypt_multi_recipient(void)
 {
     WOLFCOSE_KEY key1, key2;
@@ -3832,14 +3985,14 @@ static void test_cose_encrypt_multi_recipient(void)
     const uint8_t kid1[] = "recipient-1";
     const uint8_t kid2[] = "recipient-2";
 
-    printf("  [Encrypt Multi-Recipient A128GCM]\n");
+    TEST_LOG("  [Encrypt Multi-Recipient A128GCM]\n");
 
     /* Setup keys - both recipients use the same shared key in direct mode */
-    wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_Init(&key1);
     ret = wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "encrypt key1 set");
 
-    wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_Init(&key2);
     ret = wc_CoseKey_SetSymmetric(&key2, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "encrypt key2 set");
 
@@ -3899,11 +4052,12 @@ static void test_cose_encrypt_multi_recipient(void)
     TEST_ASSERT(memcmp(hdr.iv, iv, sizeof(iv)) == 0, "encrypt hdr iv match");
 
     /* Wrong key should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY wrongKey;
         WOLFCOSE_RECIPIENT wrongRecipient;
-        wc_CoseKey_Init(&wrongKey);
-        wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
+        (void)wc_CoseKey_Init(&wrongKey);
+        (void)wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
         wrongRecipient.algId = 0;
         wrongRecipient.key = &wrongKey;
         wrongRecipient.kid = NULL;
@@ -3953,9 +4107,9 @@ static void test_cose_encrypt_with_aad(void)
     const uint8_t aad[] = "authenticated additional data";
     const uint8_t wrongAad[] = "wrong aad";
 
-    printf("  [Encrypt with external AAD]\n");
+    TEST_LOG("  [Encrypt with external AAD]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "encrypt aad key set");
 
@@ -4032,9 +4186,9 @@ static void test_cose_encrypt_a256gcm(void)
         0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
     };
 
-    printf("  [Encrypt Multi-Recipient A256GCM]\n");
+    TEST_LOG("  [Encrypt Multi-Recipient A256GCM]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "encrypt a256 key set");
 
@@ -4072,6 +4226,174 @@ static void test_cose_encrypt_a256gcm(void)
     wc_CoseKey_Free(&key);
 }
 
+static void test_cose_encrypt_direct_key_alg_pin_roundtrip(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    int ret;
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    uint8_t plaintext[64];
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "Direct key alg pin";
+    const uint8_t iv[12] = {0x50, 0x51, 0x52, 0x53, 0x54, 0x55,
+                            0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B};
+    const uint8_t keyData[16] = {
+        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+        0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F
+    };
+
+    TEST_LOG("  [Encrypt Direct key->alg roundtrip]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "direct alg pin key set");
+    key.alg = WOLFCOSE_ALG_A128GCM;
+
+    recipient.algId = WOLFCOSE_ALG_UNSET;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        NULL);
+    TEST_ASSERT(ret == 0, "direct alg pin encrypt");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == 0, "direct alg pin decrypt");
+    TEST_ASSERT(plaintextLen == sizeof(payload) - 1, "direct alg pin pt len");
+    TEST_ASSERT(memcmp(plaintext, payload, plaintextLen) == 0,
+                "direct alg pin pt match");
+
+    wc_CoseKey_Free(&key);
+}
+
+static void test_cose_encrypt_direct_alg_id_key_alg_roundtrip(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    int ret;
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    uint8_t plaintext[64];
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "Direct alg id key alg";
+    const uint8_t iv[12] = {0x5C, 0x5D, 0x5E, 0x5F, 0x60, 0x61,
+                            0x62, 0x63, 0x64, 0x65, 0x66, 0x67};
+    const uint8_t keyData[16] = {
+        0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87,
+        0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F
+    };
+
+    TEST_LOG("  [Encrypt Direct algId key->alg roundtrip]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "direct algId key set");
+    key.alg = WOLFCOSE_ALG_A128GCM;
+
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        NULL);
+    TEST_ASSERT(ret == 0, "direct algId encrypt");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == 0, "direct algId decrypt");
+    TEST_ASSERT(plaintextLen == sizeof(payload) - 1, "direct algId pt len");
+    TEST_ASSERT(memcmp(plaintext, payload, plaintextLen) == 0,
+                "direct algId pt match");
+
+    wc_CoseKey_Free(&key);
+}
+
+static void test_cose_encrypt_direct_multi_key_alg_mismatch(void)
+{
+    WOLFCOSE_KEY key1, key2;
+    WOLFCOSE_RECIPIENT recipients[2];
+    int ret;
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "Direct multi key alg mismatch";
+    const uint8_t iv[12] = {0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D,
+                            0x6E, 0x6F, 0x70, 0x71, 0x72, 0x73};
+    const uint8_t keyData[16] = {
+        0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97,
+        0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F
+    };
+
+    TEST_LOG("  [Encrypt Direct multi key->alg mismatch]\n");
+
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_Init(&key2);
+    ret = wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "direct multi key1 set");
+    ret = wc_CoseKey_SetSymmetric(&key2, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "direct multi key2 set");
+    key1.alg = WOLFCOSE_ALG_A128GCM;
+    key2.alg = WOLFCOSE_ALG_A256GCM;
+
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
+    recipients[0].key = &key1;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+    recipients[1].algId = WOLFCOSE_ALG_DIRECT;
+    recipients[1].key = &key2;
+    recipients[1].kid = NULL;
+    recipients[1].kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(recipients, 2,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "direct multi key alg mismatch rejected");
+
+    wc_CoseKey_Free(&key1);
+    wc_CoseKey_Free(&key2);
+}
+
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
 /**
  * Test ECDH-ES (Ephemeral-Static) encryption and decryption.
@@ -4097,9 +4419,10 @@ static void test_cose_encrypt_ecdh_es_kid_and_alg_pin(void)
     uint8_t plaintext[128];
     size_t plaintextLen = 0;
     const uint8_t payload[] = "ECDH-ES kid payload";
+    static const uint8_t aliceKid[] = { 'a', 'l', 'i', 'c', 'e' };
     uint8_t iv[12];
 
-    printf("  [Encrypt ECDH-ES kid + alg-pin]\n");
+    TEST_LOG("  [Encrypt ECDH-ES kid + alg-pin]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "ecdh-es-kid rng");
@@ -4108,15 +4431,15 @@ static void test_cose_encrypt_ecdh_es_kid_and_alg_pin(void)
     ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
     TEST_ASSERT(ret == 0, "ecdh-es-kid keygen");
 
-    wc_CoseKey_Init(&recipientKey);
+    (void)wc_CoseKey_Init(&recipientKey);
     ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
     TEST_ASSERT(ret == 0, "ecdh-es-kid set key");
     recipientKey.hasPrivate = 0;
 
     recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
     recipient.key = &recipientKey;
-    recipient.kid = (const uint8_t*)"alice";
-    recipient.kidLen = 5;
+    recipient.kid = aliceKid;
+    recipient.kidLen = sizeof(aliceKid);
 
     ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
     TEST_ASSERT(ret == 0, "ecdh-es-kid iv");
@@ -4164,8 +4487,8 @@ static void test_cose_encrypt_ecdh_es_kid_and_alg_pin(void)
                 "ecdh-es-kid plaintext len");
 
     wc_CoseKey_Free(&recipientKey);
-    wc_ecc_free(&recipientEcc);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_cose_encrypt_ecdh_es_hkdf_256(void)
@@ -4184,7 +4507,7 @@ static void test_cose_encrypt_ecdh_es_hkdf_256(void)
     const uint8_t payload[] = "ECDH-ES test payload";
     uint8_t iv[12];
 
-    printf("  [Encrypt ECDH-ES + HKDF-256]\n");
+    TEST_LOG("  [Encrypt ECDH-ES + HKDF-256]\n");
 
     /* Initialize RNG */
     ret = wc_InitRng(&rng);
@@ -4198,7 +4521,7 @@ static void test_cose_encrypt_ecdh_es_hkdf_256(void)
     TEST_ASSERT(ret == 0, "ecdh-es make key");
 
     /* Set up recipient's public key for encryption */
-    wc_CoseKey_Init(&recipientKey);
+    (void)wc_CoseKey_Init(&recipientKey);
     ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
     TEST_ASSERT(ret == 0, "ecdh-es set ecc key");
     recipientKey.hasPrivate = 0;  /* Encryption uses public key only */
@@ -4249,8 +4572,8 @@ static void test_cose_encrypt_ecdh_es_hkdf_256(void)
 
     /* Clean up */
     wc_CoseKey_Free(&recipientKey);
-    wc_ecc_free(&recipientEcc);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
 }
 
 /**
@@ -4272,7 +4595,7 @@ static void test_cose_encrypt_ecdh_es_wrong_key(void)
     const uint8_t payload[] = "ECDH-ES wrong key test";
     uint8_t iv[12];
 
-    printf("  [Encrypt ECDH-ES wrong key fails]\n");
+    TEST_LOG("  [Encrypt ECDH-ES wrong key fails]\n");
 
     /* Initialize RNG */
     ret = wc_InitRng(&rng);
@@ -4291,7 +4614,7 @@ static void test_cose_encrypt_ecdh_es_wrong_key(void)
     TEST_ASSERT(ret == 0, "ecdh-es wrong make key2");
 
     /* Set up recipient's key for encryption */
-    wc_CoseKey_Init(&recipientKey);
+    (void)wc_CoseKey_Init(&recipientKey);
     ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
     TEST_ASSERT(ret == 0, "ecdh-es wrong set key");
     recipientKey.hasPrivate = 0;
@@ -4318,7 +4641,7 @@ static void test_cose_encrypt_ecdh_es_wrong_key(void)
     TEST_ASSERT(ret == 0, "ecdh-es wrong encrypt");
 
     /* Try to decrypt with wrong key */
-    wc_CoseKey_Init(&wrongKey);
+    (void)wc_CoseKey_Init(&wrongKey);
     ret = wc_CoseKey_SetEcc(&wrongKey, WOLFCOSE_CRV_P256, &wrongEcc);
     TEST_ASSERT(ret == 0, "ecdh-es wrong set key2");
     wrongKey.hasPrivate = 1;
@@ -4339,9 +4662,9 @@ static void test_cose_encrypt_ecdh_es_wrong_key(void)
     /* Clean up */
     wc_CoseKey_Free(&recipientKey);
     wc_CoseKey_Free(&wrongKey);
-    wc_ecc_free(&recipientEcc);
-    wc_ecc_free(&wrongEcc);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_ecc_free(&wrongEcc);
+    (void)wc_FreeRng(&rng);
 }
 
 /**
@@ -4363,7 +4686,7 @@ static void test_cose_encrypt_ecdh_es_p384(void)
     const uint8_t payload[] = "ECDH-ES P-384 test";
     uint8_t iv[12];
 
-    printf("  [Encrypt ECDH-ES P-384]\n");
+    TEST_LOG("  [Encrypt ECDH-ES P-384]\n");
 
     /* Initialize RNG */
     ret = wc_InitRng(&rng);
@@ -4377,7 +4700,7 @@ static void test_cose_encrypt_ecdh_es_p384(void)
     TEST_ASSERT(ret == 0, "ecdh-es p384 make key");
 
     /* Set up recipient's public key for encryption */
-    wc_CoseKey_Init(&recipientKey);
+    (void)wc_CoseKey_Init(&recipientKey);
     ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P384, &recipientEcc);
     TEST_ASSERT(ret == 0, "ecdh-es p384 set ecc key");
     recipientKey.hasPrivate = 0;
@@ -4424,8 +4747,8 @@ static void test_cose_encrypt_ecdh_es_p384(void)
 
     /* Clean up */
     wc_CoseKey_Free(&recipientKey);
-    wc_ecc_free(&recipientEcc);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
 }
 
 /**
@@ -4444,14 +4767,14 @@ static void test_cose_encrypt_ecdh_es_wrong_key_type(void)
     uint8_t iv[12] = {0};
     uint8_t keyData[32] = {0};
 
-    printf("  [Encrypt ECDH-ES wrong key type]\n");
+    TEST_LOG("  [Encrypt ECDH-ES wrong key type]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "ecdh-es ktype rng init");
 
     /* Set up symmetric key (wrong type for ECDH-ES) */
-    wc_CoseKey_Init(&symKey);
-    wc_CoseKey_SetSymmetric(&symKey, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&symKey);
+    (void)wc_CoseKey_SetSymmetric(&symKey, keyData, sizeof(keyData));
 
     /* Try ECDH-ES with symmetric key - should fail */
     recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
@@ -4471,7 +4794,7 @@ static void test_cose_encrypt_ecdh_es_wrong_key_type(void)
         &rng);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "ecdh-es sym key fails");
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_ECDH_ES_DIRECT && HAVE_ECC && HAVE_HKDF */
 
@@ -4493,7 +4816,7 @@ static void test_cose_encrypt_kw_wrong_key_type(void)
     const uint8_t payload[] = "KW key type test";
     uint8_t iv[12] = {0};
 
-    printf("  [Encrypt KW wrong key type]\n");
+    TEST_LOG("  [Encrypt KW wrong key type]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "kw ktype rng init");
@@ -4501,8 +4824,8 @@ static void test_cose_encrypt_kw_wrong_key_type(void)
     /* Set up ECC key (wrong type for Key Wrap) */
     wc_ecc_init(&key);
     wc_ecc_make_key(&rng, 32, &key);
-    wc_CoseKey_Init(&eccKey);
-    wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
+    (void)wc_CoseKey_Init(&eccKey);
+    (void)wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
 
     /* Try Key Wrap with ECC key - should fail */
     recipient.algId = WOLFCOSE_ALG_A128KW;
@@ -4522,8 +4845,8 @@ static void test_cose_encrypt_kw_wrong_key_type(void)
         &rng);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "kw ecc key fails");
 
-    wc_ecc_free(&key);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&key);
+    (void)wc_FreeRng(&rng);
 #endif /* HAVE_ECC */
 }
 
@@ -4543,6 +4866,9 @@ static void test_cose_encrypt_a128kw(void)
     uint8_t plaintext[256];
     size_t plaintextLen;
     const uint8_t payload[] = "A128KW test payload";
+    static const uint8_t kwRecipientKid[] = {
+        'k', 'w', '-', 'r', 'e', 'c', 'i', 'p', 'i', 'e', 'n', 't'
+    };
     uint8_t iv[12];
     /* 16-byte KEK for A128KW */
     const uint8_t kekData[16] = {
@@ -4554,22 +4880,22 @@ static void test_cose_encrypt_a128kw(void)
         0xF7, 0xF6, 0xF5, 0xF4, 0xF3, 0xF2, 0xF1, 0xF0
     };
 
-    printf("  [Encrypt A128KW Key Wrap]\n");
+    TEST_LOG("  [Encrypt A128KW Key Wrap]\n");
 
     /* Initialize RNG */
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "a128kw rng init");
 
     /* Set up KEK */
-    wc_CoseKey_Init(&kek);
+    (void)wc_CoseKey_Init(&kek);
     ret = wc_CoseKey_SetSymmetric(&kek, kekData, sizeof(kekData));
     TEST_ASSERT(ret == 0, "a128kw set kek");
 
     /* Set up recipient */
     recipient.algId = WOLFCOSE_ALG_A128KW;
     recipient.key = &kek;
-    recipient.kid = (const uint8_t*)"kw-recipient";
-    recipient.kidLen = 12;
+    recipient.kid = kwRecipientKid;
+    recipient.kidLen = sizeof(kwRecipientKid);
 
     /* Generate random IV */
     ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
@@ -4607,7 +4933,7 @@ static void test_cose_encrypt_a128kw(void)
     TEST_ASSERT(hdr.ivLen == sizeof(iv), "a128kw hdr iv len");
 
     /* Decrypt with wrong KEK should fail */
-    wc_CoseKey_Init(&wrongKek);
+    (void)wc_CoseKey_Init(&wrongKek);
     ret = wc_CoseKey_SetSymmetric(&wrongKek, wrongKekData, sizeof(wrongKekData));
     TEST_ASSERT(ret == 0, "a128kw set wrong kek");
 
@@ -4630,7 +4956,75 @@ static void test_cose_encrypt_a128kw(void)
     /* Clean up */
     wc_CoseKey_Free(&kek);
     wc_CoseKey_Free(&wrongKek);
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
+}
+
+static void test_cose_encrypt_kw_mutated_recipient_alg_pin(void)
+{
+    WOLFCOSE_KEY kek;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[512];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    uint8_t plaintext[128];
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "KW recipient alg mutation";
+    uint8_t iv[12];
+    const uint8_t kekData[16] = {
+        0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
+        0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F
+    };
+
+    TEST_LOG("  [Encrypt KW mutated recipient alg pin]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "kw mutated rng init");
+
+    (void)wc_CoseKey_Init(&kek);
+    ret = wc_CoseKey_SetSymmetric(&kek, kekData, sizeof(kekData));
+    TEST_ASSERT(ret == 0, "kw mutated set kek");
+    kek.alg = WOLFCOSE_ALG_A128KW;
+
+    recipient.algId = WOLFCOSE_ALG_A128KW;
+    recipient.key = &kek;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    TEST_ASSERT(ret == 0, "kw mutated iv");
+
+    ret = wc_CoseEncrypt_Encrypt(
+        &recipient, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "kw mutated encrypt");
+
+    ret = mutate_first_recipient_protected_alg(out, outLen, 0x24);
+    TEST_ASSERT(ret == 0, "kw mutated patch recipient alg");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(
+        &recipient, 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "kw mutated recipient alg rejected");
+
+    wc_CoseKey_Free(&kek);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_cose_encrypt_a128kw_multi_recipient(void)
@@ -4650,6 +5044,8 @@ static void test_cose_encrypt_a128kw_multi_recipient(void)
     size_t plain1Len = 0;
     size_t plain2Len = 0;
     const uint8_t payload[] = "Multi-KW payload";
+    static const uint8_t kwR0Kid[] = { 'k', 'w', '-', 'r', '0' };
+    static const uint8_t kwR1Kid[] = { 'k', 'w', '-', 'r', '1' };
     uint8_t iv[12];
     const uint8_t kek1Data[16] = {
         0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,
@@ -4660,12 +5056,12 @@ static void test_cose_encrypt_a128kw_multi_recipient(void)
         0x28,0x29,0x2A,0x2B,0x2C,0x2D,0x2E,0x2F
     };
 
-    printf("  [Encrypt A128KW Multi-Recipient]\n");
+    TEST_LOG("  [Encrypt A128KW Multi-Recipient]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "kw-multi rng init");
-    wc_CoseKey_Init(&kek1);
-    wc_CoseKey_Init(&kek2);
+    (void)wc_CoseKey_Init(&kek1);
+    (void)wc_CoseKey_Init(&kek2);
     ret = wc_CoseKey_SetSymmetric(&kek1, kek1Data, sizeof(kek1Data));
     TEST_ASSERT(ret == 0, "kw-multi set kek1");
     ret = wc_CoseKey_SetSymmetric(&kek2, kek2Data, sizeof(kek2Data));
@@ -4673,12 +5069,12 @@ static void test_cose_encrypt_a128kw_multi_recipient(void)
 
     recipients[0].algId = WOLFCOSE_ALG_A128KW;
     recipients[0].key = &kek1;
-    recipients[0].kid = (const uint8_t*)"kw-r0";
-    recipients[0].kidLen = 5;
+    recipients[0].kid = kwR0Kid;
+    recipients[0].kidLen = sizeof(kwR0Kid);
     recipients[1].algId = WOLFCOSE_ALG_A128KW;
     recipients[1].key = &kek2;
-    recipients[1].kid = (const uint8_t*)"kw-r1";
-    recipients[1].kidLen = 5;
+    recipients[1].kid = kwR1Kid;
+    recipients[1].kidLen = sizeof(kwR1Kid);
 
     ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
     TEST_ASSERT(ret == 0, "kw-multi iv");
@@ -4739,7 +5135,7 @@ static void test_cose_encrypt_a128kw_multi_recipient(void)
 
     wc_CoseKey_Free(&kek1);
     wc_CoseKey_Free(&kek2);
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 
 /**
@@ -4766,14 +5162,14 @@ static void test_cose_encrypt_a192kw(void)
         0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17
     };
 
-    printf("  [Encrypt A192KW Key Wrap]\n");
+    TEST_LOG("  [Encrypt A192KW Key Wrap]\n");
 
     /* Initialize RNG */
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "a192kw rng init");
 
     /* Set up KEK */
-    wc_CoseKey_Init(&kek);
+    (void)wc_CoseKey_Init(&kek);
     ret = wc_CoseKey_SetSymmetric(&kek, kekData, sizeof(kekData));
     TEST_ASSERT(ret == 0, "a192kw set kek");
 
@@ -4816,7 +5212,7 @@ static void test_cose_encrypt_a192kw(void)
 
     /* Clean up */
     wc_CoseKey_Free(&kek);
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 
 /**
@@ -4844,14 +5240,14 @@ static void test_cose_encrypt_a256kw(void)
         0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
     };
 
-    printf("  [Encrypt A256KW Key Wrap]\n");
+    TEST_LOG("  [Encrypt A256KW Key Wrap]\n");
 
     /* Initialize RNG */
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "a256kw rng init");
 
     /* Set up KEK */
-    wc_CoseKey_Init(&kek);
+    (void)wc_CoseKey_Init(&kek);
     ret = wc_CoseKey_SetSymmetric(&kek, kekData, sizeof(kekData));
     TEST_ASSERT(ret == 0, "a256kw set kek");
 
@@ -4895,7 +5291,7 @@ static void test_cose_encrypt_a256kw(void)
 
     /* Clean up */
     wc_CoseKey_Free(&kek);
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 
 /**
@@ -4920,14 +5316,14 @@ static void test_cose_encrypt_kw_wrong_keysize(void)
         0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
     };
 
-    printf("  [Encrypt Key Wrap Wrong KEK Size]\n");
+    TEST_LOG("  [Encrypt Key Wrap Wrong KEK Size]\n");
 
     /* Initialize RNG */
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "kw-wrong-size rng init");
 
     /* Set up KEK with wrong size for A128KW (32 bytes instead of 16) */
-    wc_CoseKey_Init(&kek);
+    (void)wc_CoseKey_Init(&kek);
     ret = wc_CoseKey_SetSymmetric(&kek, wrongSizeKey, sizeof(wrongSizeKey));
     TEST_ASSERT(ret == 0, "kw-wrong-size set kek");
 
@@ -4956,7 +5352,7 @@ static void test_cose_encrypt_kw_wrong_keysize(void)
 
     /* Clean up */
     wc_CoseKey_Free(&kek);
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_KEY_WRAP */
 
@@ -4978,7 +5374,7 @@ static void test_cose_encrypt_direct_wrong_key_type(void)
     const uint8_t payload[] = "Direct key type test";
     uint8_t iv[12] = {0};
 
-    printf("  [Encrypt Direct wrong key type]\n");
+    TEST_LOG("  [Encrypt Direct wrong key type]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "direct ktype rng init");
@@ -4986,8 +5382,8 @@ static void test_cose_encrypt_direct_wrong_key_type(void)
     /* Set up ECC key (wrong type for direct symmetric encryption) */
     wc_ecc_init(&key);
     wc_ecc_make_key(&rng, 32, &key);
-    wc_CoseKey_Init(&eccKey);
-    wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
+    (void)wc_CoseKey_Init(&eccKey);
+    (void)wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
 
     /* Try direct encryption (algId=0) with ECC key - should fail */
     recipient.algId = 0;  /* Direct key mode */
@@ -5007,8 +5403,8 @@ static void test_cose_encrypt_direct_wrong_key_type(void)
         &rng);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "direct ecc key fails");
 
-    wc_ecc_free(&key);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&key);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC */
 
@@ -5043,14 +5439,14 @@ static void test_cose_mac_multi_recipient(void)
     const uint8_t* decPayload;
     size_t decPayloadLen;
 
-    printf("  [Mac Multi-Recipient HMAC-256]\n");
+    TEST_LOG("  [Mac Multi-Recipient HMAC-256]\n");
 
     /* Setup keys - both recipients share the same key in direct mode */
-    wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_Init(&key1);
     ret = wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "mac key1 set");
 
-    wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_Init(&key2);
     ret = wc_CoseKey_SetSymmetric(&key2, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "mac key2 set");
 
@@ -5105,11 +5501,12 @@ static void test_cose_mac_multi_recipient(void)
     TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_256_256, "mac hdr alg");
 
     /* Wrong key should fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY wrongKey;
         WOLFCOSE_RECIPIENT wrongRecipient;
-        wc_CoseKey_Init(&wrongKey);
-        wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
+        (void)wc_CoseKey_Init(&wrongKey);
+        (void)wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
         wrongRecipient.algId = 0;
         wrongRecipient.key = &wrongKey;
         wrongRecipient.kid = NULL;
@@ -5140,6 +5537,56 @@ static void test_cose_mac_multi_recipient(void)
     wc_CoseKey_Free(&key2);
 }
 
+static void test_cose_mac_multi_recipient_key_alg_mismatch(void)
+{
+    WOLFCOSE_KEY key1, key2;
+    WOLFCOSE_RECIPIENT recipients[2];
+    int ret;
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "Multi-recipient MAC alg mismatch";
+    const uint8_t keyData[32] = {
+        0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7,
+        0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
+        0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7,
+        0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF
+    };
+
+    TEST_LOG("  [Mac Multi-Recipient key->alg mismatch]\n");
+
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_Init(&key2);
+    ret = wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "mac mismatch key1 set");
+    ret = wc_CoseKey_SetSymmetric(&key2, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "mac mismatch key2 set");
+    key1.alg = WOLFCOSE_ALG_HMAC_256_256;
+    key2.alg = WOLFCOSE_ALG_HMAC_384_384;
+
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
+    recipients[0].key = &key1;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+    recipients[1].algId = WOLFCOSE_ALG_DIRECT;
+    recipients[1].key = &key2;
+    recipients[1].kid = NULL;
+    recipients[1].kidLen = 0;
+
+    ret = wc_CoseMac_Create(recipients, 2,
+        WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "mac multi key alg mismatch rejected");
+
+    wc_CoseKey_Free(&key1);
+    wc_CoseKey_Free(&key2);
+}
+
 static void test_cose_mac_with_aad(void)
 {
     WOLFCOSE_KEY key;
@@ -5161,9 +5608,9 @@ static void test_cose_mac_with_aad(void)
     const uint8_t* decPayload;
     size_t decPayloadLen;
 
-    printf("  [Mac with external AAD]\n");
+    TEST_LOG("  [Mac with external AAD]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "mac aad key set");
 
@@ -5237,9 +5684,9 @@ static void test_cose_mac_detached(void)
     const uint8_t* decPayload;
     size_t decPayloadLen;
 
-    printf("  [Mac Detached Payload]\n");
+    TEST_LOG("  [Mac Detached Payload]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "mac detached key set");
 
@@ -5310,7 +5757,7 @@ static void test_cose_mac_wrong_key_type(void)
     uint8_t scratch[256];
     const uint8_t payload[] = "MAC key type test";
 
-    printf("  [Mac Wrong Key Type]\n");
+    TEST_LOG("  [Mac Wrong Key Type]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "mac ktype rng init");
@@ -5318,8 +5765,8 @@ static void test_cose_mac_wrong_key_type(void)
     /* Set up ECC key (wrong type for MAC) */
     wc_ecc_init(&key);
     wc_ecc_make_key(&rng, 32, &key);
-    wc_CoseKey_Init(&eccKey);
-    wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
+    (void)wc_CoseKey_Init(&eccKey);
+    (void)wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
 
     /* Try MAC with ECC key - should fail */
     recipient.algId = 0;  /* Direct key */
@@ -5337,8 +5784,8 @@ static void test_cose_mac_wrong_key_type(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "mac ecc key fails");
 
-    wc_ecc_free(&key);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&key);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC */
 #endif /* WOLFCOSE_MAC && !NO_HMAC */
@@ -5361,7 +5808,7 @@ static void test_cose_sign1_es384(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 ES384]\n");
+    TEST_LOG("  [Sign1 ES384]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -5377,7 +5824,7 @@ static void test_cose_sign1_es384(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P384, &eccKey);
         TEST_ASSERT(ret == 0, "set P-384 key");
     }
@@ -5405,10 +5852,10 @@ static void test_cose_sign1_es384(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 
@@ -5428,7 +5875,7 @@ static void test_cose_sign1_es512(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 ES512]\n");
+    TEST_LOG("  [Sign1 ES512]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -5444,7 +5891,7 @@ static void test_cose_sign1_es512(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P521, &eccKey);
         TEST_ASSERT(ret == 0, "set P-521 key");
     }
@@ -5471,10 +5918,10 @@ static void test_cose_sign1_es512(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* HAVE_ECC */
@@ -5501,9 +5948,9 @@ static void test_cose_encrypt0_a192gcm(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 A192GCM]\n");
+    TEST_LOG("  [Encrypt0 A192GCM]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "set 192-bit key");
 
@@ -5550,7 +5997,7 @@ static void test_cose_sign1_tampered_sig_byte(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 Tampered Signature Byte]\n");
+    TEST_LOG("  [Sign1 Tampered Signature Byte]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -5566,8 +6013,8 @@ static void test_cose_sign1_tampered_sig_byte(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0, payload, sizeof(payload) - 1,
@@ -5593,10 +6040,10 @@ static void test_cose_sign1_tampered_sig_byte(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 
@@ -5617,7 +6064,7 @@ static void test_cose_sign1_tampered_payload_byte(void)
     WOLFCOSE_HDR hdr;
     size_t tamperedPos;
 
-    printf("  [Sign1 Tampered Payload Byte]\n");
+    TEST_LOG("  [Sign1 Tampered Payload Byte]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -5633,8 +6080,8 @@ static void test_cose_sign1_tampered_payload_byte(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0, payload, sizeof(payload) - 1,
@@ -5659,10 +6106,10 @@ static void test_cose_sign1_tampered_payload_byte(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 
@@ -5682,7 +6129,7 @@ static void test_cose_sign1_tampered_protected_hdr(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 Tampered Protected Header Byte]\n");
+    TEST_LOG("  [Sign1 Tampered Protected Header Byte]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -5696,8 +6143,8 @@ static void test_cose_sign1_tampered_protected_hdr(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0, payload, sizeof(payload) - 1,
@@ -5746,7 +6193,7 @@ static void test_cose_sign1_truncated_sig(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Sign1 Truncated Signature]\n");
+    TEST_LOG("  [Sign1 Truncated Signature]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -5762,8 +6209,8 @@ static void test_cose_sign1_truncated_sig(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0, payload, sizeof(payload) - 1,
@@ -5785,10 +6232,10 @@ static void test_cose_sign1_truncated_sig(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* HAVE_ECC */
@@ -5814,10 +6261,10 @@ static void test_cose_encrypt0_tampered_ct_byte(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 Tampered Ciphertext Byte]\n");
+    TEST_LOG("  [Encrypt0 Tampered Ciphertext Byte]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
@@ -5859,10 +6306,10 @@ static void test_cose_encrypt0_tampered_tag(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 Tampered Auth Tag]\n");
+    TEST_LOG("  [Encrypt0 Tampered Auth Tag]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
@@ -5908,13 +6355,13 @@ static void test_cose_encrypt0_wrong_key(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 Wrong Key]\n");
+    TEST_LOG("  [Encrypt0 Wrong Key]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
-    wc_CoseKey_Init(&wrongKey);
-    wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
+    (void)wc_CoseKey_Init(&wrongKey);
+    (void)wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
@@ -5952,10 +6399,10 @@ static void test_cose_mac0_tampered_tag_byte(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 Tampered Tag Byte]\n");
+    TEST_LOG("  [Mac0 Tampered Tag Byte]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0, /* kid, kidLen */
@@ -5995,10 +6442,10 @@ static void test_cose_mac0_truncated_tag(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Mac0 Truncated Tag]\n");
+    TEST_LOG("  [Mac0 Truncated Tag]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0, /* kid, kidLen */
@@ -6033,8 +6480,9 @@ static void test_cose_empty_payload(void)
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
+    static const uint8_t emptyPayload[1] = {0u};
 
-    printf("  [Sign1 Empty Payload]\n");
+    TEST_LOG("  [Sign1 Empty Payload]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -6050,13 +6498,13 @@ static void test_cose_empty_payload(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         /* Sign with zero-length payload (valid per RFC 9052) */
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0,
-            (const uint8_t*)"", 0,  /* empty payload */
+            emptyPayload, 0,  /* empty payload */
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
@@ -6074,10 +6522,10 @@ static void test_cose_empty_payload(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 
@@ -6099,7 +6547,7 @@ static void test_cose_large_payload(void)
     WOLFCOSE_HDR hdr;
     size_t i;
 
-    printf("  [Sign1 Large Payload (4KB)]\n");
+    TEST_LOG("  [Sign1 Large Payload (4KB)]\n");
 
     /* Fill payload with pattern */
     for (i = 0; i < sizeof(largePayload); i++) {
@@ -6120,8 +6568,8 @@ static void test_cose_large_payload(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0,
@@ -6145,10 +6593,10 @@ static void test_cose_large_payload(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 
@@ -6167,8 +6615,9 @@ static void test_cose_empty_aad(void)
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
+    static const uint8_t emptyAad[1] = {0u};
 
-    printf("  [Sign1 Empty AAD]\n");
+    TEST_LOG("  [Sign1 Empty AAD]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -6184,15 +6633,15 @@ static void test_cose_empty_aad(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         /* Sign with zero-length AAD (valid per RFC 9052) */
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0,
             payload, sizeof(payload) - 1,
             NULL, 0,
-            (const uint8_t*)"", 0,  /* empty AAD */
+            emptyAad, 0,  /* empty AAD */
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
         TEST_ASSERT(ret == 0, "sign with empty aad");
@@ -6201,7 +6650,7 @@ static void test_cose_empty_aad(void)
     if (ret == 0) {
         ret = wc_CoseSign1_Verify(&key, out, outLen,
             NULL, 0,
-            (const uint8_t*)"", 0,  /* empty AAD */
+            emptyAad, 0,  /* empty AAD */
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
         TEST_ASSERT(ret == 0, "verify with empty aad");
@@ -6209,10 +6658,10 @@ static void test_cose_empty_aad(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 
@@ -6234,7 +6683,7 @@ static void test_cose_long_kid(void)
     WOLFCOSE_HDR hdr;
     size_t i;
 
-    printf("  [Sign1 Long KID (256 bytes)]\n");
+    TEST_LOG("  [Sign1 Long KID (256 bytes)]\n");
 
     /* Fill kid with pattern */
     for (i = 0; i < sizeof(longKid); i++) {
@@ -6255,8 +6704,8 @@ static void test_cose_long_kid(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             longKid, sizeof(longKid),
@@ -6278,10 +6727,10 @@ static void test_cose_long_kid(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* HAVE_ECC */
@@ -6301,7 +6750,7 @@ static void test_cose_sign_output_too_small(void)
     uint8_t out[10];  /* Way too small */
     size_t outLen = 0;
 
-    printf("  [Sign1 Output Buffer Too Small]\n");
+    TEST_LOG("  [Sign1 Output Buffer Too Small]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -6318,8 +6767,8 @@ static void test_cose_sign_output_too_small(void)
 
     if (ret == 0) {
         int signRet;
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         signRet = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0,
@@ -6332,10 +6781,10 @@ static void test_cose_sign_output_too_small(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 
@@ -6352,7 +6801,7 @@ static void test_cose_sign_scratch_too_small(void)
     uint8_t out[512];
     size_t outLen = 0;
 
-    printf("  [Sign1 Scratch Buffer Too Small]\n");
+    TEST_LOG("  [Sign1 Scratch Buffer Too Small]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -6369,8 +6818,8 @@ static void test_cose_sign_scratch_too_small(void)
 
     if (ret == 0) {
         int signRet;
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         signRet = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0,
@@ -6383,10 +6832,10 @@ static void test_cose_sign_scratch_too_small(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* HAVE_ECC */
@@ -6409,10 +6858,10 @@ static void test_cose_encrypt_output_too_small(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Encrypt0 Output Buffer Too Small]\n");
+    TEST_LOG("  [Encrypt0 Output Buffer Too Small]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
@@ -6442,7 +6891,7 @@ static void test_decode_truncated_message(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Decode Truncated Message]\n");
+    TEST_LOG("  [Decode Truncated Message]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -6458,8 +6907,8 @@ static void test_decode_truncated_message(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0, payload, sizeof(payload) - 1,
@@ -6481,10 +6930,10 @@ static void test_decode_truncated_message(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 
@@ -6504,7 +6953,7 @@ static void test_decode_wrong_tag(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
-    printf("  [Decode Wrong COSE Tag]\n");
+    TEST_LOG("  [Decode Wrong COSE Tag]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -6520,8 +6969,8 @@ static void test_decode_wrong_tag(void)
     }
 
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0, payload, sizeof(payload) - 1,
@@ -6550,10 +6999,10 @@ static void test_decode_wrong_tag(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif /* HAVE_ECC */
@@ -6575,7 +7024,7 @@ static void test_cose_bad_algorithm(void)
     uint8_t out[512];
     size_t outLen = 0;
 
-    printf("  [Bad Algorithm Tests]\n");
+    TEST_LOG("  [Bad Algorithm Tests]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
@@ -6592,8 +7041,8 @@ static void test_cose_bad_algorithm(void)
 
     if (ret == 0) {
         int signRet;
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         /* Try signing with invalid algorithm */
         signRet = wc_CoseSign1_Sign(&key, 9999,  /* Invalid algorithm ID */
@@ -6606,10 +7055,10 @@ static void test_cose_bad_algorithm(void)
 
     /* Cleanup */
     if (eccInited != 0) {
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
     if (rngInited != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 }
 #endif
@@ -6621,13 +7070,14 @@ static void test_cose_null_params(void)
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
     uint8_t data[32] = {0};
+    static const uint8_t testBytes[] = { 0x74u, 0x65u, 0x73u, 0x74u };
     size_t outLen = 0;
     int ret;
 
-    printf("  [NULL Parameter Tests]\n");
+    TEST_LOG("  [NULL Parameter Tests]\n");
 
     /* Init with NULL should be safe (no-op) */
-    wc_CoseKey_Init(NULL);
+    (void)wc_CoseKey_Init(NULL);
     TEST_ASSERT(1, "null init safe");
 
     /* Free with NULL should be safe */
@@ -6635,8 +7085,8 @@ static void test_cose_null_params(void)
     TEST_ASSERT(1, "null free safe");
 
     /* SetSymmetric with NULL key */
-    wc_CoseKey_Init(&key);
-    ret = wc_CoseKey_SetSymmetric(NULL, (const uint8_t*)"test", 4);
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(NULL, testBytes, sizeof(testBytes));
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "null key arg");
 
     /* SetSymmetric with NULL data */
@@ -6644,11 +7094,11 @@ static void test_cose_null_params(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "null data arg");
 
     /* SetSymmetric with zero length */
-    ret = wc_CoseKey_SetSymmetric(&key, (const uint8_t*)"test", 0);
+    ret = wc_CoseKey_SetSymmetric(&key, testBytes, 0);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "zero len arg");
 
     /* CoseKey_Encode with NULL params */
-    wc_CoseKey_SetSymmetric(&key, data, 16);
+    (void)wc_CoseKey_SetSymmetric(&key, data, 16);
     ret = wc_CoseKey_Encode(NULL, out, sizeof(out), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "encode null key");
 
@@ -6667,7 +7117,7 @@ static void test_cose_null_params(void)
 
 #ifdef HAVE_AESGCM
     /* Encrypt0 with NULL params */
-    wc_CoseKey_SetSymmetric(&key, data, 16);
+    (void)wc_CoseKey_SetSymmetric(&key, data, 16);
     ret = wc_CoseEncrypt0_Encrypt(NULL, WOLFCOSE_ALG_A128GCM,
         data, 12, data, 16, NULL, 0, NULL, NULL, 0,
         scratch, sizeof(scratch), out, sizeof(out), &outLen);
@@ -6699,6 +7149,7 @@ static void test_cose_null_params(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "enc0 null outLen");
 
     /* Decrypt0 with NULL params */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_HDR hdr;
         uint8_t pt[256];
@@ -6732,7 +7183,7 @@ static void test_cose_null_params(void)
 
 #if !defined(NO_HMAC)
     /* Mac0 with NULL params */
-    wc_CoseKey_SetSymmetric(&key, data, 32);
+    (void)wc_CoseKey_SetSymmetric(&key, data, 32);
     ret = wc_CoseMac0_Create(NULL, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0, data, 16, NULL, 0, NULL, 0,
         scratch, sizeof(scratch), out, sizeof(out), &outLen);
@@ -6759,6 +7210,7 @@ static void test_cose_null_params(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "mac0 null outLen");
 
     /* Mac0 verify with NULL params */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_HDR hdr;
         const uint8_t *payload;
@@ -6839,10 +7291,10 @@ static void test_cose_invalid_algorithms(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Invalid Algorithm Tests]\n");
+    TEST_LOG("  [Invalid Algorithm Tests]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, data, 16);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, data, 16);
 
 #ifdef HAVE_AESGCM
     /* Invalid algorithm ID for Encrypt0 */
@@ -6859,7 +7311,7 @@ static void test_cose_invalid_algorithms(void)
 
 #if !defined(NO_HMAC)
     /* Invalid algorithm ID for Mac0 */
-    wc_CoseKey_SetSymmetric(&key, data, 32);
+    (void)wc_CoseKey_SetSymmetric(&key, data, 32);
     ret = wc_CoseMac0_Create(&key, 9999, /* invalid alg */
         NULL, 0, data, 16, NULL, 0, NULL, 0,
         scratch, sizeof(scratch), out, sizeof(out), &outLen);
@@ -6870,10 +7322,11 @@ static void test_cose_invalid_algorithms(void)
 /* Comprehensive error path tests for higher coverage */
 static void test_cose_error_paths(void)
 {
-    printf("  [Comprehensive Error Path Tests]\n");
+    TEST_LOG("  [Comprehensive Error Path Tests]\n");
 
 #ifdef HAVE_ECC
     /* Test Sign1 with wrong key type (symmetric key for ECC algorithm) */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY symKey;
         uint8_t keyData[32] = {0};
@@ -6885,8 +7338,8 @@ static void test_cose_error_paths(void)
         WC_RNG rng;
 
         wc_InitRng(&rng);
-        wc_CoseKey_Init(&symKey);
-        wc_CoseKey_SetSymmetric(&symKey, keyData, sizeof(keyData));
+        (void)wc_CoseKey_Init(&symKey);
+        (void)wc_CoseKey_SetSymmetric(&symKey, keyData, sizeof(keyData));
 
         /* Try to sign with symmetric key using ECC algorithm */
         ret = wc_CoseSign1_Sign(&symKey, WOLFCOSE_ALG_ES256,
@@ -6896,13 +7349,14 @@ static void test_cose_error_paths(void)
             out, sizeof(out), &outLen, &rng);
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "sign1 sym key rejected");
 
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 #endif /* HAVE_ECC */
 
 #if !defined(NO_HMAC)
     /* Test Mac0 with wrong key type (ECC key for HMAC) */
 #ifdef HAVE_ECC
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY eccKey;
         ecc_key key;
@@ -6917,8 +7371,8 @@ static void test_cose_error_paths(void)
         wc_ecc_init(&key);
         wc_ecc_make_key(&rng, 32, &key);
 
-        wc_CoseKey_Init(&eccKey);
-        wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
+        (void)wc_CoseKey_Init(&eccKey);
+        (void)wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
 
         /* Try to create MAC with ECC key */
         ret = wc_CoseMac0_Create(&eccKey, WOLFCOSE_ALG_HMAC_256_256,
@@ -6928,12 +7382,13 @@ static void test_cose_error_paths(void)
             out, sizeof(out), &outLen);
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "mac0 ecc key rejected");
 
-        wc_ecc_free(&key);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&key);
+        (void)wc_FreeRng(&rng);
     }
 #endif /* HAVE_ECC */
 
     /* Test Mac0 verify with wrong key */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key, wrongKey;
         uint8_t keyData[32] = {
@@ -6957,10 +7412,10 @@ static void test_cose_error_paths(void)
         size_t decPayloadLen;
         int ret;
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
-        wc_CoseKey_Init(&wrongKey);
-        wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+        (void)wc_CoseKey_Init(&wrongKey);
+        (void)wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
 
         /* Create valid MAC */
         ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
@@ -6979,6 +7434,7 @@ static void test_cose_error_paths(void)
     }
 
     /* Test Mac0 with corrupted tag */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         uint8_t keyData[32] = {0};
@@ -6991,8 +7447,8 @@ static void test_cose_error_paths(void)
         size_t decPayloadLen;
         int ret;
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
         /* Create valid MAC */
         ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
@@ -7018,6 +7474,7 @@ static void test_cose_error_paths(void)
 #ifdef HAVE_AESGCM
     /* Test Encrypt0 with wrong key type */
 #ifdef HAVE_ECC
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY eccKey;
         ecc_key key;
@@ -7033,8 +7490,8 @@ static void test_cose_error_paths(void)
         wc_ecc_init(&key);
         wc_ecc_make_key(&rng, 32, &key);
 
-        wc_CoseKey_Init(&eccKey);
-        wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
+        (void)wc_CoseKey_Init(&eccKey);
+        (void)wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
 
         /* Try to encrypt with ECC key */
         ret = wc_CoseEncrypt0_Encrypt(&eccKey, WOLFCOSE_ALG_A128GCM,
@@ -7045,12 +7502,13 @@ static void test_cose_error_paths(void)
             out, sizeof(out), &outLen);
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "enc0 ecc key rejected");
 
-        wc_ecc_free(&key);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&key);
+        (void)wc_FreeRng(&rng);
     }
 #endif /* HAVE_ECC */
 
     /* Test Encrypt0 decrypt with wrong key */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key, wrongKey;
         uint8_t keyData[16] = {
@@ -7071,10 +7529,10 @@ static void test_cose_error_paths(void)
         WOLFCOSE_HDR hdr;
         int ret;
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
-        wc_CoseKey_Init(&wrongKey);
-        wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+        (void)wc_CoseKey_Init(&wrongKey);
+        (void)wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
 
         /* Encrypt */
         ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
@@ -7094,6 +7552,7 @@ static void test_cose_error_paths(void)
     }
 
     /* Test Encrypt0 with corrupted ciphertext */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         uint8_t keyData[16] = {0};
@@ -7107,8 +7566,8 @@ static void test_cose_error_paths(void)
         WOLFCOSE_HDR hdr;
         int ret;
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
         /* Encrypt */
         ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
@@ -7133,6 +7592,7 @@ static void test_cose_error_paths(void)
 
 #ifdef HAVE_ECC
     /* Test Sign1 verify with wrong key */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key, wrongKey;
         ecc_key eccKey, eccWrongKey;
@@ -7152,10 +7612,10 @@ static void test_cose_error_paths(void)
         wc_ecc_make_key(&rng, 32, &eccKey);
         wc_ecc_make_key(&rng, 32, &eccWrongKey);
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
-        wc_CoseKey_Init(&wrongKey);
-        wc_CoseKey_SetEcc(&wrongKey, WOLFCOSE_CRV_P256, &eccWrongKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&wrongKey);
+        (void)wc_CoseKey_SetEcc(&wrongKey, WOLFCOSE_CRV_P256, &eccWrongKey);
 
         /* Sign */
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
@@ -7172,12 +7632,13 @@ static void test_cose_error_paths(void)
             &hdr, &decPayload, &decPayloadLen);
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL, "sign1 wrong key fails");
 
-        wc_ecc_free(&eccKey);
-        wc_ecc_free(&eccWrongKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccWrongKey);
+        (void)wc_FreeRng(&rng);
     }
 
     /* Test Sign1 with corrupted signature */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         ecc_key eccKey;
@@ -7195,8 +7656,8 @@ static void test_cose_error_paths(void)
         wc_ecc_init(&eccKey);
         wc_ecc_make_key(&rng, 32, &eccKey);
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         /* Sign */
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
@@ -7218,13 +7679,14 @@ static void test_cose_error_paths(void)
             &hdr, &decPayload, &decPayloadLen);
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL, "sign1 corrupted sig fails");
 
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
     }
 #endif /* HAVE_ECC */
 
     /* Test malformed COSE messages */
 #ifdef HAVE_ECC
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         ecc_key eccKey;
@@ -7239,10 +7701,11 @@ static void test_cose_error_paths(void)
         wc_ecc_init(&eccKey);
         wc_ecc_make_key(&rng, 32, &eccKey);
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         /* Truncated message */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             uint8_t truncated[] = {0xD2, 0x84, 0x43};  /* Partial Sign1 */
             ret = wc_CoseSign1_Verify(&key, truncated, sizeof(truncated),
@@ -7253,6 +7716,7 @@ static void test_cose_error_paths(void)
         }
 
         /* Wrong CBOR tag */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             uint8_t wrongTag[] = {0xD3, 0x84, 0x40, 0xA0, 0x40, 0x40};  /* Tag 19 instead of 18 */
             ret = wc_CoseSign1_Verify(&key, wrongTag, sizeof(wrongTag),
@@ -7263,6 +7727,7 @@ static void test_cose_error_paths(void)
         }
 
         /* Not an array */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             uint8_t notArray[] = {0xD2, 0xA0};  /* Tag 18 + empty map instead of array */
             ret = wc_CoseSign1_Verify(&key, notArray, sizeof(notArray),
@@ -7272,13 +7737,14 @@ static void test_cose_error_paths(void)
             TEST_ASSERT(ret != 0, "sign1 not array rejected");
         }
 
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
     }
 #endif /* HAVE_ECC */
 
     /* Test buffer too small for sign output */
 #ifdef HAVE_ECC
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         ecc_key eccKey;
@@ -7293,8 +7759,8 @@ static void test_cose_error_paths(void)
         wc_ecc_init(&eccKey);
         wc_ecc_make_key(&rng, 32, &eccKey);
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
             NULL, 0, payload, sizeof(payload) - 1,
@@ -7303,13 +7769,14 @@ static void test_cose_error_paths(void)
             tinyOut, sizeof(tinyOut), &outLen, &rng);
         TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "sign1 tiny output rejected");
 
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
     }
 #endif /* HAVE_ECC */
 
 #ifdef HAVE_AESGCM
     /* Test buffer too small for encrypt output */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         uint8_t keyData[16] = {0};
@@ -7320,8 +7787,8 @@ static void test_cose_error_paths(void)
         size_t outLen = 0;
         int ret;
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
         ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
             iv, sizeof(iv),
@@ -7335,6 +7802,7 @@ static void test_cose_error_paths(void)
 
 #if !defined(NO_HMAC)
     /* Test buffer too small for mac output */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         uint8_t keyData[32] = {0};
@@ -7344,8 +7812,8 @@ static void test_cose_error_paths(void)
         size_t outLen = 0;
         int ret;
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
         ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
             NULL, 0, payload, sizeof(payload) - 1,
@@ -7358,62 +7826,65 @@ static void test_cose_error_paths(void)
 
     /* Test key decode with malformed/missing data */
 #ifdef HAVE_ECC
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         /* ECC key with kty but missing x/y coordinates */
         /* Map: {1: 2, -1: 1} = kty: EC2, crv: P-256, but no x/y */
         uint8_t eccNoCoords[] = {
-            0xA2,             /* map(2) */
-            0x01, 0x02,       /* kty: 2 (EC2) */
-            0x20, 0x01        /* crv: 1 (P-256) */
+            0xA2u,               /* map(2) */
+            0x01u, 0x02u,        /* kty: 2 (EC2) */
+            0x20u, 0x01u         /* crv: 1 (P-256) */
         };
         WOLFCOSE_KEY decodedKey;
         ecc_key eccKey;
         int ret;
 
         wc_ecc_init(&eccKey);
-        wc_CoseKey_Init(&decodedKey);
+        (void)wc_CoseKey_Init(&decodedKey);
         decodedKey.key.ecc = &eccKey;
 
         ret = wc_CoseKey_Decode(&decodedKey, eccNoCoords, sizeof(eccNoCoords));
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "ecc key missing coords rejected");
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
     }
 #endif
 
 #ifdef HAVE_ED25519
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         /* EdDSA key with kty but missing x coordinate */
         /* Map: {1: 1, -1: 6} = kty: OKP, crv: Ed25519, but no x */
         uint8_t edNoX[] = {
-            0xA2,             /* map(2) */
-            0x01, 0x01,       /* kty: 1 (OKP) */
-            0x20, 0x06        /* crv: 6 (Ed25519) */
+            0xA2u,               /* map(2) */
+            0x01u, 0x01u,        /* kty: 1 (OKP) */
+            0x20u, 0x06u         /* crv: 6 (Ed25519) */
         };
         WOLFCOSE_KEY decodedKey;
         ed25519_key edKey;
         int ret;
 
         wc_ed25519_init(&edKey);
-        wc_CoseKey_Init(&decodedKey);
+        (void)wc_CoseKey_Init(&decodedKey);
         decodedKey.key.ed25519 = &edKey;
 
         ret = wc_CoseKey_Decode(&decodedKey, edNoX, sizeof(edNoX));
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "ed key missing x rejected");
-        wc_ed25519_free(&edKey);
+        (void)wc_ed25519_free(&edKey);
     }
 #endif
 
     /* Test key decode with too many map entries */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         /* Map with excessive entries (overflow protection) */
         /* This creates a map header claiming 100 entries but with no data */
         uint8_t bigMap[] = {
-            0xB8, 0x64        /* map(100) - but truncated */
+            0xB8u, 0x64u         /* map(100) - but truncated */
         };
         WOLFCOSE_KEY decodedKey;
         int ret;
 
-        wc_CoseKey_Init(&decodedKey);
+        (void)wc_CoseKey_Init(&decodedKey);
         ret = wc_CoseKey_Decode(&decodedKey, bigMap, sizeof(bigMap));
         /* Should fail due to truncated data or map overflow */
         TEST_ASSERT(ret != 0, "truncated big map rejected");
@@ -7424,14 +7895,15 @@ static void test_cose_error_paths(void)
 #ifdef HAVE_AESGCM
 static void test_cose_header_edge_cases(void)
 {
-    printf("  [Header Edge Cases]\n");
+    TEST_LOG("  [Header Edge Cases]\n");
 
     /* Test COSE_Encrypt0 with partial_iv in unprotected header */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         uint8_t keyData[16] = {
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-            0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
+            0x01u, 0x02u, 0x03u, 0x04u, 0x05u, 0x06u, 0x07u, 0x08u,
+            0x09u, 0x0Au, 0x0Bu, 0x0Cu, 0x0Du, 0x0Eu, 0x0Fu, 0x10u
         };
         /* Manually constructed COSE_Encrypt0 with partial_iv in unprotected header
          * D0                           -- Tag 16 (COSE_Encrypt0)
@@ -7448,17 +7920,18 @@ static void test_cose_header_edge_cases(void)
         /* Note: This test verifies parsing doesn't crash, not full decrypt */
 
         /* Test with unknown header label (should skip) */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             /* COSE_Encrypt0 with unknown label 99 in unprotected header */
             uint8_t unknownHdr[] = {
-                0xD0,                   /* Tag 16 */
-                0x83,                   /* array(3) */
-                0x43, 0xA1, 0x01, 0x01, /* protected: {1: 1} */
-                0xA1, 0x18, 0x63,       /* unprotected: map(1), label 99 */
-                0x41, 0xFF,             /* bstr(1) value */
-                0x50,                   /* bstr(16) - ciphertext */
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                0xD0u,                         /* Tag 16 */
+                0x83u,                         /* array(3) */
+                0x43u, 0xA1u, 0x01u, 0x01u,   /* protected: {1: 1} */
+                0xA1u, 0x18u, 0x63u,          /* unprotected: map(1), label 99 */
+                0x41u, 0xFFu,                 /* bstr(1) value */
+                0x50u,                         /* bstr(16) - ciphertext */
+                0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+                0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u
             };
             uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
             uint8_t plaintext[256];
@@ -7466,8 +7939,8 @@ static void test_cose_header_edge_cases(void)
             WOLFCOSE_HDR hdr;
             int ret;
 
-            wc_CoseKey_Init(&key);
-            wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+            (void)wc_CoseKey_Init(&key);
+            (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
             /* Should parse but fail decrypt due to bad ciphertext */
             ret = wc_CoseEncrypt0_Decrypt(&key, unknownHdr, sizeof(unknownHdr),
@@ -7479,8 +7952,8 @@ static void test_cose_header_edge_cases(void)
             (void)ret;
         }
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     }
 }
 #endif /* HAVE_AESGCM */
@@ -7498,10 +7971,10 @@ static void test_cose_key_with_kid(void)
     size_t encodedLen = 0;
     int ret;
 
-    printf("  [COSE_Key with KID]\n");
+    TEST_LOG("  [COSE_Key with KID]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Set KID */
     key.kid = kidData;
@@ -7514,7 +7987,7 @@ static void test_cose_key_with_kid(void)
 
     /* Decode */
     WOLFCOSE_KEY decoded;
-    wc_CoseKey_Init(&decoded);
+    (void)wc_CoseKey_Init(&decoded);
     ret = wc_CoseKey_Decode(&decoded, encoded, encodedLen);
     TEST_ASSERT(ret == 0, "decode with kid");
     /* Note: KID decoding may not be implemented - check if supported */
@@ -7537,7 +8010,7 @@ static void test_cose_key_ecc_curves(void)
     size_t encodedLen = 0;
     int ret;
 
-    printf("  [COSE_Key ECC Curves]\n");
+    TEST_LOG("  [COSE_Key ECC Curves]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -7547,7 +8020,7 @@ static void test_cose_key_ecc_curves(void)
     wc_ecc_init(&eccKey);
     ret = wc_ecc_make_key(&rng, 48, &eccKey);  /* 48 bytes = 384 bits */
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P384, &eccKey);
         TEST_ASSERT(ret == 0, "set P-384 key");
 
@@ -7557,14 +8030,14 @@ static void test_cose_key_ecc_curves(void)
 
             if (ret == 0) {
                 WOLFCOSE_KEY decoded;
-                wc_CoseKey_Init(&decoded);
+                (void)wc_CoseKey_Init(&decoded);
                 ret = wc_CoseKey_Decode(&decoded, encoded, encodedLen);
                 TEST_ASSERT(ret == 0, "decode P-384");
                 TEST_ASSERT(decoded.crv == WOLFCOSE_CRV_P384, "P-384 curve preserved");
             }
         }
     }
-    wc_ecc_free(&eccKey);
+    (void)wc_ecc_free(&eccKey);
 #endif
 
 #ifdef WOLFSSL_SHA512
@@ -7572,7 +8045,7 @@ static void test_cose_key_ecc_curves(void)
     wc_ecc_init(&eccKey);
     ret = wc_ecc_make_key(&rng, 66, &eccKey);  /* 66 bytes = 521 bits */
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P521, &eccKey);
         TEST_ASSERT(ret == 0, "set P-521 key");
 
@@ -7582,17 +8055,17 @@ static void test_cose_key_ecc_curves(void)
 
             if (ret == 0) {
                 WOLFCOSE_KEY decoded;
-                wc_CoseKey_Init(&decoded);
+                (void)wc_CoseKey_Init(&decoded);
                 ret = wc_CoseKey_Decode(&decoded, encoded, encodedLen);
                 TEST_ASSERT(ret == 0, "decode P-521");
                 TEST_ASSERT(decoded.crv == WOLFCOSE_CRV_P521, "P-521 curve preserved");
             }
         }
     }
-    wc_ecc_free(&eccKey);
+    (void)wc_ecc_free(&eccKey);
 #endif
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -7614,7 +8087,7 @@ static void test_cose_encrypt0_key_sizes(void)
     int ret;
     size_t i;
 
-    printf("  [Encrypt0 Key Sizes]\n");
+    TEST_LOG("  [Encrypt0 Key Sizes]\n");
 
     /* Initialize keys with patterns */
     for (i = 0; i < sizeof(key128); i++) key128[i] = (uint8_t)(i + 1);
@@ -7622,8 +8095,8 @@ static void test_cose_encrypt0_key_sizes(void)
     for (i = 0; i < sizeof(key256); i++) key256[i] = (uint8_t)(i + 0x20);
 
     /* Test 128-bit key */
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, key128, sizeof(key128));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, key128, sizeof(key128));
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv), payload, sizeof(payload) - 1,
         NULL, 0, NULL,  /* detached: buffer, size, outLen */
@@ -7639,8 +8112,8 @@ static void test_cose_encrypt0_key_sizes(void)
     TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_A128GCM, "A128GCM alg");
 
     /* Test 192-bit key */
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, key192, sizeof(key192));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, key192, sizeof(key192));
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A192GCM,
         iv, sizeof(iv), payload, sizeof(payload) - 1,
         NULL, 0, NULL,  /* detached */
@@ -7656,8 +8129,8 @@ static void test_cose_encrypt0_key_sizes(void)
     TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_A192GCM, "A192GCM alg");
 
     /* Test 256-bit key */
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, key256, sizeof(key256));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, key256, sizeof(key256));
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A256GCM,
         iv, sizeof(iv), payload, sizeof(payload) - 1,
         NULL, 0, NULL,  /* detached */
@@ -7690,13 +8163,13 @@ static void test_cose_mac0_key_sizes(void)
     int ret;
     size_t i;
 
-    printf("  [Mac0 HMAC Key Sizes]\n");
+    TEST_LOG("  [Mac0 HMAC Key Sizes]\n");
 
     for (i = 0; i < sizeof(key256); i++) key256[i] = (uint8_t)(i + 0x30);
 
     /* Test 256-bit HMAC key */
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, key256, sizeof(key256));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, key256, sizeof(key256));
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0, /* kid, kidLen */
         payload, sizeof(payload) - 1,
@@ -7721,9 +8194,10 @@ static void test_cbor_edge_cases(void)
     int ret;
     uint64_t u64Val;
     int64_t i64Val;
+    static const uint8_t testBytes[] = { 0x74u, 0x65u, 0x73u, 0x74u };
     size_t count;
 
-    printf("  [CBOR Edge Cases]\n");
+    TEST_LOG("  [CBOR Edge Cases]\n");
 
     /* Test encoding/decoding large uint (> 255) */
     ctx.buf = buf;
@@ -7774,6 +8248,7 @@ static void test_cbor_edge_cases(void)
     TEST_ASSERT(ret == 0, "encode bstr 24");
 
     /* Test bstr boundary (256 bytes) - needs larger buffer */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t largeBuf[512];
         const uint8_t bigData[260] = {0};
@@ -7795,7 +8270,7 @@ static void test_cbor_edge_cases(void)
     TEST_ASSERT(ret == 0, "encode map val 100");
     ret = wc_CBOR_EncodeInt(&ctx, -1);
     TEST_ASSERT(ret == 0, "encode map key -1");
-    ret = wc_CBOR_EncodeBstr(&ctx, (const uint8_t*)"test", 4);
+    ret = wc_CBOR_EncodeBstr(&ctx, testBytes, sizeof(testBytes));
     TEST_ASSERT(ret == 0, "encode map val bstr");
 
     ctx.cbuf = buf;
@@ -7805,9 +8280,10 @@ static void test_cbor_edge_cases(void)
     TEST_ASSERT(count == 2, "map count 2");
 
     /* --- Buffer too small tests --- */
-    printf("  [CBOR Buffer Too Small]\n");
+    TEST_LOG("  [CBOR Buffer Too Small]\n");
 
     /* Encode large uint in tiny buffer (needs 5 bytes, give 2) */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tiny[2];
         WOLFCOSE_CBOR_CTX tinyCtx;
@@ -7819,6 +8295,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Encode 8-byte uint in small buffer (needs 9 bytes) */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tiny[4];
         WOLFCOSE_CBOR_CTX tinyCtx;
@@ -7830,6 +8307,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Encode bstr in too small buffer */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tiny[5];
         uint8_t data[10] = {0};
@@ -7842,7 +8320,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* --- NULL context/parameter tests --- */
-    printf("  [CBOR NULL Parameters]\n");
+    TEST_LOG("  [CBOR NULL Parameters]\n");
 
     ret = wc_CBOR_EncodeUint(NULL, 1);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "encode uint null ctx");
@@ -7864,6 +8342,7 @@ static void test_cbor_edge_cases(void)
     ret = wc_CBOR_DecodeInt(&ctx, NULL);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode int null val");
 
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         const uint8_t* data;
         size_t dataLen;
@@ -7893,9 +8372,10 @@ static void test_cbor_edge_cases(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode map null count");
 
     /* --- Malformed CBOR tests --- */
-    printf("  [CBOR Malformed Input]\n");
+    TEST_LOG("  [CBOR Malformed Input]\n");
 
     /* Empty buffer */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t empty[1] = {0};
         WOLFCOSE_CBOR_CTX emptyCtx;
@@ -7907,6 +8387,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Truncated multi-byte value (AI=25 but only 1 byte follows) */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t truncated[] = {0x19, 0x01};  /* uint16 header, only 1 data byte */
         WOLFCOSE_CBOR_CTX truncCtx;
@@ -7918,6 +8399,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Truncated 4-byte value */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t truncated[] = {0x1A, 0x01, 0x02};  /* uint32 header, only 2 data bytes */
         WOLFCOSE_CBOR_CTX truncCtx;
@@ -7929,6 +8411,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Truncated 8-byte value */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t truncated[] = {0x1B, 0x01, 0x02, 0x03, 0x04};  /* uint64 header, only 4 data bytes */
         WOLFCOSE_CBOR_CTX truncCtx;
@@ -7940,6 +8423,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Reserved AI value (28) */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t reserved[] = {0x1C};  /* AI=28 is reserved */
         WOLFCOSE_CBOR_CTX resCtx;
@@ -7951,6 +8435,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Indefinite length (AI=31) - not supported by COSE */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t indef[] = {0x5F};  /* bstr indefinite */
         WOLFCOSE_CBOR_CTX indefCtx;
@@ -7964,6 +8449,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Truncated bstr data */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t truncBstr[] = {0x45, 'a', 'b'};  /* bstr of 5 bytes, only 2 provided */
         WOLFCOSE_CBOR_CTX truncCtx;
@@ -7977,9 +8463,10 @@ static void test_cbor_edge_cases(void)
     }
 
     /* --- Type mismatch tests --- */
-    printf("  [CBOR Type Mismatch]\n");
+    TEST_LOG("  [CBOR Type Mismatch]\n");
 
     /* Try to decode bstr as uint */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};  /* bstr of 3 bytes */
         WOLFCOSE_CBOR_CTX bstrCtx;
@@ -7991,6 +8478,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Try to decode uint as bstr */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t uintData[] = {0x18, 0x64};  /* uint 100 */
         WOLFCOSE_CBOR_CTX uintCtx;
@@ -8004,6 +8492,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Try to decode bstr as array */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};
         WOLFCOSE_CBOR_CTX bstrCtx;
@@ -8015,6 +8504,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Try to decode array as map */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t arr[] = {0x82, 0x01, 0x02};  /* array of 2 elements */
         WOLFCOSE_CBOR_CTX arrCtx;
@@ -8026,6 +8516,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Try to decode bstr as int (type mismatch) */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};
         WOLFCOSE_CBOR_CTX bstrCtx;
@@ -8037,9 +8528,10 @@ static void test_cbor_edge_cases(void)
     }
 
     /* --- Integer overflow tests --- */
-    printf("  [CBOR Integer Overflow]\n");
+    TEST_LOG("  [CBOR Integer Overflow]\n");
 
     /* 64-bit value that exceeds INT64_MAX when decoded as signed */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         /* Encode 0x8000000000000000 (> INT64_MAX) */
         uint8_t bigUint[] = {0x1B, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -8052,6 +8544,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* Negative integer with magnitude > INT64_MAX */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         /* CBOR negative: -1 - 0x8000000000000000 would overflow */
         uint8_t bigNeg[] = {0x3B, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -8064,7 +8557,8 @@ static void test_cbor_edge_cases(void)
     }
 
     /* --- Tag decode tests --- */
-    printf("  [CBOR Tag Decode]\n");
+    TEST_LOG("  [CBOR Tag Decode]\n");
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint64_t tag;
         /* Encode a tag and decode it */
@@ -8097,7 +8591,7 @@ static void test_cbor_edge_cases(void)
     }
 
     /* --- Additional encode boundary tests --- */
-    printf("  [CBOR Encode Boundaries]\n");
+    TEST_LOG("  [CBOR Encode Boundaries]\n");
 
     /* Encode value 23 (max single-byte) */
     ctx.idx = 0;
@@ -8156,6 +8650,7 @@ static void test_cbor_edge_cases(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "encode null null ctx");
 
     /* Simple value encode with buffer too small */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_CBOR_CTX tinyCtx;
         tinyCtx.buf = buf;  /* Use valid buf but 0 size */
@@ -8166,14 +8661,16 @@ static void test_cbor_edge_cases(void)
     }
 
     /* --- Text string tests --- */
-    printf("  [CBOR Text String]\n");
+    TEST_LOG("  [CBOR Text String]\n");
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         const uint8_t* str;
         size_t strLen;
 
         /* Encode and decode tstr */
         ctx.idx = 0;
-        ret = wc_CBOR_EncodeTstr(&ctx, (const uint8_t*)"hello", 5);
+        static const uint8_t helloTstr[] = { 'h', 'e', 'l', 'l', 'o' };
+        ret = wc_CBOR_EncodeTstr(&ctx, helloTstr, sizeof(helloTstr));
         TEST_ASSERT(ret == 0, "encode tstr");
 
         ctx.cbuf = buf;
@@ -8194,7 +8691,8 @@ static void test_cbor_edge_cases(void)
     }
 
     /* --- NULL buffer in context tests --- */
-    printf("  [CBOR NULL Buffer]\n");
+    TEST_LOG("  [CBOR NULL Buffer]\n");
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_CBOR_CTX nullBufCtx;
         nullBufCtx.buf = NULL;
@@ -8205,6 +8703,7 @@ static void test_cbor_edge_cases(void)
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "encode uint null buf");
 
         nullBufCtx.cbuf = NULL;
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             WOLFCOSE_CBOR_ITEM item;
             ret = wc_CBOR_DecodeHead(&nullBufCtx, &item);
@@ -8216,16 +8715,18 @@ static void test_cbor_edge_cases(void)
 /* ----- Header processing compliance tests ----- */
 static void test_cose_protected_hdr_empty_map(void)
 {
-    /* RFC 9052 Section 3: empty protected header must be h'', not h'A0'. */
+    /* RFC 9052 Section 3: recipients must accept both h'' and h'a0'. */
     int ret;
     WOLFCOSE_HDR hdr;
     uint8_t emptyMap[] = {0xA0u};
 
-    printf("  [Protected Header: empty serialized map]\n");
+    TEST_LOG("  [Protected Header: empty serialized map]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(emptyMap, sizeof(emptyMap), &hdr);
-    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
-                "DecodeProtectedHdr rejects serialized empty map");
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeProtectedHdr accepts serialized empty map");
+    TEST_ASSERT(hdr.labelsSeen == 0u,
+                "DecodeProtectedHdr empty map labelsSeen");
 }
 
 static void test_cose_protected_hdr_trailing(void)
@@ -8234,7 +8735,7 @@ static void test_cose_protected_hdr_trailing(void)
     WOLFCOSE_HDR hdr;
     uint8_t trailing[] = {0xA1u, 0x01u, 0x26u, 0xFFu}; /* {1: -7}, garbage */
 
-    printf("  [Protected Header: trailing bytes]\n");
+    TEST_LOG("  [Protected Header: trailing bytes]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(trailing, sizeof(trailing), &hdr);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
@@ -8249,7 +8750,7 @@ static void test_cose_protected_hdr_content_type(void)
     uint8_t ctTstr[] = {0xA1u, 0x03u, 0x69u,
                          'a','p','p','l','i','c','a','t','e'};
 
-    printf("  [Protected Header: content-type]\n");
+    TEST_LOG("  [Protected Header: content-type]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(ctHdr, sizeof(ctHdr), &hdr);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
@@ -8270,13 +8771,11 @@ static void test_cose_protected_hdr_tstr_label(void)
     /* {1: -7, "x": 0} : alg ES256, plus an unknown tstr label */
     uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
 
-    printf("  [Protected Header: tstr-labeled entry]\n");
+    TEST_LOG("  [Protected Header: tstr-labeled entry]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(tstrLabel, sizeof(tstrLabel), &hdr);
-    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
-                "DecodeProtectedHdr skips tstr labels");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256,
-                "DecodeProtectedHdr alg after tstr skip");
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "DecodeProtectedHdr rejects tstr labels");
 }
 
 static void test_cose_protected_hdr_dup_label(void)
@@ -8285,7 +8784,7 @@ static void test_cose_protected_hdr_dup_label(void)
     WOLFCOSE_HDR hdr;
     uint8_t dupLabel[] = {0xA2u, 0x01u, 0x26u, 0x01u, 0x26u};
 
-    printf("  [Protected Header: duplicate label]\n");
+    TEST_LOG("  [Protected Header: duplicate label]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(dupLabel, sizeof(dupLabel), &hdr);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
@@ -8305,7 +8804,7 @@ static void test_cose_protected_hdr_crit(void)
     /* {1: -7, 2: []} : crit is an empty array -> RFC 9052 rejects */
     uint8_t critEmpty[] = {0xA2u, 0x01u, 0x26u, 0x02u, 0x80u};
 
-    printf("  [Protected Header: crit]\n");
+    TEST_LOG("  [Protected Header: crit]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(critOk, sizeof(critOk), &hdr);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
@@ -8335,7 +8834,7 @@ static void test_cose_cross_bucket_dup(void)
     uint8_t protAlg[] = {0xA1u, 0x01u, 0x26u};
     uint8_t unprotAlg[] = {0xA1u, 0x01u, 0x26u};
 
-    printf("  [Header: duplicate alg across buckets]\n");
+    TEST_LOG("  [Header: duplicate alg across buckets]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(protAlg, sizeof(protAlg), &hdr);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
@@ -8357,7 +8856,7 @@ static void test_cose_crit_in_unprotected(void)
     /* {2: [1]} : crit in unprotected bucket - RFC 9052 forbids this. */
     uint8_t critUnprot[] = {0xA1u, 0x02u, 0x81u, 0x01u};
 
-    printf("  [Unprotected Header: crit rejected]\n");
+    TEST_LOG("  [Unprotected Header: crit rejected]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ctx.cbuf = critUnprot;
     ctx.bufSz = sizeof(critUnprot);
@@ -8382,7 +8881,7 @@ static void test_cose_iv_partial_iv(void)
     uint8_t ivPivProt[] = {0xA2u, 0x05u, 0x41u, 0x01u,
                             0x06u, 0x41u, 0x02u};
 
-    printf("  [Unprotected Header: IV + Partial IV]\n");
+    TEST_LOG("  [Unprotected Header: IV + Partial IV]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ctx.cbuf = ivPiv;
     ctx.bufSz = sizeof(ivPiv);
@@ -8426,7 +8925,7 @@ static void test_cose_sign1_alg_curve_mismatch(void)
     size_t outLen = 0;
     const uint8_t payload[] = "Test";
 
-    printf("  [Sign1: ECDSA alg-curve mismatch]\n");
+    TEST_LOG("  [Sign1: ECDSA alg-curve mismatch]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "rng init");
@@ -8435,7 +8934,7 @@ static void test_cose_sign1_alg_curve_mismatch(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "ecc keygen P-256");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "set ECC key P-256");
 
@@ -8452,8 +8951,8 @@ static void test_cose_sign1_alg_curve_mismatch(void)
                 "Sign1 rejects ES384 with P-256 key");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_cose_sign1_inconsistent_kid(void)
@@ -8468,7 +8967,7 @@ static void test_cose_sign1_inconsistent_kid(void)
     const uint8_t payload[] = "Test";
     const uint8_t kid[] = "k";
 
-    printf("  [Sign1: inconsistent (kid, kidLen)]\n");
+    TEST_LOG("  [Sign1: inconsistent (kid, kidLen)]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "rng init");
@@ -8477,7 +8976,7 @@ static void test_cose_sign1_inconsistent_kid(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "ecc keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "set ECC key");
 
@@ -8506,8 +9005,8 @@ static void test_cose_sign1_inconsistent_kid(void)
                 "Sign1 rejects NULL kid with non-zero kidLen");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC && WOLFCOSE_SIGN1_SIGN */
 
@@ -8524,7 +9023,7 @@ static void test_cose_sign_multi_public_only_key(void)
     size_t outLen = 0;
     const uint8_t payload[] = "Multi-signer pub-only test";
 
-    printf("  [Sign Multi: public-only key rejected]\n");
+    TEST_LOG("  [Sign Multi: public-only key rejected]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "rng init");
@@ -8537,8 +9036,8 @@ static void test_cose_sign_multi_public_only_key(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey2);
     TEST_ASSERT(ret == 0, "ecc2 keygen");
 
-    wc_CoseKey_Init(&key1);
-    wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_Init(&key2);
     (void)wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
     (void)wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
     key2.hasPrivate = 0u; /* second signer is public-only */
@@ -8564,9 +9063,9 @@ static void test_cose_sign_multi_public_only_key(void)
 
     wc_CoseKey_Free(&key1);
     wc_CoseKey_Free(&key2);
-    wc_ecc_free(&eccKey1);
-    wc_ecc_free(&eccKey2);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey1);
+    (void)wc_ecc_free(&eccKey2);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_SIGN && HAVE_ECC */
 
@@ -8582,9 +9081,9 @@ static void test_cose_encrypt0_nonce_length(void)
     const uint8_t shortIv[7] = {0};
     const uint8_t payload[] = "Test";
 
-    printf("  [Encrypt0: nonce length validation]\n");
+    TEST_LOG("  [Encrypt0: nonce length validation]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     (void)wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
 
     /* AES-128-GCM requires a 12-byte nonce; passing 7 must be rejected. */
@@ -8614,10 +9113,10 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
     const uint8_t keyBytes[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
     const uint8_t iv[12] = {0};
 
-    printf("  [Encrypt0: empty payload roundtrip]\n");
+    TEST_LOG("  [Encrypt0: empty payload roundtrip]\n");
 
-    wc_CoseKey_Init(&encKey);
-    wc_CoseKey_Init(&decKey);
+    (void)wc_CoseKey_Init(&encKey);
+    (void)wc_CoseKey_Init(&decKey);
     (void)wc_CoseKey_SetSymmetric(&encKey, keyBytes, sizeof(keyBytes));
     (void)wc_CoseKey_SetSymmetric(&decKey, keyBytes, sizeof(keyBytes));
 
@@ -8658,7 +9157,7 @@ static void test_cose_hmac_type_constants(void)
     int ret;
     int hmacType = 0;
 
-    printf("  [HmacType constants]\n");
+    TEST_LOG("  [HmacType constants]\n");
 
 #ifndef NO_HMAC
     ret = wolfCose_HmacType(WOLFCOSE_ALG_HMAC_256_256, &hmacType);
@@ -8682,7 +9181,7 @@ static void test_cose_aead_tag_len(void)
     int ret;
     size_t tagLen = 0;
 
-    printf("  [AeadTagLen constants]\n");
+    TEST_LOG("  [AeadTagLen constants]\n");
 
 #ifdef HAVE_AESGCM
     ret = wolfCose_AeadTagLen(WOLFCOSE_ALG_A128GCM, &tagLen);
@@ -8712,7 +9211,7 @@ static void test_cose_alg_to_hash_constants(void)
     int ret;
     enum wc_HashType ht;
 
-    printf("  [Algorithm-to-hash constants]\n");
+    TEST_LOG("  [Algorithm-to-hash constants]\n");
 
 #ifdef HAVE_ECC
     ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_ES256, &ht);
@@ -8755,7 +9254,7 @@ static void test_cose_build_sig_structure_context(void)
     const uint8_t protectedHdr[1] = {0x40}; /* h'' bstr inside, body opaque */
     const uint8_t payload[1] = {0x00};
 
-    printf("  [BuildToBeSignedMaced: context bytes]\n");
+    TEST_LOG("  [BuildToBeSignedMaced: context bytes]\n");
 
     /* Sign1 path: expect array(4), tstr "Signature1", bstr<protected>,
      * bstr<extAad=empty>, bstr<payload>. The first two bytes for an
@@ -8827,7 +9326,7 @@ static void test_cose_sign_multi_pss_roundtrip(void)
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
 
-    printf("  [Sign Multi PSS roundtrip]\n");
+    TEST_LOG("  [Sign Multi PSS roundtrip]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "multi pss rng init");
@@ -8836,7 +9335,7 @@ static void test_cose_sign_multi_pss_roundtrip(void)
     ret = wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng);
     TEST_ASSERT(ret == 0, "multi pss keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetRsa(&key, &rsaKey);
     TEST_ASSERT(ret == 0, "multi pss key set");
 
@@ -8869,8 +9368,8 @@ static void test_cose_sign_multi_pss_roundtrip(void)
     TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_PS256, "multi pss hdr alg");
 
     wc_CoseKey_Free(&key);
-    wc_FreeRsaKey(&rsaKey);
-    wc_FreeRng(&rng);
+    (void)wc_FreeRsaKey(&rsaKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -8890,7 +9389,7 @@ static void test_cose_sign_multi_dilithium_roundtrip(void)
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
 
-    printf("  [Sign Multi ML-DSA-44 roundtrip]\n");
+    TEST_LOG("  [Sign Multi ML-DSA-44 roundtrip]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "multi dl rng init");
@@ -8901,7 +9400,7 @@ static void test_cose_sign_multi_dilithium_roundtrip(void)
     ret = wc_dilithium_make_key(&dlKey, &rng);
     TEST_ASSERT(ret == 0, "multi dl keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
     TEST_ASSERT(ret == 0, "multi dl key set");
 
@@ -8933,8 +9432,8 @@ static void test_cose_sign_multi_dilithium_roundtrip(void)
                 "multi dl payload match");
 
     wc_CoseKey_Free(&key);
-    wc_dilithium_free(&dlKey);
-    wc_FreeRng(&rng);
+    (void)wc_dilithium_free(&dlKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -8954,9 +9453,9 @@ static void test_cose_encrypt_multi_ccm_roundtrip(void)
     size_t plaintextLen = 0;
     const uint8_t payload[] = "CCM multi-recipient payload";
 
-    printf("  [Encrypt Multi AES-CCM roundtrip]\n");
+    TEST_LOG("  [Encrypt Multi AES-CCM roundtrip]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "ccm multi key set");
 
@@ -9007,9 +9506,9 @@ static void test_cose_encrypt_multi_chacha_roundtrip(void)
     size_t plaintextLen = 0;
     const uint8_t payload[] = "ChaCha multi-recipient payload";
 
-    printf("  [Encrypt Multi ChaCha20-Poly1305 roundtrip]\n");
+    TEST_LOG("  [Encrypt Multi ChaCha20-Poly1305 roundtrip]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "chacha multi key set");
 
@@ -9060,9 +9559,9 @@ static void test_cose_encrypt0_detached_ccm(void)
     size_t detachedLen = 0;
     const uint8_t payload[] = "CCM detached payload";
 
-    printf("  [Encrypt0 detached AES-CCM]\n");
+    TEST_LOG("  [Encrypt0 detached AES-CCM]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "ccm det key set");
 
@@ -9096,9 +9595,9 @@ static void test_cose_encrypt0_detached_chacha(void)
     size_t detachedLen = 0;
     const uint8_t payload[] = "ChaCha detached payload";
 
-    printf("  [Encrypt0 detached ChaCha20-Poly1305]\n");
+    TEST_LOG("  [Encrypt0 detached ChaCha20-Poly1305]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "chacha det key set");
 
@@ -9132,9 +9631,9 @@ static void test_cose_mac_multi_aescbc_roundtrip(void)
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
 
-    printf("  [Mac Multi AES-CBC-MAC roundtrip]\n");
+    TEST_LOG("  [Mac Multi AES-CBC-MAC roundtrip]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "aescbc multi key set");
 
@@ -9181,7 +9680,7 @@ static void test_cose_key_kid_alg_roundtrip(void)
     size_t encodedLen = 0;
     const uint8_t kid[] = "ec2-key-1";
 
-    printf("  [COSE_Key roundtrip with kid + alg]\n");
+    TEST_LOG("  [COSE_Key roundtrip with kid + alg]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "key kidAlg rng");
@@ -9190,7 +9689,7 @@ static void test_cose_key_kid_alg_roundtrip(void)
     ret = wc_ecc_make_key(&rng, 32, &srcEcc);
     TEST_ASSERT(ret == 0, "key kidAlg ecc keygen");
 
-    wc_CoseKey_Init(&srcKey);
+    (void)wc_CoseKey_Init(&srcKey);
     ret = wc_CoseKey_SetEcc(&srcKey, WOLFCOSE_CRV_P256, &srcEcc);
     TEST_ASSERT(ret == 0, "key kidAlg src set");
     srcKey.kid = kid;
@@ -9202,7 +9701,7 @@ static void test_cose_key_kid_alg_roundtrip(void)
 
     ret = wc_ecc_init(&dstEcc);
     TEST_ASSERT(ret == 0, "key kidAlg ecc init dst");
-    wc_CoseKey_Init(&dstKey);
+    (void)wc_CoseKey_Init(&dstKey);
     dstKey.key.ecc = &dstEcc;
     ret = wc_CoseKey_Decode(&dstKey, encoded, encodedLen);
     TEST_ASSERT(ret == 0, "key kidAlg decode");
@@ -9216,9 +9715,9 @@ static void test_cose_key_kid_alg_roundtrip(void)
 
     wc_CoseKey_Free(&srcKey);
     wc_CoseKey_Free(&dstKey);
-    wc_ecc_free(&srcEcc);
-    wc_ecc_free(&dstEcc);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&srcEcc);
+    (void)wc_ecc_free(&dstEcc);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -9240,7 +9739,7 @@ static void test_cose_encrypt_ecdh_es_hkdf512(void)
     size_t plaintextLen = 0;
     const uint8_t payload[] = "ECDH-ES HKDF-512 payload";
 
-    printf("  [Encrypt Multi ECDH-ES HKDF-512]\n");
+    TEST_LOG("  [Encrypt Multi ECDH-ES HKDF-512]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "ecdh512 rng init");
@@ -9249,7 +9748,7 @@ static void test_cose_encrypt_ecdh_es_hkdf512(void)
     ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
     TEST_ASSERT(ret == 0, "ecdh512 keygen");
 
-    wc_CoseKey_Init(&recipientKey);
+    (void)wc_CoseKey_Init(&recipientKey);
     ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
     TEST_ASSERT(ret == 0, "ecdh512 key set");
     recipientKey.hasPrivate = 1u;
@@ -9283,8 +9782,8 @@ static void test_cose_encrypt_ecdh_es_hkdf512(void)
                 "ecdh512 plaintext match");
 
     wc_CoseKey_Free(&recipientKey);
-    wc_ecc_free(&recipientEcc);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -9301,7 +9800,7 @@ static void test_cose_sign_multi_alg_key_mismatch(void)
     size_t outLen = 0;
     const uint8_t payload[] = "alg/key mismatch";
 
-    printf("  [Sign Multi alg vs key->alg mismatch]\n");
+    TEST_LOG("  [Sign Multi alg vs key->alg mismatch]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "mismatch rng init");
@@ -9310,7 +9809,7 @@ static void test_cose_sign_multi_alg_key_mismatch(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "mismatch keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "mismatch key set");
     key.alg = WOLFCOSE_ALG_ES384; /* key declares ES384 */
@@ -9331,8 +9830,8 @@ static void test_cose_sign_multi_alg_key_mismatch(void)
                 "Sign_Sign rejects key->alg mismatch");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -9350,7 +9849,7 @@ static void test_cose_sign_multi_wrong_kty_for_pss(void)
     size_t outLen = 0;
     const uint8_t payload[] = "wrong kty for PS256";
 
-    printf("  [Sign Multi PSS requires RSA key]\n");
+    TEST_LOG("  [Sign Multi PSS requires RSA key]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "pss-wrong-kty rng");
@@ -9359,7 +9858,7 @@ static void test_cose_sign_multi_wrong_kty_for_pss(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "pss-wrong-kty keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "pss-wrong-kty key set");
 
@@ -9379,8 +9878,8 @@ static void test_cose_sign_multi_wrong_kty_for_pss(void)
                 "Sign_Sign rejects ECC key for PS256");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -9400,7 +9899,7 @@ static void test_cose_sign_multi_ed448_roundtrip(void)
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
 
-    printf("  [Sign Multi Ed448 roundtrip]\n");
+    TEST_LOG("  [Sign Multi Ed448 roundtrip]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "multi ed448 rng init");
@@ -9409,7 +9908,7 @@ static void test_cose_sign_multi_ed448_roundtrip(void)
     ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edKey);
     TEST_ASSERT(ret == 0, "multi ed448 keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEd448(&key, &edKey);
     TEST_ASSERT(ret == 0, "multi ed448 key set");
 
@@ -9441,8 +9940,8 @@ static void test_cose_sign_multi_ed448_roundtrip(void)
                 "multi ed448 payload match");
 
     wc_CoseKey_Free(&key);
-    wc_ed448_free(&edKey);
-    wc_FreeRng(&rng);
+    (void)wc_ed448_free(&edKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -9453,7 +9952,7 @@ static void test_cose_sigsize_known_algs(void)
     int ret;
     size_t sz = 0;
 
-    printf("  [SigSize known algorithms]\n");
+    TEST_LOG("  [SigSize known algorithms]\n");
 
 #ifdef HAVE_ECC
     ret = wolfCose_SigSize(WOLFCOSE_ALG_ES256, &sz);
@@ -9484,7 +9983,7 @@ static void test_cose_decode_tstr_alg_values(void)
     /* Unprotected hdr {1: "X"} */
     uint8_t unprotTstrAlg[] = {0xA1u, 0x01u, 0x61u, 'X'};
 
-    printf("  [tstr alg values skipped]\n");
+    TEST_LOG("  [tstr alg values skipped]\n");
 
     memset(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(protTstrAlg, sizeof(protTstrAlg), &hdr);
@@ -9511,16 +10010,59 @@ static void test_cose_decode_unprotected_tstr_label(void)
     /* {1: -7, "x": 0} */
     uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
 
-    printf("  [DecodeUnprotectedHdr: tstr label skipped]\n");
+    TEST_LOG("  [DecodeUnprotectedHdr: tstr label skipped]\n");
     memset(&hdr, 0, sizeof(hdr));
     ctx.cbuf = tstrLabel;
     ctx.bufSz = sizeof(tstrLabel);
     ctx.idx = 0;
     ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
-    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
-                "DecodeUnprotectedHdr tolerates tstr label");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256,
-                "DecodeUnprotectedHdr alg after tstr skip");
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "DecodeUnprotectedHdr rejects tstr label");
+}
+
+static void test_cose_key_decode_tstr_alg_rejected(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t buf[128];
+    WOLFCOSE_CBOR_CTX enc;
+    const uint8_t symmKey[] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
+    static const uint8_t hs256Tstr[] = {
+        0x48u, 0x53u, 0x32u, 0x35u, 0x36u
+    };
+    int ret;
+
+    TEST_LOG("  [COSE_Key decode tstr alg rejected]\n");
+
+    enc.buf = buf;
+    enc.bufSz = sizeof(buf);
+    enc.idx = 0;
+    ret = wc_CBOR_EncodeMapStart(&enc, 3);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_SYMMETRIC);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeTstr(&enc, hs256Tstr, sizeof(hs256Tstr));
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_K);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, symmKey, sizeof(symmKey));
+    }
+    TEST_ASSERT(ret == 0, "encode synthetic COSE_Key");
+
+    (void)wc_CoseKey_Init(&key);
+    if (ret == 0) {
+        ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    }
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "COSE_Key decode rejects tstr alg");
 }
 
 /* ----- Negative-path tests for caller-error rejection logic ----- */
@@ -9532,27 +10074,27 @@ static void test_cose_setecc_invalid_curve(void)
     ecc_key eccKey;
     int ret;
 
-    printf("  [SetEcc invalid curve]\n");
+    TEST_LOG("  [SetEcc invalid curve]\n");
 
     ret = wc_ecc_init(&eccKey);
     TEST_ASSERT(ret == 0, "setecc invalid ecc init");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_ED25519, &eccKey);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
                 "SetEcc rejects ED25519 curve");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, 0, &eccKey);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
                 "SetEcc rejects zero curve");
 
-    wc_ecc_free(&eccKey);
+    (void)wc_ecc_free(&eccKey);
 }
 #endif
 
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE)
-static void test_cose_mac0_hmac_wrong_key_length(void)
+static void test_cose_mac0_hmac_short_key_allowed(void)
 {
     WOLFCOSE_KEY key;
     int ret;
@@ -9560,15 +10102,17 @@ static void test_cose_mac0_hmac_wrong_key_length(void)
     uint8_t out[256];
     uint8_t scratch[256];
     size_t outLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
     const uint8_t payload[] = "wrong key length";
 
-    printf("  [Mac0 HMAC wrong key length]\n");
+    TEST_LOG("  [Mac0 HMAC short key allowed]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, shortKey, sizeof(shortKey));
     TEST_ASSERT(ret == 0, "mac0 wrong keylen set");
 
-    /* HMAC-256/256 requires 32-byte key; 16-byte key must be rejected. */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0,
         payload, sizeof(payload) - 1,
@@ -9576,8 +10120,19 @@ static void test_cose_mac0_hmac_wrong_key_length(void)
         NULL, 0,
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
-                "Mac0_Create rejects 16B key for HMAC-256/256");
+    TEST_ASSERT(ret == 0, "Mac0_Create accepts 16B key for HMAC-256/256");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac0_Verify(&key, out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "Mac0_Verify accepts 16B key for HMAC-256/256");
+    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_256_256, "short-key HMAC-256 alg");
+    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1, "short-key payload len");
+    TEST_ASSERT(XMEMCMP(decPayload, payload, decPayloadLen) == 0,
+                "short-key payload match");
 
     wc_CoseKey_Free(&key);
 }
@@ -9585,7 +10140,7 @@ static void test_cose_mac0_hmac_wrong_key_length(void)
 
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE) && \
     defined(WOLFCOSE_MAC0_VERIFY)
-static void test_cose_mac0_verify_wrong_key_length(void)
+static void test_cose_mac0_verify_short_key_allowed(void)
 {
     WOLFCOSE_KEY signKey;
     WOLFCOSE_KEY verifyKey;
@@ -9600,9 +10155,9 @@ static void test_cose_mac0_verify_wrong_key_length(void)
     size_t payloadLen = 0;
     const uint8_t msg[] = "verify wrong keylen";
 
-    printf("  [Mac0 verify wrong key length]\n");
+    TEST_LOG("  [Mac0 verify short key allowed]\n");
 
-    wc_CoseKey_Init(&signKey);
+    (void)wc_CoseKey_Init(&signKey);
     ret = wc_CoseKey_SetSymmetric(&signKey, goodKey, sizeof(goodKey));
     TEST_ASSERT(ret == 0, "verify keylen sign key set");
 
@@ -9615,7 +10170,7 @@ static void test_cose_mac0_verify_wrong_key_length(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret == 0, "verify keylen create ok");
 
-    wc_CoseKey_Init(&verifyKey);
+    (void)wc_CoseKey_Init(&verifyKey);
     ret = wc_CoseKey_SetSymmetric(&verifyKey, shortKey, sizeof(shortKey));
     TEST_ASSERT(ret == 0, "verify keylen short key set");
 
@@ -9625,8 +10180,11 @@ static void test_cose_mac0_verify_wrong_key_length(void)
         NULL, 0,
         scratch, sizeof(scratch),
         &hdr, &payload, &payloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
-                "Mac0_Verify rejects 16B key for HMAC-256/256");
+    TEST_ASSERT(ret == 0, "Mac0_Verify accepts 16B key for HMAC-256/256");
+    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_256_256, "verify short-key alg");
+    TEST_ASSERT(payloadLen == sizeof(msg) - 1, "verify short-key payload len");
+    TEST_ASSERT(XMEMCMP(payload, msg, payloadLen) == 0,
+                "verify short-key payload match");
 
     wc_CoseKey_Free(&signKey);
     wc_CoseKey_Free(&verifyKey);
@@ -9644,9 +10202,9 @@ static void test_cose_mac0_create_key_alg_mismatch(void)
     size_t outLen = 0;
     const uint8_t payload[] = "mismatch";
 
-    printf("  [Mac0_Create key->alg mismatch]\n");
+    TEST_LOG("  [Mac0_Create key->alg mismatch]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "mac0 mismatch key set");
     key.alg = WOLFCOSE_ALG_HMAC_384_384; /* key declares HMAC-384 */
@@ -9678,9 +10236,9 @@ static void test_cose_encrypt0_key_alg_mismatch(void)
     size_t outLen = 0;
     const uint8_t payload[] = "mismatch";
 
-    printf("  [Encrypt0 key->alg mismatch]\n");
+    TEST_LOG("  [Encrypt0 key->alg mismatch]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "enc0 mismatch key set");
     key.alg = WOLFCOSE_ALG_A256GCM; /* key declares A256GCM */
@@ -9712,7 +10270,7 @@ static void test_cose_sign1_key_alg_mismatch(void)
     size_t outLen = 0;
     const uint8_t payload[] = "mismatch";
 
-    printf("  [Sign1 key->alg mismatch]\n");
+    TEST_LOG("  [Sign1 key->alg mismatch]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "sign1 mismatch rng");
@@ -9721,7 +10279,7 @@ static void test_cose_sign1_key_alg_mismatch(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "sign1 mismatch keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "sign1 mismatch key set");
     key.alg = WOLFCOSE_ALG_ES256;
@@ -9739,8 +10297,8 @@ static void test_cose_sign1_key_alg_mismatch(void)
                 "Sign1_Sign rejects key->alg mismatch");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_cose_sign1_verify_key_alg_mismatch(void)
@@ -9758,7 +10316,7 @@ static void test_cose_sign1_verify_key_alg_mismatch(void)
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
 
-    printf("  [Sign1_Verify key->alg mismatch]\n");
+    TEST_LOG("  [Sign1_Verify key->alg mismatch]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "v-mismatch rng");
@@ -9767,7 +10325,7 @@ static void test_cose_sign1_verify_key_alg_mismatch(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "v-mismatch keygen");
 
-    wc_CoseKey_Init(&signKey);
+    (void)wc_CoseKey_Init(&signKey);
     ret = wc_CoseKey_SetEcc(&signKey, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "v-mismatch sign key set");
 
@@ -9781,7 +10339,7 @@ static void test_cose_sign1_verify_key_alg_mismatch(void)
         &rng);
     TEST_ASSERT(ret == 0, "v-mismatch sign");
 
-    wc_CoseKey_Init(&verifyKey);
+    (void)wc_CoseKey_Init(&verifyKey);
     ret = wc_CoseKey_SetEcc(&verifyKey, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "v-mismatch verify key set");
     verifyKey.alg = WOLFCOSE_ALG_ES384;
@@ -9796,8 +10354,8 @@ static void test_cose_sign1_verify_key_alg_mismatch(void)
 
     wc_CoseKey_Free(&signKey);
     wc_CoseKey_Free(&verifyKey);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_cose_sign1_both_payloads(void)
@@ -9812,7 +10370,7 @@ static void test_cose_sign1_both_payloads(void)
     const uint8_t inline_payload[] = "inline";
     const uint8_t detached_payload[] = "detached";
 
-    printf("  [Sign1 inline + detached rejected]\n");
+    TEST_LOG("  [Sign1 inline + detached rejected]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "sign1 both rng");
@@ -9821,7 +10379,7 @@ static void test_cose_sign1_both_payloads(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     TEST_ASSERT(ret == 0, "sign1 both keygen");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "sign1 both key set");
 
@@ -9838,8 +10396,8 @@ static void test_cose_sign1_both_payloads(void)
                 "Sign1_Sign rejects both inline and detached");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -9855,9 +10413,9 @@ static void test_cose_mac0_both_payloads(void)
     const uint8_t inline_payload[] = "inline";
     const uint8_t detached_payload[] = "detached";
 
-    printf("  [Mac0 inline + detached rejected]\n");
+    TEST_LOG("  [Mac0 inline + detached rejected]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, hmacKey, sizeof(hmacKey));
     TEST_ASSERT(ret == 0, "mac0 both key set");
 
@@ -9883,9 +10441,9 @@ static void test_cose_key_decode_missing_kty(void)
     /* CBOR map with only label 3 (alg) -> no kty present. */
     uint8_t noKty[] = {0xA1u, 0x03u, 0x26u};
 
-    printf("  [CoseKey_Decode missing kty]\n");
+    TEST_LOG("  [CoseKey_Decode missing kty]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_Decode(&key, noKty, sizeof(noKty));
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "CoseKey_Decode rejects missing kty");
@@ -9902,9 +10460,9 @@ static void test_cose_key_decode_trailing_bytes(void)
         0xFFu /* trailing byte */
     };
 
-    printf("  [CoseKey_Decode trailing bytes]\n");
+    TEST_LOG("  [CoseKey_Decode trailing bytes]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_Decode(&key, buf, sizeof(buf));
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "CoseKey_Decode rejects trailing bytes");
@@ -9917,9 +10475,9 @@ static void test_cose_key_decode_symmetric_missing_k(void)
     /* {1: 4} -> kty=Symmetric but no k label (-1). */
     uint8_t noK[] = {0xA1u, 0x01u, 0x04u};
 
-    printf("  [CoseKey_Decode symmetric without k]\n");
+    TEST_LOG("  [CoseKey_Decode symmetric without k]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_Decode(&key, noK, sizeof(noK));
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "CoseKey_Decode rejects symmetric w/o k");
@@ -9943,8 +10501,8 @@ static void test_cose_key_decode_ec2_short_coord(void)
         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
     };
 
-    printf("  [CoseKey_Decode EC2 short x coord rejected]\n");
-    wc_CoseKey_Init(&key);
+    TEST_LOG("  [CoseKey_Decode EC2 short x coord rejected]\n");
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_Decode(&key, shortX, sizeof(shortX));
     TEST_ASSERT(ret != WOLFCOSE_SUCCESS,
                 "CoseKey_Decode rejects short EC2 coord");
@@ -9970,9 +10528,9 @@ static void test_cose_encrypt0_detached_ccm_roundtrip(void)
     WOLFCOSE_HDR hdr;
     const uint8_t payload[] = "ccm detached roundtrip";
 
-    printf("  [Encrypt0 detached AES-CCM roundtrip]\n");
+    TEST_LOG("  [Encrypt0 detached AES-CCM roundtrip]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "ccm rt key set");
 
@@ -10019,9 +10577,9 @@ static void test_cose_encrypt0_detached_chacha_roundtrip(void)
     WOLFCOSE_HDR hdr;
     const uint8_t payload[] = "chacha detached roundtrip";
 
-    printf("  [Encrypt0 detached ChaCha20-Poly1305 roundtrip]\n");
+    TEST_LOG("  [Encrypt0 detached ChaCha20-Poly1305 roundtrip]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "chacha rt key set");
 
@@ -10057,7 +10615,7 @@ static void test_internal_helpers(void)
     size_t sz;
     int wcType;
 
-    printf("  [Internal Helper NULL/Bad Arg Tests]\n");
+    TEST_LOG("  [Internal Helper NULL/Bad Arg Tests]\n");
 
     /* ----- wolfCose_AlgToHashType ----- */
     /* NULL output pointer */
@@ -10136,7 +10694,7 @@ static void test_internal_helpers(void)
 #endif
 
     /* ----- Test additional curve sizes ----- */
-    printf("  [Additional Curve Size Tests]\n");
+    TEST_LOG("  [Additional Curve Size Tests]\n");
 
     /* ED25519 curve size */
     ret = wolfCose_CrvKeySize(WOLFCOSE_CRV_ED25519, &sz);
@@ -10182,7 +10740,8 @@ static void test_internal_helpers(void)
 
     /* ----- Test wolfCose_EccSignRaw/EccVerifyRaw error paths ----- */
 #ifdef HAVE_ECC
-    printf("  [ECC Sign/Verify Raw Error Tests]\n");
+    TEST_LOG("  [ECC Sign/Verify Raw Error Tests]\n");
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         const uint8_t hash[32] = {0};
         uint8_t sigBuf[64];
@@ -10221,7 +10780,8 @@ static void test_internal_helpers(void)
 #endif
 
     /* ----- Test header encode/decode error paths ----- */
-    printf("  [Header Encode/Decode Error Tests]\n");
+    TEST_LOG("  [Header Encode/Decode Error Tests]\n");
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t hdrBuf[64];
         size_t hdrLen;
@@ -10249,20 +10809,22 @@ static void test_internal_helpers(void)
     }
 
     /* ----- Test header decode edge cases ----- */
-    printf("  [Header Decode Edge Cases]\n");
+    TEST_LOG("  [Header Decode Edge Cases]\n");
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_CBOR_CTX ctx;
         WOLFCOSE_HDR hdr;
 
         /* Protected header with map count > 16 (WOLFCOSE_MAX_MAP_ITEMS) */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             /* CBOR map with 17 entries: 0xB1 (map of 17) followed by dummy entries */
             uint8_t bigMap[100];
             size_t i, idx = 0;
-            bigMap[idx++] = 0xB1; /* map(17) */
+            bigMap[idx++] = 0xB1u; /* map(17) */
             for (i = 0; i < 17; i++) {
                 bigMap[idx++] = (uint8_t)(0x10 + i); /* label: 16+i */
-                bigMap[idx++] = 0x00; /* value: 0 */
+                bigMap[idx++] = 0x00u; /* value: 0 */
             }
             XMEMSET(&hdr, 0, sizeof(hdr));
             ret = wolfCose_DecodeProtectedHdr(bigMap, idx, &hdr);
@@ -10270,18 +10832,20 @@ static void test_internal_helpers(void)
         }
 
         /* Protected header with unknown label (triggers wc_CBOR_Skip) */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             /* CBOR: {99: 123} - unknown label 99 with value 123 */
-            uint8_t unknownHdr[] = {0xA1, 0x18, 0x63, 0x18, 0x7B}; /* map(1), 99, 123 */
+            uint8_t unknownHdr[] = {0xA1u, 0x18u, 0x63u, 0x18u, 0x7Bu}; /* map(1), 99, 123 */
             XMEMSET(&hdr, 0, sizeof(hdr));
             ret = wolfCose_DecodeProtectedHdr(unknownHdr, sizeof(unknownHdr), &hdr);
             TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "DecodeProtectedHdr unknown label");
         }
 
         /* Unprotected header with partial_iv (label 6) */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             /* CBOR: {6: h'010203'} - partial_iv with 3-byte value */
-            uint8_t partialIvHdr[] = {0xA1, 0x06, 0x43, 0x01, 0x02, 0x03};
+            uint8_t partialIvHdr[] = {0xA1u, 0x06u, 0x43u, 0x01u, 0x02u, 0x03u};
             ctx.cbuf = partialIvHdr;
             ctx.bufSz = sizeof(partialIvHdr);
             ctx.idx = 0;
@@ -10292,6 +10856,7 @@ static void test_internal_helpers(void)
         }
 
         /* Unprotected header with alg (label 1) when hdr->alg == 0 */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             /* CBOR: {1: -7} - alg ES256 in unprotected header */
             uint8_t algHdr[] = {0xA1, 0x01, 0x26}; /* map(1), 1, -7 */
@@ -10305,6 +10870,7 @@ static void test_internal_helpers(void)
         }
 
         /* Unprotected header with map count > 16 */
+        /* empty-brace-scan: allow - test-local temporary scope */
         {
             uint8_t bigMap[100];
             size_t i, idx = 0;
@@ -10339,24 +10905,25 @@ static void test_force_failure_crypto(void)
     size_t coseMsgLen = sizeof(coseMsg);
     uint8_t scratch[256];
 
-    printf("  [Forced Failure Injection]\n");
+    TEST_LOG("  [Forced Failure Injection]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) {
-        printf("  SKIP: RNG init failed\n");
+        TEST_LOG("  SKIP: RNG init failed\n");
         return;
     }
 
 #ifdef HAVE_ECC
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         ecc_key eccKey;
 
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         wc_ecc_init(&eccKey);
         ret = wc_ecc_make_key(&rng, 32, &eccKey);
         if (ret == 0) {
-            wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+            (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
             /* Test ECC sign failure */
             wolfForceFailure_Set(WOLF_FAIL_ECC_SIGN);
@@ -10415,6 +10982,7 @@ static void test_force_failure_crypto(void)
             }
 
             /* Test key export failures */
+            /* empty-brace-scan: allow - test-local temporary scope */
             {
                 uint8_t keyBuf[256];
                 size_t keyLen = sizeof(keyBuf);
@@ -10429,19 +10997,20 @@ static void test_force_failure_crypto(void)
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ECC export private forced failure");
             }
         }
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
         wc_CoseKey_Free(&key);
     }
 #endif /* HAVE_ECC */
 
 #ifdef HAVE_AESGCM
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         uint8_t symKey[16] = {0};
         uint8_t iv[12] = {0};
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, symKey, sizeof(symKey));
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, symKey, sizeof(symKey));
 
         /* Test AES-GCM set key failure */
         coseMsgLen = sizeof(coseMsg);
@@ -10498,12 +11067,13 @@ static void test_force_failure_crypto(void)
 #endif /* HAVE_AESGCM */
 
 #ifndef NO_HMAC
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         uint8_t symKey[32] = {0};
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, symKey, sizeof(symKey));
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, symKey, sizeof(symKey));
 
         /* Test HMAC set key failure */
         coseMsgLen = sizeof(coseMsg);
@@ -10546,17 +11116,18 @@ static void test_force_failure_crypto(void)
 #endif /* !NO_HMAC */
 
 #ifdef HAVE_ED25519
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         ed25519_key edKey;
         uint8_t keyBuf[256];
         size_t keyLen;
 
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         wc_ed25519_init(&edKey);
         ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
         if (ret == 0) {
-            wc_CoseKey_SetEd25519(&key, &edKey);
+            (void)wc_CoseKey_SetEd25519(&key, &edKey);
 
             /* Test Ed25519 export public failure */
             keyLen = sizeof(keyBuf);
@@ -10598,12 +11169,13 @@ static void test_force_failure_crypto(void)
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Ed25519 verify forced failure");
             }
         }
-        wc_ed25519_free(&edKey);
+        (void)wc_ed25519_free(&edKey);
         wc_CoseKey_Free(&key);
     }
 #endif /* HAVE_ED25519 */
 
 #if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         RsaKey rsaKey;
@@ -10613,11 +11185,11 @@ static void test_force_failure_crypto(void)
         size_t rsaCoseMsgLen;
         size_t keyLen;
 
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         wc_InitRsaKey(&rsaKey, NULL);
         ret = wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng);
         if (ret == 0) {
-            wc_CoseKey_SetRsa(&key, &rsaKey);
+            (void)wc_CoseKey_SetRsa(&key, &rsaKey);
 
             /* Test RSA encrypt size failure */
             keyLen = sizeof(keyBuf);
@@ -10659,12 +11231,13 @@ static void test_force_failure_crypto(void)
                 TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL, "RSA-PSS verify forced failure");
             }
         }
-        wc_FreeRsaKey(&rsaKey);
+        (void)wc_FreeRsaKey(&rsaKey);
         wc_CoseKey_Free(&key);
     }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
 #ifdef HAVE_DILITHIUM
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         dilithium_key dlKey;
@@ -10674,14 +11247,14 @@ static void test_force_failure_crypto(void)
         size_t dlCoseMsgLen;
         size_t keyLen;
 
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         wc_dilithium_init(&dlKey);
         ret = wc_dilithium_set_level(&dlKey, 2);
         if (ret == 0) {
             ret = wc_dilithium_make_key(&dlKey, &rng);
         }
         if (ret == 0) {
-            wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+            (void)wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
             /* Test Dilithium export public failure */
             keyLen = sizeof(keyBuf);
@@ -10723,19 +11296,20 @@ static void test_force_failure_crypto(void)
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Dilithium verify forced failure");
             }
         }
-        wc_dilithium_free(&dlKey);
+        (void)wc_dilithium_free(&dlKey);
         wc_CoseKey_Free(&key);
     }
 #endif /* HAVE_DILITHIUM */
 
 #ifdef HAVE_AESCCM
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         uint8_t symKey[16] = {0};
         uint8_t iv[13] = {0};  /* CCM with L=2 uses 13-byte nonce */
 
-        wc_CoseKey_Init(&key);
-        wc_CoseKey_SetSymmetric(&key, symKey, sizeof(symKey));
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, symKey, sizeof(symKey));
 
         /* First verify CCM works without injection */
         coseMsgLen = sizeof(coseMsg);
@@ -10807,6 +11381,7 @@ static void test_force_failure_crypto(void)
 #endif /* HAVE_AESCCM */
 
 #ifdef HAVE_ED448
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         ed448_key edKey;
@@ -10816,11 +11391,11 @@ static void test_force_failure_crypto(void)
         size_t ed448CoseMsgLen;
         size_t keyLen;
 
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         wc_ed448_init(&edKey);
         ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edKey);
         if (ret == 0) {
-            wc_CoseKey_SetEd448(&key, &edKey);
+            (void)wc_CoseKey_SetEd448(&key, &edKey);
 
             /* Test Ed448 export public failure */
             keyLen = sizeof(keyBuf);
@@ -10862,13 +11437,14 @@ static void test_force_failure_crypto(void)
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Ed448 verify forced failure");
             }
         }
-        wc_ed448_free(&edKey);
+        (void)wc_ed448_free(&edKey);
         wc_CoseKey_Free(&key);
     }
 #endif /* HAVE_ED448 */
 
 #if defined(HAVE_ECC) && defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_HKDF)
     /* Test ECDH shared secret failure (via ECDH-ES encrypt) */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY recipKey;
         WOLFCOSE_RECIPIENT recipient;
@@ -10878,12 +11454,12 @@ static void test_force_failure_crypto(void)
         uint8_t ecdhScratch[256];
         uint8_t iv[12] = {0};
 
-        wc_CoseKey_Init(&recipKey);
+        (void)wc_CoseKey_Init(&recipKey);
         wc_ecc_init(&recipEcc);
 
         ret = wc_ecc_make_key(&rng, 32, &recipEcc);
         if (ret == 0) {
-            wc_CoseKey_SetEcc(&recipKey, WOLFCOSE_CRV_P256, &recipEcc);
+            (void)wc_CoseKey_SetEcc(&recipKey, WOLFCOSE_CRV_P256, &recipEcc);
             recipKey.hasPrivate = 0;  /* Use public key for encryption */
 
             /* Set up ECDH-ES recipient */
@@ -10907,7 +11483,7 @@ static void test_force_failure_crypto(void)
             TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ECDH shared secret forced failure");
         }
 
-        wc_ecc_free(&recipEcc);
+        (void)wc_ecc_free(&recipEcc);
         wc_CoseKey_Free(&recipKey);
     }
 #endif /* HAVE_ECC && WOLFCOSE_ECDH_ES_DIRECT && HAVE_HKDF */
@@ -10915,6 +11491,7 @@ static void test_force_failure_crypto(void)
 #ifdef HAVE_ECC
 
     /* Test ECC import failure via CoseKey_Decode */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         ecc_key eccKey;
@@ -10923,11 +11500,11 @@ static void test_force_failure_crypto(void)
         WOLFCOSE_KEY decodedKey;
         ecc_key decodedEccKey;
 
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         wc_ecc_init(&eccKey);
         ret = wc_ecc_make_key(&rng, 32, &eccKey);
         if (ret == 0) {
-            wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+            (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
             /* Encode the key */
             keyLen = sizeof(keyBuf);
@@ -10935,21 +11512,22 @@ static void test_force_failure_crypto(void)
             if (ret == 0) {
                 /* Test ECC import failure - must pre-allocate internal key */
                 wc_ecc_init(&decodedEccKey);
-                wc_CoseKey_Init(&decodedKey);
+                (void)wc_CoseKey_Init(&decodedKey);
                 decodedKey.key.ecc = &decodedEccKey;
                 wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_X963);
                 ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ECC import forced failure");
-                wc_ecc_free(&decodedEccKey);
+                (void)wc_ecc_free(&decodedEccKey);
             }
         }
-        wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey);
         wc_CoseKey_Free(&key);
     }
 #endif /* HAVE_ECC */
 
 #ifdef HAVE_ED25519
     /* Test Ed25519 import failure via CoseKey_Decode */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         ed25519_key edKey;
@@ -10958,11 +11536,11 @@ static void test_force_failure_crypto(void)
         WOLFCOSE_KEY decodedKey;
         ed25519_key decodedEdKey;
 
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         wc_ed25519_init(&edKey);
         ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
         if (ret == 0) {
-            wc_CoseKey_SetEd25519(&key, &edKey);
+            (void)wc_CoseKey_SetEd25519(&key, &edKey);
 
             /* Encode the key */
             keyLen = sizeof(keyBuf);
@@ -10970,21 +11548,22 @@ static void test_force_failure_crypto(void)
             if (ret == 0) {
                 /* Test Ed25519 import failure - must pre-allocate internal key */
                 wc_ed25519_init(&decodedEdKey);
-                wc_CoseKey_Init(&decodedKey);
+                (void)wc_CoseKey_Init(&decodedKey);
                 decodedKey.key.ed25519 = &decodedEdKey;
                 wolfForceFailure_Set(WOLF_FAIL_ED25519_IMPORT_PRIV);
                 ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Ed25519 import priv forced failure");
-                wc_ed25519_free(&decodedEdKey);
+                (void)wc_ed25519_free(&decodedEdKey);
             }
         }
-        wc_ed25519_free(&edKey);
+        (void)wc_ed25519_free(&edKey);
         wc_CoseKey_Free(&key);
     }
 #endif /* HAVE_ED25519 */
 
 #ifdef HAVE_ED448
     /* Test Ed448 import failure via CoseKey_Decode */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         ed448_key edKey;
@@ -10993,11 +11572,11 @@ static void test_force_failure_crypto(void)
         WOLFCOSE_KEY decodedKey;
         ed448_key decodedEdKey;
 
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         wc_ed448_init(&edKey);
         ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edKey);
         if (ret == 0) {
-            wc_CoseKey_SetEd448(&key, &edKey);
+            (void)wc_CoseKey_SetEd448(&key, &edKey);
 
             /* Encode the key */
             keyLen = sizeof(keyBuf);
@@ -11005,21 +11584,22 @@ static void test_force_failure_crypto(void)
             if (ret == 0) {
                 /* Test Ed448 import failure - must pre-allocate internal key */
                 wc_ed448_init(&decodedEdKey);
-                wc_CoseKey_Init(&decodedKey);
+                (void)wc_CoseKey_Init(&decodedKey);
                 decodedKey.key.ed448 = &decodedEdKey;
                 wolfForceFailure_Set(WOLF_FAIL_ED448_IMPORT_PRIV);
                 ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Ed448 import priv forced failure");
-                wc_ed448_free(&decodedEdKey);
+                (void)wc_ed448_free(&decodedEdKey);
             }
         }
-        wc_ed448_free(&edKey);
+        (void)wc_ed448_free(&edKey);
         wc_CoseKey_Free(&key);
     }
 #endif /* HAVE_ED448 */
 
 #ifdef HAVE_DILITHIUM
     /* Test Dilithium import failure via CoseKey_Decode */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
         dilithium_key dlKey;
@@ -11028,14 +11608,14 @@ static void test_force_failure_crypto(void)
         WOLFCOSE_KEY decodedKey;
         dilithium_key decodedDlKey;
 
-        wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_Init(&key);
         wc_dilithium_init(&dlKey);
         ret = wc_dilithium_set_level(&dlKey, 2);
         if (ret == 0) {
             ret = wc_dilithium_make_key(&dlKey, &rng);
         }
         if (ret == 0) {
-            wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+            (void)wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
             /* Encode the key */
             keyLen = sizeof(keyBuf);
@@ -11044,22 +11624,23 @@ static void test_force_failure_crypto(void)
                 /* Test Dilithium import failure - must pre-allocate internal key */
                 wc_dilithium_init(&decodedDlKey);
                 wc_dilithium_set_level(&decodedDlKey, 2);
-                wc_CoseKey_Init(&decodedKey);
+                (void)wc_CoseKey_Init(&decodedKey);
                 decodedKey.key.dilithium = &decodedDlKey;
                 decodedKey.crv = WOLFCOSE_CRV_ML_DSA_44;
                 wolfForceFailure_Set(WOLF_FAIL_DILITHIUM_IMPORT_PRIV);
                 ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Dilithium import priv forced failure");
-                wc_dilithium_free(&decodedDlKey);
+                (void)wc_dilithium_free(&decodedDlKey);
             }
         }
-        wc_dilithium_free(&dlKey);
+        (void)wc_dilithium_free(&dlKey);
         wc_CoseKey_Free(&key);
     }
 #endif /* HAVE_DILITHIUM */
 
     /* Test WOLF_FAIL_HASH - covers hash operations in sign/verify paths */
 #if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY hashKey;
         RsaKey hashRsaKey;
@@ -11068,11 +11649,11 @@ static void test_force_failure_crypto(void)
         size_t hashCoseMsgLen;
         uint8_t hashScratch[512];
 
-        wc_CoseKey_Init(&hashKey);
+        (void)wc_CoseKey_Init(&hashKey);
         wc_InitRsaKey(&hashRsaKey, NULL);
         ret = wc_MakeRsaKey(&hashRsaKey, 2048, 65537, &rng);
         if (ret == 0) {
-            wc_CoseKey_SetRsa(&hashKey, &hashRsaKey);
+            (void)wc_CoseKey_SetRsa(&hashKey, &hashRsaKey);
 
             /* Test hash failure in sign path */
             hashCoseMsgLen = sizeof(hashCoseMsg);
@@ -11083,11 +11664,12 @@ static void test_force_failure_crypto(void)
                 hashCoseMsg, sizeof(hashCoseMsg), &hashCoseMsgLen, &rng);
             TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "RSA hash forced failure in sign");
         }
-        wc_FreeRsaKey(&hashRsaKey);
+        (void)wc_FreeRsaKey(&hashRsaKey);
         wc_CoseKey_Free(&hashKey);
     }
 
     /* Test RSA public key decode failure */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY decRsaKey;
         RsaKey decRsaWolfKey;
@@ -11096,11 +11678,11 @@ static void test_force_failure_crypto(void)
         WOLFCOSE_KEY rsaDecodedKey;
         RsaKey decodedRsaWolfKey;
 
-        wc_CoseKey_Init(&decRsaKey);
+        (void)wc_CoseKey_Init(&decRsaKey);
         wc_InitRsaKey(&decRsaWolfKey, NULL);
         ret = wc_MakeRsaKey(&decRsaWolfKey, 2048, 65537, &rng);
         if (ret == 0) {
-            wc_CoseKey_SetRsa(&decRsaKey, &decRsaWolfKey);
+            (void)wc_CoseKey_SetRsa(&decRsaKey, &decRsaWolfKey);
 
             /* Encode the RSA key */
             rsaKeyLen = sizeof(rsaKeyBuf);
@@ -11108,22 +11690,23 @@ static void test_force_failure_crypto(void)
             if (ret == 0) {
                 /* Test RSA public key decode failure */
                 wc_InitRsaKey(&decodedRsaWolfKey, NULL);
-                wc_CoseKey_Init(&rsaDecodedKey);
+                (void)wc_CoseKey_Init(&rsaDecodedKey);
                 rsaDecodedKey.key.rsa = &decodedRsaWolfKey;
                 rsaDecodedKey.kty = WOLFCOSE_KTY_RSA;
                 wolfForceFailure_Set(WOLF_FAIL_RSA_PUBLIC_DECODE);
                 ret = wc_CoseKey_Decode(&rsaDecodedKey, rsaKeyBuf, rsaKeyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "RSA public decode forced failure");
-                wc_FreeRsaKey(&decodedRsaWolfKey);
+                (void)wc_FreeRsaKey(&decodedRsaWolfKey);
             }
         }
-        wc_FreeRsaKey(&decRsaWolfKey);
+        (void)wc_FreeRsaKey(&decRsaWolfKey);
         wc_CoseKey_Free(&decRsaKey);
     }
 #endif
 
     /* Test import_pub failures - encode public-only key, then test import failure */
 #ifdef HAVE_ED25519
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY ed25PubKey;
         ed25519_key ed25WolfKey;
@@ -11132,31 +11715,32 @@ static void test_force_failure_crypto(void)
         WOLFCOSE_KEY ed25DecKey;
         ed25519_key ed25DecWolfKey;
 
-        wc_CoseKey_Init(&ed25PubKey);
+        (void)wc_CoseKey_Init(&ed25PubKey);
         wc_ed25519_init(&ed25WolfKey);
         ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &ed25WolfKey);
         if (ret == 0) {
-            wc_CoseKey_SetEd25519(&ed25PubKey, &ed25WolfKey);
+            (void)wc_CoseKey_SetEd25519(&ed25PubKey, &ed25WolfKey);
             ed25PubKey.hasPrivate = 0; /* Encode as public key only */
 
             ed25KeyLen = sizeof(ed25KeyBuf);
             ret = wc_CoseKey_Encode(&ed25PubKey, ed25KeyBuf, sizeof(ed25KeyBuf), &ed25KeyLen);
             if (ret == 0) {
                 wc_ed25519_init(&ed25DecWolfKey);
-                wc_CoseKey_Init(&ed25DecKey);
+                (void)wc_CoseKey_Init(&ed25DecKey);
                 ed25DecKey.key.ed25519 = &ed25DecWolfKey;
                 wolfForceFailure_Set(WOLF_FAIL_ED25519_IMPORT_PUB);
                 ret = wc_CoseKey_Decode(&ed25DecKey, ed25KeyBuf, ed25KeyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Ed25519 import pub forced failure");
-                wc_ed25519_free(&ed25DecWolfKey);
+                (void)wc_ed25519_free(&ed25DecWolfKey);
             }
         }
-        wc_ed25519_free(&ed25WolfKey);
+        (void)wc_ed25519_free(&ed25WolfKey);
         wc_CoseKey_Free(&ed25PubKey);
     }
 #endif /* HAVE_ED25519 */
 
 #ifdef HAVE_ED448
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY ed448PubKey;
         ed448_key ed448WolfKey;
@@ -11165,31 +11749,32 @@ static void test_force_failure_crypto(void)
         WOLFCOSE_KEY ed448DecKey;
         ed448_key ed448DecWolfKey;
 
-        wc_CoseKey_Init(&ed448PubKey);
+        (void)wc_CoseKey_Init(&ed448PubKey);
         wc_ed448_init(&ed448WolfKey);
         ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &ed448WolfKey);
         if (ret == 0) {
-            wc_CoseKey_SetEd448(&ed448PubKey, &ed448WolfKey);
+            (void)wc_CoseKey_SetEd448(&ed448PubKey, &ed448WolfKey);
             ed448PubKey.hasPrivate = 0; /* Encode as public key only */
 
             ed448KeyLen = sizeof(ed448KeyBuf);
             ret = wc_CoseKey_Encode(&ed448PubKey, ed448KeyBuf, sizeof(ed448KeyBuf), &ed448KeyLen);
             if (ret == 0) {
                 wc_ed448_init(&ed448DecWolfKey);
-                wc_CoseKey_Init(&ed448DecKey);
+                (void)wc_CoseKey_Init(&ed448DecKey);
                 ed448DecKey.key.ed448 = &ed448DecWolfKey;
                 wolfForceFailure_Set(WOLF_FAIL_ED448_IMPORT_PUB);
                 ret = wc_CoseKey_Decode(&ed448DecKey, ed448KeyBuf, ed448KeyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Ed448 import pub forced failure");
-                wc_ed448_free(&ed448DecWolfKey);
+                (void)wc_ed448_free(&ed448DecWolfKey);
             }
         }
-        wc_ed448_free(&ed448WolfKey);
+        (void)wc_ed448_free(&ed448WolfKey);
         wc_CoseKey_Free(&ed448PubKey);
     }
 #endif /* HAVE_ED448 */
 
 #ifdef HAVE_DILITHIUM
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY dlPubKey;
         dilithium_key dlWolfKey;
@@ -11198,14 +11783,14 @@ static void test_force_failure_crypto(void)
         WOLFCOSE_KEY dlDecKey;
         dilithium_key dlDecWolfKey;
 
-        wc_CoseKey_Init(&dlPubKey);
+        (void)wc_CoseKey_Init(&dlPubKey);
         wc_dilithium_init(&dlWolfKey);
         ret = wc_dilithium_set_level(&dlWolfKey, 2);
         if (ret == 0) {
             ret = wc_dilithium_make_key(&dlWolfKey, &rng);
         }
         if (ret == 0) {
-            wc_CoseKey_SetDilithium(&dlPubKey, WOLFCOSE_ALG_ML_DSA_44, &dlWolfKey);
+            (void)wc_CoseKey_SetDilithium(&dlPubKey, WOLFCOSE_ALG_ML_DSA_44, &dlWolfKey);
             dlPubKey.hasPrivate = 0; /* Encode as public key only */
 
             dlKeyLen = sizeof(dlKeyBuf);
@@ -11213,21 +11798,21 @@ static void test_force_failure_crypto(void)
             if (ret == 0) {
                 wc_dilithium_init(&dlDecWolfKey);
                 wc_dilithium_set_level(&dlDecWolfKey, 2);
-                wc_CoseKey_Init(&dlDecKey);
+                (void)wc_CoseKey_Init(&dlDecKey);
                 dlDecKey.key.dilithium = &dlDecWolfKey;
                 dlDecKey.crv = WOLFCOSE_CRV_ML_DSA_44;
                 wolfForceFailure_Set(WOLF_FAIL_DILITHIUM_IMPORT_PUB);
                 ret = wc_CoseKey_Decode(&dlDecKey, dlKeyBuf, dlKeyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Dilithium import pub forced failure");
-                wc_dilithium_free(&dlDecWolfKey);
+                (void)wc_dilithium_free(&dlDecWolfKey);
             }
         }
-        wc_dilithium_free(&dlWolfKey);
+        (void)wc_dilithium_free(&dlWolfKey);
         wc_CoseKey_Free(&dlPubKey);
     }
 #endif /* HAVE_DILITHIUM */
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 
     /* Ensure no failure is left pending */
     wolfForceFailure_Clear();
@@ -11250,7 +11835,7 @@ static void test_buffer_too_small_key_encode(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Buffer Too Small - Key Encode]\n");
+    TEST_LOG("  [Buffer Too Small - Key Encode]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -11259,13 +11844,13 @@ static void test_buffer_too_small_key_encode(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ecc keygen");
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
     /* ECC key encode with tiny buffer */
     outLen = sizeof(tinyBuf);
@@ -11273,8 +11858,8 @@ static void test_buffer_too_small_key_encode(void)
     TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "ecc key encode tiny buf");
 
     wc_CoseKey_Free(&key);
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC */
 
@@ -11296,12 +11881,12 @@ static void test_buffer_too_small_encrypt(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Buffer Too Small - Encrypt]\n");
+    TEST_LOG("  [Buffer Too Small - Encrypt]\n");
 
     memset(payload, 'A', sizeof(payload));
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Encrypt with tiny output buffer */
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
@@ -11330,12 +11915,12 @@ static void test_buffer_too_small_mac(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Buffer Too Small - MAC]\n");
+    TEST_LOG("  [Buffer Too Small - MAC]\n");
 
     memset(payload, 'B', sizeof(payload));
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* MAC with tiny output buffer */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
@@ -11366,14 +11951,14 @@ static void test_wrong_key_type_sign(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [Wrong Key Type - Sign]\n");
+    TEST_LOG("  [Wrong Key Type - Sign]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
     /* Symmetric key for signing (should fail) */
-    wc_CoseKey_Init(&symmKey);
-    wc_CoseKey_SetSymmetric(&symmKey, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&symmKey);
+    (void)wc_CoseKey_SetSymmetric(&symmKey, keyData, sizeof(keyData));
 
     ret = wc_CoseSign1_Sign(&symmKey, WOLFCOSE_ALG_ES256,
         NULL, 0,
@@ -11383,7 +11968,7 @@ static void test_wrong_key_type_sign(void)
         out, sizeof(out), &outLen, &rng);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "symm key for ecc sign");
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_wrong_key_type_ecc_for_rsa(void)
@@ -11397,7 +11982,7 @@ static void test_wrong_key_type_ecc_for_rsa(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Wrong Key Type - ECC for RSA alg]\n");
+    TEST_LOG("  [Wrong Key Type - ECC for RSA alg]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -11406,13 +11991,13 @@ static void test_wrong_key_type_ecc_for_rsa(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ecc keygen");
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&eccCoseKey);
-    wc_CoseKey_SetEcc(&eccCoseKey, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&eccCoseKey);
+    (void)wc_CoseKey_SetEcc(&eccCoseKey, WOLFCOSE_CRV_P256, &eccKey);
 
 #ifdef WC_RSA_PSS
     /* ECC key with RSA algorithm (should fail) */
@@ -11431,8 +12016,8 @@ static void test_wrong_key_type_ecc_for_rsa(void)
     TEST_ASSERT(1, "rsa not available, skip");
 #endif
 
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC */
 
@@ -11462,11 +12047,11 @@ static void test_wrong_key_type_decrypt(void)
     WC_RNG rng;
 #endif
 
-    printf("  [Wrong Key Type - Decrypt]\n");
+    TEST_LOG("  [Wrong Key Type - Decrypt]\n");
 
     /* First create a valid encrypted message */
-    wc_CoseKey_Init(&symmKey);
-    wc_CoseKey_SetSymmetric(&symmKey, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&symmKey);
+    (void)wc_CoseKey_SetSymmetric(&symmKey, keyData, sizeof(keyData));
 
     ret = wc_CoseEncrypt0_Encrypt(&symmKey, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
@@ -11487,8 +12072,8 @@ static void test_wrong_key_type_decrypt(void)
     wc_ecc_init(&eccKey);
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     if (ret == 0) {
-        wc_CoseKey_Init(&eccCoseKey);
-        wc_CoseKey_SetEcc(&eccCoseKey, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&eccCoseKey);
+        (void)wc_CoseKey_SetEcc(&eccCoseKey, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseEncrypt0_Decrypt(&eccCoseKey, coseMsg, coseMsgLen,
             NULL, 0, NULL, 0,
@@ -11496,8 +12081,8 @@ static void test_wrong_key_type_decrypt(void)
             plaintext, sizeof(plaintext), &plaintextLen);
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "ecc key for decrypt");
     }
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 #else
     (void)plaintext;
     (void)plaintextLen;
@@ -11528,11 +12113,11 @@ static void test_wrong_key_type_mac_verify(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [Wrong Key Type - MAC Verify]\n");
+    TEST_LOG("  [Wrong Key Type - MAC Verify]\n");
 
     /* First create a valid MAC message */
-    wc_CoseKey_Init(&symmKey);
-    wc_CoseKey_SetSymmetric(&symmKey, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&symmKey);
+    (void)wc_CoseKey_SetSymmetric(&symmKey, keyData, sizeof(keyData));
 
     ret = wc_CoseMac0_Create(&symmKey, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0,
@@ -11552,8 +12137,8 @@ static void test_wrong_key_type_mac_verify(void)
     wc_ecc_init(&eccKey);
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     if (ret == 0) {
-        wc_CoseKey_Init(&eccCoseKey);
-        wc_CoseKey_SetEcc(&eccCoseKey, WOLFCOSE_CRV_P256, &eccKey);
+        (void)wc_CoseKey_Init(&eccCoseKey);
+        (void)wc_CoseKey_SetEcc(&eccCoseKey, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseMac0_Verify(&eccCoseKey, macMsg, macMsgLen,
             NULL, 0, NULL, 0,
@@ -11561,8 +12146,8 @@ static void test_wrong_key_type_mac_verify(void)
             &hdr, &decPayload, &decPayloadLen);
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "ecc key for mac verify");
     }
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* !NO_HMAC && HAVE_ECC */
 
@@ -11579,7 +12164,7 @@ static void test_invalid_sign_algorithm(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Invalid Algorithm - Sign]\n");
+    TEST_LOG("  [Invalid Algorithm - Sign]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -11588,13 +12173,13 @@ static void test_invalid_sign_algorithm(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ecc keygen");
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
     /* Invalid algorithm ID */
     ret = wc_CoseSign1_Sign(&key, 9999,
@@ -11605,8 +12190,8 @@ static void test_invalid_sign_algorithm(void)
         out, sizeof(out), &outLen, &rng);
     TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "invalid sign alg");
 
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC */
 
@@ -11628,10 +12213,10 @@ static void test_invalid_encrypt_algorithm(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Invalid Algorithm - Encrypt]\n");
+    TEST_LOG("  [Invalid Algorithm - Encrypt]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Invalid algorithm ID */
     ret = wc_CoseEncrypt0_Encrypt(&key, 9999,
@@ -11660,10 +12245,10 @@ static void test_invalid_mac_algorithm(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Invalid Algorithm - MAC]\n");
+    TEST_LOG("  [Invalid Algorithm - MAC]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Invalid algorithm ID */
     ret = wc_CoseMac0_Create(&key, 9999,
@@ -11682,6 +12267,10 @@ static void test_null_key_operations(void)
     uint8_t payload[] = "Test data";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
+    static const uint8_t ivBytes[] = {
+        0x31u, 0x32u, 0x33u, 0x34u, 0x35u, 0x36u,
+        0x37u, 0x38u, 0x39u, 0x30u, 0x31u, 0x32u
+    };
     size_t outLen = 0;
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
@@ -11691,7 +12280,7 @@ static void test_null_key_operations(void)
     WC_RNG rng;
 #endif
 
-    printf("  [NULL Arguments - Various]\n");
+    TEST_LOG("  [NULL Arguments - Various]\n");
 
 #ifdef HAVE_ECC
     ret = wc_InitRng(&rng);
@@ -11704,7 +12293,7 @@ static void test_null_key_operations(void)
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "sign null key");
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
 
     /* NULL key for verify */
@@ -11718,7 +12307,7 @@ static void test_null_key_operations(void)
 #ifdef HAVE_AESGCM
     /* NULL key for encrypt */
     ret = wc_CoseEncrypt0_Encrypt(NULL, WOLFCOSE_ALG_A128GCM,
-        (const uint8_t*)"123456789012", 12,
+        ivBytes, sizeof(ivBytes),
         payload, sizeof(payload) - 1,
         NULL, 0, NULL, NULL, 0,
         scratch, sizeof(scratch),
@@ -11762,7 +12351,7 @@ static void test_multi_sign_null_signers(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [NULL Arguments - Multi Sign]\n");
+    TEST_LOG("  [NULL Arguments - Multi Sign]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -11775,7 +12364,7 @@ static void test_multi_sign_null_signers(void)
         out, sizeof(out), &outLen, &rng);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "multi sign null signers");
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -11791,7 +12380,7 @@ static void test_multi_encrypt_null_recipients(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [NULL Arguments - Multi Encrypt]\n");
+    TEST_LOG("  [NULL Arguments - Multi Encrypt]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -11807,6 +12396,7 @@ static void test_multi_encrypt_null_recipients(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "multi encrypt null recipients");
 
     /* Zero recipients count */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_RECIPIENT recips[1];
         memset(recips, 0, sizeof(recips));
@@ -11820,7 +12410,7 @@ static void test_multi_encrypt_null_recipients(void)
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "multi encrypt zero recipients");
     }
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -11833,7 +12423,7 @@ static void test_multi_mac_null_recipients(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [NULL Arguments - Multi MAC]\n");
+    TEST_LOG("  [NULL Arguments - Multi MAC]\n");
 
     /* NULL recipients array */
     ret = wc_CoseMac_Create(NULL, 1,
@@ -11845,6 +12435,7 @@ static void test_multi_mac_null_recipients(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "multi mac null recipients");
 
     /* Zero recipients count */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_RECIPIENT recips[1];
         memset(recips, 0, sizeof(recips));
@@ -11875,7 +12466,7 @@ static void test_cbor_truncated_sign1(void)
     /* Truncated COSE_Sign1 message */
     uint8_t truncated[] = {0xD2, 0x84, 0x43, 0xA1, 0x01};
 
-    printf("  [CBOR Malformed - Truncated Sign1]\n");
+    TEST_LOG("  [CBOR Malformed - Truncated Sign1]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -11884,13 +12475,13 @@ static void test_cbor_truncated_sign1(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ecc keygen");
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
     ret = wc_CoseSign1_Verify(&key, truncated, sizeof(truncated),
         NULL, 0, NULL, 0,
@@ -11898,8 +12489,8 @@ static void test_cbor_truncated_sign1(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "truncated sign1 detected");
 
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC */
 
@@ -11925,10 +12516,10 @@ static void test_cbor_malformed_encrypt0(void)
         0xA0                     /* unprotected: {} */
     };
 
-    printf("  [CBOR Malformed - Bad Array Count]\n");
+    TEST_LOG("  [CBOR Malformed - Bad Array Count]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseEncrypt0_Decrypt(&key, badArray, sizeof(badArray),
         NULL, 0, NULL, 0,
@@ -11963,10 +12554,10 @@ static void test_cbor_missing_iv(void)
         0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
     };
 
-    printf("  [CBOR Malformed - Missing IV]\n");
+    TEST_LOG("  [CBOR Malformed - Missing IV]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseEncrypt0_Decrypt(&key, noIv, sizeof(noIv),
         NULL, 0, NULL, 0,
@@ -12007,7 +12598,7 @@ static void test_wrong_tag_sign1(void)
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     };
 
-    printf("  [Wrong CBOR Tag - Sign1]\n");
+    TEST_LOG("  [Wrong CBOR Tag - Sign1]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -12016,13 +12607,13 @@ static void test_wrong_tag_sign1(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ecc keygen");
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
     ret = wc_CoseSign1_Verify(&key, wrongTag, sizeof(wrongTag),
         NULL, 0, NULL, 0,
@@ -12030,8 +12621,8 @@ static void test_wrong_tag_sign1(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_TAG, "wrong tag sign1 detected");
 
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC */
 
@@ -12058,10 +12649,10 @@ static void test_wrong_tag_encrypt0(void)
         0x45, 0x48, 0x65, 0x6C, 0x6C, 0x6F /* ciphertext placeholder */
     };
 
-    printf("  [Wrong CBOR Tag - Encrypt0]\n");
+    TEST_LOG("  [Wrong CBOR Tag - Encrypt0]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseEncrypt0_Decrypt(&key, wrongTag, sizeof(wrongTag),
         NULL, 0, NULL, 0,
@@ -12101,10 +12692,10 @@ static void test_wrong_tag_mac0(void)
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     };
 
-    printf("  [Wrong CBOR Tag - Mac0]\n");
+    TEST_LOG("  [Wrong CBOR Tag - Mac0]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseMac0_Verify(&key, wrongTag, sizeof(wrongTag),
         NULL, 0, NULL, 0,
@@ -12130,7 +12721,7 @@ static void test_corrupted_eddsa_signature(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Verification Failure - Corrupted EdDSA]\n");
+    TEST_LOG("  [Verification Failure - Corrupted EdDSA]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -12139,13 +12730,13 @@ static void test_corrupted_eddsa_signature(void)
     ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ed keygen");
-        wc_ed25519_free(&edKey);
-        wc_FreeRng(&rng);
+        (void)wc_ed25519_free(&edKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEd25519(&key, &edKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd25519(&key, &edKey);
 
     /* Create valid signature */
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_EDDSA,
@@ -12156,8 +12747,8 @@ static void test_corrupted_eddsa_signature(void)
         out, sizeof(out), &outLen, &rng);
     if (ret != 0) {
         TEST_ASSERT(0, "eddsa sign");
-        wc_ed25519_free(&edKey);
-        wc_FreeRng(&rng);
+        (void)wc_ed25519_free(&edKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
@@ -12171,8 +12762,8 @@ static void test_corrupted_eddsa_signature(void)
     /* Could be WOLFCOSE_E_COSE_SIG_FAIL or WOLFCOSE_E_CRYPTO depending on how corruption is detected */
     TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "corrupted eddsa sig detected");
 
-    wc_ed25519_free(&edKey);
-    wc_FreeRng(&rng);
+    (void)wc_ed25519_free(&edKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ED25519 */
 
@@ -12195,10 +12786,10 @@ static void test_corrupted_mac_tag(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Verification Failure - Corrupted MAC Tag]\n");
+    TEST_LOG("  [Verification Failure - Corrupted MAC Tag]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Create valid MAC */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
@@ -12242,14 +12833,14 @@ static void test_ecdh_es_wrong_key_type_sender(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [ECDH-ES - Wrong Key Type Sender]\n");
+    TEST_LOG("  [ECDH-ES - Wrong Key Type Sender]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
     /* Use symmetric key for ECDH (wrong type) */
-    wc_CoseKey_Init(&symmKey);
-    wc_CoseKey_SetSymmetric(&symmKey, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&symmKey);
+    (void)wc_CoseKey_SetSymmetric(&symmKey, keyData, sizeof(keyData));
 
     memset(&recipient, 0, sizeof(recipient));
     recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
@@ -12264,7 +12855,7 @@ static void test_ecdh_es_wrong_key_type_sender(void)
         out, sizeof(out), &outLen, &rng);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "symm key for ecdh");
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_ECDH_ES_DIRECT && HAVE_ECC && HAVE_HKDF */
 
@@ -12289,10 +12880,10 @@ static void test_mac0_with_kid(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [KID Encoding - MAC0]\n");
+    TEST_LOG("  [KID Encoding - MAC0]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Create MAC0 with KID */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
@@ -12338,15 +12929,15 @@ static void test_multi_encrypt_with_kids(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [KID Encoding - Multi Encrypt]\n");
+    TEST_LOG("  [KID Encoding - Multi Encrypt]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
-    wc_CoseKey_Init(&key1);
-    wc_CoseKey_SetSymmetric(&key1, keyData1, sizeof(keyData1));
-    wc_CoseKey_Init(&key2);
-    wc_CoseKey_SetSymmetric(&key2, keyData2, sizeof(keyData2));
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_SetSymmetric(&key1, keyData1, sizeof(keyData1));
+    (void)wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_SetSymmetric(&key2, keyData2, sizeof(keyData2));
 
     memset(recipients, 0, sizeof(recipients));
     recipients[0].algId = WOLFCOSE_ALG_DIRECT;
@@ -12368,7 +12959,7 @@ static void test_multi_encrypt_with_kids(void)
         out, sizeof(out), &outLen, &rng);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "multi encrypt with kids");
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
 
@@ -12398,14 +12989,14 @@ static void test_multi_decrypt_wrong_key(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [Multi Decrypt - Wrong Key]\n");
+    TEST_LOG("  [Multi Decrypt - Wrong Key]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
     /* Create encrypted message with correct key */
-    wc_CoseKey_Init(&correctKey);
-    wc_CoseKey_SetSymmetric(&correctKey, correctKeyData, sizeof(correctKeyData));
+    (void)wc_CoseKey_Init(&correctKey);
+    (void)wc_CoseKey_SetSymmetric(&correctKey, correctKeyData, sizeof(correctKeyData));
 
     memset(&createRecip, 0, sizeof(createRecip));
     createRecip.algId = WOLFCOSE_ALG_DIRECT;
@@ -12420,13 +13011,13 @@ static void test_multi_decrypt_wrong_key(void)
         out, sizeof(out), &outLen, &rng);
     if (ret != WOLFCOSE_SUCCESS) {
         TEST_ASSERT(0, "create multi encrypt");
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
     /* Try to decrypt with wrong key */
-    wc_CoseKey_Init(&wrongKey);
-    wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
+    (void)wc_CoseKey_Init(&wrongKey);
+    (void)wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
 
     memset(&decryptRecip, 0, sizeof(decryptRecip));
     decryptRecip.algId = WOLFCOSE_ALG_DIRECT;
@@ -12439,7 +13030,7 @@ static void test_multi_decrypt_wrong_key(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL, "multi decrypt wrong key");
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
 
@@ -12469,11 +13060,11 @@ static void test_multi_mac_verify_wrong_key(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Multi MAC Verify - Wrong Key]\n");
+    TEST_LOG("  [Multi MAC Verify - Wrong Key]\n");
 
     /* Create MAC message with correct key */
-    wc_CoseKey_Init(&correctKey);
-    wc_CoseKey_SetSymmetric(&correctKey, correctKeyData, sizeof(correctKeyData));
+    (void)wc_CoseKey_Init(&correctKey);
+    (void)wc_CoseKey_SetSymmetric(&correctKey, correctKeyData, sizeof(correctKeyData));
 
     memset(&createRecip, 0, sizeof(createRecip));
     createRecip.algId = WOLFCOSE_ALG_DIRECT;
@@ -12491,8 +13082,8 @@ static void test_multi_mac_verify_wrong_key(void)
     }
 
     /* Try to verify with wrong key */
-    wc_CoseKey_Init(&wrongKey);
-    wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
+    (void)wc_CoseKey_Init(&wrongKey);
+    (void)wc_CoseKey_SetSymmetric(&wrongKey, wrongKeyData, sizeof(wrongKeyData));
 
     memset(&verifyRecip, 0, sizeof(verifyRecip));
     verifyRecip.algId = WOLFCOSE_ALG_DIRECT;
@@ -12520,7 +13111,7 @@ static void test_key_type_eddsa_wrong_crv(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Key Type - EC2 for EdDSA alg]\n");
+    TEST_LOG("  [Key Type - EC2 for EdDSA alg]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -12529,13 +13120,13 @@ static void test_key_type_eddsa_wrong_crv(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ecc keygen");
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
     /* ECC key with EdDSA algorithm (should fail - wrong kty) */
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_EDDSA,
@@ -12546,8 +13137,8 @@ static void test_key_type_eddsa_wrong_crv(void)
         out, sizeof(out), &outLen, &rng);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "ec2 key for eddsa alg");
 
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ECC && (HAVE_ED25519 || HAVE_ED448) */
 
@@ -12563,7 +13154,7 @@ static void test_key_type_okp_for_ecdsa(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Key Type - OKP for ECDSA alg]\n");
+    TEST_LOG("  [Key Type - OKP for ECDSA alg]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -12572,13 +13163,13 @@ static void test_key_type_okp_for_ecdsa(void)
     ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ed keygen");
-        wc_ed25519_free(&edKey);
-        wc_FreeRng(&rng);
+        (void)wc_ed25519_free(&edKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEd25519(&key, &edKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd25519(&key, &edKey);
 
     /* OKP/Ed25519 key with ES256 algorithm (should fail - wrong kty) */
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
@@ -12589,8 +13180,8 @@ static void test_key_type_okp_for_ecdsa(void)
         out, sizeof(out), &outLen, &rng);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "okp key for ecdsa alg");
 
-    wc_ed25519_free(&edKey);
-    wc_FreeRng(&rng);
+    (void)wc_ed25519_free(&edKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_ED25519 && HAVE_ECC */
 
@@ -12605,7 +13196,7 @@ static void test_rsa_key_encode_buffer_small(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [RSA Key Encode - Buffer Too Small]\n");
+    TEST_LOG("  [RSA Key Encode - Buffer Too Small]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -12613,20 +13204,20 @@ static void test_rsa_key_encode_buffer_small(void)
     ret = wc_InitRsaKey(&rsaKey, NULL);
     if (ret != 0) {
         TEST_ASSERT(0, "rsa init");
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
     ret = wc_MakeRsaKey(&rsaKey, 2048, 65537, &rng);
     if (ret != 0) {
         TEST_ASSERT(0, "rsa keygen");
-        wc_FreeRsaKey(&rsaKey);
-        wc_FreeRng(&rng);
+        (void)wc_FreeRsaKey(&rsaKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetRsa(&key, &rsaKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetRsa(&key, &rsaKey);
 
     /* RSA key encode with tiny buffer */
     ret = wc_CoseKey_Encode(&key, tinyBuf, sizeof(tinyBuf), &outLen);
@@ -12634,8 +13225,8 @@ static void test_rsa_key_encode_buffer_small(void)
     TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "rsa key encode tiny buf");
 
     wc_CoseKey_Free(&key);
-    wc_FreeRsaKey(&rsaKey);
-    wc_FreeRng(&rng);
+    (void)wc_FreeRsaKey(&rsaKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
@@ -12649,7 +13240,7 @@ static void test_dilithium_key_encode_buffer_small(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Dilithium Key Encode - Buffer Too Small]\n");
+    TEST_LOG("  [Dilithium Key Encode - Buffer Too Small]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -12658,21 +13249,21 @@ static void test_dilithium_key_encode_buffer_small(void)
     ret = wc_dilithium_set_level(&dlKey, 2);
     if (ret != 0) {
         TEST_ASSERT(0, "dilithium set level");
-        wc_dilithium_free(&dlKey);
-        wc_FreeRng(&rng);
+        (void)wc_dilithium_free(&dlKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
     ret = wc_dilithium_make_key(&dlKey, &rng);
     if (ret != 0) {
         TEST_ASSERT(0, "dilithium keygen");
-        wc_dilithium_free(&dlKey);
-        wc_FreeRng(&rng);
+        (void)wc_dilithium_free(&dlKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
     /* Dilithium key encode with tiny buffer */
     ret = wc_CoseKey_Encode(&key, tinyBuf, sizeof(tinyBuf), &outLen);
@@ -12680,8 +13271,8 @@ static void test_dilithium_key_encode_buffer_small(void)
     TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "dilithium key encode tiny buf");
 
     wc_CoseKey_Free(&key);
-    wc_dilithium_free(&dlKey);
-    wc_FreeRng(&rng);
+    (void)wc_dilithium_free(&dlKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* HAVE_DILITHIUM */
 
@@ -12696,9 +13287,9 @@ static void test_key_decode_bad_kty(void)
     };
     int ret;
 
-    printf("  [Key Decode - Invalid KTY]\n");
+    TEST_LOG("  [Key Decode - Invalid KTY]\n");
 
-    wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_Decode(&key, badKty, sizeof(badKty));
     /* Unknown kty returns success (graceful unknown handling) or an error */
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS || ret < 0, "key decode invalid kty");
@@ -12720,7 +13311,7 @@ static void test_ecdh_es_hkdf_512(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [ECDH-ES - HKDF-512]\n");
+    TEST_LOG("  [ECDH-ES - HKDF-512]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -12729,13 +13320,13 @@ static void test_ecdh_es_hkdf_512(void)
     ret = wc_ecc_make_key(&rng, 32, &eccWolfKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ecc keygen");
-        wc_ecc_free(&eccWolfKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccWolfKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&eccKey);
-    wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &eccWolfKey);
+    (void)wc_CoseKey_Init(&eccKey);
+    (void)wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &eccWolfKey);
 
     memset(&recipient, 0, sizeof(recipient));
     recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_512;
@@ -12751,8 +13342,8 @@ static void test_ecdh_es_hkdf_512(void)
     /* May succeed or fail depending on config, but should not crash */
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS || ret < 0, "ecdh-es hkdf-512 encrypt");
 
-    wc_ecc_free(&eccWolfKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccWolfKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_ECDH_ES_DIRECT && HAVE_ECC && HAVE_HKDF && WOLFSSL_SHA512 */
 
@@ -12774,13 +13365,13 @@ static void test_key_wrap_decrypt_wrong_cek_size(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [Key Wrap - Encrypt/Decrypt]\n");
+    TEST_LOG("  [Key Wrap - Encrypt/Decrypt]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
-    wc_CoseKey_Init(&kekKey);
-    wc_CoseKey_SetSymmetric(&kekKey, kekData, sizeof(kekData));
+    (void)wc_CoseKey_Init(&kekKey);
+    (void)wc_CoseKey_SetSymmetric(&kekKey, kekData, sizeof(kekData));
 
     memset(&createRecip, 0, sizeof(createRecip));
     createRecip.algId = WOLFCOSE_ALG_A128KW;
@@ -12815,7 +13406,7 @@ static void test_key_wrap_decrypt_wrong_cek_size(void)
         }
     }
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_KEY_WRAP && WOLFCOSE_ENCRYPT && HAVE_AESGCM */
 
@@ -12835,7 +13426,7 @@ static void test_multi_sign_verify_wrong_signer(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [Multi Sign - Wrong Signer Verify]\n");
+    TEST_LOG("  [Multi Sign - Wrong Signer Verify]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -12862,12 +13453,12 @@ static void test_multi_sign_verify_wrong_signer(void)
         goto cleanup;
     }
 
-    wc_CoseKey_Init(&key1);
-    wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
-    wc_CoseKey_Init(&key2);
-    wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
-    wc_CoseKey_Init(&wrongKey);
-    wc_CoseKey_SetEcc(&wrongKey, WOLFCOSE_CRV_P256, &eccWrongKey);
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
+    (void)wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
+    (void)wc_CoseKey_Init(&wrongKey);
+    (void)wc_CoseKey_SetEcc(&wrongKey, WOLFCOSE_CRV_P256, &eccWrongKey);
 
     memset(signers, 0, sizeof(signers));
     signers[0].algId = WOLFCOSE_ALG_ES256;
@@ -12894,10 +13485,10 @@ static void test_multi_sign_verify_wrong_signer(void)
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL, "multi sign wrong key verify");
 
 cleanup:
-    wc_ecc_free(&eccKey1);
-    wc_ecc_free(&eccKey2);
-    wc_ecc_free(&eccWrongKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey1);
+    (void)wc_ecc_free(&eccKey2);
+    (void)wc_ecc_free(&eccWrongKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_SIGN && HAVE_ECC */
 
@@ -12923,11 +13514,11 @@ static void test_multi_mac_with_kid(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Multi MAC - With KIDs]\n");
+    TEST_LOG("  [Multi MAC - With KIDs]\n");
 
     /* In direct mode, all recipients share the same key */
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     memset(recipients, 0, sizeof(recipients));
     recipients[0].algId = WOLFCOSE_ALG_DIRECT;
@@ -12986,12 +13577,12 @@ static void test_encrypt0_detached_buffer_small(void)
     size_t detachedLen = 0;
     int ret;
 
-    printf("  [Encrypt0 Detached - Buffer Too Small]\n");
+    TEST_LOG("  [Encrypt0 Detached - Buffer Too Small]\n");
 
     memset(payload, 'X', sizeof(payload));
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Detached encrypt with tiny detached buffer - should fail due to small buffer */
     ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
@@ -13010,13 +13601,14 @@ static void test_encrypt0_detached_buffer_small(void)
 static void test_multi_sign_verify_null_payload(void)
 {
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    static const uint8_t dummyMsg[] = { 0x64u, 0x75u, 0x6Du, 0x6Du, 0x79u };
     WOLFCOSE_HDR hdr;
     int ret;
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
 
-    printf("  [Multi Sign Verify - NULL params]\n");
+    TEST_LOG("  [Multi Sign Verify - NULL params]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -13025,24 +13617,24 @@ static void test_multi_sign_verify_null_payload(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ecc keygen");
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
     /* NULL payload output pointer */
     ret = wc_CoseSign_Verify(&key, 0,
-        (const uint8_t*)"dummy", 5,
+        dummyMsg, sizeof(dummyMsg),
         NULL, 0, NULL, 0,
         scratch, sizeof(scratch),
         &hdr, NULL, NULL); /* NULL payload/payloadLen */
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "multi sign verify null payload");
 
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 
 static void test_multi_sign_wrong_tag(void)
@@ -13067,7 +13659,7 @@ static void test_multi_sign_wrong_tag(void)
         0x83, 0x40, 0xA0, 0x40        /* one empty signature */
     };
 
-    printf("  [Multi Sign Verify - Wrong Tag]\n");
+    TEST_LOG("  [Multi Sign Verify - Wrong Tag]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -13076,13 +13668,13 @@ static void test_multi_sign_wrong_tag(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey);
     if (ret != 0) {
         TEST_ASSERT(0, "ecc keygen");
-        wc_ecc_free(&eccKey);
-        wc_FreeRng(&rng);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
         return;
     }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
     ret = wc_CoseSign_Verify(&key, 0,
         wrongTag, sizeof(wrongTag),
@@ -13091,25 +13683,26 @@ static void test_multi_sign_wrong_tag(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_TAG, "multi sign wrong tag");
 
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_SIGN && HAVE_ECC */
 
 #if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
 static void test_multi_encrypt_decrypt_null_recipient(void)
 {
+    static const uint8_t dummyMsg[] = { 0x64u, 0x75u, 0x6Du, 0x6Du, 0x79u };
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t plaintext[256];
     size_t plaintextLen = 0;
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Multi Encrypt Decrypt - NULL recipient]\n");
+    TEST_LOG("  [Multi Encrypt Decrypt - NULL recipient]\n");
 
     /* NULL recipient for decrypt */
     ret = wc_CoseEncrypt_Decrypt(NULL, 0,
-        (const uint8_t*)"dummy", 5,
+        dummyMsg, sizeof(dummyMsg),
         NULL, 0, NULL, 0,
         scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
@@ -13120,17 +13713,18 @@ static void test_multi_encrypt_decrypt_null_recipient(void)
 #if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
 static void test_multi_mac_verify_null_recipient(void)
 {
+    static const uint8_t dummyMsg[] = { 0x64u, 0x75u, 0x6Du, 0x6Du, 0x79u };
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Multi MAC Verify - NULL recipient]\n");
+    TEST_LOG("  [Multi MAC Verify - NULL recipient]\n");
 
     /* NULL recipient for verify */
     ret = wc_CoseMac_Verify(NULL, 0,
-        (const uint8_t*)"dummy", 5,
+        dummyMsg, sizeof(dummyMsg),
         NULL, 0, NULL, 0,
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
@@ -13165,11 +13759,11 @@ static void test_encrypt0_decrypt_wrong_key_size(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [Encrypt0 - Decrypt with wrong key size]\n");
+    TEST_LOG("  [Encrypt0 - Decrypt with wrong key size]\n");
 
     /* Create with A128GCM (16 byte key) */
-    wc_CoseKey_Init(&createKey);
-    wc_CoseKey_SetSymmetric(&createKey, keyData16, sizeof(keyData16));
+    (void)wc_CoseKey_Init(&createKey);
+    (void)wc_CoseKey_SetSymmetric(&createKey, keyData16, sizeof(keyData16));
 
     ret = wc_CoseEncrypt0_Encrypt(&createKey, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
@@ -13183,8 +13777,8 @@ static void test_encrypt0_decrypt_wrong_key_size(void)
     }
 
     /* Try to decrypt with 32 byte key (wrong size for A128GCM) */
-    wc_CoseKey_Init(&decryptKey);
-    wc_CoseKey_SetSymmetric(&decryptKey, keyData32, sizeof(keyData32));
+    (void)wc_CoseKey_Init(&decryptKey);
+    (void)wc_CoseKey_SetSymmetric(&decryptKey, keyData32, sizeof(keyData32));
 
     ret = wc_CoseEncrypt0_Decrypt(&decryptKey, coseMsg, coseMsgLen,
         NULL, 0, NULL, 0,
@@ -13211,13 +13805,13 @@ static void test_multi_encrypt_with_detached(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [Multi Encrypt - Detached Payload]\n");
+    TEST_LOG("  [Multi Encrypt - Detached Payload]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
@@ -13236,7 +13830,7 @@ static void test_multi_encrypt_with_detached(void)
     /* May succeed or fail depending on detached support */
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS || ret < 0, "multi encrypt detached");
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
 
@@ -13277,10 +13871,10 @@ static void test_multi_decrypt_malformed_recipients(void)
         0x80                          /* empty recipients array */
     };
 
-    printf("  [Multi Decrypt - Malformed Recipients]\n");
+    TEST_LOG("  [Multi Decrypt - Malformed Recipients]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     recipient.algId = WOLFCOSE_ALG_DIRECT;
     recipient.key = &key;
@@ -13323,10 +13917,10 @@ static void test_multi_mac_create_errors(void)
     size_t outLen = 0;
     int ret;
 
-    printf("  [Multi MAC Create - Error Paths]\n");
+    TEST_LOG("  [Multi MAC Create - Error Paths]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Zero recipients - should fail */
     ret = wc_CoseMac_Create(recipients, 0,
@@ -13402,10 +13996,10 @@ static void test_multi_mac_verify_malformed(void)
         0x43, 0xA1, 0x01, 0x05        /* protected, truncated */
     };
 
-    printf("  [Multi MAC Verify - Malformed]\n");
+    TEST_LOG("  [Multi MAC Verify - Malformed]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     recipient.algId = WOLFCOSE_ALG_DIRECT;
     recipient.key = &key;
@@ -13457,10 +14051,10 @@ static void test_mac0_verify_unknown_alg(void)
         0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
     };
 
-    printf("  [MAC0 Verify - Unknown Algorithm]\n");
+    TEST_LOG("  [MAC0 Verify - Unknown Algorithm]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     ret = wc_CoseMac0_Verify(&key, unknownAlg, sizeof(unknownAlg),
         NULL, 0, NULL, 0,
@@ -13490,10 +14084,10 @@ static void test_mac0_verify_corrupted_tag(void)
     WOLFCOSE_HDR hdr;
     int ret;
 
-    printf("  [MAC0 Verify - Corrupted Tag]\n");
+    TEST_LOG("  [MAC0 Verify - Corrupted Tag]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
 
     /* Create valid MAC0 */
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
@@ -13526,6 +14120,14 @@ static void test_multi_encrypt_recipients_with_kids(void)
 {
     WOLFCOSE_KEY key1, key2;
     WOLFCOSE_RECIPIENT recipients[2];
+    static const uint8_t recipient1Kid[] = {
+        0x72u, 0x65u, 0x63u, 0x69u, 0x70u, 0x69u, 0x65u, 0x6Eu, 0x74u,
+        0x2Du, 0x31u
+    };
+    static const uint8_t recipient2Kid[] = {
+        0x72u, 0x65u, 0x63u, 0x69u, 0x70u, 0x69u, 0x65u, 0x6Eu, 0x74u,
+        0x2Du, 0x32u
+    };
     uint8_t keyData1[16] = {
         0x84, 0x9B, 0x57, 0x21, 0x9D, 0xAE, 0x48, 0xDE,
         0x64, 0x6D, 0x07, 0xDB, 0xB5, 0x33, 0x56, 0x6E
@@ -13541,32 +14143,32 @@ static void test_multi_encrypt_recipients_with_kids(void)
     WC_RNG rng;
     int ret;
 
-    printf("  [Multi Encrypt - Recipients with KIDs]\n");
+    TEST_LOG("  [Multi Encrypt - Recipients with KIDs]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
-    wc_CoseKey_Init(&key1);
-    wc_CoseKey_SetSymmetric(&key1, keyData1, sizeof(keyData1));
-    key1.kid = (const uint8_t*)"recipient-1";
-    key1.kidLen = 11;
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_SetSymmetric(&key1, keyData1, sizeof(keyData1));
+    key1.kid = recipient1Kid;
+    key1.kidLen = sizeof(recipient1Kid);
 
-    wc_CoseKey_Init(&key2);
-    wc_CoseKey_SetSymmetric(&key2, keyData2, sizeof(keyData2));
-    key2.kid = (const uint8_t*)"recipient-2";
-    key2.kidLen = 11;
+    (void)wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_SetSymmetric(&key2, keyData2, sizeof(keyData2));
+    key2.kid = recipient2Kid;
+    key2.kidLen = sizeof(recipient2Kid);
 
     recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key1;
-    recipients[0].kid = (const uint8_t*)"recipient-1";
-    recipients[0].kidLen = 11;
+    recipients[0].kid = key1.kid;
+    recipients[0].kidLen = key1.kidLen;
 
     /* Multi-encrypt with KIDs in recipients - direct mode requires same key */
     /* Using key1 for both recipients to test KID encoding path */
     recipients[1].algId = WOLFCOSE_ALG_DIRECT;
     recipients[1].key = &key1;
-    recipients[1].kid = (const uint8_t*)"recipient-2";
-    recipients[1].kidLen = 11;
+    recipients[1].kid = key2.kid;
+    recipients[1].kidLen = key2.kidLen;
 
     ret = wc_CoseEncrypt_Encrypt(recipients, 2,
         WOLFCOSE_ALG_A128GCM,
@@ -13579,7 +14181,7 @@ static void test_multi_encrypt_recipients_with_kids(void)
     /* Direct mode with different keys won't work, but we cover the KID encoding path */
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS || ret != WOLFCOSE_SUCCESS, "multi encrypt with kids");
 
-    wc_FreeRng(&rng);
+    (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
 
@@ -13602,7 +14204,7 @@ static void test_sign_multi_array_count(void)
     const uint8_t* decPayload;
     size_t decPayloadLen;
 
-    printf("  [Sign Multi Array Count = 4]\n");
+    TEST_LOG("  [Sign Multi Array Count = 4]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -13613,7 +14215,7 @@ static void test_sign_multi_array_count(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey1);
     TEST_ASSERT(ret == 0, "ecc keygen");
 
-    wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_Init(&key1);
     ret = wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
     TEST_ASSERT(ret == 0, "key set");
 
@@ -13639,8 +14241,8 @@ static void test_sign_multi_array_count(void)
     TEST_ASSERT(ret == 0, "sign verify roundtrip");
     TEST_ASSERT(decPayloadLen == sizeof(payload) - 1, "payload length");
 
-    wc_ecc_free(&eccKey1);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey1);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -13658,10 +14260,10 @@ static void test_encrypt_multi_detached_rejected(void)
     const uint8_t iv[12] = {1,2,3,4,5,6,7,8,9,10,11,12};
     const uint8_t keyData[16] = {0};
 
-    printf("  [Encrypt Multi Detached Rejected]\n");
+    TEST_LOG("  [Encrypt Multi Detached Rejected]\n");
 
-    wc_CoseKey_Init(&key1);
-    wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
     recipients[0].algId = 0;
     recipients[0].key = &key1;
     recipients[0].kid = NULL;
@@ -13693,10 +14295,10 @@ static void test_encrypt_multi_wrong_iv_len(void)
     const uint8_t shortIv[8] = {1,2,3,4,5,6,7,8};  /* A128GCM needs 12 */
     const uint8_t keyData[16] = {0};
 
-    printf("  [Encrypt Multi Wrong IV Length]\n");
+    TEST_LOG("  [Encrypt Multi Wrong IV Length]\n");
 
-    wc_CoseKey_Init(&key1);
-    wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
     recipients[0].algId = 0;
     recipients[0].key = &key1;
     recipients[0].kid = NULL;
@@ -13729,7 +14331,7 @@ static void test_ecdh_es_multi_recipient_rejected(void)
     const uint8_t payload[] = "ECDH-ES multi test";
     const uint8_t iv[12] = {1,2,3,4,5,6,7,8,9,10,11,12};
 
-    printf("  [ECDH-ES Multi-Recipient Rejected]\n");
+    TEST_LOG("  [ECDH-ES Multi-Recipient Rejected]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -13739,10 +14341,10 @@ static void test_ecdh_es_multi_recipient_rejected(void)
     wc_ecc_make_key(&rng, 32, &eccKey1);
     wc_ecc_make_key(&rng, 32, &eccKey2);
 
-    wc_CoseKey_Init(&key1);
-    wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
-    wc_CoseKey_Init(&key2);
-    wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
+    (void)wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
 
     recipients[0].algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
     recipients[0].key = &key1;
@@ -13763,9 +14365,9 @@ static void test_ecdh_es_multi_recipient_rejected(void)
         out, sizeof(out), &outLen, &rng);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "ecdh-es multi rejected");
 
-    wc_ecc_free(&eccKey1);
-    wc_ecc_free(&eccKey2);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey1);
+    (void)wc_ecc_free(&eccKey2);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -13792,15 +14394,15 @@ static void test_sign_verify_bad_array_count(void)
         0x47, 0x70, 0x61, 0x79, 0x6C, 0x6F, 0x61, 0x64  /* bstr "payload" */
     };
 
-    printf("  [Sign Verify Bad Array Count]\n");
+    TEST_LOG("  [Sign Verify Bad Array Count]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
     wc_ecc_init(&eccKey);
     wc_ecc_make_key(&rng, 32, &eccKey);
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
 
     memset(&hdr, 0, sizeof(hdr));
     ret = wc_CoseSign_Verify(&key, 0,
@@ -13810,8 +14412,8 @@ static void test_sign_verify_bad_array_count(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "bad array count rejected");
 
-    wc_ecc_free(&eccKey);
-    wc_FreeRng(&rng);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
 }
 #endif
 
@@ -13944,6 +14546,9 @@ int test_cose(void)
     test_cose_encrypt_multi_recipient();
     test_cose_encrypt_with_aad();
     test_cose_encrypt_a256gcm();
+    test_cose_encrypt_direct_key_alg_pin_roundtrip();
+    test_cose_encrypt_direct_alg_id_key_alg_roundtrip();
+    test_cose_encrypt_direct_multi_key_alg_mismatch();
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     test_cose_encrypt_ecdh_es_kid_and_alg_pin();
     test_cose_encrypt_ecdh_es_hkdf_256();
@@ -13956,6 +14561,7 @@ int test_cose(void)
     test_cose_encrypt_a128kw_multi_recipient();
     test_cose_encrypt_a192kw();
     test_cose_encrypt_a256kw();
+    test_cose_encrypt_kw_mutated_recipient_alg_pin();
     test_cose_encrypt_kw_wrong_keysize();
     test_cose_encrypt_kw_wrong_key_type();
 #endif
@@ -13967,6 +14573,7 @@ int test_cose(void)
     /* Multi-recipient MAC tests */
 #if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
     test_cose_mac_multi_recipient();
+    test_cose_mac_multi_recipient_key_alg_mismatch();
     test_cose_mac_with_aad();
     test_cose_mac_detached();
 #ifdef HAVE_ECC
@@ -13975,7 +14582,7 @@ int test_cose(void)
 #endif
 
     /* Phase 1: Algorithm Combination Tests */
-    printf("\n--- Algorithm Combination Tests ---\n");
+    TEST_LOG("\n--- Algorithm Combination Tests ---\n");
 #ifdef HAVE_ECC
     test_cose_sign1_es384();
     test_cose_sign1_es512();
@@ -13985,7 +14592,7 @@ int test_cose(void)
 #endif
 
     /* Phase 3B: Negative Crypto Tests (Tamper Detection) */
-    printf("\n--- Negative Crypto Tests ---\n");
+    TEST_LOG("\n--- Negative Crypto Tests ---\n");
 #ifdef HAVE_ECC
     test_cose_sign1_tampered_sig_byte();
     test_cose_sign1_tampered_protected_hdr();
@@ -14003,7 +14610,7 @@ int test_cose(void)
 #endif
 
     /* Phase 3A: Boundary Condition Tests */
-    printf("\n--- Boundary Condition Tests ---\n");
+    TEST_LOG("\n--- Boundary Condition Tests ---\n");
 #ifdef HAVE_ECC
     test_cose_empty_payload();
     test_cose_large_payload();
@@ -14012,7 +14619,7 @@ int test_cose(void)
 #endif
 
     /* Phase 3E: Buffer Overflow Prevention Tests */
-    printf("\n--- Buffer Overflow Prevention Tests ---\n");
+    TEST_LOG("\n--- Buffer Overflow Prevention Tests ---\n");
 #ifdef HAVE_ECC
     test_cose_sign_output_too_small();
     test_cose_sign_scratch_too_small();
@@ -14022,14 +14629,14 @@ int test_cose(void)
 #endif
 
     /* Phase 3C: Malformed CBOR Input Tests */
-    printf("\n--- Malformed Input Tests ---\n");
+    TEST_LOG("\n--- Malformed Input Tests ---\n");
 #ifdef HAVE_ECC
     test_decode_truncated_message();
     test_decode_wrong_tag();
 #endif
 
     /* Additional Coverage Tests */
-    printf("\n--- Additional Coverage Tests ---\n");
+    TEST_LOG("\n--- Additional Coverage Tests ---\n");
 #ifdef HAVE_ECC
     test_cose_bad_algorithm();
 #endif
@@ -14116,6 +14723,7 @@ int test_cose(void)
     test_cose_decode_unprotected_tstr_label();
     test_cose_sigsize_known_algs();
     test_cose_decode_tstr_alg_values();
+    test_cose_key_decode_tstr_alg_rejected();
 #if defined(WOLFCOSE_SIGN) && defined(HAVE_ED448)
     test_cose_sign_multi_ed448_roundtrip();
 #endif
@@ -14123,12 +14731,12 @@ int test_cose(void)
     test_cose_setecc_invalid_curve();
 #endif
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE)
-    test_cose_mac0_hmac_wrong_key_length();
+    test_cose_mac0_hmac_short_key_allowed();
     test_cose_mac0_create_key_alg_mismatch();
 #endif
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE) && \
     defined(WOLFCOSE_MAC0_VERIFY)
-    test_cose_mac0_verify_wrong_key_length();
+    test_cose_mac0_verify_short_key_allowed();
 #endif
 #if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
     test_cose_encrypt0_key_alg_mismatch();
@@ -14189,7 +14797,7 @@ int test_cose(void)
 #endif
 
     /* ======== Negative Test Coverage - Phases 1-10 ======== */
-    printf("\n--- Negative Test Coverage (Phases 1-10) ---\n");
+    TEST_LOG("\n--- Negative Test Coverage (Phases 1-10) ---\n");
 
     /* Phase 1: Buffer Too Small Tests */
 #ifdef HAVE_ECC
@@ -14361,10 +14969,10 @@ int test_cose(void)
 
     /* Mock failure injection tests */
 #ifdef WOLFCOSE_FORCE_FAILURE
-    printf("\n--- Forced Failure Injection Tests ---\n");
+    TEST_LOG("\n--- Forced Failure Injection Tests ---\n");
     test_force_failure_crypto();
 #endif
 
-    printf("  COSE: %d failure(s)\n", g_failures);
+    TEST_LOG("  COSE: %d failure(s)\n", g_failures);
     return g_failures;
 }

@@ -11,31 +11,54 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  # Resolve the latest -stable wolfSSL tag at run time so we don't have to
+  # bump this workflow every release. Floor (v5.8.0) and master are fixed:
+  # v5.8.0 is the first release with the public wc_ForceZero symbol and the
+  # current set of FIPS-204 final ML-DSA APIs wolfCOSE depends on; master
+  # surfaces upstream drift on the nightly run.
+  discover-versions:
+    name: Resolve wolfSSL version matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      latest-stable: ${{ steps.set-matrix.outputs.latest-stable }}
+    steps:
+      - name: Resolve latest -stable wolfSSL tag
+        id: set-matrix
+        run: |
+          set -euo pipefail
+          # List remote v*-stable tags, version-sort, take the highest.
+          # Equivalent to `git tag -l 'v*-stable' | sort -V | tail -1` in a
+          # local clone, but avoids cloning just to read tag names.
+          LATEST=$(git ls-remote --tags --refs https://github.com/wolfSSL/wolfssl.git 'v*-stable' \
+                     | awk -F/ '{print $NF}' | sort -V | tail -n 1)
+          if [ -z "${LATEST:-}" ]; then
+            echo "::error::Could not resolve latest wolfSSL -stable tag from remote"
+            exit 1
+          fi
+          echo "Latest stable wolfSSL: $LATEST"
+          echo "latest-stable=$LATEST" >> "$GITHUB_OUTPUT"
+          MATRIX=$(jq -nc --arg latest "$LATEST" '{
+            include: [
+              {"wolfssl-version":"v5.8.0-stable","wolfssl-ref":"v5.8.0-stable","cache-key":"wolfssl-version-v5.8.0-v1"},
+              {"wolfssl-version":$latest,"wolfssl-ref":$latest,"cache-key":("wolfssl-version-" + $latest + "-v1")},
+              {"wolfssl-version":"master","wolfssl-ref":"master","cache-key":""}
+            ]
+          }')
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
   wolfssl-version-test:
     name: wolfSSL ${{ matrix.wolfssl-version }}
+    needs: discover-versions
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # wolfCOSE minimum supported wolfSSL: v5.7.4
-          # (first release with FIPS 204 final ML-DSA + wc_dilithium_*_ctx_msg
-          # APIs and the WOLFSSL_DILITHIUM_NO_CTX gating macro). Earlier
-          # versions only ship the legacy draft-FIPS-204 dispatch.
-          # ed25519_key/ed448_key privKeySet field is also required.
-          - wolfssl-version: 'v5.7.6-stable'
-            wolfssl-ref: 'v5.7.6-stable'
-            cache-key: 'wolfssl-version-v5.7.6-v1'
-          - wolfssl-version: 'v5.8.4-stable'
-            wolfssl-ref: 'v5.8.4-stable'
-            cache-key: 'wolfssl-version-v5.8.4-v1'
-          - wolfssl-version: 'v5.9.1-stable'
-            wolfssl-ref: 'v5.9.1-stable'
-            cache-key: 'wolfssl-version-v5.9.1-v1'
-          # --- Bleeding edge (no cache — always rebuilds) ---
-          - wolfssl-version: 'HEAD'
-            wolfssl-ref: 'master'
+      matrix: ${{ fromJson(needs.discover-versions.outputs.matrix) }}
 
     steps:
     - uses: actions/checkout@v4
@@ -45,9 +68,9 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool
 
-    # Cache stable versions only — HEAD must always rebuild to catch regressions
+    # Cache stable versions only — master must always rebuild to catch regressions
     - name: Cache wolfSSL (${{ matrix.wolfssl-version }})
-      if: matrix.wolfssl-version != 'HEAD'
+      if: matrix.wolfssl-version != 'master'
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
@@ -55,7 +78,7 @@ jobs:
         key: ${{ matrix.cache-key }}
 
     - name: Build wolfSSL (${{ matrix.wolfssl-version }})
-      if: matrix.wolfssl-version == 'HEAD' || steps.cache-wolfssl.outputs.cache-hit != 'true'
+      if: matrix.wolfssl-version == 'master' || steps.cache-wolfssl.outputs.cache-hit != 'true'
       run: |
         cd ~
         git clone --depth 1 --branch ${{ matrix.wolfssl-ref }} \
