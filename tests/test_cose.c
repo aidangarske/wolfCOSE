@@ -14636,7 +14636,8 @@ int test_cose(void)
 #endif
 
     /* Multi-recipient encryption tests */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM) && \
+    defined(WOLFCOSE_KEY_WRAP)
     test_cose_encrypt_multi_recipient();
     test_cose_encrypt_with_aad();
     test_cose_encrypt_a256gcm();
@@ -14650,7 +14651,6 @@ int test_cose(void)
     test_cose_encrypt_ecdh_es_p384();
     test_cose_encrypt_ecdh_es_wrong_key_type();
 #endif
-#if defined(WOLFCOSE_KEY_WRAP)
     test_cose_encrypt_a128kw();
     test_cose_encrypt_a128kw_multi_recipient();
     test_cose_encrypt_a192kw();
@@ -14658,7 +14658,6 @@ int test_cose(void)
     test_cose_encrypt_kw_mutated_recipient_alg_pin();
     test_cose_encrypt_kw_wrong_keysize();
     test_cose_encrypt_kw_wrong_key_type();
-#endif
 #ifdef HAVE_ECC
     test_cose_encrypt_direct_wrong_key_type();
 #endif
