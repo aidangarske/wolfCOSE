@@ -25,6 +25,7 @@ jobs:
             'codespell.yml',
             'comprehensive-tests.yml',
             'coverage.yml',
+            'empty-brace-scan.yml',
             'examples.yml',
             'minimal-build.yml',
             'misra-2012.yml',
