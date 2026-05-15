@@ -399,6 +399,7 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
+    (void)label;
     TEST_LOG("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
@@ -1231,6 +1232,7 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
+    (void)label;
     TEST_LOG("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
@@ -1329,6 +1331,7 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
 
+    (void)label;
     TEST_LOG("  [Sign1 %s]\n", label);
 
     ret = wc_InitRng(&rng);
@@ -1597,6 +1600,7 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
     static const uint8_t kid[] = "ml-dsa-key-1";
     int ret;
 
+    (void)label;
     TEST_LOG("  [Key %s]\n", label);
 
     ret = wc_InitRng(&rng);
@@ -3936,7 +3940,8 @@ static void test_cose_sign_mixed_algorithms(void)
 #endif /* WOLFCOSE_SIGN && HAVE_ECC */
 
 /* ----- COSE_Encrypt Multi-Recipient Tests (RFC 9052 Section 5.1) ----- */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM) && \
+    defined(WOLFCOSE_KEY_WRAP)
 static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
     uint8_t algByte)
 {

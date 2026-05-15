@@ -577,15 +577,20 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
 static uint32_t wolfCose_LabelBit(int64_t label)
 {
     uint32_t bit;
+    uint32_t shift;
     int64_t shift64;
 
     if ((label >= 1) && (label <= 16)) {
-        shift64 = label - 1;
-        bit = 1u << (uint32_t)shift64;
+        shift64 = label;
+        shift64--;
+        shift = (uint32_t)shift64;
+        bit = ((uint32_t)1u) << shift;
     }
     else if ((label <= -1) && (label >= -16)) {
-        shift64 = (-label) + 15;
-        bit = 1u << (uint32_t)shift64;
+        shift64 = -label;
+        shift = (uint32_t)shift64;
+        shift += 15u;
+        bit = ((uint32_t)1u) << shift;
     }
     else {
         bit = 0u;
@@ -608,12 +613,12 @@ static int wolfCose_HdrStateContains(const WOLFCOSE_HDR_STATE* state,
 
     if (state != NULL) {
         uint32_t bit = wolfCose_LabelBit(label);
-        size_t i;
 
         if ((bit != 0u) && ((state->labelBits & bit) != 0u)) {
             found = 1;
         }
         else {
+            size_t i;
             for (i = 0u; i < state->extraCount; i++) {
                 if (state->extraLabels[i] == label) {
                     found = 1;
@@ -670,12 +675,12 @@ static int wolfCose_HdrStateMerge(WOLFCOSE_HDR_STATE* dst,
     const WOLFCOSE_HDR_STATE* src)
 {
     int ret = WOLFCOSE_SUCCESS;
-    size_t i;
 
     if ((dst == NULL) || (src == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
+        size_t i;
         dst->labelBits |= src->labelBits;
         for (i = 0u; (ret == WOLFCOSE_SUCCESS) && (i < src->extraCount); i++) {
             ret = wolfCose_HdrStateAdd(dst, src->extraLabels[i]);
@@ -688,7 +693,7 @@ static int wolfCose_HdrStateMerge(WOLFCOSE_HDR_STATE* dst,
 /* If the next decoder item is a tstr label, reject it. The implementation
  * only supports integer labels, and silently skipping text labels breaks
  * duplicate-label enforcement across header and key maps. */
-static int wolfCose_SkipIfTstrLabel(WOLFCOSE_CBOR_CTX* ctx, int* skipped)
+static int wolfCose_SkipIfTstrLabel(const WOLFCOSE_CBOR_CTX* ctx, int* skipped)
 {
     int ret;
 
@@ -1185,6 +1190,9 @@ static int wolfCose_EncodeKeyOptionalFields(WOLFCOSE_CBOR_CTX* ctx,
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wc_CBOR_EncodeBstr(ctx, key->kid, key->kidLen);
         }
+    }
+    else {
+        /* No action required */
     }
 
     if ((ret == WOLFCOSE_SUCCESS) && (key->alg != WOLFCOSE_ALG_UNSET)) {
@@ -6087,9 +6095,10 @@ static int wolfCose_ValidateRecipientKeyAlg(const WOLFCOSE_KEY* key,
     int32_t recipientAlgId, int32_t contentAlgId)
 {
     int ret = WOLFCOSE_SUCCESS;
-    int32_t expectedAlg = recipientAlgId;
 
     if ((key != NULL) && (key->alg != WOLFCOSE_ALG_UNSET)) {
+        int32_t expectedAlg = recipientAlgId;
+
         if ((expectedAlg == WOLFCOSE_ALG_UNSET) ||
             (expectedAlg == WOLFCOSE_ALG_DIRECT)) {
             expectedAlg = contentAlgId;
@@ -6224,8 +6233,7 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         else if (rng == NULL) {
             ret = WOLFCOSE_E_INVALID_ARG;
         }
-        else if ((recipients[0].key != NULL) &&
-                 (recipients[0].key->alg != WOLFCOSE_ALG_UNSET) &&
+        else if ((recipients[0].key->alg != WOLFCOSE_ALG_UNSET) &&
                  (recipients[0].key->alg != recipients[0].algId)) {
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
@@ -6328,6 +6336,9 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
                         recipients[i].algId, contentAlgId) !=
                         WOLFCOSE_SUCCESS)) {
                 ret = WOLFCOSE_E_COSE_BAD_ALG;
+            }
+            else {
+                /* No action required */
             }
         }
         (void)rng;
@@ -6816,7 +6827,7 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         }
 
         for (j = 0; (ret == WOLFCOSE_SUCCESS) && (j < mapCount); j++) {
-            int64_t label;
+            int64_t label = 0;
             int recipSkipped = 0;
 
             ret = wolfCose_SkipIfTstrLabel(&ctx, &recipSkipped);
