@@ -247,6 +247,7 @@ static void test_cose_key_ed25519(void)
     WOLFCOSE_KEY key;
     ed25519_key edKey;
     WC_RNG rng;
+    static const uint8_t kid[] = "ed25519-key-1";
     int ret;
 
     TEST_LOG("  [Key Ed25519]\n");
@@ -278,6 +279,9 @@ static void test_cose_key_ed25519(void)
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_OKP &&
                 key.crv == WOLFCOSE_CRV_ED25519 && key.hasPrivate == 1,
                 "key set ed25519");
+    key.kid = kid;
+    key.kidLen = sizeof(kid) - 1u;
+    key.alg = WOLFCOSE_ALG_EDDSA;
 
     /* Encode/decode round-trip */
     /* empty-brace-scan: allow - test-local temporary scope */
@@ -297,7 +301,10 @@ static void test_cose_key_ed25519(void)
         key2.key.ed25519 = &edKey2;
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_OKP &&
-                    key2.hasPrivate == 1,
+                    key2.hasPrivate == 1 &&
+                    key2.alg == WOLFCOSE_ALG_EDDSA &&
+                    key2.kidLen == (sizeof(kid) - 1u) &&
+                    memcmp(key2.kid, kid, sizeof(kid) - 1u) == 0,
                     "key ed decode");
         (void)wc_ed25519_free(&edKey2);
     }
@@ -315,6 +322,7 @@ static void test_cose_key_symmetric(void)
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
         0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
     };
+    static const uint8_t kid[] = "symm-key-1";
     int ret;
 
     TEST_LOG("  [Key Symmetric]\n");
@@ -324,6 +332,9 @@ static void test_cose_key_symmetric(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_SYMMETRIC &&
                 key.hasPrivate == 1, "key set symmetric");
+    key.kid = kid;
+    key.kidLen = sizeof(kid) - 1u;
+    key.alg = WOLFCOSE_ALG_HMAC_256_256;
 
     ret = wc_CoseKey_SetSymmetric(NULL, keyData, sizeof(keyData));
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "key set symm null");
@@ -345,6 +356,9 @@ static void test_cose_key_symmetric(void)
         TEST_ASSERT(ret == 0, "sym key reinit");
         ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
         TEST_ASSERT(ret == 0, "sym key reset");
+        key.kid = kid;
+        key.kidLen = sizeof(kid) - 1u;
+        key.alg = WOLFCOSE_ALG_HMAC_256_256;
 
         ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
         TEST_ASSERT(ret == 0 && cLen > 0, "key symm encode");
@@ -355,6 +369,9 @@ static void test_cose_key_symmetric(void)
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_SYMMETRIC &&
                     key2.key.symm.keyLen == 16 &&
+                    key2.alg == WOLFCOSE_ALG_HMAC_256_256 &&
+                    key2.kidLen == (sizeof(kid) - 1u) &&
+                    memcmp(key2.kid, kid, sizeof(kid) - 1u) == 0 &&
                     memcmp(key2.key.symm.key, keyData, 16) == 0,
                     "key symm decode");
     }
@@ -680,7 +697,12 @@ static void test_cose_sign1_ed448(void)
         size_t keyLen = 0;
         WOLFCOSE_KEY decKey;
         ed448_key decEdKey;
+        static const uint8_t kid[] = "ed448-key-1";
         int encRet;
+
+        signKey.kid = kid;
+        signKey.kidLen = sizeof(kid) - 1u;
+        signKey.alg = WOLFCOSE_ALG_EDDSA;
 
         encRet = wc_CoseKey_Encode(&signKey, keyBuf, sizeof(keyBuf), &keyLen);
         TEST_ASSERT(encRet == 0 && keyLen > 0, "key ed448 encode");
@@ -691,7 +713,11 @@ static void test_cose_sign1_ed448(void)
             decKey.key.ed448 = &decEdKey;
             encRet = wc_CoseKey_Decode(&decKey, keyBuf, keyLen);
             TEST_ASSERT(encRet == 0 && decKey.kty == WOLFCOSE_KTY_OKP &&
-                        decKey.crv == WOLFCOSE_CRV_ED448, "key ed448 decode");
+                        decKey.crv == WOLFCOSE_CRV_ED448 &&
+                        decKey.alg == WOLFCOSE_ALG_EDDSA &&
+                        decKey.kidLen == (sizeof(kid) - 1u) &&
+                        memcmp(decKey.kid, kid, sizeof(kid) - 1u) == 0,
+                        "key ed448 decode");
             (void)wc_ed448_free(&decEdKey);
         }
     }
@@ -1476,6 +1502,7 @@ static void test_cose_key_rsa(void)
     WOLFCOSE_KEY key;
     RsaKey rsaKey;
     WC_RNG rng;
+    static const uint8_t kid[] = "rsa-key-1";
     int ret;
 
     TEST_LOG("  [Key RSA]\n");
@@ -1494,6 +1521,9 @@ static void test_cose_key_rsa(void)
     ret = wc_CoseKey_SetRsa(&key, &rsaKey);
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_RSA &&
                 key.hasPrivate == 1, "key set rsa");
+    key.kid = kid;
+    key.kidLen = sizeof(kid) - 1u;
+    key.alg = WOLFCOSE_ALG_PS256;
 
     /* Encode/decode round-trip.
      * Buffer must be large enough for private key encoding scratch:
@@ -1512,7 +1542,10 @@ static void test_cose_key_rsa(void)
         (void)wc_CoseKey_Init(&key2);
         key2.key.rsa = &rsaKey2;
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
-        TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_RSA,
+        TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_RSA &&
+                    key2.alg == WOLFCOSE_ALG_PS256 &&
+                    key2.kidLen == (sizeof(kid) - 1u) &&
+                    memcmp(key2.kid, kid, sizeof(kid) - 1u) == 0,
                     "key rsa decode");
 
         /* Verify decoded key can sign/verify */
@@ -1561,6 +1594,7 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
     WOLFCOSE_KEY key;
     dilithium_key dlKey;
     WC_RNG rng;
+    static const uint8_t kid[] = "ml-dsa-key-1";
     int ret;
 
     TEST_LOG("  [Key %s]\n", label);
@@ -1584,6 +1618,8 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
     (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetDilithium(&key, alg, &dlKey);
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_OKP, "key set dl");
+    key.kid = kid;
+    key.kidLen = sizeof(kid) - 1u;
 
     /* Encode/decode round-trip */
     /* empty-brace-scan: allow - test-local temporary scope */
@@ -1601,7 +1637,10 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
         key2.key.dilithium = &dlKey2;
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_OKP &&
-                    key2.crv == key.crv && key2.hasPrivate == 1,
+                    key2.crv == key.crv && key2.hasPrivate == 1 &&
+                    key2.alg == alg &&
+                    key2.kidLen == (sizeof(kid) - 1u) &&
+                    memcmp(key2.kid, kid, sizeof(kid) - 1u) == 0,
                     "key dl decode");
 
         /* Verify decoded key can sign/verify */
@@ -8718,26 +8757,30 @@ static void test_cose_protected_hdr_empty_map(void)
     /* RFC 9052 Section 3: recipients must accept both h'' and h'a0'. */
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     uint8_t emptyMap[] = {0xA0u};
 
     TEST_LOG("  [Protected Header: empty serialized map]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(emptyMap, sizeof(emptyMap), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(emptyMap, sizeof(emptyMap), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr accepts serialized empty map");
-    TEST_ASSERT(hdr.labelsSeen == 0u,
-                "DecodeProtectedHdr empty map labelsSeen");
+    TEST_ASSERT((hdrState.labelBits == 0u) && (hdrState.extraCount == 0u),
+                "DecodeProtectedHdr empty map state");
 }
 
 static void test_cose_protected_hdr_trailing(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     uint8_t trailing[] = {0xA1u, 0x01u, 0x26u, 0xFFu}; /* {1: -7}, garbage */
 
     TEST_LOG("  [Protected Header: trailing bytes]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(trailing, sizeof(trailing), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(trailing, sizeof(trailing), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "DecodeProtectedHdr rejects trailing bytes");
 }
@@ -8746,20 +8789,22 @@ static void test_cose_protected_hdr_content_type(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     uint8_t ctHdr[] = {0xA1u, 0x03u, 0x18u, 0x32u}; /* {3: 50} */
     uint8_t ctTstr[] = {0xA1u, 0x03u, 0x69u,
                          'a','p','p','l','i','c','a','t','e'};
 
     TEST_LOG("  [Protected Header: content-type]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(ctHdr, sizeof(ctHdr), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(ctHdr, sizeof(ctHdr), &hdr, &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr content-type uint");
     TEST_ASSERT(hdr.contentType == 50,
                 "DecodeProtectedHdr stores content-type");
 
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(ctTstr, sizeof(ctTstr), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(ctTstr, sizeof(ctTstr), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr tolerates tstr content-type");
 }
@@ -8768,12 +8813,14 @@ static void test_cose_protected_hdr_tstr_label(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     /* {1: -7, "x": 0} : alg ES256, plus an unknown tstr label */
     uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
 
     TEST_LOG("  [Protected Header: tstr-labeled entry]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(tstrLabel, sizeof(tstrLabel), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(tstrLabel, sizeof(tstrLabel), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "DecodeProtectedHdr rejects tstr labels");
 }
@@ -8782,19 +8829,37 @@ static void test_cose_protected_hdr_dup_label(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     uint8_t dupLabel[] = {0xA2u, 0x01u, 0x26u, 0x01u, 0x26u};
 
     TEST_LOG("  [Protected Header: duplicate label]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(dupLabel, sizeof(dupLabel), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(dupLabel, sizeof(dupLabel), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "DecodeProtectedHdr rejects duplicate labels");
+}
+
+static void test_cose_protected_hdr_dup_large_label(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
+    uint8_t dupLabel[] = {0xA2u, 0x11u, 0x00u, 0x11u, 0x01u};
+
+    TEST_LOG("  [Protected Header: duplicate large label]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(dupLabel, sizeof(dupLabel), &hdr,
+                                      &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "DecodeProtectedHdr rejects duplicate label 17");
 }
 
 static void test_cose_protected_hdr_crit(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     /* {1: -7, 2: [1]} : crit lists alg (present in protected) */
     uint8_t critOk[] = {0xA2u, 0x01u, 0x26u, 0x02u, 0x81u, 0x01u};
     /* {1: -7, 2: [99]} : crit lists an unknown label */
@@ -8806,22 +8871,26 @@ static void test_cose_protected_hdr_crit(void)
 
     TEST_LOG("  [Protected Header: crit]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(critOk, sizeof(critOk), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(critOk, sizeof(critOk), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr crit with known label");
 
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(critBad, sizeof(critBad), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(critBad, sizeof(critBad), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "DecodeProtectedHdr crit with unknown label");
 
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(critMissing, sizeof(critMissing), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(critMissing, sizeof(critMissing), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "DecodeProtectedHdr crit missing referenced label");
 
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(critEmpty, sizeof(critEmpty), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(critEmpty, sizeof(critEmpty), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "DecodeProtectedHdr crit empty array");
 }
@@ -8830,20 +8899,22 @@ static void test_cose_cross_bucket_dup(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     WOLFCOSE_CBOR_CTX ctx;
     uint8_t protAlg[] = {0xA1u, 0x01u, 0x26u};
     uint8_t unprotAlg[] = {0xA1u, 0x01u, 0x26u};
 
     TEST_LOG("  [Header: duplicate alg across buckets]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(protAlg, sizeof(protAlg), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(protAlg, sizeof(protAlg), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr alg in protected");
 
     ctx.cbuf = unprotAlg;
     ctx.bufSz = sizeof(unprotAlg);
     ctx.idx = 0;
-    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "DecodeUnprotectedHdr rejects cross-bucket dup");
 }
@@ -8852,16 +8923,18 @@ static void test_cose_crit_in_unprotected(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     WOLFCOSE_CBOR_CTX ctx;
     /* {2: [1]} : crit in unprotected bucket - RFC 9052 forbids this. */
     uint8_t critUnprot[] = {0xA1u, 0x02u, 0x81u, 0x01u};
 
     TEST_LOG("  [Unprotected Header: crit rejected]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
+    XMEMSET(&hdrState, 0, sizeof(hdrState));
     ctx.cbuf = critUnprot;
     ctx.bufSz = sizeof(critUnprot);
     ctx.idx = 0;
-    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "DecodeUnprotectedHdr rejects crit");
 }
@@ -8870,6 +8943,7 @@ static void test_cose_iv_partial_iv(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     WOLFCOSE_CBOR_CTX ctx;
     /* {5: h'01', 6: h'02'} : IV and Partial IV both present */
     uint8_t ivPiv[] = {0xA2u, 0x05u, 0x41u, 0x01u, 0x06u, 0x41u, 0x02u};
@@ -8883,31 +8957,35 @@ static void test_cose_iv_partial_iv(void)
 
     TEST_LOG("  [Unprotected Header: IV + Partial IV]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
+    XMEMSET(&hdrState, 0, sizeof(hdrState));
     ctx.cbuf = ivPiv;
     ctx.bufSz = sizeof(ivPiv);
     ctx.idx = 0;
-    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "DecodeUnprotectedHdr rejects IV+PartialIV");
 
     /* IV inside the protected header bucket must surface in hdr->iv
      * so cross-bucket Partial-IV detection works. */
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(ivOnlyProt, sizeof(ivOnlyProt), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(ivOnlyProt, sizeof(ivOnlyProt), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr IV-only");
     TEST_ASSERT((hdr.iv != NULL) && (hdr.ivLen == 4u),
                 "DecodeProtectedHdr surfaces IV");
 
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(pivOnlyProt, sizeof(pivOnlyProt), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(pivOnlyProt, sizeof(pivOnlyProt), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr Partial-IV only");
     TEST_ASSERT((hdr.partialIv != NULL) && (hdr.partialIvLen == 1u),
                 "DecodeProtectedHdr surfaces Partial-IV");
 
     XMEMSET(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(ivPivProt, sizeof(ivPivProt), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(ivPivProt, sizeof(ivPivProt), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "DecodeProtectedHdr rejects IV+PartialIV in same bucket");
 }
@@ -9977,6 +10055,7 @@ static void test_cose_decode_tstr_alg_values(void)
      * `wc_CBOR_Skip(&ctx)` branches at the alg labels are reached. */
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     WOLFCOSE_CBOR_CTX ctx;
     /* Protected hdr {1: "X"} — tstr alg */
     uint8_t protTstrAlg[] = {0xA1u, 0x01u, 0x61u, 'X'};
@@ -9986,15 +10065,17 @@ static void test_cose_decode_tstr_alg_values(void)
     TEST_LOG("  [tstr alg values skipped]\n");
 
     memset(&hdr, 0, sizeof(hdr));
-    ret = wolfCose_DecodeProtectedHdr(protTstrAlg, sizeof(protTstrAlg), &hdr);
+    ret = wolfCose_DecodeProtectedHdr(protTstrAlg, sizeof(protTstrAlg), &hdr,
+                                      &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr tolerates tstr alg");
 
     memset(&hdr, 0, sizeof(hdr));
+    memset(&hdrState, 0, sizeof(hdrState));
     ctx.cbuf = unprotTstrAlg;
     ctx.bufSz = sizeof(unprotTstrAlg);
     ctx.idx = 0;
-    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeUnprotectedHdr tolerates tstr alg");
 }
@@ -10006,16 +10087,18 @@ static void test_cose_decode_unprotected_tstr_label(void)
      * exercised on the other side. */
     int ret;
     WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
     WOLFCOSE_CBOR_CTX ctx;
     /* {1: -7, "x": 0} */
     uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
 
     TEST_LOG("  [DecodeUnprotectedHdr: tstr label skipped]\n");
     memset(&hdr, 0, sizeof(hdr));
+    memset(&hdrState, 0, sizeof(hdrState));
     ctx.cbuf = tstrLabel;
     ctx.bufSz = sizeof(tstrLabel);
     ctx.idx = 0;
-    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "DecodeUnprotectedHdr rejects tstr label");
 }
@@ -10786,6 +10869,7 @@ static void test_internal_helpers(void)
         uint8_t hdrBuf[64];
         size_t hdrLen;
         WOLFCOSE_HDR hdr;
+        WOLFCOSE_HDR_STATE hdrState;
 
         /* EncodeProtectedHdr with NULL */
         ret = wolfCose_EncodeProtectedHdr(WOLFCOSE_ALG_ES256, NULL, 64, &hdrLen);
@@ -10795,16 +10879,16 @@ static void test_internal_helpers(void)
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "EncodeProtectedHdr NULL outLen");
 
         /* DecodeProtectedHdr with NULL hdr */
-        ret = wolfCose_DecodeProtectedHdr(hdrBuf, 10, NULL);
+        ret = wolfCose_DecodeProtectedHdr(hdrBuf, 10, NULL, &hdrState);
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "DecodeProtectedHdr NULL hdr");
 
         /* DecodeProtectedHdr with NULL data (empty protected header - valid) */
         XMEMSET(&hdr, 0, sizeof(hdr));
-        ret = wolfCose_DecodeProtectedHdr(NULL, 0, &hdr);
+        ret = wolfCose_DecodeProtectedHdr(NULL, 0, &hdr, &hdrState);
         TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "DecodeProtectedHdr empty");
 
         /* DecodeUnprotectedHdr with NULL ctx */
-        ret = wolfCose_DecodeUnprotectedHdr(NULL, &hdr);
+        ret = wolfCose_DecodeUnprotectedHdr(NULL, &hdr, &hdrState);
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "DecodeUnprotectedHdr NULL ctx");
     }
 
@@ -10814,6 +10898,7 @@ static void test_internal_helpers(void)
     {
         WOLFCOSE_CBOR_CTX ctx;
         WOLFCOSE_HDR hdr;
+        WOLFCOSE_HDR_STATE hdrState;
 
         /* Protected header with map count > 16 (WOLFCOSE_MAX_MAP_ITEMS) */
         /* empty-brace-scan: allow - test-local temporary scope */
@@ -10827,7 +10912,7 @@ static void test_internal_helpers(void)
                 bigMap[idx++] = 0x00u; /* value: 0 */
             }
             XMEMSET(&hdr, 0, sizeof(hdr));
-            ret = wolfCose_DecodeProtectedHdr(bigMap, idx, &hdr);
+            ret = wolfCose_DecodeProtectedHdr(bigMap, idx, &hdr, &hdrState);
             TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "DecodeProtectedHdr map>16");
         }
 
@@ -10837,7 +10922,8 @@ static void test_internal_helpers(void)
             /* CBOR: {99: 123} - unknown label 99 with value 123 */
             uint8_t unknownHdr[] = {0xA1u, 0x18u, 0x63u, 0x18u, 0x7Bu}; /* map(1), 99, 123 */
             XMEMSET(&hdr, 0, sizeof(hdr));
-            ret = wolfCose_DecodeProtectedHdr(unknownHdr, sizeof(unknownHdr), &hdr);
+            ret = wolfCose_DecodeProtectedHdr(unknownHdr, sizeof(unknownHdr),
+                                              &hdr, &hdrState);
             TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "DecodeProtectedHdr unknown label");
         }
 
@@ -10850,7 +10936,8 @@ static void test_internal_helpers(void)
             ctx.bufSz = sizeof(partialIvHdr);
             ctx.idx = 0;
             XMEMSET(&hdr, 0, sizeof(hdr));
-            ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+            XMEMSET(&hdrState, 0, sizeof(hdrState));
+            ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
             TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "DecodeUnprotectedHdr partial_iv");
             TEST_ASSERT(hdr.partialIvLen == 3, "partial_iv len");
         }
@@ -10864,7 +10951,8 @@ static void test_internal_helpers(void)
             ctx.bufSz = sizeof(algHdr);
             ctx.idx = 0;
             XMEMSET(&hdr, 0, sizeof(hdr));
-            ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+            XMEMSET(&hdrState, 0, sizeof(hdrState));
+            ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
             TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "DecodeUnprotectedHdr alg");
             TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256, "alg in unprotected");
         }
@@ -10883,7 +10971,8 @@ static void test_internal_helpers(void)
             ctx.bufSz = idx;
             ctx.idx = 0;
             XMEMSET(&hdr, 0, sizeof(hdr));
-            ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr);
+            XMEMSET(&hdrState, 0, sizeof(hdrState));
+            ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
             TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "DecodeUnprotectedHdr map>16");
         }
 
@@ -14662,6 +14751,7 @@ int test_cose(void)
     test_cose_protected_hdr_content_type();
     test_cose_protected_hdr_tstr_label();
     test_cose_protected_hdr_dup_label();
+    test_cose_protected_hdr_dup_large_label();
     test_cose_protected_hdr_crit();
     test_cose_cross_bucket_dup();
     test_cose_crit_in_unprotected();

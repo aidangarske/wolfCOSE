@@ -417,9 +417,6 @@ typedef struct WOLFCOSE_CBOR_ITEM {
 
 /**
  * \brief Parsed COSE headers. Zero-copy pointers into the encoded message.
- *
- * Callers must zero-initialise the whole struct before the first decoder
- * call; `labelsSeen` is read across both header buckets.
  */
 typedef struct WOLFCOSE_HDR {
     int32_t        alg;           /**< Algorithm (from protected or unprotected) */
@@ -431,7 +428,6 @@ typedef struct WOLFCOSE_HDR {
     size_t         partialIvLen;  /**< Partial IV length */
     int32_t        contentType;   /**< Content type, 0 if absent */
     uint8_t        flags;         /**< Header flags (see WOLFCOSE_HDR_FLAG_*) */
-    uint32_t       labelsSeen;    /**< Internal decode bookkeeping across header buckets */
 } WOLFCOSE_HDR;
 
 /** \brief Flag indicating payload is detached (RFC 9052 Section 2) */
@@ -442,7 +438,8 @@ typedef struct WOLFCOSE_HDR {
  *
  * Caller allocates and initializes wolfCrypt keys (wc_ecc_init, etc).
  * wolfCOSE never owns key lifecycle -- wc_CoseKey_Free does NOT free the
- * underlying wolfCrypt key.
+ * underlying wolfCrypt key. Callers must not share the same underlying
+ * ECC key concurrently with ECDH-ES COSE operations in other threads.
  */
 typedef struct WOLFCOSE_KEY {
     int32_t        kty;       /**< WOLFCOSE_KTY_* */

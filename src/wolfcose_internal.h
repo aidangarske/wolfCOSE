@@ -127,6 +127,12 @@ WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_MAC[3];
 WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_ENCRYPT0[8];
 WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_ENCRYPT[7];
 
+typedef struct WOLFCOSE_HDR_STATE {
+    uint32_t labelBits;
+    int64_t  extraLabels[WOLFCOSE_MAX_MAP_ITEMS];
+    size_t   extraCount;
+} WOLFCOSE_HDR_STATE;
+
 /* ----- COSE internal helpers ----- */
 
 /**
@@ -147,7 +153,8 @@ WOLFCOSE_LOCAL int wolfCose_EncodeProtectedHdr(int32_t alg, uint8_t* buf,
  */
 WOLFCOSE_LOCAL int wolfCose_DecodeProtectedHdr(const uint8_t* data,
                                                 size_t dataLen,
-                                                WOLFCOSE_HDR* hdr);
+                                                WOLFCOSE_HDR* hdr,
+                                                WOLFCOSE_HDR_STATE* hdrState);
 
 /**
  * \brief Decode an unprotected header map from the decoder context.
@@ -155,7 +162,8 @@ WOLFCOSE_LOCAL int wolfCose_DecodeProtectedHdr(const uint8_t* data,
  * \param hdr  Output: parsed header fields (merged with protected).
  */
 WOLFCOSE_LOCAL int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx,
-                                                  WOLFCOSE_HDR* hdr);
+                                                  WOLFCOSE_HDR* hdr,
+                                                  WOLFCOSE_HDR_STATE* hdrState);
 
 /**
  * \brief Map COSE algorithm ID to wolfCrypt hash type.
