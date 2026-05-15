@@ -63,23 +63,31 @@ static const uint8_t g_deviceConfig[] = {
 /* Device info structure */
 typedef struct {
     const char* deviceId;
+    uint8_t kid[22];
+    size_t kidLen;
     uint8_t preSharedKey[16];  /* AES-128 key */
 } DeviceInfo;
 
 /* Simulated device fleet */
-static DeviceInfo g_devices[NUM_DEVICES] = {
+static const DeviceInfo g_devices[NUM_DEVICES] = {
     {
         "device-001-temp-sensor",
+        "device-001-temp-sensor",
+        22u,
         {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
          0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}
     },
     {
         "device-002-humidity",
+        "device-002-humidity",
+        19u,
         {0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
          0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20}
     },
     {
         "device-003-gateway",
+        "device-003-gateway",
+        18u,
         {0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
          0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30}
     }
@@ -140,8 +148,8 @@ static int cloud_encrypt_config(const uint8_t* config, size_t configLen,
 
         recipients[i].algId = WOLFCOSE_ALG_DIRECT;
         recipients[i].key = &deviceKeys[i];
-        recipients[i].kid = (const uint8_t*)g_devices[i].deviceId;
-        recipients[i].kidLen = strlen(g_devices[i].deviceId);
+        recipients[i].kid = g_devices[i].kid;
+        recipients[i].kidLen = g_devices[i].kidLen;
 
         printf("  Recipient %d: %s\n", i, g_devices[i].deviceId);
     }
@@ -195,8 +203,8 @@ static int device_decrypt_config(int deviceIndex,
     XMEMSET(&recipient, 0, sizeof(recipient));
     recipient.algId = WOLFCOSE_ALG_DIRECT;
     recipient.key = &deviceKey;
-    recipient.kid = (const uint8_t*)g_devices[deviceIndex].deviceId;
-    recipient.kidLen = strlen(g_devices[deviceIndex].deviceId);
+    recipient.kid = g_devices[deviceIndex].kid;
+    recipient.kidLen = g_devices[deviceIndex].kidLen;
 
     /* Decrypt */
     ret = wc_CoseEncrypt_Decrypt(&recipient, (size_t)deviceIndex,

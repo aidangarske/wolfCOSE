@@ -230,24 +230,28 @@ extern "C" {
 
 /* ----- Configurable limits ----- */
 #ifndef WOLFCOSE_MAX_SCRATCH_SZ
-    #define WOLFCOSE_MAX_SCRATCH_SZ      512
+    #if defined(HAVE_DILITHIUM)
+        #define WOLFCOSE_MAX_SCRATCH_SZ      8192u
+    #else
+        #define WOLFCOSE_MAX_SCRATCH_SZ      512u
+    #endif
 #endif
 #ifndef WOLFCOSE_PROTECTED_HDR_MAX
-    #define WOLFCOSE_PROTECTED_HDR_MAX    64
+    #define WOLFCOSE_PROTECTED_HDR_MAX    64u
 #endif
 #ifndef WOLFCOSE_CBOR_MAX_DEPTH
-    #define WOLFCOSE_CBOR_MAX_DEPTH        8
+    #define WOLFCOSE_CBOR_MAX_DEPTH        8u
 #endif
 #ifndef WOLFCOSE_MAX_MAP_ITEMS
-    #define WOLFCOSE_MAX_MAP_ITEMS        16
+    #define WOLFCOSE_MAX_MAP_ITEMS        16u
 #endif
 #ifndef WOLFCOSE_MAX_SIG_SZ
     #if defined(HAVE_DILITHIUM)
-        #define WOLFCOSE_MAX_SIG_SZ  4627
+        #define WOLFCOSE_MAX_SIG_SZ  4627u
     #elif defined(WC_RSA_PSS)
-        #define WOLFCOSE_MAX_SIG_SZ  512
+        #define WOLFCOSE_MAX_SIG_SZ  512u
     #else
-        #define WOLFCOSE_MAX_SIG_SZ  132
+        #define WOLFCOSE_MAX_SIG_SZ  132u
     #endif
 #endif
 
@@ -301,6 +305,7 @@ extern "C" {
 #define WOLFCOSE_HDR_EPHEMERAL_KEY (-1)  /* Ephemeral COSE_Key for ECDH */
 
 /* Algorithms */
+#define WOLFCOSE_ALG_UNSET      ((int32_t)0)
 #define WOLFCOSE_ALG_ES256      (-7)
 #define WOLFCOSE_ALG_ES384      (-35)
 #define WOLFCOSE_ALG_ES512      (-36)
@@ -348,11 +353,9 @@ extern "C" {
 #define WOLFCOSE_ALG_ECDH_ES_A192KW    (-30)  /* ECDH-ES + A192KW */
 #define WOLFCOSE_ALG_ECDH_ES_A256KW    (-31)  /* ECDH-ES + A256KW */
 
-#ifdef HAVE_DILITHIUM
 #define WOLFCOSE_ALG_ML_DSA_44   (-48)   /* ML-DSA (Dilithium) Level 2 */
 #define WOLFCOSE_ALG_ML_DSA_65   (-49)   /* ML-DSA Level 3 */
 #define WOLFCOSE_ALG_ML_DSA_87   (-50)   /* ML-DSA Level 5 */
-#endif
 
 /* Key types */
 #define WOLFCOSE_KTY_OKP         1
@@ -435,7 +438,8 @@ typedef struct WOLFCOSE_HDR {
  *
  * Caller allocates and initializes wolfCrypt keys (wc_ecc_init, etc).
  * wolfCOSE never owns key lifecycle -- wc_CoseKey_Free does NOT free the
- * underlying wolfCrypt key.
+ * underlying wolfCrypt key. Callers must not share the same underlying
+ * ECC key concurrently with ECDH-ES COSE operations in other threads.
  */
 typedef struct WOLFCOSE_KEY {
     int32_t        kty;       /**< WOLFCOSE_KTY_* */
@@ -675,7 +679,10 @@ WOLFCOSE_API int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx);
  * \param ctx  Decoder context. Must have idx < bufSz.
  * \return Major type (0-7).
  */
-#define wc_CBOR_PeekType(ctx) ((ctx)->cbuf[(ctx)->idx] >> 5u)
+static inline uint8_t wc_CBOR_PeekType(const WOLFCOSE_CBOR_CTX* ctx)
+{
+    return (uint8_t)(((uint32_t)ctx->cbuf[ctx->idx]) >> 5u);
+}
 
 #endif /* WOLFCOSE_CBOR_DECODE */
 

@@ -84,7 +84,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
             }
             else {
                 ctx->buf[ctx->idx] = (uint8_t)(mt | WOLFCOSE_CBOR_AI_2BYTE);
-                WOLFCOSE_STORE_BE16(&ctx->buf[ctx->idx + 1u], val);
+                wolfCose_StoreBE16(&ctx->buf[ctx->idx + 1u], val);
                 ctx->idx += need;
                 ret = WOLFCOSE_SUCCESS;
             }
@@ -96,7 +96,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
             }
             else {
                 ctx->buf[ctx->idx] = (uint8_t)(mt | WOLFCOSE_CBOR_AI_4BYTE);
-                WOLFCOSE_STORE_BE32(&ctx->buf[ctx->idx + 1u], val);
+                wolfCose_StoreBE32(&ctx->buf[ctx->idx + 1u], val);
                 ctx->idx += need;
                 ret = WOLFCOSE_SUCCESS;
             }
@@ -108,7 +108,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
             }
             else {
                 ctx->buf[ctx->idx] = (uint8_t)(mt | WOLFCOSE_CBOR_AI_8BYTE);
-                WOLFCOSE_STORE_BE64(&ctx->buf[ctx->idx + 1u], val);
+                wolfCose_StoreBE64(&ctx->buf[ctx->idx + 1u], val);
                 ctx->idx += need;
                 ret = WOLFCOSE_SUCCESS;
             }
@@ -143,7 +143,7 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
         ib = ctx->cbuf[ctx->idx];
         ctx->idx++;
 
-        item->majorType = (uint8_t)(ib >> 5);
+        item->majorType = (uint8_t)(((uint32_t)ib) >> 5u);
         ai = (uint8_t)(ib & 0x1Fu);
         item->data = NULL;
         item->dataLen = 0;
@@ -167,7 +167,7 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
             else {
-                item->val = (uint64_t)WOLFCOSE_LOAD_BE16(&ctx->cbuf[ctx->idx]);
+                item->val = (uint64_t)wolfCose_LoadBE16(&ctx->cbuf[ctx->idx]);
                 ctx->idx += 2u;
                 ret = WOLFCOSE_SUCCESS;
             }
@@ -177,7 +177,7 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
             else {
-                item->val = (uint64_t)WOLFCOSE_LOAD_BE32(&ctx->cbuf[ctx->idx]);
+                item->val = (uint64_t)wolfCose_LoadBE32(&ctx->cbuf[ctx->idx]);
                 ctx->idx += 4u;
                 ret = WOLFCOSE_SUCCESS;
             }
@@ -187,7 +187,7 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
             else {
-                item->val = WOLFCOSE_LOAD_BE64(&ctx->cbuf[ctx->idx]);
+                item->val = wolfCose_LoadBE64(&ctx->cbuf[ctx->idx]);
                 ctx->idx += 8u;
                 ret = WOLFCOSE_SUCCESS;
             }
@@ -201,14 +201,22 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
 
-        /* For bstr/tstr, advance past the data bytes (zero-copy) */
+        /* RFC 8949: 2-byte simple values with arg < 32 are malformed. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (item->majorType == WOLFCOSE_CBOR_SIMPLE) &&
+            (ai == WOLFCOSE_CBOR_AI_1BYTE) &&
+            (item->val < 32u)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+
+        /* Advance past bstr/tstr bytes using overflow-safe bounds. */
         if (ret == WOLFCOSE_SUCCESS) {
             if ((item->majorType == WOLFCOSE_CBOR_BSTR) ||
                 (item->majorType == WOLFCOSE_CBOR_TSTR)) {
                 if (item->val > (uint64_t)SIZE_MAX) {
                     ret = WOLFCOSE_E_CBOR_OVERFLOW;
                 }
-                else if ((ctx->idx + (size_t)item->val) > ctx->bufSz) {
+                else if ((size_t)item->val > (ctx->bufSz - ctx->idx)) {
                     ret = WOLFCOSE_E_CBOR_MALFORMED;
                 }
                 else {
@@ -263,16 +271,21 @@ static int wolfCose_CBOR_EncodeBytes(WOLFCOSE_CBOR_CTX* ctx,
 {
     int ret;
 
-    ret = wolfCose_CBOR_EncodeHead(ctx, majorType, (uint64_t)len);
-    if (ret == WOLFCOSE_SUCCESS) {
-        if ((ctx->idx + len) > ctx->bufSz) {
-            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
-        }
-        else {
-            if ((len > 0u) && (data != NULL)) {
-                (void)XMEMMOVE(&ctx->buf[ctx->idx], data, len);
+    if ((data == NULL) && (len > 0u)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        ret = wolfCose_CBOR_EncodeHead(ctx, majorType, (uint64_t)len);
+        if (ret == WOLFCOSE_SUCCESS) {
+            if (len > (ctx->bufSz - ctx->idx)) {
+                ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
-            ctx->idx += len;
+            else {
+                if (len > 0u) {
+                    (void)XMEMMOVE(&ctx->buf[ctx->idx], data, len);
+                }
+                ctx->idx += len;
+            }
         }
     }
     return ret;
@@ -357,7 +370,7 @@ int wc_CBOR_EncodeFloat(WOLFCOSE_CBOR_CTX* ctx, float val)
         (void)XMEMCPY(&bits, &val, sizeof(bits));
         ctx->buf[ctx->idx] = (uint8_t)((WOLFCOSE_CBOR_SIMPLE << 5) |
                                          WOLFCOSE_CBOR_AI_FLOAT32);
-        WOLFCOSE_STORE_BE32(&ctx->buf[ctx->idx + 1u], bits);
+        wolfCose_StoreBE32(&ctx->buf[ctx->idx + 1u], bits);
         ctx->idx += 5u;
         ret = WOLFCOSE_SUCCESS;
     }
@@ -379,7 +392,7 @@ int wc_CBOR_EncodeDouble(WOLFCOSE_CBOR_CTX* ctx, double val)
         (void)XMEMCPY(&bits, &val, sizeof(bits));
         ctx->buf[ctx->idx] = (uint8_t)((WOLFCOSE_CBOR_SIMPLE << 5) |
                                          WOLFCOSE_CBOR_AI_FLOAT64);
-        WOLFCOSE_STORE_BE64(&ctx->buf[ctx->idx + 1u], bits);
+        wolfCose_StoreBE64(&ctx->buf[ctx->idx + 1u], bits);
         ctx->idx += 9u;
         ret = WOLFCOSE_SUCCESS;
     }
@@ -570,7 +583,7 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
-        int depth = 0;
+        unsigned int depth = 0u;
         size_t remaining = 1; /* Start: need to skip 1 item */
         ret = WOLFCOSE_SUCCESS;
 
@@ -628,7 +641,7 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
             }
 
             /* Unwind stack when current level is exhausted */
-            while ((remaining == 0u) && (depth > 0)) {
+            while ((remaining == 0u) && (depth > 0u)) {
                 depth--;
                 remaining = stack[depth];
             }

@@ -50,7 +50,7 @@
 #include <string.h>
 
 /* Simulated sensor reading (would be CBOR in real EAT) */
-static uint8_t g_sensorReading[] = {
+static const uint8_t g_sensorReading[] = {
     /* Simplified sensor payload */
     0xA4,  /* CBOR map with 4 entries */
     0x01, 0x78, 0x0D,  /* key 1: sensor-id string */
@@ -95,6 +95,7 @@ static int sensor_init_key(ecc_key* eccKey, WOLFCOSE_KEY* cosKey, WC_RNG* rng)
 static int verifier_generate_nonce(uint8_t* nonce, size_t nonceLen, WC_RNG* rng)
 {
     int ret;
+    size_t i;
 
     printf("[Verifier] Generating challenge nonce...\n");
 
@@ -105,7 +106,7 @@ static int verifier_generate_nonce(uint8_t* nonce, size_t nonceLen, WC_RNG* rng)
     }
 
     printf("  Nonce: ");
-    for (size_t i = 0; i < nonceLen && i < 8; i++) {
+    for (i = 0u; (i < nonceLen) && (i < 8u); i++) {
         printf("%02X", nonce[i]);
     }
     printf("...\n");

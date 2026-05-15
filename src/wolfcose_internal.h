@@ -45,50 +45,63 @@ extern "C" {
  * WOLFSSL_API symbol in v5.8.4). Definition lives in wolfcose.c. */
 WOLFCOSE_LOCAL void wolfCose_ForceZero(void* mem, size_t len);
 
-/* ----- Big-endian load/store macros (bit-shift only, no platform dependencies) ----- */
+/* ----- Big-endian load/store helpers (bit-shift only, no platform dependencies) ----- */
 
-#define WOLFCOSE_STORE_BE16(buf, val) do {                     \
-    (buf)[0] = (uint8_t)(((uint16_t)(val)) >> 8);             \
-    (buf)[1] = (uint8_t)(((uint16_t)(val)) & 0xFFu);          \
-} while (0)
+static inline void wolfCose_StoreBE16(uint8_t* buf, uint64_t val)
+{
+    uint16_t beVal = (uint16_t)val;
 
-#define WOLFCOSE_STORE_BE32(buf, val) do {                     \
-    (buf)[0] = (uint8_t)(((uint32_t)(val)) >> 24);            \
-    (buf)[1] = (uint8_t)(((uint32_t)(val)) >> 16);            \
-    (buf)[2] = (uint8_t)(((uint32_t)(val)) >> 8);             \
-    (buf)[3] = (uint8_t)(((uint32_t)(val)) & 0xFFu);          \
-} while (0)
+    buf[0] = (uint8_t)(((uint32_t)beVal) >> 8u);
+    buf[1] = (uint8_t)(((uint32_t)beVal) & 0xFFu);
+}
 
-#define WOLFCOSE_STORE_BE64(buf, val) do {                     \
-    (buf)[0] = (uint8_t)(((uint64_t)(val)) >> 56);            \
-    (buf)[1] = (uint8_t)(((uint64_t)(val)) >> 48);            \
-    (buf)[2] = (uint8_t)(((uint64_t)(val)) >> 40);            \
-    (buf)[3] = (uint8_t)(((uint64_t)(val)) >> 32);            \
-    (buf)[4] = (uint8_t)(((uint64_t)(val)) >> 24);            \
-    (buf)[5] = (uint8_t)(((uint64_t)(val)) >> 16);            \
-    (buf)[6] = (uint8_t)(((uint64_t)(val)) >> 8);             \
-    (buf)[7] = (uint8_t)(((uint64_t)(val)) & 0xFFu);          \
-} while (0)
+static inline void wolfCose_StoreBE32(uint8_t* buf, uint64_t val)
+{
+    uint32_t beVal = (uint32_t)val;
 
-#define WOLFCOSE_LOAD_BE16(buf)                                \
-    ((uint16_t)(((uint16_t)(buf)[0] << 8) |                    \
-                ((uint16_t)(buf)[1])))
+    buf[0] = (uint8_t)(beVal >> 24u);
+    buf[1] = (uint8_t)(beVal >> 16u);
+    buf[2] = (uint8_t)(beVal >> 8u);
+    buf[3] = (uint8_t)(beVal & 0xFFu);
+}
 
-#define WOLFCOSE_LOAD_BE32(buf)                                \
-    ((uint32_t)(((uint32_t)(buf)[0] << 24) |                   \
-                ((uint32_t)(buf)[1] << 16) |                   \
-                ((uint32_t)(buf)[2] << 8)  |                   \
-                ((uint32_t)(buf)[3])))
+static inline void wolfCose_StoreBE64(uint8_t* buf, uint64_t val)
+{
+    buf[0] = (uint8_t)(val >> 56u);
+    buf[1] = (uint8_t)(val >> 48u);
+    buf[2] = (uint8_t)(val >> 40u);
+    buf[3] = (uint8_t)(val >> 32u);
+    buf[4] = (uint8_t)(val >> 24u);
+    buf[5] = (uint8_t)(val >> 16u);
+    buf[6] = (uint8_t)(val >> 8u);
+    buf[7] = (uint8_t)(val & 0xFFu);
+}
 
-#define WOLFCOSE_LOAD_BE64(buf)                                \
-    ((uint64_t)(((uint64_t)(buf)[0] << 56) |                   \
-                ((uint64_t)(buf)[1] << 48) |                   \
-                ((uint64_t)(buf)[2] << 40) |                   \
-                ((uint64_t)(buf)[3] << 32) |                   \
-                ((uint64_t)(buf)[4] << 24) |                   \
-                ((uint64_t)(buf)[5] << 16) |                   \
-                ((uint64_t)(buf)[6] << 8)  |                   \
-                ((uint64_t)(buf)[7])))
+static inline uint16_t wolfCose_LoadBE16(const uint8_t* buf)
+{
+    return (uint16_t)((((uint32_t)buf[0]) << 8u) |
+                      ((uint32_t)buf[1]));
+}
+
+static inline uint32_t wolfCose_LoadBE32(const uint8_t* buf)
+{
+    return ((((uint32_t)buf[0]) << 24u) |
+            (((uint32_t)buf[1]) << 16u) |
+            (((uint32_t)buf[2]) << 8u)  |
+            ((uint32_t)buf[3]));
+}
+
+static inline uint64_t wolfCose_LoadBE64(const uint8_t* buf)
+{
+    return ((((uint64_t)buf[0]) << 56u) |
+            (((uint64_t)buf[1]) << 48u) |
+            (((uint64_t)buf[2]) << 40u) |
+            (((uint64_t)buf[3]) << 32u) |
+            (((uint64_t)buf[4]) << 24u) |
+            (((uint64_t)buf[5]) << 16u) |
+            (((uint64_t)buf[6]) << 8u)  |
+            ((uint64_t)buf[7]));
+}
 
 /* ----- Internal CBOR head encode/decode ----- */
 
@@ -105,6 +118,20 @@ WOLFCOSE_LOCAL int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx,
  */
 WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx,
                                              WOLFCOSE_CBOR_ITEM* item);
+
+/* ----- RFC 9052 context-string byte arrays (see wolfcose.c) ----- */
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_SIGNATURE1[10];
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_SIGNATURE[9];
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_MAC0[4];
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_MAC[3];
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_ENCRYPT0[8];
+WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_ENCRYPT[7];
+
+typedef struct WOLFCOSE_HDR_STATE {
+    uint32_t labelBits;
+    int64_t  extraLabels[WOLFCOSE_MAX_MAP_ITEMS];
+    size_t   extraCount;
+} WOLFCOSE_HDR_STATE;
 
 /* ----- COSE internal helpers ----- */
 
@@ -126,7 +153,8 @@ WOLFCOSE_LOCAL int wolfCose_EncodeProtectedHdr(int32_t alg, uint8_t* buf,
  */
 WOLFCOSE_LOCAL int wolfCose_DecodeProtectedHdr(const uint8_t* data,
                                                 size_t dataLen,
-                                                WOLFCOSE_HDR* hdr);
+                                                WOLFCOSE_HDR* hdr,
+                                                WOLFCOSE_HDR_STATE* hdrState);
 
 /**
  * \brief Decode an unprotected header map from the decoder context.
@@ -134,7 +162,8 @@ WOLFCOSE_LOCAL int wolfCose_DecodeProtectedHdr(const uint8_t* data,
  * \param hdr  Output: parsed header fields (merged with protected).
  */
 WOLFCOSE_LOCAL int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx,
-                                                  WOLFCOSE_HDR* hdr);
+                                                  WOLFCOSE_HDR* hdr,
+                                                  WOLFCOSE_HDR_STATE* hdrState);
 
 /**
  * \brief Map COSE algorithm ID to wolfCrypt hash type.
@@ -206,7 +235,7 @@ WOLFCOSE_LOCAL int wolfCose_CrvToWcCurve(int32_t crv, int* wcCrv);
  * \return WOLFCOSE_SUCCESS or error code
  */
 WOLFCOSE_LOCAL int wolfCose_BuildToBeSignedMaced(
-    const char* context, size_t contextLen,
+    const uint8_t* context, size_t contextLen,
     const uint8_t* bodyProtected, size_t bodyProtectedLen,
     const uint8_t* signProtected, size_t signProtectedLen,
     const uint8_t* extAad, size_t extAadLen,
@@ -231,7 +260,7 @@ WOLFCOSE_LOCAL int wolfCose_BuildToBeSignedMaced(
  * \return WOLFCOSE_SUCCESS or error code
  */
 WOLFCOSE_LOCAL int wolfCose_BuildEncStructure(
-    const char* context, size_t contextLen,
+    const uint8_t* context, size_t contextLen,
     const uint8_t* bodyProtected, size_t bodyProtectedLen,
     const uint8_t* extAad, size_t extAadLen,
     uint8_t* scratch, size_t scratchSz,

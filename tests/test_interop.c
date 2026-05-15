@@ -726,6 +726,7 @@ static void test_interop_encrypt0_with_aad(void)
     TEST_ASSERT(ret == 0, "decrypt with correct AAD");
 
     /* Decrypt with wrong AAD must fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t wrongAad[] = "wrong-context";
         ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
@@ -857,6 +858,7 @@ static void test_interop_mac0_with_aad(void)
     TEST_ASSERT(ret == 0, "verify with correct AAD");
 
     /* Wrong AAD must fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t wrongAad[] = "wrong";
         ret = wc_CoseMac0_Verify(&key, out, outLen,
@@ -989,6 +991,7 @@ static void test_interop_mac0_detached(void)
     TEST_ASSERT((hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED) != 0, "detached flag");
 
     /* Wrong detached payload must fail */
+    /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t wrongPayload[] = "Wrong";
         ret = wc_CoseMac0_Verify(&key, out, outLen,
@@ -1503,8 +1506,10 @@ static void test_interop_mac_multi_recipient(void)
 
     printf("  [Interop Mac Multi-Recipient]\n");
 
-    wc_CoseKey_Init(&key);
-    wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    ret = wc_CoseKey_Init(&key);
+    TEST_ASSERT(ret == 0, "multi-recipient MAC key init");
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "multi-recipient MAC key set");
 
     /* Setup recipients with direct key */
     XMEMSET(recipients, 0, sizeof(recipients));

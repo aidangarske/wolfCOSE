@@ -66,6 +66,7 @@
 } while (0)
 
 #define CHECK_RESULT(r, name) do {                      \
+    (void)(name);                                       \
     if ((r) == 0) {                                     \
         printf("PASS\n");                               \
         passed++;                                       \

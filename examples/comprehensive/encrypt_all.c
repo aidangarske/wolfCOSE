@@ -52,6 +52,7 @@
 /* ----- Test Macros ----- */
 #define PRINT_TEST(name) printf("  Testing: %s... ", (name))
 #define CHECK_RESULT(r, name) do {                      \
+    (void)(name);                                       \
     if ((r) == 0) {                                     \
         printf("PASS\n");                               \
         passed++;                                       \
@@ -105,8 +106,8 @@ static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
                 iv, sizeof(iv),
                 payload, sizeof(payload) - 1,
                 detachedCt, sizeof(detachedCt), &detachedCtLen,
-                useAad ? aad : NULL,
-                useAad ? sizeof(aad) - 1 : 0,
+                (useAad != 0) ? aad : NULL,
+                (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
                 scratch, sizeof(scratch),
                 out, sizeof(out), &outLen);
         }
@@ -115,8 +116,8 @@ static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
                 iv, sizeof(iv),
                 payload, sizeof(payload) - 1,
                 NULL, 0, NULL,
-                useAad ? aad : NULL,
-                useAad ? sizeof(aad) - 1 : 0,
+                (useAad != 0) ? aad : NULL,
+                (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
                 scratch, sizeof(scratch),
                 out, sizeof(out), &outLen);
         }
@@ -127,8 +128,8 @@ static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
         if (detached != 0) {
             ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
                 detachedCt, detachedCtLen,
-                useAad ? aad : NULL,
-                useAad ? sizeof(aad) - 1 : 0,
+                (useAad != 0) ? aad : NULL,
+                (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
                 scratch, sizeof(scratch),
                 &hdr,
                 plaintext, sizeof(plaintext), &plaintextLen);
@@ -136,8 +137,8 @@ static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
         else {
             ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
                 NULL, 0,
-                useAad ? aad : NULL,
-                useAad ? sizeof(aad) - 1 : 0,
+                (useAad != 0) ? aad : NULL,
+                (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
                 scratch, sizeof(scratch),
                 &hdr,
                 plaintext, sizeof(plaintext), &plaintextLen);
@@ -183,12 +184,13 @@ static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
     uint8_t payload[] = "multi-recipient encrypted payload";
     uint8_t aad[] = "multi-recipient aad";
     uint8_t plaintext[256];
+    static const uint8_t recipKid[] = { 0x72u, 0x63u, 0x70u, 0x58u };
     size_t plaintextLen = 0;
     size_t outLen = 0;
+    size_t i;
     WOLFCOSE_HDR hdr;
     WC_RNG rng;
     int rngInit = 0;
-    int i;
 
     if (recipCount > 4) {
         return WOLFCOSE_E_INVALID_ARG;
@@ -209,11 +211,11 @@ static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
 
     /* Setup recipients with direct key */
     if (ret == 0) {
-        for (i = 0; i < recipCount; i++) {
+        for (i = 0u; i < (size_t)recipCount; i++) {
             recipients[i].algId = WOLFCOSE_ALG_DIRECT;
             recipients[i].key = &cek;
-            recipients[i].kid = (const uint8_t*)"rcpX";
-            recipients[i].kidLen = 4;
+            recipients[i].kid = recipKid;
+            recipients[i].kidLen = sizeof(recipKid);
         }
     }
 
@@ -222,12 +224,12 @@ static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
         ret = wc_CoseEncrypt_Encrypt(recipients, (size_t)recipCount,
             contentAlg,
             iv, sizeof(iv),
-            detached ? NULL : payload,
-            detached ? 0 : sizeof(payload) - 1,
-            detached ? payload : NULL,
-            detached ? sizeof(payload) - 1 : 0,
-            useAad ? aad : NULL,
-            useAad ? sizeof(aad) - 1 : 0,
+            (detached != 0) ? NULL : payload,
+            (detached != 0) ? 0u : (sizeof(payload) - 1u),
+            (detached != 0) ? payload : NULL,
+            (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+            (useAad != 0) ? aad : NULL,
+            (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen,
             &rng);
@@ -235,12 +237,12 @@ static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
 
     /* Decrypt with each recipient */
     if (ret == 0) {
-        for (i = 0; i < recipCount && ret == 0; i++) {
-            ret = wc_CoseEncrypt_Decrypt(&recipients[i], (size_t)i, out, outLen,
-                detached ? payload : NULL,
-                detached ? sizeof(payload) - 1 : 0,
-                useAad ? aad : NULL,
-                useAad ? sizeof(aad) - 1 : 0,
+        for (i = 0u; (i < (size_t)recipCount) && (ret == 0); i++) {
+            ret = wc_CoseEncrypt_Decrypt(&recipients[i], i, out, outLen,
+                (detached != 0) ? payload : NULL,
+                (detached != 0) ? (sizeof(payload) - 1u) : 0u,
+                (useAad != 0) ? aad : NULL,
+                (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
                 scratch, sizeof(scratch),
                 &hdr,
                 plaintext, sizeof(plaintext), &plaintextLen);
@@ -249,7 +251,7 @@ static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
 
     /* Cleanup */
     if (rngInit != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
     return ret;
 }
@@ -355,7 +357,7 @@ static int test_encrypt_wrong_key(void)
 
     /* Cleanup */
     if (rngInit != 0) {
-        wc_FreeRng(&rng);
+        (void)wc_FreeRng(&rng);
     }
     return ret;
 }

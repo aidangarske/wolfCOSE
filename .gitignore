@@ -20,3 +20,7 @@ docs/.jekyll-cache/
 docs/.bundle/
 docs/vendor/
 docs/Gemfile.lock
+
+# Local fenrir tracking (do not commit)
+FENRIR_FIX_LOG.md
+fenrir-open-findings-*.md

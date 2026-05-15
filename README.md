@@ -38,7 +38,7 @@ wolfCOSE has implemented all RFC 9052 messages both single-actor and multi-actor
 
 ## Prerequisites (wolfSSL)
 
-wolfCOSE requires [wolfSSL](https://www.wolfssl.com/) as its crypto backend. **Minimum recommended version: v5.7.4** (first release with FIPS 204 final ML-DSA + the context-aware `wc_dilithium_*_ctx_msg` APIs). Older 5.x releases can technically be supported but require source-level changes; contact [wolfSSL](https://www.wolfssl.com/contact/) for commercial support.
+wolfCOSE requires [wolfSSL](https://www.wolfssl.com/) as its crypto backend. **Minimum supported version: v5.8.0-stable** (first release with the public `wc_ForceZero` symbol alongside the FIPS 204 final ML-DSA and context-aware `wc_dilithium_*_ctx_msg` APIs). Older 5.x releases can technically be supported but require source-level changes; contact [wolfSSL](https://www.wolfssl.com/contact/) for commercial support.
 
 Choose a build configuration based on the algorithms you need.
 
@@ -167,6 +167,7 @@ Full documentation is available in the [Wiki](https://github.com/aidangarske/wol
 - [API Reference](https://github.com/aidangarske/wolfCOSE/wiki/API-Reference): Function signatures, data structures, error codes
 - [Macros](https://github.com/aidangarske/wolfCOSE/wiki/Macros): Compile-time configuration options
 - [Testing](https://github.com/aidangarske/wolfCOSE/wiki/Testing): Test infrastructure, coverage, and failure injection
+- [MISRA Compliance](https://github.com/aidangarske/wolfCOSE/wiki/MISRA-Compliance): MISRA C:2012 and C:2023 compliance status and deviation rationale
 - [Project Structure](https://github.com/aidangarske/wolfCOSE/wiki/Project-Structure): Source file layout
 
 ## Blogs
