@@ -146,9 +146,9 @@ make coverage-force-failure    # Include crypto failure path testing
   <img alt="Coverity Scan Build Status"
        src="https://scan.coverity.com/projects/32918/badge.svg"/>
 </a>
-<a href="https://github.com/aidangarske/wolfCOSE/actions">
+<a href="https://github.com/wolfSSL/wolfCOSE/actions">
   <img alt="CI Status"
-       src="https://img.shields.io/github/actions/workflow/status/aidangarske/wolfCOSE/build-test.yml?label=CI&logo=github"/>
+       src="https://img.shields.io/github/actions/workflow/status/wolfSSL/wolfCOSE/build-test.yml?label=CI&logo=github"/>
 </a>
 <a href="https://github.com/wolfssl/skoll">                                                                                                              <img alt="Skoll Review" src="https://img.shields.io/badge/skoll-passed-blue"/>                                                                     
 </a>                                                                                                                                                 
@@ -159,22 +159,16 @@ make coverage-force-failure    # Include crypto failure path testing
 
 ## Documentation
 
-Full documentation is available in the [Wiki](https://github.com/aidangarske/wolfCOSE/wiki):
+Full documentation is available in the [Wiki](https://github.com/wolfSSL/wolfCOSE/wiki):
 
-- [Getting Started](https://github.com/aidangarske/wolfCOSE/wiki/Getting-Started): Build instructions and first steps
-- [Message Types](https://github.com/aidangarske/wolfCOSE/wiki/Message-Types): All six RFC 9052 messages (Sign1, Sign, Encrypt0, Encrypt, Mac0, Mac) with code samples
-- [Algorithms](https://github.com/aidangarske/wolfCOSE/wiki/Algorithms): Complete list of 40 supported algorithms with COSE IDs
-- [API Reference](https://github.com/aidangarske/wolfCOSE/wiki/API-Reference): Function signatures, data structures, error codes
-- [Macros](https://github.com/aidangarske/wolfCOSE/wiki/Macros): Compile-time configuration options
-- [Testing](https://github.com/aidangarske/wolfCOSE/wiki/Testing): Test infrastructure, coverage, and failure injection
-- [MISRA Compliance](https://github.com/aidangarske/wolfCOSE/wiki/MISRA-Compliance): MISRA C:2012 and C:2023 compliance status and deviation rationale
-- [Project Structure](https://github.com/aidangarske/wolfCOSE/wiki/Project-Structure): Source file layout
-
-## Blogs
-
-Blogs and update can be found here:
-
-[wolfCOSE Blogs](https://aidangarske.github.io/wolfCOSE/)
+- [Getting Started](https://github.com/wolfSSL/wolfCOSE/wiki/Getting-Started): Build instructions and first steps
+- [Message Types](https://github.com/wolfSSL/wolfCOSE/wiki/Message-Types): All six RFC 9052 messages (Sign1, Sign, Encrypt0, Encrypt, Mac0, Mac) with code samples
+- [Algorithms](https://github.com/wolfSSL/wolfCOSE/wiki/Algorithms): Complete list of 40 supported algorithms with COSE IDs
+- [API Reference](https://github.com/wolfSSL/wolfCOSE/wiki/API-Reference): Function signatures, data structures, error codes
+- [Macros](https://github.com/wolfSSL/wolfCOSE/wiki/Macros): Compile-time configuration options
+- [Testing](https://github.com/wolfSSL/wolfCOSE/wiki/Testing): Test infrastructure, coverage, and failure injection
+- [MISRA Compliance](https://github.com/wolfSSL/wolfCOSE/wiki/MISRA-Compliance): MISRA C:2012 and C:2023 compliance status and deviation rationale
+- [Project Structure](https://github.com/wolfSSL/wolfCOSE/wiki/Project-Structure): Source file layout
 
 ## License
 
@@ -183,7 +177,5 @@ wolfCOSE is free software licensed under the [GPLv3](https://www.gnu.org/license
 Copyright (C) 2026 wolfSSL Inc.
 
 ## Support
-
-> **Note:** While wolfCOSE is currently maintained by wolfSSL developers, it is not yet classified as an officially supported product. It was designed from the ground up to meet the same quality standards as the rest of the wolfSSL suite with future adoption in mind. We are eager to transition this to a fully supported product as demand grows; if your organization requires official support or has specific feature requirements or you just have general questions or guidance with product, please reach out.
 
 For commercial licensing, professional support contracts, or to discuss moving wolfCOSE into your production environment, contact [wolfSSL](https://www.wolfssl.com/contact/).

@@ -2,7 +2,7 @@ name: Codespell
 
 on:
   push:
-    branches: [ 'master', 'main', 'release/**' ]
+    branches: [ 'main', 'release/**' ]
   pull_request:
     branches: [ '*' ]
   workflow_dispatch:

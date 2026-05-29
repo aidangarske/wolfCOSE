@@ -13,7 +13,7 @@ jobs:
   trigger:
     name: Trigger All CI Workflows
     runs-on: ubuntu-latest
-    if: github.repository == 'aidangarske/wolfCOSE'
+    if: github.repository == 'wolfSSL/wolfCOSE'
 
     steps:
     - name: Dispatch all workflows
@@ -44,7 +44,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 workflow_id: workflow,
-                ref: 'master',
+                ref: 'main',
               });
               results.push(`  OK  ${workflow}`);
               core.info(`Triggered ${workflow}`);
