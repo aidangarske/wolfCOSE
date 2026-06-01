@@ -9099,6 +9099,59 @@ static void test_cose_encrypt_direct_empty_protected(void)
 
     if (rngInited != 0) { (void)wc_FreeRng(&rng); }
 }
+
+static void test_cose_encrypt_recipient_alg_checks(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    uint8_t cek[16] = {0};
+    uint8_t scratch[512];
+    uint8_t plaintext[16];
+    size_t plaintextLen = 0;
+    int ret;
+    /* COSE_Encrypt whose recipient protected alg is HMAC-256 (5), an algorithm
+     * that is not a key-distribution algorithm. */
+    uint8_t unsupported[] = {
+        0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
+        0xA1u, 0x05u, 0x4Cu, 0,0,0,0,0,0,0,0,0,0,0,0,
+        0x50u, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x81u, 0x83u, 0x43u, 0xA1u, 0x01u, 0x05u, 0xA0u, 0xF6u
+    };
+    /* A valid direct-mode COSE_Encrypt (empty recipient protected). */
+    uint8_t direct[] = {
+        0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
+        0xA1u, 0x05u, 0x4Cu, 0,0,0,0,0,0,0,0,0,0,0,0,
+        0x50u, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x81u, 0x83u, 0x40u, 0xA0u, 0xF6u
+    };
+
+    TEST_LOG("  [Encrypt recipient alg checks]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, cek, sizeof(cek));
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    /* 5377: unsupported recipient alg must be rejected, not treated direct. */
+    recipient.algId = 0;
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0, unsupported, sizeof(unsupported),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "unsupported recipient alg rejected");
+
+    /* 5367: caller key-wrap policy must reject a direct-mode message. */
+    recipient.algId = WOLFCOSE_ALG_A128KW;
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0, direct, sizeof(direct),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "recipient algId policy enforced");
+}
 #endif /* HAVE_AESGCM */
 
 static void test_cose_protected_hdr_content_type(void)
@@ -15199,6 +15252,7 @@ int test_cose(void)
 #ifdef HAVE_AESGCM
     test_cose_encrypt_dup_recipient_unprot_hdr();
     test_cose_encrypt_direct_empty_protected();
+    test_cose_encrypt_recipient_alg_checks();
 #endif
     test_cose_protected_hdr_content_type();
     test_cose_protected_hdr_tstr_label();

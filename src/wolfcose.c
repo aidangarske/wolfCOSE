@@ -6900,6 +6900,46 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
             alg);
     }
 
+    /* Classify the recipient key-management algorithm. Only direct, ECDH-ES
+     * direct, and AES key wrap are supported; reject anything else instead of
+     * silently treating it as direct-key decryption. */
+    if (ret == WOLFCOSE_SUCCESS) {
+        int recipModeOk = 0;
+        if ((recipientAlgId == WOLFCOSE_ALG_UNSET) ||
+            (recipientAlgId == WOLFCOSE_ALG_DIRECT)) {
+            recipModeOk = 1;
+        }
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+        else if (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0) {
+            recipModeOk = 1;
+        }
+#endif
+#if defined(WOLFCOSE_KEY_WRAP)
+        else if (wolfCose_IsKeyWrapAlg(recipientAlgId) != 0) {
+            recipModeOk = 1;
+        }
+#endif
+        else {
+            /* No action required */
+        }
+        if (recipModeOk == 0) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+    }
+
+    /* Enforce the caller's recipient->algId policy when set. A message in
+     * implicit direct mode has no recipient alg, so normalize it to direct. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipient->algId != WOLFCOSE_ALG_UNSET)) {
+        int32_t gotAlg = recipientAlgId;
+        if (gotAlg == WOLFCOSE_ALG_UNSET) {
+            gotAlg = WOLFCOSE_ALG_DIRECT;
+        }
+        if (recipient->algId != gotAlg) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+    }
+
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     /* RFC 9052 Section 8.5.5: direct key agreement carries exactly one
      * recipient. */
