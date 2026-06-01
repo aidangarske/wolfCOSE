@@ -4517,9 +4517,11 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
-    /* Signer unprotected headers (skip for now) */
+    /* Signer unprotected headers. Decode with duplicate-label tracking so a
+     * malformed signer header (repeated labels, or labels also present in the
+     * signer protected bucket) is rejected. */
     if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_Skip(&ctx);
+        ret = wolfCose_DecodeUnprotectedHdr(&ctx, &signerHdr, &signerHdrState);
     }
 
     /* Signature */
@@ -6873,8 +6875,11 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
 
-    /* [0] recipient protected header */
+    /* [0] recipient protected header. Initialize the header state so the
+     * unprotected decode below can run cross-bucket duplicate checks even when
+     * the protected bucket is an empty bstr. */
     if (ret == WOLFCOSE_SUCCESS) {
+        wolfCose_HdrStateInit(&recipientHdrState);
         ret = wc_CBOR_DecodeBstr(&ctx, &recipientProtectedData, &recipientProtectedLen);
     }
     if ((ret == WOLFCOSE_SUCCESS) && (recipientProtectedLen > 0u)) {
@@ -6915,6 +6920,12 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
                 ret = wc_CBOR_DecodeInt(&ctx, &label);
             }
 
+            /* Reject duplicate labels within the unprotected map and labels
+             * also present in the recipient protected bucket. */
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_HdrStateCheckAndAdd(&recipientHdrState, label);
+            }
+
             if ((ret == WOLFCOSE_SUCCESS) &&
                 (label == WOLFCOSE_HDR_EPHEMERAL_KEY)) {
                 if (haveEphemKey != 0) {
@@ -6951,7 +6962,12 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     else
 #endif
     if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_Skip(&ctx);
+        /* Decode the recipient unprotected map with duplicate-label tracking
+         * (within the map and against the recipient protected bucket). */
+        WOLFCOSE_HDR recipUnprotHdr;
+        (void)XMEMSET(&recipUnprotHdr, 0, sizeof(recipUnprotHdr));
+        ret = wolfCose_DecodeUnprotectedHdr(&ctx, &recipUnprotHdr,
+                                            &recipientHdrState);
     }
     else {
         /* No action required */
@@ -7645,9 +7661,47 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         ret = wc_CBOR_Skip(&ctx);
     }
 
-    /* Parse the recipient (skip it - we use the provided key) */
+    /* Parse the selected COSE_recipient: [protected, unprotected, ciphertext].
+     * The caller-supplied key is used for the MAC, but the recipient structure
+     * and header buckets must still be well formed (duplicate-label checks). */
     if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_Skip(&ctx);
+        size_t recipArrCount = 0;
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &recipArrCount);
+        if ((ret == WOLFCOSE_SUCCESS) && (recipArrCount != 3u)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        const uint8_t* recipProt = NULL;
+        size_t recipProtLen = 0;
+        WOLFCOSE_HDR recipHdr;
+        WOLFCOSE_HDR_STATE recipState;
+
+        ret = wc_CBOR_DecodeBstr(&ctx, &recipProt, &recipProtLen);
+        if (ret == WOLFCOSE_SUCCESS) {
+            (void)XMEMSET(&recipHdr, 0, sizeof(recipHdr));
+            ret = wolfCose_DecodeProtectedHdr(recipProt, recipProtLen,
+                                              &recipHdr, &recipState);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_DecodeUnprotectedHdr(&ctx, &recipHdr, &recipState);
+        }
+        /* ciphertext: bstr (wrapped key) or nil (direct). */
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            if ((item.majorType == WOLFCOSE_CBOR_SIMPLE) &&
+                (item.val == 22u)) {
+                /* nil - direct MAC, no wrapped key */
+            }
+            else if (item.majorType == WOLFCOSE_CBOR_BSTR) {
+                /* bstr - wrapped key present (unused with provided key) */
+            }
+            else {
+                ret = WOLFCOSE_E_CBOR_TYPE;
+            }
+        }
     }
 
     /* Skip remaining recipients, then reject trailing data (RFC 8949 5.3.1). */

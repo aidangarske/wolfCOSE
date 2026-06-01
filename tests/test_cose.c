@@ -8888,6 +8888,139 @@ static void test_cose_oversized_int_narrowing(void)
                 "CoseKey_Decode rejects oversized kty");
 }
 
+#ifdef HAVE_ECC
+static void test_cose_sign_dup_signer_unprot_hdr(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    int ret;
+    int rngInited = 0;
+    int eccInited = 0;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    WOLFCOSE_HDR hdr;
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    /* COSE_Sign with one signer whose unprotected map repeats label 4 (kid).
+     * [ h'', {}, 'x', [ [ h'A10126', {4:h'01',4:h'02'}, h'0000' ] ] ] */
+    uint8_t msg[] = {
+        0x84u, 0x40u, 0xA0u, 0x41u, 0x78u, 0x81u,
+        0x83u, 0x43u, 0xA1u, 0x01u, 0x26u,
+        0xA2u, 0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
+        0x42u, 0x00u, 0x00u
+    };
+
+    TEST_LOG("  [Sign multi dup signer unprotected label]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) { rngInited = 1; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
+    if (ret == 0) {
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        ret = wc_CoseSign_Verify(&key, 0, msg, sizeof(msg),
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &payload, &payloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                    "dup signer unprotected label rejected");
+    }
+
+    if (eccInited != 0) { (void)wc_ecc_free(&eccKey); }
+    if (rngInited != 0) { (void)wc_FreeRng(&rng); }
+}
+#endif /* HAVE_ECC */
+
+#ifndef NO_HMAC
+static void test_cose_mac_dup_recipient_unprot_hdr(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    uint8_t macKey[32] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    WOLFCOSE_HDR hdr;
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    int ret;
+    /* COSE_Mac whose single recipient repeats label 4 in its unprotected map.
+     * [ h'A10105', {}, 'x', h'<32>', [ [ h'', {4:h'01',4:h'02'}, nil ] ] ] */
+    uint8_t msg[] = {
+        0x85u, 0x43u, 0xA1u, 0x01u, 0x05u, 0xA0u, 0x41u, 0x78u,
+        0x58u, 0x20u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x81u, 0x83u, 0x40u,
+        0xA2u, 0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
+        0xF6u
+    };
+
+    TEST_LOG("  [Mac multi dup recipient unprotected label]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, macKey, sizeof(macKey));
+    recipient.algId = 0;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseMac_Verify(&recipient, 0, msg, sizeof(msg),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "dup recipient unprotected label rejected (mac)");
+}
+#endif /* NO_HMAC */
+
+#ifdef HAVE_AESGCM
+static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    uint8_t cek[16] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    WOLFCOSE_HDR hdr;
+    uint8_t plaintext[16];
+    size_t plaintextLen = 0;
+    int ret;
+    /* COSE_Encrypt (A128GCM) whose single direct recipient repeats label 4.
+     * [ h'A10101', {5:h'<12 IV>'}, h'<16 ct>', [ [ h'', {4:h'01',4:h'02'},
+     *   nil ] ] ] */
+    uint8_t msg[] = {
+        0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
+        0xA1u, 0x05u, 0x4Cu,
+        0,0,0,0,0,0,0,0,0,0,0,0,
+        0x50u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x81u, 0x83u, 0x40u,
+        0xA2u, 0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
+        0xF6u
+    };
+
+    TEST_LOG("  [Encrypt multi dup recipient unprotected label]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, cek, sizeof(cek));
+    recipient.algId = 0;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0, msg, sizeof(msg),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "dup recipient unprotected label rejected (encrypt)");
+}
+#endif /* HAVE_AESGCM */
+
 static void test_cose_protected_hdr_content_type(void)
 {
     int ret;
@@ -14888,6 +15021,15 @@ int test_cose(void)
     test_cose_protected_hdr_empty_map();
     test_cose_protected_hdr_trailing();
     test_cose_oversized_int_narrowing();
+#ifdef HAVE_ECC
+    test_cose_sign_dup_signer_unprot_hdr();
+#endif
+#ifndef NO_HMAC
+    test_cose_mac_dup_recipient_unprot_hdr();
+#endif
+#ifdef HAVE_AESGCM
+    test_cose_encrypt_dup_recipient_unprot_hdr();
+#endif
     test_cose_protected_hdr_content_type();
     test_cose_protected_hdr_tstr_label();
     test_cose_protected_hdr_dup_label();
