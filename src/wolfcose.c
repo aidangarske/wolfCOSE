@@ -6897,6 +6897,16 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
             alg);
     }
 
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+    /* RFC 9052 Section 8.5.5: direct key agreement carries exactly one
+     * recipient. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0) &&
+        ((recipientsCount != 1u) || (recipientIndex != 0u))) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
+#endif
+
     /* [1] recipient unprotected header */
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     if ((ret == WOLFCOSE_SUCCESS) &&

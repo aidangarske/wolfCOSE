@@ -14730,6 +14730,95 @@ static void test_ecdh_es_multi_recipient_rejected(void)
     (void)wc_ecc_free(&eccKey2);
     (void)wc_FreeRng(&rng);
 }
+
+static void test_ecdh_es_multi_recipient_decrypt_rejected(void)
+{
+    WOLFCOSE_KEY recipientKey;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    ecc_key recipientEcc;
+    WC_RNG rng;
+    WOLFCOSE_CBOR_CTX ctx;
+    int ret;
+    size_t outerCount = 0;
+    size_t recipPos = 0;
+    size_t i;
+    uint8_t out[512];
+    uint8_t spliced[520];
+    size_t outLen = 0;
+    size_t splicedLen = 0;
+    uint8_t scratch[256];
+    uint8_t plaintext[64];
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "ECDH-ES decode multi";
+    uint8_t iv[12] = {1,2,3,4,5,6,7,8,9,10,11,12};
+    static const uint8_t dummyRecip[] = {0x83u, 0x40u, 0xA0u, 0xF6u};
+
+    TEST_LOG("  [ECDH-ES Multi-Recipient Decode Rejected]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    wc_ecc_init(&recipientEcc);
+    wc_ecc_make_key(&rng, 32, &recipientEcc);
+    (void)wc_CoseKey_Init(&recipientKey);
+    (void)wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
+    recipientKey.hasPrivate = 0;
+
+    recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+    recipient.key = &recipientKey;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv), payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == 0, "ecdh-es single encrypt");
+
+    /* Locate the recipients array (outer element [3]) and rewrite it as a
+     * two-recipient array by appending a dummy recipient. */
+    if (ret == 0) {
+        uint64_t tag = 0;
+        ctx.cbuf = out;
+        ctx.bufSz = outLen;
+        ctx.idx = 0;
+        if (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG) {
+            ret = wc_CBOR_DecodeTag(&ctx, &tag);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_DecodeArrayStart(&ctx, &outerCount);
+        }
+        for (i = 0; (ret == 0) && (i < 3u); i++) {
+            ret = wc_CBOR_Skip(&ctx);
+        }
+        recipPos = ctx.idx;
+        TEST_ASSERT((ret == 0) && (outerCount == 4u) && (out[recipPos] == 0x81u),
+                    "located single-recipient array");
+    }
+
+    if ((ret == 0) && (out[recipPos] == 0x81u)) {
+        XMEMCPY(spliced, out, recipPos);
+        spliced[recipPos] = 0x82u;
+        XMEMCPY(&spliced[recipPos + 1u], &out[recipPos + 1u],
+                outLen - recipPos - 1u);
+        splicedLen = outLen;
+        XMEMCPY(&spliced[splicedLen], dummyRecip, sizeof(dummyRecip));
+        splicedLen += sizeof(dummyRecip);
+
+        recipientKey.hasPrivate = 1;
+        memset(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0, spliced, splicedLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                    "ecdh-es multi-recipient decode rejected");
+    }
+
+    wc_CoseKey_Free(&recipientKey);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
+}
 #endif
 
 /* Test #9: wc_CoseSign_Verify rejects wrong array count */
@@ -15338,6 +15427,7 @@ int test_cose(void)
 #if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM) && \
     defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     test_ecdh_es_multi_recipient_rejected();
+    test_ecdh_es_multi_recipient_decrypt_rejected();
 #endif
 
     /* Mock failure injection tests */
