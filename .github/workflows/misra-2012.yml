@@ -5,7 +5,7 @@ name: MISRA C 2012
 
 on:
   push:
-    branches: [ 'master', 'main', 'release/**' ]
+    branches: [ 'main', 'release/**' ]
   pull_request:
     branches: [ '*' ]
   workflow_dispatch:
@@ -73,7 +73,7 @@ jobs:
         #   Recipients, Key Wrap, ECDH, CBOR, Key encode/decode, Float
         #
         # MISRA C:2012 Deviations (documented at
-        # https://github.com/aidangarske/wolfCOSE/wiki/MISRA-Compliance):
+        # https://github.com/wolfSSL/wolfCOSE/wiki/MISRA-Compliance):
         #
         # Rule 2.5  — Feature-gate macros (WOLFCOSE_SIGN1 etc.) are defined
         #             conditionally; cppcheck false-positive when both parent

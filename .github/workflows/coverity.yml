@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
 
     # Only run from the original repo, not forks
-    if: github.repository == 'aidangarske/wolfCOSE'
+    if: github.repository == 'wolfSSL/wolfCOSE'
 
     steps:
     - uses: actions/checkout@v4

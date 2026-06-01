@@ -6,7 +6,7 @@ name: MISRA C 2023 Compliance
 
 on:
   push:
-    branches: [ 'master', 'main', 'release/**' ]
+    branches: [ 'main', 'release/**' ]
   pull_request:
     branches: [ '*' ]
   workflow_dispatch:
@@ -193,7 +193,7 @@ jobs:
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         # Deviations (documented at
-        # https://github.com/aidangarske/wolfCOSE/wiki/MISRA-Compliance):
+        # https://github.com/wolfSSL/wolfCOSE/wiki/MISRA-Compliance):
         #
         # -bugprone-branch-clone: Different COSE algorithms intentionally
         #   map to the same wolfCrypt value (e.g. ES512 and EdDSA both
