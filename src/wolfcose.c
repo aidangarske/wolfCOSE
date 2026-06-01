@@ -3567,6 +3567,11 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         ret = wc_CBOR_DecodeBstr(&ctx, &sigData, &sigDataLen);
     }
 
+    /* RFC 8949 Section 5.3.1: reject trailing data after the COSE object. */
+    if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+
     if (ret == WOLFCOSE_SUCCESS) {
         alg = hdr->alg;
     }
@@ -4466,6 +4471,15 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         ret = wc_CBOR_DecodeBstr(&ctx, &signature, &signatureLen);
     }
 
+    /* Skip remaining signers, then reject trailing data (RFC 8949 5.3.1). */
+    for (i = signerIndex + 1u; (i < signatureCount) && (ret == WOLFCOSE_SUCCESS);
+         i++) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+
     /* Build Sig_structure for verification */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_BuildToBeSignedMaced(
@@ -5180,6 +5194,11 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
         else {
             ret = wc_CBOR_DecodeBstr(&ctx, &ciphertext, &ciphertextLen);
         }
+    }
+
+    /* RFC 8949 Section 5.3.1: reject trailing data after the COSE object. */
+    if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
 
     if (ret == WOLFCOSE_SUCCESS) {
@@ -5943,6 +5962,11 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
     /* 4. Tag (bstr) */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wc_CBOR_DecodeBstr(&ctx, &macTag, &macTagLen);
+    }
+
+    /* RFC 8949 Section 5.3.1: reject trailing data after the COSE object. */
+    if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
 
     if (ret == WOLFCOSE_SUCCESS) {
@@ -6898,6 +6922,15 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         /* No action required */
     }
 
+    /* Skip remaining recipients, then reject trailing data (RFC 8949 5.3.1). */
+    for (i = recipientIndex + 1u;
+         (ret == WOLFCOSE_SUCCESS) && (i < recipientsCount); i++) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+
     /* Get key/tag lengths */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_AeadKeyLen(alg, &keyLen);
@@ -7559,6 +7592,15 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     /* Parse the recipient (skip it - we use the provided key) */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wc_CBOR_Skip(&ctx);
+    }
+
+    /* Skip remaining recipients, then reject trailing data (RFC 8949 5.3.1). */
+    for (i = recipientIndex + 1u;
+         (ret == WOLFCOSE_SUCCESS) && (i < recipientsCount); i++) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
 
     /* Validate key and enforce key->alg agreement with the message. */
