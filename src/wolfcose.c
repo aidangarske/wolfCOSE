@@ -863,6 +863,19 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
                 }
             }
             else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (label == WOLFCOSE_HDR_KID)) {
+                /* RFC 9052 Section 3.1: kid may appear in the protected
+                 * bucket; populate it the same way the unprotected decoder
+                 * does instead of skipping it as unknown. */
+                const uint8_t* kidData;
+                size_t kidBstrLen;
+                ret = wc_CBOR_DecodeBstr(&ctx, &kidData, &kidBstrLen);
+                if (ret == WOLFCOSE_SUCCESS) {
+                    hdr->kid = kidData;
+                    hdr->kidLen = kidBstrLen;
+                }
+            }
+            else if ((ret == WOLFCOSE_SUCCESS) &&
                      (label == WOLFCOSE_HDR_IV)) {
                 const uint8_t* ivData;
                 size_t ivBstrLen;

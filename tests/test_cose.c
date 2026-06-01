@@ -8856,6 +8856,22 @@ static void test_cose_protected_hdr_trailing(void)
                 "DecodeProtectedHdr rejects trailing bytes");
 }
 
+static void test_cose_protected_hdr_kid(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
+    uint8_t prot[] = {0xA1u, 0x04u, 0x42u, 0xAAu, 0xBBu}; /* {4: h'AABB'} */
+
+    TEST_LOG("  [Protected Header: kid]\n");
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(prot, sizeof(prot), &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "decode protected kid");
+    TEST_ASSERT((hdr.kid != NULL) && (hdr.kidLen == 2u) &&
+                (hdr.kid[0] == 0xAAu) && (hdr.kid[1] == 0xBBu),
+                "protected kid populated");
+}
+
 static void test_cose_oversized_int_narrowing(void)
 {
     int ret;
@@ -15242,6 +15258,7 @@ int test_cose(void)
     test_cbor_edge_cases();
     test_cose_protected_hdr_empty_map();
     test_cose_protected_hdr_trailing();
+    test_cose_protected_hdr_kid();
     test_cose_oversized_int_narrowing();
 #ifdef HAVE_ECC
     test_cose_sign_dup_signer_unprot_hdr();
