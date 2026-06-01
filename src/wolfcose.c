@@ -1790,6 +1790,16 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
         ctx.idx = 0;
         wolfCose_HdrStateInit(&keyLabelState);
 
+        /* Reset decoded metadata so a malformed key cannot reuse caller state
+         * (e.g. a prior kty/hasPrivate). The key.* union is left untouched: it
+         * holds the caller-attached wolfCrypt object used for import. */
+        key->kty = 0;
+        key->alg = WOLFCOSE_ALG_UNSET;
+        key->crv = 0;
+        key->kid = NULL;
+        key->kidLen = 0;
+        key->hasPrivate = 0;
+
         ret = wc_CBOR_DecodeMapStart(&ctx, &mapCount);
 
         if ((ret == WOLFCOSE_SUCCESS) && (mapCount > (size_t)WOLFCOSE_MAX_MAP_ITEMS)) {
@@ -1894,6 +1904,18 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     ret = wc_CBOR_Skip(&ctx);
                 }
             }
+        }
+
+        /* kty is mandatory. Validate before import so an absent kty cannot
+         * fall through to a stale key type. */
+        if ((ret == WOLFCOSE_SUCCESS) && (key->kty == 0)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+
+        /* RFC 8949 Section 5.3.1: reject trailing data before importing any
+         * key material so a failed decode leaves no key populated. */
+        if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
 
         /* Import key data into wolfCrypt key structs */
@@ -2108,16 +2130,6 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                  * (kty, crv, alg, kid) is still populated so the caller
                  * can inspect it. Nothing to do here. */
             }
-        }
-
-        /* kty is mandatory. */
-        if ((ret == WOLFCOSE_SUCCESS) && (key->kty == 0)) {
-            ret = WOLFCOSE_E_COSE_BAD_HDR;
-        }
-
-        /* RFC 8949 Section 5.3.1: reject trailing data after the map. */
-        if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
-            ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
     }
 

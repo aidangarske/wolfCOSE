@@ -10654,6 +10654,42 @@ static void test_cose_key_decode_trailing_bytes(void)
                 "CoseKey_Decode rejects trailing bytes");
 }
 
+static void test_cose_key_decode_no_material_on_failure(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t prior[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
+    /* {-1: h'<16>'} -- symmetric k but mandatory kty (label 1) omitted. */
+    uint8_t noKty[] = {
+        0xA1u, 0x20u, 0x50u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    };
+    /* {1: 4, -1: h'<16>'} valid symmetric key followed by trailing garbage. */
+    uint8_t trailing[] = {
+        0xA2u, 0x01u, 0x04u, 0x20u, 0x50u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0xFFu
+    };
+
+    TEST_LOG("  [CoseKey_Decode no material on failure]\n");
+
+    /* Stale state: a pre-populated key must not satisfy a no-kty message. */
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, prior, sizeof(prior));
+    ret = wc_CoseKey_Decode(&key, noKty, sizeof(noKty));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "CoseKey_Decode rejects missing kty over stale state");
+    TEST_ASSERT(key.hasPrivate == 0u, "no private flag after stale reject");
+
+    /* Trailing data must be rejected before any key material is imported. */
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, trailing, sizeof(trailing));
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "CoseKey_Decode rejects trailing data");
+    TEST_ASSERT(key.hasPrivate == 0u, "no private flag after trailing reject");
+    TEST_ASSERT(key.key.symm.key == NULL, "no key material after trailing reject");
+}
+
 static void test_cose_key_decode_symmetric_missing_k(void)
 {
     WOLFCOSE_KEY key;
@@ -14946,6 +14982,7 @@ int test_cose(void)
 #if defined(WOLFCOSE_KEY_DECODE)
     test_cose_key_decode_missing_kty();
     test_cose_key_decode_trailing_bytes();
+    test_cose_key_decode_no_material_on_failure();
     test_cose_key_decode_symmetric_missing_k();
 #if defined(HAVE_ECC)
     test_cose_key_decode_ec2_short_coord();
