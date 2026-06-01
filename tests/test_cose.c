@@ -1416,6 +1416,67 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
         (void)wc_FreeRng(&rng);
     }
 }
+
+static void test_cose_sign1_ml_dsa_level_mismatch(void)
+{
+    WOLFCOSE_KEY signKey;
+    dilithium_key dlKey;
+    WC_RNG rng;
+    int ret = 0;
+    int rngInited = 0;
+    int dlInited = 0;
+    uint8_t payload[] = "ML-DSA level payload";
+    uint8_t scratch[8192];
+    uint8_t out[8192];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+
+    TEST_LOG("  [Sign1 ML-DSA level mismatch]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) { rngInited = 1; }
+    if (ret == 0) {
+        ret = wc_dilithium_init(&dlKey);
+        if (ret != 0) { TEST_ASSERT(0, "dl init"); }
+        if (ret == 0) { dlInited = 1; }
+    }
+    if (ret == 0) {
+        ret = wc_dilithium_set_level(&dlKey, 2);
+        if (ret != 0) { TEST_ASSERT(0, "dl set level"); }
+    }
+    if (ret == 0) {
+        ret = wc_dilithium_make_key(&dlKey, &rng);
+        if (ret != 0) { TEST_ASSERT(0, "dl keygen"); }
+    }
+    if (ret == 0) {
+        (void)wc_CoseKey_Init(&signKey);
+        (void)wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+        ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0 && outLen > 0, "ml-dsa level sign");
+    }
+    if (ret == 0) {
+        /* Key declares level 5 with no alg pin while the message is level 2;
+         * verify must reject on the level mismatch, not attempt the crypto. */
+        signKey.crv = WOLFCOSE_CRV_ML_DSA_87;
+        signKey.alg = WOLFCOSE_ALG_UNSET;
+        ret = wc_CoseSign1_Verify(&signKey, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "ml-dsa level mismatch rejected");
+        ret = 0;
+    }
+
+    if (dlInited != 0) { (void)wc_dilithium_free(&dlKey); }
+    if (rngInited != 0) { (void)wc_FreeRng(&rng); }
+}
 #endif /* HAVE_DILITHIUM */
 
 /* ----- COSE_Sign1 with external AAD ----- */
@@ -15092,6 +15153,7 @@ int test_cose(void)
     test_cose_sign1_ml_dsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, 2);
     test_cose_sign1_ml_dsa("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, 3);
     test_cose_sign1_ml_dsa("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, 5);
+    test_cose_sign1_ml_dsa_level_mismatch();
 #endif
 
     /* Mac0 basic tests */

@@ -228,6 +228,31 @@ WOLFCOSE_LOCAL int wolfCose_SigSize(int32_t alg, size_t* sigSz)
     return ret;
 }
 
+#ifdef HAVE_DILITHIUM
+/* Map an ML-DSA COSE algorithm to the curve identifier its key must carry, so
+ * a key of the wrong security level cannot satisfy a higher-level alg label. */
+static int wolfCose_MlDsaAlgCrv(int32_t alg, int32_t* crv)
+{
+    int ret = WOLFCOSE_SUCCESS;
+
+    switch (alg) {
+        case WOLFCOSE_ALG_ML_DSA_44:
+            *crv = WOLFCOSE_CRV_ML_DSA_44;
+            break;
+        case WOLFCOSE_ALG_ML_DSA_65:
+            *crv = WOLFCOSE_CRV_ML_DSA_65;
+            break;
+        case WOLFCOSE_ALG_ML_DSA_87:
+            *crv = WOLFCOSE_CRV_ML_DSA_87;
+            break;
+        default:
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+            break;
+    }
+    return ret;
+}
+#endif /* HAVE_DILITHIUM */
+
 int wolfCose_CrvKeySize(int32_t crv, size_t* keySz)
 {
     int ret = WOLFCOSE_SUCCESS;
@@ -3414,8 +3439,17 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
     if ((ret == WOLFCOSE_SUCCESS) && ((alg == WOLFCOSE_ALG_ML_DSA_44) ||
         (alg == WOLFCOSE_ALG_ML_DSA_65) || (alg == WOLFCOSE_ALG_ML_DSA_87))) {
         size_t expectedSigSz = 0;
+        int32_t reqCrv = 0;
 
         if ((key->kty != WOLFCOSE_KTY_OKP) || (key->key.dilithium == NULL)) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+
+        /* Key level must match the algorithm level. */
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_MlDsaAlgCrv(alg, &reqCrv);
+        }
+        if ((ret == WOLFCOSE_SUCCESS) && (key->crv != reqCrv)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
 
@@ -3843,8 +3877,16 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         ((alg == WOLFCOSE_ALG_ML_DSA_44) || (alg == WOLFCOSE_ALG_ML_DSA_65) ||
          (alg == WOLFCOSE_ALG_ML_DSA_87))) {
         int verified = 0;
+        int32_t reqCrv = 0;
 
         if ((key->kty != WOLFCOSE_KTY_OKP) || (key->key.dilithium == NULL)) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        /* Key level must match the algorithm level. */
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_MlDsaAlgCrv(alg, &reqCrv);
+        }
+        if ((ret == WOLFCOSE_SUCCESS) && (key->crv != reqCrv)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         if (ret == WOLFCOSE_SUCCESS) {
@@ -4269,7 +4311,15 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
              (signer->algId == WOLFCOSE_ALG_ML_DSA_65) ||
              (signer->algId == WOLFCOSE_ALG_ML_DSA_87))) {
             size_t expectedSigSz = 0;
+            int32_t reqCrv = 0;
             if (signer->key->key.dilithium == NULL) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            /* Key level must match the algorithm level. */
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_MlDsaAlgCrv(signer->algId, &reqCrv);
+            }
+            if ((ret == WOLFCOSE_SUCCESS) && (signer->key->crv != reqCrv)) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             if (ret == WOLFCOSE_SUCCESS) {
@@ -4722,8 +4772,16 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         ((alg == WOLFCOSE_ALG_ML_DSA_44) || (alg == WOLFCOSE_ALG_ML_DSA_65) ||
          (alg == WOLFCOSE_ALG_ML_DSA_87))) {
         int verified = 0;
+        int32_t reqCrv = 0;
         if ((verifyKey->kty != WOLFCOSE_KTY_OKP) ||
             (verifyKey->key.dilithium == NULL)) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        /* Key level must match the algorithm level. */
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_MlDsaAlgCrv(alg, &reqCrv);
+        }
+        if ((ret == WOLFCOSE_SUCCESS) && (verifyKey->crv != reqCrv)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         if (ret == WOLFCOSE_SUCCESS) {
