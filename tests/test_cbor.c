@@ -676,6 +676,28 @@ static void test_cbor_encode_bstr_null_with_len(void)
                 "EncodeBstr rejects NULL data with positive length");
 }
 
+static void test_cbor_encode_idx_past_bufsz(void)
+{
+    /* WOLFCOSE_CBOR_CTX is public; a corrupted idx near SIZE_MAX must not
+     * wrap the capacity check and write out of bounds. */
+    uint8_t out[8];
+    WOLFCOSE_CBOR_CTX enc;
+    int ret;
+
+    printf("  [Encode: idx past bufSz does not wrap]\n");
+    enc.buf = out;
+    enc.bufSz = sizeof(out);
+    enc.idx = SIZE_MAX;
+    ret = wc_CBOR_EncodeUint(&enc, 1u);
+    TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL,
+                "EncodeUint rejects idx past bufSz");
+
+    enc.idx = SIZE_MAX;
+    ret = wc_CBOR_EncodeNull(&enc);
+    TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL,
+                "EncodeNull rejects idx past bufSz");
+}
+
 /* ----- Error cases ----- */
 static void test_cbor_errors(void)
 {
@@ -866,6 +888,7 @@ int test_cbor(void)
     test_cbor_skip_tainted_count();
     test_cbor_decode_simple_not_well_formed();
     test_cbor_encode_bstr_null_with_len();
+    test_cbor_encode_idx_past_bufsz();
     test_cbor_errors();
     test_cbor_negative_map_keys();
 

@@ -31,6 +31,15 @@
 #include "wolfcose_internal.h"
 #include <string.h>  /* memcpy */
 
+/* WOLFCOSE_CBOR_CTX is public, so a caller can pass a context whose idx has
+ * been advanced past bufSz. Subtraction-based capacity check that cannot wrap
+ * in that case. Returns 1 when at least need bytes remain, 0 otherwise. */
+static int wolfCose_CBOR_HasRoom(const WOLFCOSE_CBOR_CTX* ctx, size_t need)
+{
+    return ((ctx->idx <= ctx->bufSz) &&
+            (need <= (ctx->bufSz - ctx->idx))) ? 1 : 0;
+}
+
 /* -----
  * Internal: CBOR head encoder
  *
@@ -56,7 +65,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
 
         if (val <= 23u) {
             need = 1;
-            if ((ctx->idx + need) > ctx->bufSz) {
+            if (wolfCose_CBOR_HasRoom(ctx, need) == 0) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
             else {
@@ -67,7 +76,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
         }
         else if (val <= 0xFFu) {
             need = 2;
-            if ((ctx->idx + need) > ctx->bufSz) {
+            if (wolfCose_CBOR_HasRoom(ctx, need) == 0) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
             else {
@@ -79,7 +88,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
         }
         else if (val <= 0xFFFFu) {
             need = 3;
-            if ((ctx->idx + need) > ctx->bufSz) {
+            if (wolfCose_CBOR_HasRoom(ctx, need) == 0) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
             else {
@@ -91,7 +100,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
         }
         else if (val <= 0xFFFFFFFFu) {
             need = 5;
-            if ((ctx->idx + need) > ctx->bufSz) {
+            if (wolfCose_CBOR_HasRoom(ctx, need) == 0) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
             else {
@@ -103,7 +112,7 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
         }
         else {
             need = 9;
-            if ((ctx->idx + need) > ctx->bufSz) {
+            if (wolfCose_CBOR_HasRoom(ctx, need) == 0) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
             else {
@@ -328,7 +337,7 @@ static int wolfCose_CBOR_EncodeSimpleVal(WOLFCOSE_CBOR_CTX* ctx, uint8_t val)
     if ((ctx == NULL) || (ctx->buf == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
-    else if ((ctx->idx + 1u) > ctx->bufSz) {
+    else if (wolfCose_CBOR_HasRoom(ctx, 1u) == 0) {
         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
     }
     else {
@@ -363,7 +372,7 @@ int wc_CBOR_EncodeFloat(WOLFCOSE_CBOR_CTX* ctx, float val)
     if ((ctx == NULL) || (ctx->buf == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
-    else if ((ctx->idx + 5u) > ctx->bufSz) {
+    else if (wolfCose_CBOR_HasRoom(ctx, 5u) == 0) {
         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
     }
     else {
@@ -385,7 +394,7 @@ int wc_CBOR_EncodeDouble(WOLFCOSE_CBOR_CTX* ctx, double val)
     if ((ctx == NULL) || (ctx->buf == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
-    else if ((ctx->idx + 9u) > ctx->bufSz) {
+    else if (wolfCose_CBOR_HasRoom(ctx, 9u) == 0) {
         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
     }
     else {
@@ -528,6 +537,12 @@ static int wolfCose_CBOR_DecodeContainerStart(WOLFCOSE_CBOR_CTX* ctx,
             if (item.majorType != majorType) {
                 ret = WOLFCOSE_E_CBOR_TYPE;
             }
+#if SIZE_MAX < UINT64_MAX
+            else if (item.val > (uint64_t)SIZE_MAX) {
+                /* Definite-length count exceeds addressable range (32-bit). */
+                ret = WOLFCOSE_E_CBOR_OVERFLOW;
+            }
+#endif
             else {
                 *count = (size_t)item.val;
             }
