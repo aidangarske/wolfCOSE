@@ -10710,14 +10710,14 @@ static void test_cose_key_decode_ec2_short_coord(void)
 {
     WOLFCOSE_KEY key;
     int ret;
-    /* COSE EC2 P-256 with x = 31 bytes, y = 32 bytes.
+    /* COSE EC2 P-256 with x = 31 bytes (one short), y = 32 bytes.
      * map(4): {1:2 (kty=EC2), -1:1 (crv=P256),
      *          -2: bstr(31) of zeros, -3: bstr(32) of zeros} */
     uint8_t shortX[] = {
         0xA4u, 0x01u, 0x02u, 0x20u, 0x01u,
         0x21u, 0x58u, 0x1Fu,
         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
         0x22u, 0x58u, 0x20u,
         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0

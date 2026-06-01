@@ -1918,6 +1918,22 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
 
+#ifdef HAVE_ECC
+        /* RFC 9053 Section 7.1.1: EC2 coordinates are fixed length with
+         * leading zeros preserved. Reject any present coordinate that does not
+         * equal the curve size, even when no key is attached for import. */
+        if ((ret == WOLFCOSE_SUCCESS) && (key->kty == WOLFCOSE_KTY_EC2)) {
+            size_t coordSz = 0;
+            ret = wolfCose_CrvKeySize(key->crv, &coordSz);
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (((xData != NULL) && (xLen != coordSz)) ||
+                 ((yData != NULL) && (yLen != coordSz)) ||
+                 ((dData != NULL) && (dLen != coordSz)))) {
+                ret = WOLFCOSE_E_COSE_BAD_HDR;
+            }
+        }
+#endif
+
         /* Import key data into wolfCrypt key structs */
         if (ret == WOLFCOSE_SUCCESS) {
 #ifdef HAVE_ECC
@@ -1932,28 +1948,23 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     if (ret == WOLFCOSE_SUCCESS) {
                         ret = wolfCose_CrvKeySize(key->crv, &coordSz);
                     }
+                    if ((ret == WOLFCOSE_SUCCESS) && (coordSz > MAX_ECC_BYTES)) {
+                        ret = WOLFCOSE_E_COSE_BAD_HDR;
+                    }
                     if (ret == WOLFCOSE_SUCCESS) {
                         byte tmpX[MAX_ECC_BYTES];
                         byte tmpY[MAX_ECC_BYTES];
                         byte tmpD[MAX_ECC_BYTES];
 
-                        /* Accept shorter coordinates and right-justify them
-                         * into the fixed-size import buffers. */
-                        if ((coordSz > sizeof(tmpX)) ||
-                            (xLen > coordSz) || (yLen > coordSz) ||
-                            ((dData != NULL) && (dLen > coordSz))) {
-                            ret = WOLFCOSE_E_COSE_BAD_HDR;
-                        }
-
+                        /* Coordinates are fixed length (validated above). */
                         if (ret == WOLFCOSE_SUCCESS) {
                             (void)XMEMSET(tmpX, 0, sizeof(tmpX));
                             (void)XMEMSET(tmpY, 0, sizeof(tmpY));
                             (void)XMEMSET(tmpD, 0, sizeof(tmpD));
-                            (void)XMEMCPY(&tmpX[coordSz - xLen], xData, xLen);
-                            (void)XMEMCPY(&tmpY[coordSz - yLen], yData, yLen);
+                            (void)XMEMCPY(tmpX, xData, coordSz);
+                            (void)XMEMCPY(tmpY, yData, coordSz);
                             if (dData != NULL) {
-                                (void)XMEMCPY(&tmpD[coordSz - dLen], dData,
-                                              dLen);
+                                (void)XMEMCPY(tmpD, dData, coordSz);
                                 INJECT_FAILURE(WOLF_FAIL_ECC_IMPORT_X963, -1)
                                 {
                                     ret = wc_ecc_import_unsigned(
@@ -3082,12 +3093,13 @@ static int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
         }
     }
 
-    /* Reject oversized coordinates; shorter peers are accepted. */
+    /* RFC 9053 Section 7.1.1: ephemeral EC2 coordinates are fixed length with
+     * leading zeros preserved; require exact-length x and y. */
     if (ret == WOLFCOSE_SUCCESS) {
         size_t coordSz = 0;
         ret = wolfCose_CrvKeySize(*crv, &coordSz);
         if ((ret == WOLFCOSE_SUCCESS) &&
-            ((*xLen > coordSz) || (*yLen > coordSz))) {
+            ((*xLen != coordSz) || (*yLen != coordSz))) {
             ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
     }
