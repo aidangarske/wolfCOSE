@@ -9019,6 +9019,86 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "dup recipient unprotected label rejected (encrypt)");
 }
+
+static void test_cose_encrypt_direct_empty_protected(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX ctx;
+    WC_RNG rng;
+    int ret;
+    int rngInited = 0;
+    uint8_t cek[16] = {0};
+    uint8_t iv[12] = {0};
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t scratch[512];
+    uint8_t plaintext[64];
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "direct alg payload";
+    size_t i;
+    size_t n = 0;
+    uint64_t tag = 0;
+
+    TEST_LOG("  [Encrypt direct alg empty protected]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) { rngInited = 1; }
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, cek, sizeof(cek));
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    if (ret == 0) {
+        ret = wc_CoseEncrypt_Encrypt(&recipient, 1, WOLFCOSE_ALG_A128GCM,
+            iv, sizeof(iv), payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "direct encrypt");
+    }
+
+    if (ret == 0) {
+        ctx.cbuf = out;
+        ctx.bufSz = outLen;
+        ctx.idx = 0;
+        if (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG) {
+            ret = wc_CBOR_DecodeTag(&ctx, &tag);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_DecodeArrayStart(&ctx, &n);
+        }
+        for (i = 0; (ret == 0) && (i < 3u); i++) {
+            ret = wc_CBOR_Skip(&ctx);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_DecodeArrayStart(&ctx, &n); /* recipients */
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_DecodeArrayStart(&ctx, &n); /* recipient */
+        }
+        TEST_ASSERT((ret == 0) && (out[ctx.idx] == 0x40u),
+                    "direct recipient protected is empty bstr");
+    }
+
+    if (ret == 0) {
+        memset(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == 0, "direct decrypt roundtrip");
+        TEST_ASSERT((plaintextLen == sizeof(payload) - 1) &&
+                    (memcmp(plaintext, payload, plaintextLen) == 0),
+                    "direct payload match");
+    }
+
+    if (rngInited != 0) { (void)wc_FreeRng(&rng); }
+}
 #endif /* HAVE_AESGCM */
 
 static void test_cose_protected_hdr_content_type(void)
@@ -15118,6 +15198,7 @@ int test_cose(void)
 #endif
 #ifdef HAVE_AESGCM
     test_cose_encrypt_dup_recipient_unprot_hdr();
+    test_cose_encrypt_direct_empty_protected();
 #endif
     test_cose_protected_hdr_content_type();
     test_cose_protected_hdr_tstr_label();

@@ -6598,8 +6598,11 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         /* For direct key agreement, the wrapped CEK is empty */
         /* COSE_recipient = [protected, unprotected, ciphertext] */
 
-        /* Encode recipient protected header */
-        if (recipients[i].algId != WOLFCOSE_ALG_UNSET) {
+        /* Encode recipient protected header. RFC 9053 Section 6.1: the direct
+         * key algorithm uses a zero-length protected header, so treat an
+         * explicit WOLFCOSE_ALG_DIRECT the same as the unset direct case. */
+        if ((recipients[i].algId != WOLFCOSE_ALG_UNSET) &&
+            (recipients[i].algId != WOLFCOSE_ALG_DIRECT)) {
             ret = wolfCose_EncodeProtectedHdr(recipients[i].algId,
                 recipientProtectedBuf, sizeof(recipientProtectedBuf),
                 &recipientProtectedLen);
