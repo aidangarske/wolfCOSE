@@ -8856,6 +8856,38 @@ static void test_cose_protected_hdr_trailing(void)
                 "DecodeProtectedHdr rejects trailing bytes");
 }
 
+static void test_cose_oversized_int_narrowing(void)
+{
+    int ret;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR_STATE hdrState;
+    WOLFCOSE_KEY key;
+    /* {1: 0x100000001} -- alg that narrows to A128GCM(1) on 32-bit cast. */
+    uint8_t bigAlg[] = {
+        0xA1u, 0x01u,
+        0x1Bu, 0x00u, 0x00u, 0x00u, 0x01u, 0x00u, 0x00u, 0x00u, 0x01u
+    };
+    /* {1: 0x100000004, -1: h'<16>'} -- kty that narrows to Symmetric(4). */
+    uint8_t bigKty[] = {
+        0xA2u,
+        0x01u, 0x1Bu, 0x00u, 0x00u, 0x00u, 0x01u, 0x00u, 0x00u, 0x00u, 0x04u,
+        0x20u, 0x50u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    };
+
+    TEST_LOG("  [Oversized integer narrowing]\n");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(bigAlg, sizeof(bigAlg), &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "DecodeProtectedHdr rejects oversized alg");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, bigKty, sizeof(bigKty));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "CoseKey_Decode rejects oversized kty");
+}
+
 static void test_cose_protected_hdr_content_type(void)
 {
     int ret;
@@ -14819,6 +14851,7 @@ int test_cose(void)
     test_cbor_edge_cases();
     test_cose_protected_hdr_empty_map();
     test_cose_protected_hdr_trailing();
+    test_cose_oversized_int_narrowing();
     test_cose_protected_hdr_content_type();
     test_cose_protected_hdr_tstr_label();
     test_cose_protected_hdr_dup_label();

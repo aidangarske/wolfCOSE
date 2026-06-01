@@ -572,6 +572,14 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
 
 /* ----- Internal: Protected/Unprotected header encode/decode ----- */
 
+/* COSE algorithm, key type, and curve identifiers are stored in int32_t
+ * fields. Reject decoded CBOR integers that do not fit before narrowing so a
+ * non-representable value cannot alias a valid identifier. */
+static int wolfCose_InInt32Range(int64_t val)
+{
+    return ((val >= (int64_t)INT32_MIN) && (val <= (int64_t)INT32_MAX)) ? 1 : 0;
+}
+
 /* Map a COSE header/key label to a fast-path tracking bit. Labels outside
  * the small known range fall back to the slower extra-label array. */
 static uint32_t wolfCose_LabelBit(int64_t label)
@@ -791,6 +799,10 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
                 }
                 else {
                     ret = wc_CBOR_DecodeInt(&ctx, &intVal);
+                    if ((ret == WOLFCOSE_SUCCESS) &&
+                        (wolfCose_InInt32Range(intVal) == 0)) {
+                        ret = WOLFCOSE_E_COSE_BAD_ALG;
+                    }
                     if (ret == WOLFCOSE_SUCCESS) {
                         hdr->alg = (int32_t)intVal;
                     }
@@ -841,6 +853,10 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
                 }
                 else {
                     ret = wc_CBOR_DecodeInt(&ctx, &intVal);
+                    if ((ret == WOLFCOSE_SUCCESS) &&
+                        (wolfCose_InInt32Range(intVal) == 0)) {
+                        ret = WOLFCOSE_E_COSE_BAD_HDR;
+                    }
                     if (ret == WOLFCOSE_SUCCESS) {
                         hdr->contentType = (int32_t)intVal;
                     }
@@ -971,6 +987,10 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
                 else {
                     int64_t algVal;
                     ret = wc_CBOR_DecodeInt(ctx, &algVal);
+                    if ((ret == WOLFCOSE_SUCCESS) &&
+                        (wolfCose_InInt32Range(algVal) == 0)) {
+                        ret = WOLFCOSE_E_COSE_BAD_ALG;
+                    }
                     if (ret == WOLFCOSE_SUCCESS) {
                         hdr->alg = (int32_t)algVal;
                     }
@@ -1793,6 +1813,10 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             if ((ret == WOLFCOSE_SUCCESS) &&
                 (label == WOLFCOSE_KEY_LABEL_KTY)) {
                 ret = wc_CBOR_DecodeUint(&ctx, &uval);
+                if ((ret == WOLFCOSE_SUCCESS) &&
+                    (uval > (uint64_t)INT32_MAX)) {
+                    ret = WOLFCOSE_E_COSE_BAD_HDR;
+                }
                 if (ret == WOLFCOSE_SUCCESS) {
                     key->kty = (int32_t)uval;
                 }
@@ -1814,6 +1838,10 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 else {
                     int64_t algVal;
                     ret = wc_CBOR_DecodeInt(&ctx, &algVal);
+                    if ((ret == WOLFCOSE_SUCCESS) &&
+                        (wolfCose_InInt32Range(algVal) == 0)) {
+                        ret = WOLFCOSE_E_COSE_BAD_ALG;
+                    }
                     if (ret == WOLFCOSE_SUCCESS) {
                         key->alg = (int32_t)algVal;
                     }
@@ -1840,6 +1868,10 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     /* uint or negint: EC2/OKP crv */
                     int64_t crvVal;
                     ret = wc_CBOR_DecodeInt(&ctx, &crvVal);
+                    if ((ret == WOLFCOSE_SUCCESS) &&
+                        (wolfCose_InInt32Range(crvVal) == 0)) {
+                        ret = WOLFCOSE_E_COSE_BAD_HDR;
+                    }
                     if (ret == WOLFCOSE_SUCCESS) {
                         key->crv = (int32_t)crvVal;
                     }
