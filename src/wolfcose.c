@@ -648,7 +648,7 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
  * non-representable value cannot alias a valid identifier. */
 static int wolfCose_InInt32Range(int64_t val)
 {
-    return ((val >= (int64_t)INT32_MIN) && (val <= (int64_t)INT32_MAX)) ? 1 : 0;
+    return ((val >= INT32_MIN) && (val <= INT32_MAX)) ? 1 : 0;
 }
 
 /* Map a COSE header/key label to a fast-path tracking bit. Labels outside
