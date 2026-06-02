@@ -2032,15 +2032,14 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     if (ret == WOLFCOSE_SUCCESS) {
                         ret = wolfCose_CrvKeySize(key->crv, &coordSz);
                     }
-                    if ((ret == WOLFCOSE_SUCCESS) &&
-                        (coordSz > (size_t)MAX_ECC_BYTES)) {
-                        ret = WOLFCOSE_E_COSE_BAD_HDR;
-                    }
                     if (ret == WOLFCOSE_SUCCESS) {
                         byte tmpX[MAX_ECC_BYTES];
                         byte tmpY[MAX_ECC_BYTES];
                         byte tmpD[MAX_ECC_BYTES];
 
+                        if (coordSz > sizeof(tmpX)) {
+                            ret = WOLFCOSE_E_COSE_BAD_HDR;
+                        }
                         /* Coordinates are fixed length (validated above). */
                         if (ret == WOLFCOSE_SUCCESS) {
                             (void)XMEMSET(tmpX, 0, sizeof(tmpX));
