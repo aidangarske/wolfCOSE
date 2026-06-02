@@ -243,28 +243,6 @@ WOLFCOSE_LOCAL int wolfCose_BuildToBeSignedMaced(
     uint8_t* scratch, size_t scratchSz,
     size_t* structLen);
 
-/**
- * \brief Build an Enc_structure for AEAD operations.
- *
- * Creates: [context, body_protected, external_aad]
- *
- * \param context         Context string ("Encrypt0" or "Encrypt")
- * \param contextLen      Length of context string
- * \param bodyProtected   Serialized protected headers
- * \param bodyProtectedLen Length of protected headers
- * \param extAad          External AAD (may be NULL)
- * \param extAadLen       Length of external AAD
- * \param scratch         Output buffer for structure
- * \param scratchSz       Size of output buffer
- * \param structLen       Output: bytes written
- * \return WOLFCOSE_SUCCESS or error code
- */
-WOLFCOSE_LOCAL int wolfCose_BuildEncStructure(
-    const uint8_t* context, size_t contextLen,
-    const uint8_t* bodyProtected, size_t bodyProtectedLen,
-    const uint8_t* extAad, size_t extAadLen,
-    uint8_t* scratch, size_t scratchSz,
-    size_t* structLen);
 
 /**
  * \brief Get AEAD key length for any COSE AEAD algorithm.

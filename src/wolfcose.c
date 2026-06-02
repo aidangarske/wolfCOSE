@@ -2316,7 +2316,7 @@ int wolfCose_BuildToBeSignedMaced(
  *
  * [context, body_protected, external_aad]
  */
-int wolfCose_BuildEncStructure(
+static int wolfCose_BuildEncStructure(
     const uint8_t* context, size_t contextLen,
     const uint8_t* bodyProtected, size_t bodyProtectedLen,
     const uint8_t* extAad, size_t extAadLen,
