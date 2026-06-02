@@ -218,6 +218,21 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
 
+        /* RFC 8949 Section 4.2.1 (deterministic encoding, required for COSE):
+         * the argument must use the shortest additional-info form. This applies
+         * to every major type except simple/float (where AI 25/26/27 select
+         * float16/32/64 rather than encode an integer). */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (item->majorType != WOLFCOSE_CBOR_SIMPLE)) {
+            if (((ai == WOLFCOSE_CBOR_AI_1BYTE) && (item->val < 24u)) ||
+                ((ai == WOLFCOSE_CBOR_AI_2BYTE) && (item->val < 256u)) ||
+                ((ai == WOLFCOSE_CBOR_AI_4BYTE) && (item->val < 0x10000u)) ||
+                ((ai == WOLFCOSE_CBOR_AI_8BYTE) &&
+                 (item->val < 0x100000000ULL))) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
+            }
+        }
+
         /* Advance past bstr/tstr bytes using overflow-safe bounds. */
         if (ret == WOLFCOSE_SUCCESS) {
             if ((item->majorType == WOLFCOSE_CBOR_BSTR) ||
