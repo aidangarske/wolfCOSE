@@ -76,6 +76,15 @@ WOLFCOSE_LOCAL void wolfCose_ForceZero(void* mem, size_t len)
     }
 }
 
+/* On a failed verify/decrypt, clear the header so unauthenticated metadata is
+ * not exposed to callers that inspect hdr without gating on the return code. */
+static void wolfCose_HdrClearOnFail(int ret, WOLFCOSE_HDR* hdr)
+{
+    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
+        (void)XMEMSET(hdr, 0, sizeof(*hdr));
+    }
+}
+
 /* ----- Constant-time comparison (side-channel safe) ----- */
 
 /**
@@ -231,23 +240,28 @@ WOLFCOSE_LOCAL int wolfCose_SigSize(int32_t alg, size_t* sigSz)
 #ifdef HAVE_DILITHIUM
 /* Map an ML-DSA COSE algorithm to the curve identifier its key must carry, so
  * a key of the wrong security level cannot satisfy a higher-level alg label. */
-static int wolfCose_MlDsaAlgCrv(int32_t alg, int32_t* crv)
+static int wolfCose_MlDsaKeyLevelOk(int32_t alg, int32_t crv)
 {
     int ret = WOLFCOSE_SUCCESS;
+    int32_t reqCrv = 0;
 
     switch (alg) {
         case WOLFCOSE_ALG_ML_DSA_44:
-            *crv = WOLFCOSE_CRV_ML_DSA_44;
+            reqCrv = WOLFCOSE_CRV_ML_DSA_44;
             break;
         case WOLFCOSE_ALG_ML_DSA_65:
-            *crv = WOLFCOSE_CRV_ML_DSA_65;
+            reqCrv = WOLFCOSE_CRV_ML_DSA_65;
             break;
         case WOLFCOSE_ALG_ML_DSA_87:
-            *crv = WOLFCOSE_CRV_ML_DSA_87;
+            reqCrv = WOLFCOSE_CRV_ML_DSA_87;
             break;
         default:
             ret = WOLFCOSE_E_COSE_BAD_ALG;
             break;
+    }
+    /* The key's declared level (crv) must match the algorithm level. */
+    if ((ret == WOLFCOSE_SUCCESS) && (crv != reqCrv)) {
+        ret = WOLFCOSE_E_COSE_KEY_TYPE;
     }
     return ret;
 }
@@ -3492,7 +3506,6 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
     if ((ret == WOLFCOSE_SUCCESS) && ((alg == WOLFCOSE_ALG_ML_DSA_44) ||
         (alg == WOLFCOSE_ALG_ML_DSA_65) || (alg == WOLFCOSE_ALG_ML_DSA_87))) {
         size_t expectedSigSz = 0;
-        int32_t reqCrv = 0;
 
         if ((key->kty != WOLFCOSE_KTY_OKP) || (key->key.dilithium == NULL)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
@@ -3500,10 +3513,7 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
 
         /* Key level must match the algorithm level. */
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wolfCose_MlDsaAlgCrv(alg, &reqCrv);
-        }
-        if ((ret == WOLFCOSE_SUCCESS) && (key->crv != reqCrv)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            ret = wolfCose_MlDsaKeyLevelOk(alg, key->crv);
         }
 
         if (ret == WOLFCOSE_SUCCESS) {
@@ -3930,17 +3940,13 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         ((alg == WOLFCOSE_ALG_ML_DSA_44) || (alg == WOLFCOSE_ALG_ML_DSA_65) ||
          (alg == WOLFCOSE_ALG_ML_DSA_87))) {
         int verified = 0;
-        int32_t reqCrv = 0;
 
         if ((key->kty != WOLFCOSE_KTY_OKP) || (key->key.dilithium == NULL)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         /* Key level must match the algorithm level. */
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wolfCose_MlDsaAlgCrv(alg, &reqCrv);
-        }
-        if ((ret == WOLFCOSE_SUCCESS) && (key->crv != reqCrv)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            ret = wolfCose_MlDsaKeyLevelOk(alg, key->crv);
         }
         if (ret == WOLFCOSE_SUCCESS) {
             INJECT_FAILURE(WOLF_FAIL_DILITHIUM_VERIFY, -1)
@@ -3989,11 +3995,7 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         /* No action required */
     }
 
-    /* On failure, clear the header so unauthenticated metadata is not exposed
-     * to callers that inspect hdr without strictly gating on the return code. */
-    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
-        (void)XMEMSET(hdr, 0, sizeof(*hdr));
-    }
+    wolfCose_HdrClearOnFail(ret, hdr);
 
     /* Cleanup: always executed */
     (void)wolfCose_ForceZero(hashBuf, sizeof(hashBuf));
@@ -4370,16 +4372,12 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
              (signer->algId == WOLFCOSE_ALG_ML_DSA_65) ||
              (signer->algId == WOLFCOSE_ALG_ML_DSA_87))) {
             size_t expectedSigSz = 0;
-            int32_t reqCrv = 0;
             if (signer->key->key.dilithium == NULL) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             /* Key level must match the algorithm level. */
             if (ret == WOLFCOSE_SUCCESS) {
-                ret = wolfCose_MlDsaAlgCrv(signer->algId, &reqCrv);
-            }
-            if ((ret == WOLFCOSE_SUCCESS) && (signer->key->crv != reqCrv)) {
-                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+                ret = wolfCose_MlDsaKeyLevelOk(signer->algId, signer->key->crv);
             }
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wolfCose_SigSize(signer->algId, &expectedSigSz);
@@ -4831,17 +4829,13 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         ((alg == WOLFCOSE_ALG_ML_DSA_44) || (alg == WOLFCOSE_ALG_ML_DSA_65) ||
          (alg == WOLFCOSE_ALG_ML_DSA_87))) {
         int verified = 0;
-        int32_t reqCrv = 0;
         if ((verifyKey->kty != WOLFCOSE_KTY_OKP) ||
             (verifyKey->key.dilithium == NULL)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         /* Key level must match the algorithm level. */
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wolfCose_MlDsaAlgCrv(alg, &reqCrv);
-        }
-        if ((ret == WOLFCOSE_SUCCESS) && (verifyKey->crv != reqCrv)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            ret = wolfCose_MlDsaKeyLevelOk(alg, verifyKey->crv);
         }
         if (ret == WOLFCOSE_SUCCESS) {
 #ifdef WOLFSSL_DILITHIUM_NO_CTX
@@ -4889,11 +4883,7 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         /* No action required */
     }
 
-    /* On failure, clear the header so unauthenticated metadata is not exposed
-     * to callers that inspect hdr without strictly gating on the return code. */
-    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
-        (void)XMEMSET(hdr, 0, sizeof(*hdr));
-    }
+    wolfCose_HdrClearOnFail(ret, hdr);
 
     /* Cleanup: always executed */
     (void)wolfCose_ForceZero(hashBuf, sizeof(hashBuf));
@@ -5573,11 +5563,7 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
         /* No action required */
     }
 
-    /* On failure, clear the header so unauthenticated metadata is not exposed
-     * to callers that inspect hdr without strictly gating on the return code. */
-    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
-        (void)XMEMSET(hdr, 0, sizeof(*hdr));
-    }
+    wolfCose_HdrClearOnFail(ret, hdr);
 
     /* Cleanup: always executed */
 #if defined(HAVE_AESGCM) || defined(HAVE_AESCCM)
@@ -6301,11 +6287,7 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
         /* No action required */
     }
 
-    /* On failure, clear the header so unauthenticated metadata is not exposed
-     * to callers that inspect hdr without strictly gating on the return code. */
-    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
-        (void)XMEMSET(hdr, 0, sizeof(*hdr));
-    }
+    wolfCose_HdrClearOnFail(ret, hdr);
 
     /* Cleanup: always executed */
 #ifndef NO_HMAC
@@ -7445,15 +7427,11 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         if (plaintextLen != NULL) {
             *plaintextLen = 0u;
         }
-        /* Clear the header so unauthenticated metadata is not exposed to
-         * callers that inspect hdr without strictly gating on the return. */
-        if (hdr != NULL) {
-            (void)XMEMSET(hdr, 0, sizeof(*hdr));
-        }
     }
     else {
         *plaintextLen = payloadLen;
     }
+    wolfCose_HdrClearOnFail(ret, hdr);
 
     return ret;
 }
@@ -8099,11 +8077,7 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         /* No action required */
     }
 
-    /* On failure, clear the header so unauthenticated metadata is not exposed
-     * to callers that inspect hdr without strictly gating on the return code. */
-    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
-        (void)XMEMSET(hdr, 0, sizeof(*hdr));
-    }
+    wolfCose_HdrClearOnFail(ret, hdr);
 
     return ret;
 }
