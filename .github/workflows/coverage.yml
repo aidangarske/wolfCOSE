@@ -23,12 +23,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool lcov
 
+    - name: Resolve wolfSSL master commit
+      id: wolfssl-rev
+      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
     - name: Cache wolfSSL
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-ubuntu-latest-v3
+        key: wolfssl-ubuntu-latest-v3-${{ steps.wolfssl-rev.outputs.sha }}
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -52,7 +55,7 @@ jobs:
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         make coverage-force-failure CC=gcc \
-          CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+          CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
           LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Check coverage thresholds

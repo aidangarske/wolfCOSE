@@ -55,12 +55,16 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool
 
+    - name: Resolve wolfSSL master commit
+      id: wolfssl-rev
+      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+
     - name: Cache wolfSSL (${{ matrix.name }})
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-minimal
-        key: ${{ matrix.cache_key }}
+        key: ${{ matrix.cache_key }}-${{ steps.wolfssl-rev.outputs.sha }}
 
     - name: Build wolfSSL (${{ matrix.name }})
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -77,19 +81,19 @@ jobs:
     - name: Build wolfCOSE
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-minimal
-        make CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run unit tests
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-minimal
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run tool round-trip test
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-minimal
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make tool-test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make tool-test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"

@@ -30,12 +30,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cppcheck autoconf automake libtool
 
+    - name: Resolve wolfSSL master commit
+      id: wolfssl-rev
+      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
     - name: Cache wolfSSL
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-ubuntu-latest-v3
+        key: wolfssl-ubuntu-latest-v3-${{ steps.wolfssl-rev.outputs.sha }}
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'

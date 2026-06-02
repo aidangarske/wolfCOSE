@@ -32,12 +32,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool
 
+    - name: Resolve wolfSSL master commit
+      id: wolfssl-rev
+      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
     - name: Cache wolfSSL
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-ubuntu-latest-v3
+        key: wolfssl-ubuntu-latest-v3-${{ steps.wolfssl-rev.outputs.sha }}
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -81,7 +84,7 @@ jobs:
         #   -Wdouble-promotion   Rule 10.x  implicit float-to-double
         #   -Wnull-dereference   Safety     null pointer dereference
         #   -Wsign-conversion    Rule 10.x  signed/unsigned conversion
-        MISRA_FLAGS="-std=c11 -Os \
+        MISRA_FLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os \
             -Wall -Wextra -Wpedantic -Wshadow -Wconversion \
             -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes \
             -Wold-style-definition -Wdeclaration-after-statement \
@@ -108,7 +111,7 @@ jobs:
             -DWOLFCOSE_CBOR_ENCODE -DWOLFCOSE_CBOR_DECODE \
             -DWOLFCOSE_KEY_ENCODE -DWOLFCOSE_KEY_DECODE \
             -DWOLFCOSE_FLOAT \
-            -I./include -I$WOLFSSL_DIR/include"
+            -I./include -isystem $WOLFSSL_DIR/include"
         for f in src/*.c; do
           gcc $MISRA_FLAGS -c "$f" -o /dev/null 2>&1 | tee -a compiler-warnings.txt || true
         done
@@ -166,12 +169,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y clang-tidy autoconf automake libtool
 
+    - name: Resolve wolfSSL master commit
+      id: wolfssl-rev
+      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
     - name: Cache wolfSSL
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-ubuntu-latest-v3
+        key: wolfssl-ubuntu-latest-v3-${{ steps.wolfssl-rev.outputs.sha }}
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -213,7 +219,7 @@ jobs:
         #
         clang-tidy src/*.c \
             -checks='-*,bugprone-*,cert-*,clang-analyzer-*,misc-*,-misc-include-cleaner,-bugprone-branch-clone,-bugprone-easily-swappable-parameters,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling' \
-            -- -std=c11 -I./include -I$WOLFSSL_DIR/include \
+            -- -std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -I./include -isystem $WOLFSSL_DIR/include \
             -DHAVE_ECC -DHAVE_ED25519 -DHAVE_ED448 \
             -DWC_RSA_PSS -DHAVE_DILITHIUM \
             -DHAVE_AESGCM -DHAVE_AESCCM \

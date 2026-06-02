@@ -16,9 +16,12 @@
 
 CC       ?= gcc
 AR       ?= ar
-CFLAGS    = -std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion
+CFLAGS    = -std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion
 CFLAGS   += -fstack-usage
-CFLAGS   += -I./include -I/usr/local/include
+# Match wolfSSL's default (gnu11) struct ABI; -std=c99 alone disables
+# HAVE_ANONYMOUS_INLINE_AGGREGATES and shrinks WC_RNG, corrupting the RNG.
+CFLAGS   += -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1
+CFLAGS   += -I./include -isystem /usr/local/include
 CFLAGS   += $(EXTRA_CFLAGS)
 LDFLAGS   = -L/usr/local/lib -lwolfssl
 
@@ -56,7 +59,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test coverage tool tool-test demo demos comprehensive scenarios clean
+.PHONY: all shared test coverage tool tool-test demo demos comprehensive scenarios c99-check clean
 
 # --- Core library ---
 all: $(LIB_A)
@@ -156,6 +159,32 @@ scenarios: $(LIB_A)
 	./$(SCEN_SENSOR) || exit 1
 	./$(SCEN_BROADCAST) || exit 1
 	@echo "=== All scenario examples passed ==="
+
+# --- C99 conformance gate ---
+# Compiles every translation unit (core, tests, tool, examples) under strict
+# ISO C99 with -pedantic-errors -Werror so any non-C99 construct fails the
+# build. wolfSSL headers are -isystem so only wolfCOSE's own code is judged.
+WOLFSSL_INC ?= /usr/local/include
+C99_FLAGS = -std=c99 -pedantic-errors -Werror -Wall -Wextra -Wshadow -Wconversion \
+            -Wvla -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 \
+            -I./include -isystem $(WOLFSSL_INC) $(EXTRA_CFLAGS)
+C99_SRC   = $(SRC) $(TEST_SRC) $(TOOL_SRC) $(DEMO_SRC) \
+            $(ENC_DEMO).c $(MAC_DEMO).c $(SIGN1_DEMO).c \
+            $(COMP_SIGN).c $(COMP_ENCRYPT).c $(COMP_MAC).c $(COMP_ERRORS).c \
+            $(SCEN_FIRMWARE).c $(SCEN_MULTIPARTY).c $(SCEN_IOTFLEET).c \
+            $(SCEN_SENSOR).c $(SCEN_BROADCAST).c
+# Default features plus the opt-in WOLFCOSE_FLOAT paths, so the gate judges
+# every conditionally-compiled translation unit, not just the default subset.
+C99_CONFIGS = "" "-DWOLFCOSE_FLOAT"
+
+c99-check:
+	@for cfg in $(C99_CONFIGS); do \
+	    for f in $(C99_SRC); do \
+	        echo "  C99 $$cfg $$f"; \
+	        $(CC) $(C99_FLAGS) $$cfg -fsyntax-only $$f || exit 1; \
+	    done; \
+	done
+	@echo "PASS: all sources conform to ISO C99 (-pedantic-errors)"
 
 # --- Cleanup ---
 clean:

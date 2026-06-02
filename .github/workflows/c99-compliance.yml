@@ -1,8 +1,10 @@
-name: Coverity Scan
+name: C99 Compliance
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
+  push:
+    branches: [ 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
   workflow_dispatch:
 
 concurrency:
@@ -10,12 +12,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  coverity:
-    name: Coverity Scan
+  c99-check:
+    name: ISO C99 conformance (${{ matrix.cc }})
     runs-on: ubuntu-latest
-
-    # Only run from the original repo, not forks
-    if: github.repository == 'wolfSSL/wolfCOSE'
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
 
     steps:
     - uses: actions/checkout@v4
@@ -33,7 +36,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-coverity-v3-${{ steps.wolfssl-rev.outputs.sha }}
+        key: wolfssl-ubuntu-latest-v3-full-${{ steps.wolfssl-rev.outputs.sha }}
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -43,19 +46,16 @@ jobs:
         cd wolfssl
         ./autogen.sh
         ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
-                    --enable-curve25519 --enable-aesgcm --enable-aesccm \
-                    --enable-sha384 --enable-sha512 --enable-keygen \
-                    --enable-rsapss --enable-chacha --enable-poly1305 \
-                    --enable-dilithium \
+                    --enable-curve25519 --enable-curve448 \
+                    --enable-aesgcm --enable-aesccm \
+                    --enable-sha384 --enable-sha512 \
+                    --enable-keygen --enable-hkdf --enable-aeskeywrap \
+                    --enable-chacha --enable-poly1305 \
+                    --enable-dilithium --enable-rsapss \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc)
         make install
 
-    - name: Run Coverity Scan
-      uses: vapier/coverity-scan-action@v1
-      with:
-        project: wolfCOSE
-        token: ${{ secrets.COVERITY_SCAN_TOKEN }}
-        email: ${{ secrets.COVERITY_SCAN_EMAIL }}
-        command: |
-          make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $HOME/wolfssl-install/include" LDFLAGS="-L$HOME/wolfssl-install/lib -lwolfssl"
+    - name: Strict C99 conformance gate
+      run: |
+        make c99-check CC=${{ matrix.cc }} WOLFSSL_INC=$HOME/wolfssl-install/include
