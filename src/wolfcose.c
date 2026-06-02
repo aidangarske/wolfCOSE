@@ -49,7 +49,7 @@
     #include "../tests/force_failure.h"
     /* Check if a forced failure is set; if so, consume it and set ret */
     #define INJECT_FAILURE(failure_type, error_code) \
-        if (wolfForceFailure_Check(failure_type) != 0) { \
+        if (wolfForceFailure_Check((failure_type)) != 0) { \
             ret = (error_code); \
         } else
 #else

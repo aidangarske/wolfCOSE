@@ -8575,7 +8575,7 @@ static void test_cbor_edge_cases(void)
         tinyCtx.buf = tiny;
         tinyCtx.bufSz = sizeof(tiny);
         tinyCtx.idx = 0;
-        ret = wc_CBOR_EncodeUint(&tinyCtx, 0xFFFFFFFF);  /* needs 5 bytes */
+        ret = wc_CBOR_EncodeUint(&tinyCtx, 0xFFFFFFFFu);  /* needs 5 bytes */
         TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "encode uint buf small");
     }
 
@@ -11409,6 +11409,8 @@ static void test_internal_helpers(void)
         uint8_t sigBuf[64];
         size_t sigLen = sizeof(sigBuf);
         int verified;
+        WC_RNG dummyRng;
+        ecc_key dummyKey;
 
         /* EccSignRaw with NULL parameters */
         ret = wolfCose_EccSignRaw(NULL, 32, sigBuf, &sigLen, 32, NULL, NULL);
@@ -11422,7 +11424,8 @@ static void test_internal_helpers(void)
 
         /* EccSignRaw with buffer too small */
         sigLen = 10;  /* Too small for 64-byte sig */
-        ret = wolfCose_EccSignRaw(hash, 32, sigBuf, &sigLen, 32, (WC_RNG*)1, (ecc_key*)1);
+        ret = wolfCose_EccSignRaw(hash, 32, sigBuf, &sigLen, 32, &dummyRng,
+                                  &dummyKey);
         TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "EccSignRaw buf small");
 
         /* EccVerifyRaw with NULL parameters */
@@ -11436,7 +11439,8 @@ static void test_internal_helpers(void)
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "EccVerifyRaw NULL verified");
 
         /* EccVerifyRaw with wrong signature length */
-        ret = wolfCose_EccVerifyRaw(sigBuf, 63, hash, 32, 32, (ecc_key*)1, &verified);
+        ret = wolfCose_EccVerifyRaw(sigBuf, 63, hash, 32, 32, &dummyKey,
+                                    &verified);
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL, "EccVerifyRaw bad sigLen");
     }
 #endif
@@ -11485,10 +11489,13 @@ static void test_internal_helpers(void)
             /* CBOR map with 17 entries: 0xB1 (map of 17) followed by dummy entries */
             uint8_t bigMap[100];
             size_t i, idx = 0;
-            bigMap[idx++] = 0xB1u; /* map(17) */
-            for (i = 0; i < 17; i++) {
-                bigMap[idx++] = (uint8_t)(0x10 + i); /* label: 16+i */
-                bigMap[idx++] = 0x00u; /* value: 0 */
+            bigMap[idx] = 0xB1u; /* map(17) */
+            idx++;
+            for (i = 0; i < 17u; i++) {
+                bigMap[idx] = (uint8_t)(0x10u + i); /* label: 16+i */
+                idx++;
+                bigMap[idx] = 0x00u; /* value: 0 */
+                idx++;
             }
             XMEMSET(&hdr, 0, sizeof(hdr));
             ret = wolfCose_DecodeProtectedHdr(bigMap, idx, &hdr, &hdrState);
@@ -11541,10 +11548,13 @@ static void test_internal_helpers(void)
         {
             uint8_t bigMap[100];
             size_t i, idx = 0;
-            bigMap[idx++] = 0xB1; /* map(17) */
-            for (i = 0; i < 17; i++) {
-                bigMap[idx++] = (uint8_t)(0x10 + i);
-                bigMap[idx++] = 0x00;
+            bigMap[idx] = 0xB1u; /* map(17) */
+            idx++;
+            for (i = 0; i < 17u; i++) {
+                bigMap[idx] = (uint8_t)(0x10u + i);
+                idx++;
+                bigMap[idx] = 0x00u;
+                idx++;
             }
             ctx.cbuf = bigMap;
             ctx.bufSz = idx;
