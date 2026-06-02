@@ -7445,6 +7445,11 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         if (plaintextLen != NULL) {
             *plaintextLen = 0u;
         }
+        /* Clear the header so unauthenticated metadata is not exposed to
+         * callers that inspect hdr without strictly gating on the return. */
+        if (hdr != NULL) {
+            (void)XMEMSET(hdr, 0, sizeof(*hdr));
+        }
     }
     else {
         *plaintextLen = payloadLen;

@@ -9544,12 +9544,16 @@ static void test_cose_encrypt_recipient_alg_checks(void)
 
     /* 5377: unsupported recipient alg must be rejected, not treated direct. */
     recipient.algId = 0;
+    memset(&hdr, 0xAB, sizeof(hdr));
     ret = wc_CoseEncrypt_Decrypt(&recipient, 0, unsupported, sizeof(unsupported),
         NULL, 0, NULL, 0,
         scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                 "unsupported recipient alg rejected");
+    /* 5291: hdr must be cleared on the failed multi-recipient decrypt. */
+    TEST_ASSERT(hdr.alg == 0 && hdr.kid == NULL,
+                "encrypt decrypt clears hdr on failure");
 
     /* 5367: caller key-wrap policy must reject a direct-mode message. */
     recipient.algId = WOLFCOSE_ALG_A128KW;
