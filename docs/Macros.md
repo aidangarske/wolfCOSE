@@ -1,6 +1,6 @@
 # Configuration Macros
 
-wolfCOSE uses an opt-out design opt-in combo design the basis is that we have the minimal algo sets and features defined by default and you can opt out of non default builds. On the roadmap is to make this more configurable and easy to use. Ie. `user_settings.h` for example with a hybrid opt in model for things that shouldn't be enabled by default. All features are enabled by default; disable unwanted features with `WOLFCOSE_NO_*` defines.
+wolfCOSE uses an opt-out design: all features are enabled by default, and you disable the ones you don't need with `WOLFCOSE_NO_*` defines. A more configurable model — opt-in tuning via `user_settings.h` for features that should not be on by default — is on the roadmap.
 
 ## Message Type Gates
 

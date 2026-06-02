@@ -51,7 +51,7 @@ wolfCOSE implements all six COSE message types from RFC 9052:
 
 ## Quick Links
 
-- [GitHub Repository](https://github.com/aidangarske/wolfCOSE)
+- [GitHub Repository](https://github.com/wolfSSL/wolfCOSE)
 - [wolfSSL Website](https://www.wolfssl.com/)
 - [RFC 8949 (CBOR)](https://www.rfc-editor.org/rfc/rfc8949)
 - [RFC 9052 (COSE Structures)](https://www.rfc-editor.org/rfc/rfc9052)

@@ -1,6 +1,6 @@
 # Testing
 
-wolfCOSE includes comprehensive testing infrastructure for unit tests, algorithm coverage, code coverage, and failure injection testing. Code coverage is enforced by CI: `wolfcose.c` requires 99.30% minimum and `wolfcose_cbor.c` requires 100%. These thresholds are validated on every push and PR to ensure coverage doesn't regress. 
+wolfCOSE includes comprehensive testing infrastructure for unit tests, algorithm coverage, code coverage, and failure injection testing. Code coverage is enforced by CI: `wolfcose.c` requires 99% minimum and `wolfcose_cbor.c` requires 100%. These thresholds are validated on every push and PR to ensure coverage doesn't regress. 
 
 ## Running Tests
 

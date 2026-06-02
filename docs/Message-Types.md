@@ -169,4 +169,4 @@ A minimal Sign1-verify-only build is around **7.5 KB of `.text`**, including the
 - [[Algorithms]] — full algorithm list with COSE IDs and wolfCrypt guards
 - [[API Reference]] — function signatures, structures, and error codes
 - [[Macros]] — every `WOLFCOSE_*` and `WOLFCOSE_NO_*` compile-time toggle
-- [`examples/scenarios/`](https://github.com/aidangarske/wolfCOSE/tree/master/examples/scenarios) — `multi_party_approval.c`, `iot_fleet_config.c`, `group_broadcast_mac.c` show real multi-actor flows
+- [`examples/scenarios/`](https://github.com/wolfSSL/wolfCOSE/tree/main/examples/scenarios) — `multi_party_approval.c`, `iot_fleet_config.c`, `group_broadcast_mac.c` show real multi-actor flows

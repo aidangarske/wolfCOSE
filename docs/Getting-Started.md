@@ -60,7 +60,7 @@ You can enable only the algorithms you need:
 ## Building wolfCOSE
 
 ```bash
-git clone https://github.com/aidangarske/wolfCOSE.git
+git clone https://github.com/wolfSSL/wolfCOSE.git
 cd wolfCOSE
 make
 ```
@@ -85,6 +85,7 @@ make
 
 ```c
 #include <wolfcose/wolfcose.h>
+#include <stdio.h>
 
 int main(void)
 {
@@ -147,6 +148,7 @@ int main(void)
 
 ```c
 #include <wolfcose/wolfcose.h>
+#include <stdio.h>
 
 int main(void)
 {
@@ -206,6 +208,7 @@ int main(void)
 
 ```c
 #include <wolfcose/wolfcose.h>
+#include <stdio.h>
 
 int main(void)
 {
