@@ -14485,6 +14485,7 @@ static void test_multi_encrypt_with_detached(void)
         0x64, 0x6D, 0x07, 0xDB, 0xB5, 0x33, 0x56, 0x6E
     };
     uint8_t payload[32] = "Test multi-encrypt detached";
+    uint8_t iv[12] = {0};
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
     size_t outLen = 0;
@@ -14504,17 +14505,18 @@ static void test_multi_encrypt_with_detached(void)
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
 
-    /* Multi-encrypt with detached payload (pass payload in detached slot) */
+    /* Detached create is not supported for multi-recipient COSE_Encrypt; with a
+     * valid IV the call must report WOLFCOSE_E_UNSUPPORTED rather than silently
+     * succeeding. */
     ret = wc_CoseEncrypt_Encrypt(recipients, 1,
         WOLFCOSE_ALG_A128GCM,
-        NULL, 0,  /* No separate IV - let API generate */
+        iv, sizeof(iv),
         NULL, 0,  /* NULL attached payload */
         payload, sizeof(payload),  /* detached payload */
         NULL, 0,  /* no AAD */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng);
-    /* May succeed or fail depending on detached support */
-    TEST_ASSERT(ret == WOLFCOSE_SUCCESS || ret < 0, "multi encrypt detached");
+    TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED, "multi encrypt detached unsupported");
 
     (void)wc_FreeRng(&rng);
 }

@@ -1058,10 +1058,13 @@ WOLFCOSE_API int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
  * \param contentAlgId     Content encryption algorithm (A128GCM, etc).
  * \param iv               Initialization vector.
  * \param ivLen            IV length.
- * \param payload          Payload to encrypt (NULL if detached).
- * \param payloadLen       Payload length (0 if detached).
- * \param detachedPayload  Detached payload for encryption (NULL if attached).
- * \param detachedLen      Detached payload length.
+ * \param payload          Payload to encrypt (inline).
+ * \param payloadLen       Payload length.
+ * \param detachedPayload  Not supported for multi-recipient COSE_Encrypt;
+ *                         must be NULL. A non-NULL value returns
+ *                         WOLFCOSE_E_UNSUPPORTED. See wolfSSL/wolfCOSE
+ *                         issue tracker for detached-create support.
+ * \param detachedLen      Must be 0.
  * \param extAad           External additional authenticated data (NULL if none).
  * \param extAadLen        External AAD length.
  * \param scratch          Working buffer for Enc_structure.
