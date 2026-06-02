@@ -552,12 +552,12 @@ static int wolfCose_CBOR_DecodeContainerStart(WOLFCOSE_CBOR_CTX* ctx,
             if (item.majorType != majorType) {
                 ret = WOLFCOSE_E_CBOR_TYPE;
             }
-#if SIZE_MAX < UINT64_MAX
-            else if (item.val > (uint64_t)SIZE_MAX) {
-                /* Definite-length count exceeds addressable range (32-bit). */
-                ret = WOLFCOSE_E_CBOR_OVERFLOW;
+            /* A definite-length container needs at least one byte per declared
+             * element, so a count larger than the bytes remaining is malformed.
+             * This also rejects any count that would not fit in size_t. */
+            else if (item.val > (uint64_t)(ctx->bufSz - ctx->idx)) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
-#endif
             else {
                 *count = (size_t)item.val;
             }
