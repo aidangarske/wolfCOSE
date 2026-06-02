@@ -304,6 +304,22 @@ extern "C" {
 #define WOLFCOSE_HDR_PARTIAL_IV  6
 #define WOLFCOSE_HDR_EPHEMERAL_KEY (-1)  /* Ephemeral COSE_Key for ECDH */
 
+/*
+ * Security considerations for the algorithms below:
+ *
+ * - Nonce/IV uniqueness: the AEAD encrypt APIs take a caller-supplied IV and
+ *   only validate its length. Reusing an (key, IV) pair with AES-GCM,
+ *   AES-CCM, or ChaCha20-Poly1305 breaks confidentiality and/or integrity.
+ *   Callers MUST supply a unique IV per encryption (e.g. from wc_RNG).
+ * - 64-bit authentication tags: the AES-CCM *_64_* and AES-MAC *_64
+ *   algorithms produce 8-byte tags with much lower forgery resistance than
+ *   their 128-bit counterparts. They exist for constrained interop only;
+ *   prefer the 128-bit-tag variants unless a peer requires otherwise.
+ * - Algorithm pinning: verify/decrypt dispatch on the message algorithm.
+ *   To avoid algorithm-confusion, set key->alg (or recipient->algId) so the
+ *   library enforces the expected algorithm rather than trusting the message.
+ */
+
 /* Algorithms */
 #define WOLFCOSE_ALG_UNSET      ((int32_t)0)
 #define WOLFCOSE_ALG_ES256      (-7)
