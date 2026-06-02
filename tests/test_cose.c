@@ -1732,6 +1732,51 @@ static void test_cose_key_rsa(void)
     (void)wc_FreeRsaKey(&rsaKey);
     (void)wc_FreeRng(&rng);
 }
+
+static void test_cose_key_rsa_scratch_scrubbed(void)
+{
+    WOLFCOSE_KEY key;
+    RsaKey rsaKey;
+    WC_RNG rng;
+    uint8_t cbuf[2048];
+    size_t cLen = 0;
+    size_t i;
+    int ret;
+    int leaked = 0;
+
+    TEST_LOG("  [Key RSA scratch scrubbed]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
+    ret = wc_InitRsaKey(&rsaKey, NULL);
+    if (ret != 0) { TEST_ASSERT(0, "rsa init"); wc_FreeRng(&rng); return; }
+    ret = wc_MakeRsaKey(&rsaKey, 2048, 65537, &rng);
+    TEST_ASSERT(ret == 0, "rsa keygen 2048");
+    if (ret != 0) { wc_FreeRsaKey(&rsaKey); wc_FreeRng(&rng); return; }
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetRsa(&key, &rsaKey);
+    key.alg = WOLFCOSE_ALG_PS256;
+
+    /* Encode a private RSA COSE_Key into a sentinel-filled buffer. The encoder
+     * exports e/n/p/q into the scratch tail past the encoded length and must
+     * scrub it; any leftover non-sentinel, non-zero byte is leaked key
+     * material (F-5373). */
+    (void)XMEMSET(cbuf, 0xAAu, sizeof(cbuf));
+    ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
+    TEST_ASSERT(ret == 0 && cLen > 0, "rsa scrub encode");
+
+    for (i = cLen; (ret == 0) && (i < sizeof(cbuf)); i++) {
+        if ((cbuf[i] != 0xAAu) && (cbuf[i] != 0x00u)) {
+            leaked = 1;
+        }
+    }
+    TEST_ASSERT(leaked == 0, "rsa scratch tail scrubbed past outLen");
+
+    wc_CoseKey_Free(&key);
+    (void)wc_FreeRsaKey(&rsaKey);
+    (void)wc_FreeRng(&rng);
+}
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
 /* ----- COSE_Key Dilithium encode/decode round-trip ----- */
@@ -15533,6 +15578,7 @@ int test_cose(void)
     test_cose_key_symmetric();
 #if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
     test_cose_key_rsa();
+    test_cose_key_rsa_scratch_scrubbed();
 #endif
 #ifdef HAVE_DILITHIUM
     test_cose_key_dilithium("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, 2);
