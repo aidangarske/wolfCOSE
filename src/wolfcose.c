@@ -1360,7 +1360,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                     if (ret != 0) {
                         ret = WOLFCOSE_E_CRYPTO;
                     }
-                    else if ((nLen < 256u) || (nLen > 65535u)) {
+                    else if ((nLen == 0u) || (nLen > 65535u)) {
                         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
                     }
                     else {
@@ -1440,7 +1440,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                                 if (ret != 0) {
                                     ret = WOLFCOSE_E_CRYPTO;
                                 }
-                                else if ((dSz < 256u) || (dSz > 65535u)) {
+                                else if ((dSz == 0u) || (dSz > 65535u)) {
                                     ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
                                 }
                                 else {
@@ -1945,8 +1945,9 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                         ret = WOLFCOSE_E_CRYPTO;
                     }
                     else {
-                        /* Public key only — full private import from raw
-                         * n,e,d components is not currently supported */
+                        /* TODO(#34): public key only. RSA private round-trip
+                         * needs n,e,d,p,q,qInv via wc_RsaPrivateKeyDecodeRaw;
+                         * the COSE_Key format must also carry p,q,qInv. */
                         key->hasPrivate = 0u;
                     }
                 }

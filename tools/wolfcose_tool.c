@@ -56,8 +56,8 @@
 #ifdef WC_RSA_PSS
     #include <wolfssl/wolfcrypt/rsa.h>
 #endif
-#ifdef HAVE_DILITHIUM
-    #include <wolfssl/wolfcrypt/dilithium.h>
+#ifdef WOLFSSL_HAVE_MLDSA
+    #include <wolfssl/wolfcrypt/wc_mldsa.h>
 #endif
 
 #include <stdio.h>
@@ -69,11 +69,12 @@
 #endif
 
 #ifndef WOLFCOSE_TOOL_MAX_KEY
-    #ifdef HAVE_DILITHIUM
+    #ifdef WOLFSSL_HAVE_MLDSA
         /* ML-DSA-87: pub=2592 + priv=4896 + CBOR overhead */
         #define WOLFCOSE_TOOL_MAX_KEY  8192
     #else
-        #define WOLFCOSE_TOOL_MAX_KEY  1024
+        /* RSA-2048 private COSE_Key: n+d plus e2/n2/p/q export scratch */
+        #define WOLFCOSE_TOOL_MAX_KEY  4096
     #endif
 #endif
 
@@ -137,7 +138,7 @@ static int parse_alg(const char* name, int32_t* alg)
         *alg = WOLFCOSE_ALG_PS512;
     }
 #endif
-#ifdef HAVE_DILITHIUM
+#ifdef WOLFSSL_HAVE_MLDSA
     else if (strcmp(name, "ML-DSA-44") == 0) {
         *alg = WOLFCOSE_ALG_ML_DSA_44;
     }
@@ -306,26 +307,30 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
     }
     else
 #endif
-#ifdef HAVE_DILITHIUM
+#ifdef WOLFSSL_HAVE_MLDSA
     if (alg == WOLFCOSE_ALG_ML_DSA_44 || alg == WOLFCOSE_ALG_ML_DSA_65 ||
         alg == WOLFCOSE_ALG_ML_DSA_87) {
-        dilithium_key dl;
+        wc_MlDsaKey dl;
         byte level;
-        if (alg == WOLFCOSE_ALG_ML_DSA_44)      level = 2;
-        else if (alg == WOLFCOSE_ALG_ML_DSA_65)  level = 3;
-        else                                      level = 5;
-        wc_dilithium_init(&dl);
-        wc_dilithium_set_level(&dl, level);
-        ret = wc_dilithium_make_key(&dl, &rng);
+        if (alg == WOLFCOSE_ALG_ML_DSA_44)       level = WC_ML_DSA_44;
+        else if (alg == WOLFCOSE_ALG_ML_DSA_65)  level = WC_ML_DSA_65;
+        else                                      level = WC_ML_DSA_87;
+        ret = wc_MlDsaKey_Init(&dl, NULL, INVALID_DEVID);
+        if (ret == 0) {
+            ret = wc_MlDsaKey_SetParams(&dl, level);
+        }
+        if (ret == 0) {
+            ret = wc_MlDsaKey_MakeKey(&dl, &rng);
+        }
         if (ret != 0) {
             fprintf(stderr, "ML-DSA keygen failed: %d\n", ret);
-            wc_dilithium_free(&dl);
+            wc_MlDsaKey_Free(&dl);
             wc_FreeRng(&rng);
             return EXIT_CRYPTO;
         }
-        wc_CoseKey_SetDilithium(&coseKey, alg, &dl);
+        wc_CoseKey_SetMlDsa(&coseKey, alg, &dl);
         ret = wc_CoseKey_Encode(&coseKey, keyBuf, sizeof(keyBuf), &keyLen);
-        wc_dilithium_free(&dl);
+        wc_MlDsaKey_Free(&dl);
     }
     else
 #endif
@@ -533,22 +538,26 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
     }
     else
 #endif
-#ifdef HAVE_DILITHIUM
+#ifdef WOLFSSL_HAVE_MLDSA
     if (alg == WOLFCOSE_ALG_ML_DSA_44 || alg == WOLFCOSE_ALG_ML_DSA_65 ||
         alg == WOLFCOSE_ALG_ML_DSA_87) {
-        dilithium_key dl;
-        wc_dilithium_init(&dl);
-        coseKey.key.dilithium = &dl;
+        wc_MlDsaKey dl;
+        ret = wc_MlDsaKey_Init(&dl, NULL, INVALID_DEVID);
+        if (ret != 0) {
+            fprintf(stderr, "ML-DSA init failed: %d\n", ret);
+            return EXIT_CRYPTO;
+        }
+        coseKey.key.mldsa = &dl;
         ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
         if (ret != 0) {
             fprintf(stderr, "Key decode failed: %d\n", ret);
-            wc_dilithium_free(&dl);
+            wc_MlDsaKey_Free(&dl);
             return EXIT_CRYPTO;
         }
 
         ret = wc_InitRng(&rng);
         if (ret != 0) {
-            wc_dilithium_free(&dl);
+            wc_MlDsaKey_Free(&dl);
             return EXIT_CRYPTO;
         }
 
@@ -558,7 +567,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
             outBuf, sizeof(outBuf), &outLen, &rng);
 
         wc_FreeRng(&rng);
-        wc_dilithium_free(&dl);
+        wc_MlDsaKey_Free(&dl);
     }
     else
 #endif
@@ -594,135 +603,125 @@ static int tool_verify(const char* keyPath, const char* inPath)
     const uint8_t* payload = NULL;
     size_t payloadLen = 0;
     int keyMatched = 0;
+    int32_t kty = 0;
+    int32_t crv = 0;
 
     ret = read_file(keyPath, keyBuf, sizeof(keyBuf), &keyLen);
     if (ret == 0) {
         ret = read_file(inPath, msgBuf, sizeof(msgBuf), &msgLen);
     }
 
-    /* Decode key to determine kty, then dispatch to correct wolfCrypt
-     * key type. OKP keys need crv to distinguish Ed25519/Ed448/Dilithium. */
+    /* Peek the COSE_Key metadata with an empty key union so no wolfCrypt
+     * importer runs (each is gated on a non-NULL union member). This yields
+     * kty/crv without writing key material through a mismatched union member,
+     * then we dispatch to exactly one correctly-typed key. */
     if (ret == 0) {
         wc_CoseKey_Init(&coseKey);
+        (void)wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        kty = coseKey.kty;
+        crv = coseKey.crv;
     }
 
 #ifdef HAVE_ECC
-    if (ret == 0 && keyMatched == 0) {
+    if (ret == 0 && kty == WOLFCOSE_KTY_EC2) {
         ecc_key ecc;
+        keyMatched = 1;
+        wc_CoseKey_Init(&coseKey);
         wc_ecc_init(&ecc);
         coseKey.key.ecc = &ecc;
         ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
-        if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_EC2) {
-            keyMatched = 1;
+        if (ret == 0) {
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &payload, &payloadLen);
         }
-        else if (ret != 0 || coseKey.kty != WOLFCOSE_KTY_EC2) {
-            ret = 0; /* Reset for next key type attempt */
-        }
         wc_ecc_free(&ecc);
     }
+    else
 #endif
-
 #ifdef WC_RSA_PSS
-    if (ret == 0 && keyMatched == 0) {
+    if (ret == 0 && kty == WOLFCOSE_KTY_RSA) {
         RsaKey rsa;
+        keyMatched = 1;
         wc_CoseKey_Init(&coseKey);
         wc_InitRsaKey(&rsa, NULL);
         coseKey.key.rsa = &rsa;
         ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
-        if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_RSA) {
-            keyMatched = 1;
+        if (ret == 0) {
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &payload, &payloadLen);
         }
-        else if (ret != 0 || coseKey.kty != WOLFCOSE_KTY_RSA) {
-            ret = 0; /* Reset for next key type attempt */
-        }
         wc_FreeRsaKey(&rsa);
     }
+    else
 #endif
-
 #ifdef HAVE_ED25519
-    if (ret == 0 && keyMatched == 0) {
+    if (ret == 0 && kty == WOLFCOSE_KTY_OKP &&
+        crv == WOLFCOSE_CRV_ED25519) {
         ed25519_key ed;
+        keyMatched = 1;
         wc_CoseKey_Init(&coseKey);
         wc_ed25519_init(&ed);
         coseKey.key.ed25519 = &ed;
         ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
-        if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_OKP &&
-            coseKey.crv == WOLFCOSE_CRV_ED25519) {
-            keyMatched = 1;
+        if (ret == 0) {
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &payload, &payloadLen);
         }
-        else if (ret != 0 || coseKey.kty != WOLFCOSE_KTY_OKP ||
-                 coseKey.crv != WOLFCOSE_CRV_ED25519) {
-            ret = 0; /* Reset for next key type attempt */
-        }
         wc_ed25519_free(&ed);
     }
+    else
 #endif
-
 #ifdef HAVE_ED448
-    if (ret == 0 && keyMatched == 0) {
+    if (ret == 0 && kty == WOLFCOSE_KTY_OKP &&
+        crv == WOLFCOSE_CRV_ED448) {
         ed448_key ed;
+        keyMatched = 1;
         wc_CoseKey_Init(&coseKey);
         wc_ed448_init(&ed);
         coseKey.key.ed448 = &ed;
         ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
-        if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_OKP &&
-            coseKey.crv == WOLFCOSE_CRV_ED448) {
-            keyMatched = 1;
+        if (ret == 0) {
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
                 &hdr, &payload, &payloadLen);
-        }
-        else if (ret != 0 || coseKey.kty != WOLFCOSE_KTY_OKP ||
-                 coseKey.crv != WOLFCOSE_CRV_ED448) {
-            ret = 0; /* Reset for next key type attempt */
         }
         wc_ed448_free(&ed);
     }
+    else
 #endif
-
-#ifdef HAVE_DILITHIUM
-    if (ret == 0 && keyMatched == 0) {
-        dilithium_key dl;
+#ifdef WOLFSSL_HAVE_MLDSA
+    if (ret == 0 && kty == WOLFCOSE_KTY_OKP &&
+        (crv == WOLFCOSE_CRV_ML_DSA_44 ||
+         crv == WOLFCOSE_CRV_ML_DSA_65 ||
+         crv == WOLFCOSE_CRV_ML_DSA_87)) {
+        wc_MlDsaKey dl;
+        keyMatched = 1;
         wc_CoseKey_Init(&coseKey);
-        wc_dilithium_init(&dl);
-        coseKey.key.dilithium = &dl;
-        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
-        if (ret == 0 && coseKey.kty == WOLFCOSE_KTY_OKP &&
-            (coseKey.crv == WOLFCOSE_CRV_ML_DSA_44 ||
-             coseKey.crv == WOLFCOSE_CRV_ML_DSA_65 ||
-             coseKey.crv == WOLFCOSE_CRV_ML_DSA_87)) {
-            keyMatched = 1;
-            ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
-                NULL, 0, NULL, 0, scratch, sizeof(scratch),
-                &hdr, &payload, &payloadLen);
+        ret = wc_MlDsaKey_Init(&dl, NULL, INVALID_DEVID);
+        if (ret == 0) {
+            coseKey.key.mldsa = &dl;
+            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+            if (ret == 0) {
+                ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
+                    NULL, 0, NULL, 0, scratch, sizeof(scratch),
+                    &hdr, &payload, &payloadLen);
+            }
+            wc_MlDsaKey_Free(&dl);
         }
-        else if (ret != 0 || coseKey.kty != WOLFCOSE_KTY_OKP ||
-                 (coseKey.crv != WOLFCOSE_CRV_ML_DSA_44 &&
-                  coseKey.crv != WOLFCOSE_CRV_ML_DSA_65 &&
-                  coseKey.crv != WOLFCOSE_CRV_ML_DSA_87)) {
-            ret = 0; /* Reset for next key type attempt */
-        }
-        wc_dilithium_free(&dl);
     }
+    else
 #endif
-
-    /* Check if key type was matched */
-    if (ret == 0 && keyMatched == 0) {
+    {
+        (void)crv;
         fprintf(stderr, "Unsupported key type\n");
         ret = EXIT_CRYPTO;
     }
 
     /* Report result */
-    if (ret != 0 && keyMatched != 0) {
+    if (keyMatched != 0 && ret != 0) {
         fprintf(stderr, "Verification FAILED: %d\n", ret);
         ret = EXIT_CRYPTO;
     }
@@ -1268,12 +1267,12 @@ static int test_sign_pss(const char* name, int32_t alg)
 }
 #endif
 
-#ifdef HAVE_DILITHIUM
+#ifdef WOLFSSL_HAVE_MLDSA
 static int test_sign_mldsa(const char* name, int32_t alg, byte level)
 {
     int ret = 0;
     WC_RNG rng;
-    dilithium_key dl;
+    wc_MlDsaKey dl;
     WOLFCOSE_KEY key;
     uint8_t payload[] = "wolfCOSE roundtrip";
     uint8_t scratch[8192];
@@ -1289,18 +1288,18 @@ static int test_sign_mldsa(const char* name, int32_t alg, byte level)
     ret = wc_InitRng(&rng);
     if (ret == 0) {
         rngInit = 1;
-        ret = wc_dilithium_init(&dl);
+        ret = wc_MlDsaKey_Init(&dl, NULL, INVALID_DEVID);
     }
     if (ret == 0) {
         dlInit = 1;
-        ret = wc_dilithium_set_level(&dl, level);
+        ret = wc_MlDsaKey_SetParams(&dl, level);
     }
     if (ret == 0) {
-        ret = wc_dilithium_make_key(&dl, &rng);
+        ret = wc_MlDsaKey_MakeKey(&dl, &rng);
     }
     if (ret == 0) {
         wc_CoseKey_Init(&key);
-        wc_CoseKey_SetDilithium(&key, alg, &dl);
+        wc_CoseKey_SetMlDsa(&key, alg, &dl);
 
         ret = wc_CoseSign1_Sign(&key, alg, NULL, 0,
             payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
@@ -1321,7 +1320,7 @@ static int test_sign_mldsa(const char* name, int32_t alg, byte level)
 
     /* Cleanup */
     if (dlInit != 0) {
-        wc_dilithium_free(&dl);
+        wc_MlDsaKey_Free(&dl);
     }
     if (rngInit != 0) {
         wc_FreeRng(&rng);
@@ -1483,20 +1482,20 @@ static int tool_test(const char* filter)
         if (test_sign_pss("PS512", WOLFCOSE_ALG_PS512) != 0) failures++;
     }
 #endif
-#ifdef HAVE_DILITHIUM
+#ifdef WOLFSSL_HAVE_MLDSA
     if (all || strcmp(filter, "ML-DSA-44") == 0) {
         tests++;
-        if (test_sign_mldsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, 2) != 0)
+        if (test_sign_mldsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, WC_ML_DSA_44) != 0)
             failures++;
     }
     if (all || strcmp(filter, "ML-DSA-65") == 0) {
         tests++;
-        if (test_sign_mldsa("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, 3) != 0)
+        if (test_sign_mldsa("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, WC_ML_DSA_65) != 0)
             failures++;
     }
     if (all || strcmp(filter, "ML-DSA-87") == 0) {
         tests++;
-        if (test_sign_mldsa("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, 5) != 0)
+        if (test_sign_mldsa("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, WC_ML_DSA_87) != 0)
             failures++;
     }
 #endif
