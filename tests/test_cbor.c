@@ -302,6 +302,20 @@ static void test_cbor_decode_vectors(void)
       ret = wc_CBOR_DecodeInt(&ctx, &ival);
       TEST_ASSERT(ret == 0 && ival == 100, "decode int +100"); }
 
+    /* Boundary: unsigned INT64_MAX (0x1B 7F FF ...) decodes exactly. */
+    { uint8_t in[] = {0x1B, 0x7F, 0xFF, 0xFF, 0xFF,
+                      0xFF, 0xFF, 0xFF, 0xFF};
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ret = wc_CBOR_DecodeInt(&ctx, &ival);
+      TEST_ASSERT(ret == 0 && ival == INT64_MAX, "decode INT64_MAX"); }
+
+    /* Boundary: negint -1 - INT64_MAX == INT64_MIN. */
+    { uint8_t in[] = {0x3B, 0x7F, 0xFF, 0xFF, 0xFF,
+                      0xFF, 0xFF, 0xFF, 0xFF};
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ret = wc_CBOR_DecodeInt(&ctx, &ival);
+      TEST_ASSERT(ret == 0 && ival == INT64_MIN, "decode INT64_MIN"); }
+
     /* bstr empty */
     { uint8_t in[] = {0x40};
       ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
