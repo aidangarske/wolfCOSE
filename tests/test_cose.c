@@ -1213,6 +1213,89 @@ static void test_cose_encrypt0_aes_ccm(void)
                 memcmp(plaintext, payload, plaintextLen) == 0,
                 "enc0 ccm-64-128-128 payload match");
 }
+
+static void test_cose_aes_ccm_all_params(void)
+{
+    /* alg, keyLen, nonceLen for all eight AES-CCM parameter sets. */
+    static const struct {
+        int32_t alg;
+        size_t  keyLen;
+        size_t  nonceLen;
+    } ccm[] = {
+        { WOLFCOSE_ALG_AES_CCM_16_64_128,  16u, 13u },
+        { WOLFCOSE_ALG_AES_CCM_16_64_256,  32u, 13u },
+        { WOLFCOSE_ALG_AES_CCM_64_64_128,  16u,  7u },
+        { WOLFCOSE_ALG_AES_CCM_64_64_256,  32u,  7u },
+        { WOLFCOSE_ALG_AES_CCM_16_128_128, 16u, 13u },
+        { WOLFCOSE_ALG_AES_CCM_16_128_256, 32u, 13u },
+        { WOLFCOSE_ALG_AES_CCM_64_128_128, 16u,  7u },
+        { WOLFCOSE_ALG_AES_CCM_64_128_256, 32u,  7u }
+    };
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    uint8_t keyData[32];
+    uint8_t nonce[13];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    uint8_t plaintext[64];
+    size_t outLen;
+    size_t plaintextLen;
+    const uint8_t payload[] = "ccm param sweep";
+    size_t i;
+    int ret;
+
+    TEST_LOG("  [AES-CCM all parameter sets]\n");
+
+    for (i = 0; i < sizeof(keyData); i++) { keyData[i] = (uint8_t)(i + 1u); }
+    for (i = 0; i < sizeof(nonce); i++) { nonce[i] = (uint8_t)(0xA0u + i); }
+
+    for (i = 0; i < (sizeof(ccm) / sizeof(ccm[0])); i++) {
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetSymmetric(&key, keyData, ccm[i].keyLen);
+
+        /* Encrypt0 (F-5300) */
+        outLen = 0;
+        ret = wc_CoseEncrypt0_Encrypt(&key, ccm[i].alg,
+            nonce, ccm[i].nonceLen, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen);
+        TEST_ASSERT(ret == 0 && outLen > 0, "ccm sweep enc0 encrypt");
+        plaintextLen = 0;
+        memset(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt0_Decrypt(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == 0 &&
+                    plaintextLen == sizeof(payload) - 1 &&
+                    memcmp(plaintext, payload, plaintextLen) == 0,
+                    "ccm sweep enc0 roundtrip");
+        TEST_ASSERT(hdr.alg == ccm[i].alg, "ccm sweep enc0 hdr alg");
+
+        /* Multi-recipient COSE_Encrypt direct (F-5375) */
+        recipient.algId = WOLFCOSE_ALG_DIRECT;
+        recipient.key = &key;
+        recipient.kid = NULL;
+        recipient.kidLen = 0;
+        outLen = 0;
+        ret = wc_CoseEncrypt_Encrypt(&recipient, 1, ccm[i].alg,
+            nonce, ccm[i].nonceLen, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, NULL);
+        TEST_ASSERT(ret == 0 && outLen > 0, "ccm sweep multi encrypt");
+        plaintextLen = 0;
+        memset(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == 0 &&
+                    plaintextLen == sizeof(payload) - 1 &&
+                    memcmp(plaintext, payload, plaintextLen) == 0,
+                    "ccm sweep multi roundtrip");
+    }
+}
 #endif /* HAVE_AESCCM */
 
 /* ----- COSE_Sign1 RSA-PSS tests ----- */
@@ -15493,6 +15576,7 @@ int test_cose(void)
     /* AES-CCM encryption tests */
 #ifdef HAVE_AESCCM
     test_cose_encrypt0_aes_ccm();
+    test_cose_aes_ccm_all_params();
 #endif
 
     /* RSA-PSS signature tests */
