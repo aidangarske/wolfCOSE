@@ -1942,6 +1942,51 @@ static void test_cose_mac0_empty_inline_payload(void)
                 "mac0 empty payload not detached");
 }
 
+static void test_cose_mac_multi_per_recipient(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipients[2];
+    WOLFCOSE_HDR hdr;
+    uint8_t keyData[32] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    size_t outLen = 0;
+    int ret;
+    size_t r;
+    const uint8_t payload[] = "multi recipient mac";
+
+    TEST_LOG("  [Mac multi per-recipient roundtrip]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    for (r = 0; r < 2u; r++) {
+        recipients[r].algId = 0;       /* direct: shared MAC key */
+        recipients[r].key = &key;
+        recipients[r].kid = NULL;
+        recipients[r].kidLen = 0;
+    }
+
+    ret = wc_CoseMac_Create(recipients, 2, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "multi mac create");
+
+    /* Every encoded recipient must verify. */
+    for (r = 0; (ret == 0) && (r < 2u); r++) {
+        memset(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseMac_Verify(&recipients[r], r, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "multi recipient mac verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1,
+                    "multi recipient mac payload len");
+    }
+}
+
 #ifdef WOLFSSL_SHA384
 static void test_cose_mac0_hmac384(void)
 {
@@ -9387,6 +9432,54 @@ static void test_cose_encrypt_recipient_alg_checks(void)
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                 "recipient algId policy enforced");
 }
+
+static void test_cose_encrypt_multi_per_recipient(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipients[2];
+    WOLFCOSE_HDR hdr;
+    uint8_t cek[16] = {0};
+    uint8_t iv[12] = {0};
+    uint8_t scratch[512];
+    uint8_t out[256];
+    uint8_t plaintext[64];
+    size_t outLen = 0;
+    size_t plaintextLen = 0;
+    int ret;
+    size_t r;
+    const uint8_t payload[] = "multi recipient direct";
+
+    TEST_LOG("  [Encrypt multi per-recipient roundtrip]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, cek, sizeof(cek));
+    for (r = 0; r < 2u; r++) {
+        recipients[r].algId = WOLFCOSE_ALG_DIRECT;
+        recipients[r].key = &key;       /* direct: shared CEK */
+        recipients[r].kid = NULL;
+        recipients[r].kidLen = 0;
+    }
+
+    ret = wc_CoseEncrypt_Encrypt(recipients, 2, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv), payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, NULL);
+    TEST_ASSERT(ret == 0, "multi encrypt create");
+
+    /* Every encoded recipient must decrypt to the original plaintext. */
+    for (r = 0; (ret == 0) && (r < 2u); r++) {
+        memset(&hdr, 0, sizeof(hdr));
+        plaintextLen = 0;
+        ret = wc_CoseEncrypt_Decrypt(&recipients[r], r, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == 0, "multi recipient decrypt");
+        TEST_ASSERT((plaintextLen == sizeof(payload) - 1) &&
+                    (memcmp(plaintext, payload, plaintextLen) == 0),
+                    "multi recipient payload match");
+    }
+}
 #endif /* HAVE_AESGCM */
 
 static void test_cose_protected_hdr_content_type(void)
@@ -15423,6 +15516,7 @@ int test_cose(void)
     test_cose_mac0_short_hmac_key();
     test_cose_mac_payload_validation();
     test_cose_mac0_empty_inline_payload();
+    test_cose_mac_multi_per_recipient();
     test_cose_mac0_with_aad();
     test_cose_mac0_detached();
     test_cose_mac0_detached_with_aad();
@@ -15597,6 +15691,7 @@ int test_cose(void)
     test_cose_encrypt_dup_recipient_unprot_hdr();
     test_cose_encrypt_direct_empty_protected();
     test_cose_encrypt_recipient_alg_checks();
+    test_cose_encrypt_multi_per_recipient();
 #endif
     test_cose_protected_hdr_content_type();
     test_cose_protected_hdr_tstr_label();
