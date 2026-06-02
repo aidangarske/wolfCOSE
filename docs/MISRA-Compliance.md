@@ -1,6 +1,6 @@
 # MISRA C Compliance
 
-wolfCOSE strives for MISRA C compliance and is checked in CI on every pull request. The project is not yet fully MISRA C:2023 compliant since there is no checker for 2023 that is publicly availible yet. We do fully test and support the 2012 Misra-C standard. Full MISRA C:2023 verification requires commercial tooling (like LDRA, Polyspace, Cppcheck Premium). The current free tooling provides around 80% coverage across syntax, essential type, and data-flow rules.
+wolfCOSE strives for MISRA C compliance and is checked in CI on every pull request. The project is not yet fully MISRA C:2023 compliant since there is no checker for 2023 that is publicly available yet. We do fully test and support the 2012 Misra-C standard. Full MISRA C:2023 verification requires commercial tooling (like LDRA, Polyspace, Cppcheck Premium). The current free tooling provides around 80% coverage across syntax, essential type, and data-flow rules.
 
 ## Coverage
 
