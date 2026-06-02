@@ -12,13 +12,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  discover:
+    uses: ./.github/workflows/_resolve-wolfssl.yml
+
   build:
-    name: ${{ matrix.os }}
+    name: ${{ matrix.os }} (wolfSSL ${{ matrix.wolfssl-ref }})
+    needs: discover
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, ubuntu-22.04, macos-latest]
+        wolfssl-ref: ${{ fromJson(needs.discover.outputs.refs) }}
 
     steps:
     - uses: actions/checkout@v4
@@ -33,31 +38,38 @@ jobs:
       if: runner.os == 'macOS'
       run: brew install autoconf automake libtool
 
-    - name: Resolve wolfSSL master commit
-      id: wolfssl-rev
-      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
-
-    - name: Cache wolfSSL
+    - name: Cache wolfSSL (${{ matrix.wolfssl-ref }})
+      if: matrix.wolfssl-ref != 'master'
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-${{ matrix.os }}-master-${{ steps.wolfssl-rev.outputs.sha }}
+        key: wolfssl-${{ matrix.os }}-${{ matrix.wolfssl-ref }}-v4
 
-    - name: Build wolfSSL
-      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+    - name: Build wolfSSL (${{ matrix.wolfssl-ref }})
+      if: matrix.wolfssl-ref == 'master' || steps.cache-wolfssl.outputs.cache-hit != 'true'
       run: |
         cd ~
-        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        git clone --depth 1 --branch ${{ matrix.wolfssl-ref }} \
+            https://github.com/wolfSSL/wolfssl.git
         cd wolfssl
         ./autogen.sh
+        # PQC (ML-DSA wc_MlDsaKey) only exists on master or stable releases
+        # strictly newer than the v5.9.1 floor.
+        REF="${{ matrix.wolfssl-ref }}"
+        if [ "$REF" = "master" ] || \
+           [ "$(printf '%s\n%s\n' v5.9.1-stable "$REF" | sort -V | tail -n1)" != "v5.9.1-stable" ]; then
+          PQC_FLAGS="--enable-mldsa"
+        else
+          PQC_FLAGS=""
+        fi
         ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
                     --enable-curve25519 --enable-curve448 \
                     --enable-aesgcm --enable-aesccm \
                     --enable-sha384 --enable-sha512 \
                     --enable-keygen --enable-hkdf --enable-aeskeywrap \
                     --enable-chacha --enable-poly1305 \
-                    --enable-dilithium --enable-rsapss \
+                    $PQC_FLAGS --enable-rsapss \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
         make install
@@ -85,8 +97,12 @@ jobs:
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
   coverage:
-    name: Code Coverage
+    name: Code Coverage (wolfSSL ${{ matrix.wolfssl-version }})
+    needs: discover
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
 
     steps:
     - uses: actions/checkout@v4
@@ -96,31 +112,36 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool lcov
 
-    - name: Resolve wolfSSL master commit
-      id: wolfssl-rev
-      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
-
-    - name: Cache wolfSSL
+    - name: Cache wolfSSL (${{ matrix.wolfssl-version }})
+      if: matrix.wolfssl-version != 'master'
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-ubuntu-latest-coverage-master-${{ steps.wolfssl-rev.outputs.sha }}
+        key: wolfssl-coverage-${{ matrix.wolfssl-version }}-v4
 
-    - name: Build wolfSSL
-      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+    - name: Build wolfSSL (${{ matrix.wolfssl-version }})
+      if: matrix.wolfssl-version == 'master' || steps.cache-wolfssl.outputs.cache-hit != 'true'
+      env:
+        PQC: ${{ matrix.pqc }}
       run: |
         cd ~
-        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        git clone --depth 1 --branch ${{ matrix.wolfssl-ref }} \
+            https://github.com/wolfSSL/wolfssl.git
         cd wolfssl
         ./autogen.sh
+        if [ "$PQC" = "true" ]; then
+          PQC_FLAGS="--enable-mldsa"
+        else
+          PQC_FLAGS=""
+        fi
         ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
                     --enable-curve25519 --enable-curve448 \
                     --enable-aesgcm --enable-aesccm \
                     --enable-sha384 --enable-sha512 \
                     --enable-keygen --enable-hkdf --enable-aeskeywrap \
                     --enable-chacha --enable-poly1305 \
-                    --enable-dilithium --enable-rsapss \
+                    $PQC_FLAGS --enable-rsapss \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc)
         make install
@@ -157,6 +178,7 @@ jobs:
         echo "Coverage ${COVERAGE}% meets threshold of 75%"
 
     - name: Upload coverage report
+      if: matrix.wolfssl-version == 'master'
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
