@@ -9984,6 +9984,32 @@ static void test_cose_build_sig_structure_context(void)
     TEST_ASSERT(scratch[1] == 0x64u, "Mac0 tstr(4) header");
     TEST_ASSERT(memcmp(&scratch[2], "MAC0", 4) == 0,
                 "Mac0 context bytes");
+
+    /* Mac multi-recipient path: array(4), tstr(3) "MAC" (F-5234). */
+    ret = wolfCose_BuildToBeSignedMaced(
+        WOLFCOSE_CTX_MAC, sizeof(WOLFCOSE_CTX_MAC),
+        protectedHdr, sizeof(protectedHdr),
+        NULL, 0,
+        NULL, 0,
+        payload, sizeof(payload),
+        scratch, sizeof(scratch), &structLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "BuildToBeSignedMaced Mac ok");
+    TEST_ASSERT(scratch[0] == 0x84u, "Mac array(4) header");
+    TEST_ASSERT(scratch[1] == 0x63u, "Mac tstr(3) header");
+    TEST_ASSERT(memcmp(&scratch[2], "MAC", 3) == 0, "Mac context bytes");
+
+    /* AEAD Enc_structure contexts are AAD inputs; assert the context constants
+     * directly so a byte mutation is detected (F-5232, F-5233). */
+    TEST_ASSERT(sizeof(WOLFCOSE_CTX_ENCRYPT0) == 8u &&
+                memcmp(WOLFCOSE_CTX_ENCRYPT0, "Encrypt0", 8) == 0,
+                "Encrypt0 context bytes");
+    TEST_ASSERT(sizeof(WOLFCOSE_CTX_ENCRYPT) == 7u &&
+                memcmp(WOLFCOSE_CTX_ENCRYPT, "Encrypt", 7) == 0,
+                "Encrypt context bytes");
+    TEST_ASSERT(sizeof(WOLFCOSE_CTX_MAC) == 3u &&
+                memcmp(WOLFCOSE_CTX_MAC, "MAC", 3) == 0,
+                "MAC context constant bytes");
 }
 
 /* ----- Coverage boost: exercise multi-signer / multi-recipient paths
