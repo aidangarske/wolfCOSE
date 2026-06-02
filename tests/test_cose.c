@@ -1555,7 +1555,6 @@ static void test_cose_sign1_ml_dsa_level_mismatch(void)
             &hdr, &decPayload, &decPayloadLen);
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
                     "ml-dsa level mismatch rejected");
-        ret = 0;
     }
 
     if (dlInited != 0) { (void)wc_dilithium_free(&dlKey); }
@@ -9576,7 +9575,7 @@ static void test_cose_encrypt_multi_per_recipient(void)
     uint8_t out[256];
     uint8_t plaintext[64];
     size_t outLen = 0;
-    size_t plaintextLen = 0;
+    size_t plaintextLen;
     int ret;
     size_t r;
     const uint8_t payload[] = "multi recipient direct";
@@ -15360,7 +15359,7 @@ static void test_ecdh_es_multi_recipient_decrypt_rejected(void)
     uint8_t out[512];
     uint8_t spliced[520];
     size_t outLen = 0;
-    size_t splicedLen = 0;
+    size_t splicedLen;
     uint8_t scratch[256];
     uint8_t plaintext[64];
     size_t plaintextLen = 0;
