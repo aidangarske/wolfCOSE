@@ -1906,6 +1906,42 @@ static void test_cose_mac_payload_validation(void)
                 "mac both payloads rejected");
 }
 
+static void test_cose_mac0_empty_inline_payload(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t keyData[32] = {0};
+    static const uint8_t empty[1] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 1;
+    WOLFCOSE_HDR hdr;
+    int ret;
+
+    TEST_LOG("  [Mac0 empty inline payload]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    /* 5376: a non-NULL zero-length inline payload must round-trip. */
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0, empty, 0,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0, "mac0 empty payload create");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac0_Verify(&key, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "mac0 empty payload verify");
+    TEST_ASSERT(decPayloadLen == 0u, "mac0 empty payload len");
+    TEST_ASSERT((hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED) == 0u,
+                "mac0 empty payload not detached");
+}
+
 #ifdef WOLFSSL_SHA384
 static void test_cose_mac0_hmac384(void)
 {
@@ -15278,6 +15314,7 @@ int test_cose(void)
     test_cose_mac0_hmac256();
     test_cose_mac0_short_hmac_key();
     test_cose_mac_payload_validation();
+    test_cose_mac0_empty_inline_payload();
     test_cose_mac0_with_aad();
     test_cose_mac0_detached();
     test_cose_mac0_detached_with_aad();
