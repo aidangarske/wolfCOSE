@@ -6277,6 +6277,61 @@ static void test_cose_sign1_trailing_bytes(void)
     }
 }
 
+static void test_cose_sign1_hdr_cleared_on_failure(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
+    uint8_t payload[] = "hdr clear payload";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+
+    TEST_LOG("  [Sign1 hdr cleared on failure]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret != 0) { TEST_ASSERT(0, "rng init"); }
+    if (ret == 0) { rngInited = 1; }
+    if (ret == 0) {
+        wc_ecc_init(&eccKey);
+        eccInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        if (ret != 0) { TEST_ASSERT(0, "keygen"); }
+    }
+    if (ret == 0) {
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0, "sign for hdr-clear test");
+    }
+    if (ret == 0) {
+        int verifyRet;
+        if (outLen > 5u) {
+            out[outLen - 2] ^= 0x01; /* corrupt signature */
+        }
+        memset(&hdr, 0xAB, sizeof(hdr));
+        verifyRet = wc_CoseSign1_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(verifyRet == WOLFCOSE_E_COSE_SIG_FAIL, "tampered verify fails");
+        TEST_ASSERT(hdr.alg == 0 && hdr.kid == NULL && hdr.flags == 0u,
+                    "hdr cleared after verify failure");
+    }
+
+    if (eccInited != 0) { (void)wc_ecc_free(&eccKey); }
+    if (rngInited != 0) { (void)wc_FreeRng(&rng); }
+}
+
 static void test_cose_sign1_tampered_payload_byte(void)
 {
     WOLFCOSE_KEY key;
@@ -15303,6 +15358,7 @@ int test_cose(void)
     test_cose_sign1_tampered_payload_byte();
     test_cose_sign1_truncated_sig();
     test_cose_sign1_trailing_bytes();
+    test_cose_sign1_hdr_cleared_on_failure();
 #endif
 #ifdef HAVE_AESGCM
     test_cose_encrypt0_tampered_ct_byte();

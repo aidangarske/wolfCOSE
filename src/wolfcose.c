@@ -3968,6 +3968,12 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         /* No action required */
     }
 
+    /* On failure, clear the header so unauthenticated metadata is not exposed
+     * to callers that inspect hdr without strictly gating on the return code. */
+    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
+        (void)XMEMSET(hdr, 0, sizeof(*hdr));
+    }
+
     /* Cleanup: always executed */
     (void)wolfCose_ForceZero(hashBuf, sizeof(hashBuf));
     if (scratch != NULL) {
@@ -4862,6 +4868,12 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         /* No action required */
     }
 
+    /* On failure, clear the header so unauthenticated metadata is not exposed
+     * to callers that inspect hdr without strictly gating on the return code. */
+    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
+        (void)XMEMSET(hdr, 0, sizeof(*hdr));
+    }
+
     /* Cleanup: always executed */
     (void)wolfCose_ForceZero(hashBuf, sizeof(hashBuf));
     if (scratch != NULL) {
@@ -5523,6 +5535,12 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
     }
     else {
         /* No action required */
+    }
+
+    /* On failure, clear the header so unauthenticated metadata is not exposed
+     * to callers that inspect hdr without strictly gating on the return code. */
+    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
+        (void)XMEMSET(hdr, 0, sizeof(*hdr));
     }
 
     /* Cleanup: always executed */
@@ -6245,6 +6263,12 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
     }
     else {
         /* No action required */
+    }
+
+    /* On failure, clear the header so unauthenticated metadata is not exposed
+     * to callers that inspect hdr without strictly gating on the return code. */
+    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
+        (void)XMEMSET(hdr, 0, sizeof(*hdr));
     }
 
     /* Cleanup: always executed */
@@ -8017,6 +8041,12 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     }
     else {
         /* No action required */
+    }
+
+    /* On failure, clear the header so unauthenticated metadata is not exposed
+     * to callers that inspect hdr without strictly gating on the return code. */
+    if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
+        (void)XMEMSET(hdr, 0, sizeof(*hdr));
     }
 
     return ret;
