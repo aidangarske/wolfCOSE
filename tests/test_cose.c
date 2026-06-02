@@ -3947,7 +3947,8 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
 {
     int ret = -1;
     WOLFCOSE_CBOR_CTX ctx;
-    uint64_t count = 0;
+    size_t count = 0;
+    uint64_t tag = 0;
     const uint8_t* protectedData = NULL;
     size_t protectedLen = 0;
     size_t protectedOffset = 0u;
@@ -3958,7 +3959,7 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
 
     if ((ctx.idx < ctx.bufSz) &&
         (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
-        ret = wc_CBOR_DecodeTag(&ctx, &count);
+        ret = wc_CBOR_DecodeTag(&ctx, &tag);
     }
     else {
         ret = 0;

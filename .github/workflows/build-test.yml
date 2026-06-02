@@ -33,12 +33,16 @@ jobs:
       if: runner.os == 'macOS'
       run: brew install autoconf automake libtool
 
+    - name: Resolve wolfSSL master commit
+      id: wolfssl-rev
+      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+
     - name: Cache wolfSSL
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-${{ matrix.os }}-v3-full
+        key: wolfssl-${{ matrix.os }}-master-${{ steps.wolfssl-rev.outputs.sha }}
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -61,7 +65,7 @@ jobs:
     - name: Build wolfCOSE
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
-        make CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run unit tests
@@ -69,7 +73,7 @@ jobs:
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         export DYLD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run tool round-trip test
@@ -77,7 +81,7 @@ jobs:
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         export DYLD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make tool-test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make tool-test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
   coverage:
@@ -92,12 +96,16 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool lcov
 
+    - name: Resolve wolfSSL master commit
+      id: wolfssl-rev
+      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+
     - name: Cache wolfSSL
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-ubuntu-latest-coverage-v3-full
+        key: wolfssl-ubuntu-latest-coverage-master-${{ steps.wolfssl-rev.outputs.sha }}
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -121,14 +129,14 @@ jobs:
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         make clean
-        make CFLAGS="-std=c11 -Os --coverage -I./include -I$WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os --coverage -I./include -isystem $WOLFSSL_DIR/include" \
              LDFLAGS="--coverage -L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run tests with coverage
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make test CFLAGS="-std=c11 -Os --coverage -I./include -I$WOLFSSL_DIR/include" \
+        make test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os --coverage -I./include -isystem $WOLFSSL_DIR/include" \
                   LDFLAGS="--coverage -L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Generate coverage report

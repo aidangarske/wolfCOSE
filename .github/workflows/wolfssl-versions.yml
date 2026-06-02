@@ -99,21 +99,21 @@ jobs:
     - name: Build wolfCOSE
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
-        make CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run unit tests
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run tool round-trip test
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make tool-test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make tool-test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: wolfSSL version info
