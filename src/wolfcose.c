@@ -480,6 +480,38 @@ int wolfCose_HmacType(int32_t alg, int* hmacType)
     }
     return ret;
 }
+
+/* RFC 9053 Section 3.1: an HMAC key should be at least the hash output size.
+ * Reject shorter keys unless the caller explicitly opts in. */
+static int wolfCose_HmacCheckKeyLen(int32_t alg, size_t keyLen)
+{
+    int ret = WOLFCOSE_SUCCESS;
+#ifndef WOLFCOSE_ALLOW_SHORT_HMAC_KEY
+    size_t minLen = 0;
+
+    switch (alg) {
+        case WOLFCOSE_ALG_HMAC_256_256:
+            minLen = 32u;
+            break;
+        case WOLFCOSE_ALG_HMAC_384_384:
+            minLen = 48u;
+            break;
+        case WOLFCOSE_ALG_HMAC_512_512:
+            minLen = 64u;
+            break;
+        default:
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+            break;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (keyLen < minLen)) {
+        ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
+#else
+    (void)alg;
+    (void)keyLen;
+#endif
+    return ret;
+}
 #endif /* !NO_HMAC */
 
 /* ----- Internal: ECC DER <-> raw r||s conversion ----- */
@@ -5858,6 +5890,9 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_HmacCheckKeyLen(alg, key->key.symm.keyLen);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
             INJECT_FAILURE(WOLF_FAIL_HMAC_SET_KEY, -1)
             {
                 ret = wc_HmacSetKey(&hmac, hmacType, key->key.symm.key,
@@ -6135,6 +6170,9 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
             else {
                 hmacInited = 1;
             }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_HmacCheckKeyLen(alg, key->key.symm.keyLen);
         }
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wc_HmacSetKey(&hmac, hmacType, key->key.symm.key,
@@ -7481,6 +7519,10 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_HmacCheckKeyLen(macAlgId,
+                recipients[0].key->key.symm.keyLen);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
             int hmacRet = wc_HmacSetKey(&hmac, hashType,
                              recipients[0].key->key.symm.key,
                              (word32)recipients[0].key->key.symm.keyLen);
@@ -7879,6 +7921,10 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
             else {
                 hmacInited = 1;
             }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_HmacCheckKeyLen(alg,
+                recipient->key->key.symm.keyLen);
         }
         if (ret == WOLFCOSE_SUCCESS) {
             int hmacRet = wc_HmacSetKey(&hmac, hashType,

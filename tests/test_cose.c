@@ -1846,6 +1846,28 @@ static void test_cose_mac0_hmac256(void)
     }
 }
 
+static void test_cose_mac0_short_hmac_key(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t shortKey[8] = {1,2,3,4,5,6,7,8};
+    uint8_t payload[] = "short key payload";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    int ret;
+
+    TEST_LOG("  [Mac0 short HMAC key]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, shortKey, sizeof(shortKey));
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0, payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "mac0 short hmac key rejected");
+}
+
 #ifdef WOLFSSL_SHA384
 static void test_cose_mac0_hmac384(void)
 {
@@ -10623,7 +10645,7 @@ static void test_cose_setecc_invalid_curve(void)
 #endif
 
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE)
-static void test_cose_mac0_hmac_short_key_allowed(void)
+static void test_cose_mac0_hmac_short_key_rejected(void)
 {
     WOLFCOSE_KEY key;
     int ret;
@@ -10631,12 +10653,9 @@ static void test_cose_mac0_hmac_short_key_allowed(void)
     uint8_t out[256];
     uint8_t scratch[256];
     size_t outLen = 0;
-    WOLFCOSE_HDR hdr;
-    const uint8_t* decPayload = NULL;
-    size_t decPayloadLen = 0;
     const uint8_t payload[] = "wrong key length";
 
-    TEST_LOG("  [Mac0 HMAC short key allowed]\n");
+    TEST_LOG("  [Mac0 HMAC short key rejected]\n");
 
     (void)wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, shortKey, sizeof(shortKey));
@@ -10649,19 +10668,8 @@ static void test_cose_mac0_hmac_short_key_allowed(void)
         NULL, 0,
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
-    TEST_ASSERT(ret == 0, "Mac0_Create accepts 16B key for HMAC-256/256");
-
-    memset(&hdr, 0, sizeof(hdr));
-    ret = wc_CoseMac0_Verify(&key, out, outLen,
-        NULL, 0,
-        NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == 0, "Mac0_Verify accepts 16B key for HMAC-256/256");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_256_256, "short-key HMAC-256 alg");
-    TEST_ASSERT(decPayloadLen == sizeof(payload) - 1, "short-key payload len");
-    TEST_ASSERT(XMEMCMP(decPayload, payload, decPayloadLen) == 0,
-                "short-key payload match");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac0_Create rejects 16B key for HMAC-256/256");
 
     wc_CoseKey_Free(&key);
 }
@@ -10669,7 +10677,7 @@ static void test_cose_mac0_hmac_short_key_allowed(void)
 
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE) && \
     defined(WOLFCOSE_MAC0_VERIFY)
-static void test_cose_mac0_verify_short_key_allowed(void)
+static void test_cose_mac0_verify_short_key_rejected(void)
 {
     WOLFCOSE_KEY signKey;
     WOLFCOSE_KEY verifyKey;
@@ -10684,7 +10692,7 @@ static void test_cose_mac0_verify_short_key_allowed(void)
     size_t payloadLen = 0;
     const uint8_t msg[] = "verify wrong keylen";
 
-    TEST_LOG("  [Mac0 verify short key allowed]\n");
+    TEST_LOG("  [Mac0 verify short key rejected]\n");
 
     (void)wc_CoseKey_Init(&signKey);
     ret = wc_CoseKey_SetSymmetric(&signKey, goodKey, sizeof(goodKey));
@@ -10709,11 +10717,8 @@ static void test_cose_mac0_verify_short_key_allowed(void)
         NULL, 0,
         scratch, sizeof(scratch),
         &hdr, &payload, &payloadLen);
-    TEST_ASSERT(ret == 0, "Mac0_Verify accepts 16B key for HMAC-256/256");
-    TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_256_256, "verify short-key alg");
-    TEST_ASSERT(payloadLen == sizeof(msg) - 1, "verify short-key payload len");
-    TEST_ASSERT(XMEMCMP(payload, msg, payloadLen) == 0,
-                "verify short-key payload match");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac0_Verify rejects 16B key for HMAC-256/256");
 
     wc_CoseKey_Free(&signKey);
     wc_CoseKey_Free(&verifyKey);
@@ -15159,6 +15164,7 @@ int test_cose(void)
     /* Mac0 basic tests */
 #if !defined(NO_HMAC)
     test_cose_mac0_hmac256();
+    test_cose_mac0_short_hmac_key();
     test_cose_mac0_with_aad();
     test_cose_mac0_detached();
     test_cose_mac0_detached_with_aad();
@@ -15406,12 +15412,12 @@ int test_cose(void)
     test_cose_setecc_invalid_curve();
 #endif
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE)
-    test_cose_mac0_hmac_short_key_allowed();
+    test_cose_mac0_hmac_short_key_rejected();
     test_cose_mac0_create_key_alg_mismatch();
 #endif
 #if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE) && \
     defined(WOLFCOSE_MAC0_VERIFY)
-    test_cose_mac0_verify_short_key_allowed();
+    test_cose_mac0_verify_short_key_rejected();
 #endif
 #if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
     test_cose_encrypt0_key_alg_mismatch();
