@@ -637,6 +637,19 @@ static int wolfCose_InInt32Range(int64_t val)
     return ((val >= (int64_t)INT32_MIN) && (val <= (int64_t)INT32_MAX)) ? 1 : 0;
 }
 
+/* wolfCrypt message/AAD/structure lengths are word32. Reject size_t inputs
+ * that would truncate when cast. Only meaningful where size_t is wider than
+ * 32 bits; on 32-bit targets every size_t already fits. */
+static int wolfCose_LenFitsW32(size_t len)
+{
+#if SIZE_MAX > 0xFFFFFFFFu
+    return (len <= 0xFFFFFFFFu) ? 1 : 0;
+#else
+    (void)len;
+    return 1;
+#endif
+}
+
 /* Map a COSE header/key label to a fast-path tracking bit. Labels outside
  * the small known range fall back to the slower extra-label array. */
 static uint32_t wolfCose_LabelBit(int64_t label)
@@ -2304,6 +2317,10 @@ int wolfCose_BuildToBeSignedMaced(
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wc_CBOR_EncodeBstr(&ctx, payload, payloadLen);
         }
+        /* The structure length is later passed to wolfCrypt as word32. */
+        if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_LenFitsW32(ctx.idx) == 0)) {
+            ret = WOLFCOSE_E_INVALID_ARG;
+        }
         if (ret == WOLFCOSE_SUCCESS) {
             *structLen = ctx.idx;
         }
@@ -2345,6 +2362,10 @@ static int wolfCose_BuildEncStructure(
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wc_CBOR_EncodeBstr(&ctx, extAad,
                                       (extAad != NULL) ? extAadLen : 0u);
+        }
+        /* The structure length is later passed to wolfCrypt as word32. */
+        if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_LenFitsW32(ctx.idx) == 0)) {
+            ret = WOLFCOSE_E_INVALID_ARG;
         }
         if (ret == WOLFCOSE_SUCCESS) {
             *structLen = ctx.idx;
@@ -4947,6 +4968,13 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
+    /* Plaintext length is passed to the AEAD primitive as word32. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsW32(payloadLen) == 0) ||
+         (wolfCose_LenFitsW32(detachedSz) == 0))) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+
     if ((ret == WOLFCOSE_SUCCESS) && (key->kty != WOLFCOSE_KTY_SYMMETRIC)) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
     }
@@ -5301,6 +5329,14 @@ int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
 
     if ((key == NULL) || (in == NULL) || (scratch == NULL) || (hdr == NULL) ||
         (plaintext == NULL) || (plaintextLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+
+    /* Ciphertext length (<= inSz / detachedCtLen) is passed to the AEAD
+     * primitive as word32. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsW32(inSz) == 0) ||
+         (wolfCose_LenFitsW32(detachedCtLen) == 0))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
@@ -6394,6 +6430,13 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
+    /* Plaintext length is passed to the AEAD primitive as word32. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsW32(payloadLen) == 0) ||
+         (wolfCose_LenFitsW32(detachedLen) == 0))) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+
     /* Reject inconsistent (kid, kidLen) per recipient to avoid silently
      * dropping the identifier. */
     if (ret == WOLFCOSE_SUCCESS) {
@@ -6917,6 +6960,14 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     if ((recipient == NULL) || (in == NULL) || (inSz == 0u) ||
         (hdr == NULL) || (plaintext == NULL) || (plaintextLen == NULL) ||
         (scratch == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+
+    /* Ciphertext length (<= inSz / detachedCtLen) is passed to the AEAD
+     * primitive as word32. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsW32(inSz) == 0) ||
+         (wolfCose_LenFitsW32(detachedCtLen) == 0))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
