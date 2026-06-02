@@ -40,6 +40,7 @@
 
 #include <wolfcose/wolfcose.h>
 #include "../src/wolfcose_internal.h"  /* For testing internal helpers */
+#include "test_suite.h"
 #include <wolfssl/wolfcrypt/random.h>
 #ifdef HAVE_ECC
     #include <wolfssl/wolfcrypt/ecc.h>
@@ -2804,13 +2805,20 @@ static void test_rfc_sign1_ecdsa_01(void)
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
     int ret;
+    byte keyX[32];
+    byte keyY[32];
 
     TEST_LOG("  [RFC ecdsa-sig-01 (ES256)]\n");
+
+    /* Copy the const test vectors into mutable buffers; the import API takes
+     * non-const pointers. */
+    XMEMCPY(keyX, tvKeyX, sizeof(keyX));
+    XMEMCPY(keyY, tvKeyY, sizeof(keyY));
 
     /* Import known public key */
     wc_ecc_init(&eccKey);
     ret = wc_ecc_import_unsigned(&eccKey,
-        (byte*)tvKeyX, (byte*)tvKeyY, NULL, ECC_SECP256R1);
+        keyX, keyY, NULL, ECC_SECP256R1);
     TEST_ASSERT(ret == 0, "rfc es256 key import");
     if (ret != 0) { wc_ecc_free(&eccKey); return; }
 

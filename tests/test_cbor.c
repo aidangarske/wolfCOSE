@@ -40,6 +40,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "test_suite.h"
+
 static int g_failures = 0;
 
 #define TEST_ASSERT(cond, name) do {                           \

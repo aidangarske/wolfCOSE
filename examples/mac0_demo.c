@@ -40,7 +40,7 @@
 
 #define DEMO_ASSERT(cond, msg) do { \
     if (!(cond)) { \
-        printf("  FAIL: %s\n", msg); \
+        printf("  FAIL: %s\n", (msg)); \
         return -1; \
     } \
 } while(0)

@@ -40,6 +40,7 @@
 #include <wolfssl/wolfcrypt/settings.h>
 
 #include <wolfcose/wolfcose.h>
+#include "test_suite.h"
 #include <wolfssl/wolfcrypt/random.h>
 #ifdef HAVE_ECC
     #include <wolfssl/wolfcrypt/ecc.h>
