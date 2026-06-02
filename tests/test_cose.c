@@ -1868,6 +1868,43 @@ static void test_cose_mac0_short_hmac_key(void)
                 "mac0 short hmac key rejected");
 }
 
+static void test_cose_mac_payload_validation(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipients[1];
+    uint8_t keyData[32] = {0};
+    uint8_t payload[] = "mac payload";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    int ret;
+
+    TEST_LOG("  [Mac payload validation]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    /* 5231: Mac0 with neither inline nor detached payload is rejected. */
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0, NULL, 0,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "mac0 omitted payload rejected");
+
+    /* 5303: Mac (multi) with both inline and detached payload is rejected. */
+    recipients[0].algId = 0;
+    recipients[0].key = &key;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+    ret = wc_CoseMac_Create(recipients, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "mac both payloads rejected");
+}
+
 #ifdef WOLFSSL_SHA384
 static void test_cose_mac0_hmac384(void)
 {
@@ -15165,6 +15202,7 @@ int test_cose(void)
 #if !defined(NO_HMAC)
     test_cose_mac0_hmac256();
     test_cose_mac0_short_hmac_key();
+    test_cose_mac_payload_validation();
     test_cose_mac0_with_aad();
     test_cose_mac0_detached();
     test_cose_mac0_detached_with_aad();

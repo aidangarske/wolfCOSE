@@ -5812,9 +5812,9 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
     uint8_t isDetached;
     size_t unprotectedEntries;
 
-    /* Determine which payload to use for MAC. A zero-length inline
-     * payload (NULL, 0) is valid: it authenticates only the protected
-     * headers and external AAD. */
+    /* Determine which payload to use for MAC. A caller wanting to authenticate
+     * an empty payload passes a non-NULL zero-length buffer; an all-NULL
+     * payload/detached pair is rejected below to match the other create APIs. */
     if (detachedPayload != NULL) {
         macPayload = detachedPayload;
         macPayloadLen = detachedLen;
@@ -5833,6 +5833,12 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
     /* Reject ambiguous inline+detached input. */
     if ((ret == WOLFCOSE_SUCCESS) &&
         (payload != NULL) && (detachedPayload != NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    /* Require an explicit payload (inline or detached); do not silently MAC an
+     * omitted payload. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (payload == NULL) && (detachedPayload == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     if ((ret == WOLFCOSE_SUCCESS) &&
@@ -7452,9 +7458,14 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
         }
     }
 
-    /* Must have either payload or detached */
+    /* Must have either payload or detached, and not both (the inline payload
+     * would be silently ignored). */
     if ((ret == WOLFCOSE_SUCCESS) &&
         (payload == NULL) && (detachedPayload == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (payload != NULL) && (detachedPayload != NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
