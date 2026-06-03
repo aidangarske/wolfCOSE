@@ -67,7 +67,7 @@
 #ifdef __GNUC__
     #define STACK_MARKER()  ((size_t)__builtin_frame_address(0))
 #else
-    #define STACK_MARKER()  0
+    #define STACK_MARKER()  ((size_t)0u)
 #endif
 
 static const uint8_t g_kid[] = "edge-sensor-01";
@@ -109,7 +109,8 @@ static int demo_sign1_es256(void)
 {
     int ret = 0;
     ecc_key eccKey;
-    WOLFCOSE_KEY signKey, verifyKey;
+    WOLFCOSE_KEY signKey;
+    WOLFCOSE_KEY verifyKey;
     WC_RNG rng;
     uint8_t payload[64];
     size_t payloadLen = 0;
@@ -148,7 +149,7 @@ static int demo_sign1_es256(void)
         wc_CoseKey_SetEcc(&signKey, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ES256,
-            g_kid, sizeof(g_kid) - 1,
+            g_kid, sizeof(g_kid) - 1u,
             payload, payloadLen, NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             packet, sizeof(packet), &packetLen, &rng);
@@ -180,7 +181,7 @@ static int demo_sign1_es256(void)
     if (rngInited != 0) {
         wc_FreeRng(&rng);
     }
-    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
 
     return ret;
 }
@@ -228,7 +229,7 @@ static int demo_sign1_eddsa(void)
         wc_CoseKey_SetEd25519(&signKey, &edKey);
 
         ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA,
-            g_kid, sizeof(g_kid) - 1,
+            g_kid, sizeof(g_kid) - 1u,
             payload, payloadLen, NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             packet, sizeof(packet), &packetLen, &rng);
@@ -257,7 +258,7 @@ static int demo_sign1_eddsa(void)
     if (rngInited != 0) {
         wc_FreeRng(&rng);
     }
-    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
 
     return ret;
 }
@@ -309,7 +310,7 @@ static int demo_sign1_ps256(void)
         wc_CoseKey_SetRsa(&signKey, &rsaKey);
 
         ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_PS256,
-            g_kid, sizeof(g_kid) - 1,
+            g_kid, sizeof(g_kid) - 1u,
             payload, payloadLen, NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             packet, sizeof(packet), &packetLen, &rng);
@@ -338,7 +339,7 @@ static int demo_sign1_ps256(void)
     if (rngInited != 0) {
         wc_FreeRng(&rng);
     }
-    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
 
     return ret;
 }
@@ -393,7 +394,7 @@ static int demo_sign1_ml_dsa_44(void)
         wc_CoseKey_SetMlDsa(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
         ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44,
-            g_kid, sizeof(g_kid) - 1,
+            g_kid, sizeof(g_kid) - 1u,
             payload, payloadLen, NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             packet, sizeof(packet), &packetLen, &rng);
@@ -422,7 +423,7 @@ static int demo_sign1_ml_dsa_44(void)
     if (rngInited != 0) {
         wc_FreeRng(&rng);
     }
-    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
 
     return ret;
 }
@@ -500,7 +501,7 @@ static int demo_encrypt0_aesgcm(int32_t alg)
     }
 
     wc_FreeRng(&rng);
-    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
     return ret;
 }
 #endif /* HAVE_AESGCM */
@@ -566,7 +567,7 @@ static int demo_encrypt0_chacha20(void)
     }
 
     wc_FreeRng(&rng);
-    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
     return ret;
 }
 #endif /* HAVE_CHACHA && HAVE_POLY1305 */
@@ -632,7 +633,7 @@ static int demo_encrypt0_aes_ccm(void)
     }
 
     wc_FreeRng(&rng);
-    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
     return ret;
 }
 #endif /* HAVE_AESCCM */
@@ -686,7 +687,7 @@ static int demo_mac0_hmac(int32_t alg)
     wc_CoseKey_SetSymmetric(&key, keyData, keyLen);
 
     ret = wc_CoseMac0_Create(&key, alg,
-        g_kid, sizeof(g_kid) - 1,
+        g_kid, sizeof(g_kid) - 1u,
         payload, payloadLen, NULL, 0, NULL, 0,
         scratch, sizeof(scratch),
         packet, sizeof(packet), &packetLen);
@@ -708,7 +709,7 @@ static int demo_mac0_hmac(int32_t alg)
                decPayloadLen, hdr.alg);
     }
 
-    printf("  Result: %s\n\n", ret == 0 ? "PASS" : "FAIL");
+    printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
     return ret;
 }
 #endif /* !NO_HMAC */
@@ -731,20 +732,42 @@ enum {
 
 static int parse_demo_alg(const char* name)
 {
-    if (name == NULL || strcmp(name, "all") == 0) {
+    if ((name == NULL) || (strcmp(name, "all") == 0)) {
         return DEMO_ALG_ALL;
     }
-    if (strcmp(name, "ES256") == 0)   return DEMO_ALG_ES256;
-    if (strcmp(name, "EdDSA") == 0)   return DEMO_ALG_EDDSA;
-    if (strcmp(name, "PS256") == 0)   return DEMO_ALG_PS256;
-    if (strcmp(name, "A128GCM") == 0) return DEMO_ALG_A128GCM;
-    if (strcmp(name, "A256GCM") == 0) return DEMO_ALG_A256GCM;
-    if (strcmp(name, "HMAC256") == 0) return DEMO_ALG_HMAC256;
-    if (strcmp(name, "HMAC384") == 0) return DEMO_ALG_HMAC384;
-    if (strcmp(name, "HMAC512") == 0) return DEMO_ALG_HMAC512;
-    if (strcmp(name, "ChaCha20") == 0) return DEMO_ALG_CHACHA20;
-    if (strcmp(name, "ML-DSA-44") == 0) return DEMO_ALG_ML_DSA_44;
-    if (strcmp(name, "AES-CCM") == 0) return DEMO_ALG_AES_CCM;
+    if (strcmp(name, "ES256") == 0) {
+        return DEMO_ALG_ES256;
+    }
+    if (strcmp(name, "EdDSA") == 0) {
+        return DEMO_ALG_EDDSA;
+    }
+    if (strcmp(name, "PS256") == 0) {
+        return DEMO_ALG_PS256;
+    }
+    if (strcmp(name, "A128GCM") == 0) {
+        return DEMO_ALG_A128GCM;
+    }
+    if (strcmp(name, "A256GCM") == 0) {
+        return DEMO_ALG_A256GCM;
+    }
+    if (strcmp(name, "HMAC256") == 0) {
+        return DEMO_ALG_HMAC256;
+    }
+    if (strcmp(name, "HMAC384") == 0) {
+        return DEMO_ALG_HMAC384;
+    }
+    if (strcmp(name, "HMAC512") == 0) {
+        return DEMO_ALG_HMAC512;
+    }
+    if (strcmp(name, "ChaCha20") == 0) {
+        return DEMO_ALG_CHACHA20;
+    }
+    if (strcmp(name, "ML-DSA-44") == 0) {
+        return DEMO_ALG_ML_DSA_44;
+    }
+    if (strcmp(name, "AES-CCM") == 0) {
+        return DEMO_ALG_AES_CCM;
+    }
     return -1;
 }
 
@@ -756,7 +779,7 @@ int main(int argc, char* argv[])
     int tests = 0;
 
     /* Parse -a <alg> flag */
-    if (argc == 3 && strcmp(argv[1], "-a") == 0) {
+    if ((argc == 3) && (strcmp(argv[1], "-a") == 0)) {
         demoAlg = parse_demo_alg(argv[2]);
         if (demoAlg < 0) {
             fprintf(stderr, "Unknown algorithm: %s\n", argv[2]);
@@ -782,25 +805,25 @@ int main(int argc, char* argv[])
 
     /* COSE_Sign1 demos */
 #ifdef HAVE_ECC
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_ES256) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_ES256)) {
         tests++;
         if (demo_sign1_es256() != 0) { failures++; }
     }
 #endif
 #ifdef HAVE_ED25519
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_EDDSA) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_EDDSA)) {
         tests++;
         if (demo_sign1_eddsa() != 0) { failures++; }
     }
 #endif
 #if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_PS256) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_PS256)) {
         tests++;
         if (demo_sign1_ps256() != 0) { failures++; }
     }
 #endif
 #ifdef WOLFSSL_HAVE_MLDSA
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_ML_DSA_44) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_ML_DSA_44)) {
         tests++;
         if (demo_sign1_ml_dsa_44() != 0) { failures++; }
     }
@@ -808,23 +831,23 @@ int main(int argc, char* argv[])
 
     /* COSE_Encrypt0 demos */
 #ifdef HAVE_AESGCM
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_A128GCM) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_A128GCM)) {
         tests++;
         if (demo_encrypt0_aesgcm(WOLFCOSE_ALG_A128GCM) != 0) { failures++; }
     }
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_A256GCM) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_A256GCM)) {
         tests++;
         if (demo_encrypt0_aesgcm(WOLFCOSE_ALG_A256GCM) != 0) { failures++; }
     }
 #endif
 #if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_CHACHA20) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_CHACHA20)) {
         tests++;
         if (demo_encrypt0_chacha20() != 0) { failures++; }
     }
 #endif
 #ifdef HAVE_AESCCM
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_AES_CCM) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_AES_CCM)) {
         tests++;
         if (demo_encrypt0_aes_ccm() != 0) { failures++; }
     }
@@ -832,18 +855,18 @@ int main(int argc, char* argv[])
 
     /* COSE_Mac0 demos */
 #if !defined(NO_HMAC)
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_HMAC256) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_HMAC256)) {
         tests++;
         if (demo_mac0_hmac(WOLFCOSE_ALG_HMAC256) != 0) { failures++; }
     }
 #ifdef WOLFSSL_SHA384
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_HMAC384) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_HMAC384)) {
         tests++;
         if (demo_mac0_hmac(WOLFCOSE_ALG_HMAC384) != 0) { failures++; }
     }
 #endif
 #ifdef WOLFSSL_SHA512
-    if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_HMAC512) {
+    if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_HMAC512)) {
         tests++;
         if (demo_mac0_hmac(WOLFCOSE_ALG_HMAC512) != 0) { failures++; }
     }

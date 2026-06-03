@@ -40,6 +40,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "test_suite.h"
+
 static int g_failures = 0;
 
 #define TEST_ASSERT(cond, name) do {                           \
@@ -299,6 +301,20 @@ static void test_cbor_decode_vectors(void)
       ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
       ret = wc_CBOR_DecodeInt(&ctx, &ival);
       TEST_ASSERT(ret == 0 && ival == 100, "decode int +100"); }
+
+    /* Boundary: unsigned INT64_MAX (0x1B 7F FF ...) decodes exactly. */
+    { uint8_t in[] = {0x1B, 0x7F, 0xFF, 0xFF, 0xFF,
+                      0xFF, 0xFF, 0xFF, 0xFF};
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ret = wc_CBOR_DecodeInt(&ctx, &ival);
+      TEST_ASSERT(ret == 0 && ival == INT64_MAX, "decode INT64_MAX"); }
+
+    /* Boundary: negint -1 - INT64_MAX == INT64_MIN. */
+    { uint8_t in[] = {0x3B, 0x7F, 0xFF, 0xFF, 0xFF,
+                      0xFF, 0xFF, 0xFF, 0xFF};
+      ctx.cbuf = in; ctx.bufSz = sizeof(in); ctx.idx = 0;
+      ret = wc_CBOR_DecodeInt(&ctx, &ival);
+      TEST_ASSERT(ret == 0 && ival == INT64_MIN, "decode INT64_MIN"); }
 
     /* bstr empty */
     { uint8_t in[] = {0x40};
@@ -676,6 +692,73 @@ static void test_cbor_encode_bstr_null_with_len(void)
                 "EncodeBstr rejects NULL data with positive length");
 }
 
+static void test_cbor_encode_idx_past_bufsz(void)
+{
+    /* WOLFCOSE_CBOR_CTX is public; a corrupted idx near SIZE_MAX must not
+     * wrap the capacity check and write out of bounds. */
+    uint8_t out[8];
+    WOLFCOSE_CBOR_CTX enc;
+    int ret;
+
+    printf("  [Encode: idx past bufSz does not wrap]\n");
+    enc.buf = out;
+    enc.bufSz = sizeof(out);
+    enc.idx = SIZE_MAX;
+    ret = wc_CBOR_EncodeUint(&enc, 1u);
+    TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL,
+                "EncodeUint rejects idx past bufSz");
+
+    enc.idx = SIZE_MAX;
+    ret = wc_CBOR_EncodeNull(&enc);
+    TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL,
+                "EncodeNull rejects idx past bufSz");
+}
+
+static void test_cbor_reject_non_preferred(void)
+{
+    /* RFC 8949 4.2.1: arguments must use the shortest form. Overlong encodings
+     * of small values must be rejected (F-5374). */
+    WOLFCOSE_CBOR_CTX ctx;
+    uint64_t uval;
+    const uint8_t* data;
+    size_t dataLen;
+    size_t count;
+    int ret;
+    /* uint 0 encoded in 1 extra byte, uint 23 in 2, uint 255 in 4, etc. */
+    uint8_t u1[]  = {0x18, 0x00};                      /* uint 0  overlong */
+    uint8_t u2[]  = {0x19, 0x00, 0x17};                /* uint 23 overlong */
+    uint8_t u4[]  = {0x1A, 0x00, 0x00, 0x00, 0x18};    /* uint 24 overlong */
+    uint8_t u8[]  = {0x1B, 0,0,0,0, 0,0,0x01,0x00};    /* uint 256 overlong */
+    uint8_t bs[]  = {0x58, 0x00};                      /* empty bstr overlong */
+    uint8_t arr[] = {0x98, 0x00};                      /* array(0) overlong */
+
+    printf("  [Decode: reject non-preferred encodings]\n");
+
+    ctx.cbuf = u1; ctx.bufSz = sizeof(u1); ctx.idx = 0;
+    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "reject overlong uint 0");
+
+    ctx.cbuf = u2; ctx.bufSz = sizeof(u2); ctx.idx = 0;
+    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "reject overlong uint 23");
+
+    ctx.cbuf = u4; ctx.bufSz = sizeof(u4); ctx.idx = 0;
+    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "reject overlong uint 24");
+
+    ctx.cbuf = u8; ctx.bufSz = sizeof(u8); ctx.idx = 0;
+    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "reject overlong uint 256");
+
+    ctx.cbuf = bs; ctx.bufSz = sizeof(bs); ctx.idx = 0;
+    ret = wc_CBOR_DecodeBstr(&ctx, &data, &dataLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "reject overlong bstr len");
+
+    ctx.cbuf = arr; ctx.bufSz = sizeof(arr); ctx.idx = 0;
+    ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "reject overlong array len");
+}
+
 /* ----- Error cases ----- */
 static void test_cbor_errors(void)
 {
@@ -866,6 +949,8 @@ int test_cbor(void)
     test_cbor_skip_tainted_count();
     test_cbor_decode_simple_not_well_formed();
     test_cbor_encode_bstr_null_with_len();
+    test_cbor_encode_idx_past_bufsz();
+    test_cbor_reject_non_preferred();
     test_cbor_errors();
     test_cbor_negative_map_keys();
 

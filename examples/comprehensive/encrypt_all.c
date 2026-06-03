@@ -83,8 +83,8 @@ static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
     };
     uint8_t out[512];
     uint8_t scratch[512];
-    uint8_t payload[] = "test payload for encryption";
-    uint8_t aad[] = "external additional authenticated data";
+    const uint8_t payload[] = "test payload for encryption";
+    const uint8_t aad[] = "external additional authenticated data";
     uint8_t detachedCt[512];
     size_t detachedCtLen = 0;
     uint8_t plaintext[256];
@@ -104,7 +104,7 @@ static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
         if (detached != 0) {
             ret = wc_CoseEncrypt0_Encrypt(&cosKey, alg,
                 iv, sizeof(iv),
-                payload, sizeof(payload) - 1,
+                payload, sizeof(payload) - 1u,
                 detachedCt, sizeof(detachedCt), &detachedCtLen,
                 (useAad != 0) ? aad : NULL,
                 (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
@@ -114,7 +114,7 @@ static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
         else {
             ret = wc_CoseEncrypt0_Encrypt(&cosKey, alg,
                 iv, sizeof(iv),
-                payload, sizeof(payload) - 1,
+                payload, sizeof(payload) - 1u,
                 NULL, 0, NULL,
                 (useAad != 0) ? aad : NULL,
                 (useAad != 0) ? (sizeof(aad) - 1u) : 0u,
@@ -152,7 +152,7 @@ static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
         }
     }
     if (ret == 0) {
-        if (plaintextLen != sizeof(payload) - 1) {
+        if (plaintextLen != sizeof(payload) - 1u) {
             ret = -2;
         }
     }
@@ -181,8 +181,8 @@ static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
     };
     uint8_t out[1024];
     uint8_t scratch[512];
-    uint8_t payload[] = "multi-recipient encrypted payload";
-    uint8_t aad[] = "multi-recipient aad";
+    const uint8_t payload[] = "multi-recipient encrypted payload";
+    const uint8_t aad[] = "multi-recipient aad";
     uint8_t plaintext[256];
     static const uint8_t recipKid[] = { 0x72u, 0x63u, 0x70u, 0x58u };
     size_t plaintextLen = 0;
@@ -262,9 +262,13 @@ static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
 static int test_encrypt_wrong_key(void)
 {
     int ret = 0;
-    WOLFCOSE_KEY cek, wrongKey;
+    WOLFCOSE_KEY cek;
+    WOLFCOSE_KEY wrongKey;
     WOLFCOSE_RECIPIENT recipients[2];
     WOLFCOSE_RECIPIENT wrongRecipient;
+    const uint8_t recip1Kid[] = "recip1";
+    const uint8_t recip2Kid[] = "recip2";
+    const uint8_t wrongKid[] = "wrong";
     uint8_t keyData1[16] = {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
         0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
@@ -279,7 +283,7 @@ static int test_encrypt_wrong_key(void)
     };
     uint8_t out[512];
     uint8_t scratch[512];
-    uint8_t payload[] = "wrong key test";
+    const uint8_t payload[] = "wrong key test";
     uint8_t plaintext[256];
     size_t plaintextLen = 0;
     size_t outLen = 0;
@@ -309,19 +313,19 @@ static int test_encrypt_wrong_key(void)
     if (ret == 0) {
         recipients[0].algId = WOLFCOSE_ALG_DIRECT;
         recipients[0].key = &cek;
-        recipients[0].kid = (const uint8_t*)"recip1";
-        recipients[0].kidLen = 6;
+        recipients[0].kid = recip1Kid;
+        recipients[0].kidLen = sizeof(recip1Kid) - 1u;
 
         recipients[1].algId = WOLFCOSE_ALG_DIRECT;
         recipients[1].key = &cek;
-        recipients[1].kid = (const uint8_t*)"recip2";
-        recipients[1].kidLen = 6;
+        recipients[1].kid = recip2Kid;
+        recipients[1].kidLen = sizeof(recip2Kid) - 1u;
 
         /* Wrong recipient with different key */
         wrongRecipient.algId = WOLFCOSE_ALG_DIRECT;
         wrongRecipient.key = &wrongKey;
-        wrongRecipient.kid = (const uint8_t*)"wrong";
-        wrongRecipient.kidLen = 5;
+        wrongRecipient.kid = wrongKid;
+        wrongRecipient.kidLen = sizeof(wrongKid) - 1u;
     }
 
     /* Encrypt */
@@ -329,7 +333,7 @@ static int test_encrypt_wrong_key(void)
         ret = wc_CoseEncrypt_Encrypt(recipients, 2,
             WOLFCOSE_ALG_A128GCM,
             iv, sizeof(iv),
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0,
             NULL, 0,
             scratch, sizeof(scratch),
@@ -534,7 +538,7 @@ static int test_encrypt0_interop(void)
         PRINT_TEST("interop_encrypt0_a128gcm_roundtrip");
         ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
             iv, sizeof(iv),
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL,
             NULL, 0,
             scratch, sizeof(scratch),
@@ -557,7 +561,7 @@ static int test_encrypt0_interop(void)
         }
     }
     if (ret == 0) {
-        if (plaintextLen != sizeof(payload) - 1) {
+        if (plaintextLen != sizeof(payload) - 1u) {
             ret = -2;
         }
     }

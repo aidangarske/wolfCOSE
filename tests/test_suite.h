@@ -1,4 +1,4 @@
-/* test_main.c
+/* test_suite.h
  *
  * Copyright (C) 2026 wolfSSL Inc.
  *
@@ -18,35 +18,13 @@
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
  */
 
-/**
- * wolfCOSE test harness. CI-friendly: returns 0 if all pass, 1 on failure.
- */
+#ifndef WOLFCOSE_TEST_SUITE_H
+#define WOLFCOSE_TEST_SUITE_H
 
-#include <stdio.h>
+/* Shared prototypes for the test entry points so a compatible declaration is
+ * visible at each definition (MISRA C:2023 Rule 8.4). */
+int test_cbor(void);
+int test_cose(void);
+int test_interop(void);
 
-#include "test_suite.h"
-
-int main(void)
-{
-    int failures = 0;
-
-    printf("=== wolfCOSE Test Suite ===\n\n");
-
-    printf("--- CBOR Tests (RFC 8949) ---\n");
-    failures += test_cbor();
-
-    printf("\n--- COSE Tests (RFC 9052) ---\n");
-    failures += test_cose();
-
-    printf("\n--- Interoperability Tests ---\n");
-    failures += test_interop();
-
-    printf("\n=== Results: %s ===\n",
-           (failures == 0) ? "ALL PASSED" : "FAILURES");
-
-    if (failures > 0) {
-        printf("%d test(s) failed.\n", failures);
-    }
-
-    return (failures == 0) ? 0 : 1;
-}
+#endif /* WOLFCOSE_TEST_SUITE_H */

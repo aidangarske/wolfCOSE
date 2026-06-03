@@ -109,8 +109,8 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
     int rngInit = 0;
     uint8_t out[640];  /* Large enough for ES512 */
     uint8_t scratch[512];
-    uint8_t payload[] = "test payload data for signing";
-    uint8_t aad[] = "external additional authenticated data";
+    const uint8_t payload[] = "test payload data for signing";
+    const uint8_t aad[] = "external additional authenticated data";
     size_t outLen = 0;
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
@@ -124,7 +124,7 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
     }
 
     /* Key setup based on curve */
-    if (ret == 0 && curveSize == 0) {
+    if ((ret == 0) && (curveSize == 0)) {
 #ifdef HAVE_ED25519
         ret = wc_ed25519_init(&edKey);
         if (ret == 0) {
@@ -182,7 +182,7 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
 
     /* Validate payload if inline */
     if ((ret == 0) && (detached == 0)) {
-        if (decPayloadLen != sizeof(payload) - 1) {
+        if (decPayloadLen != sizeof(payload) - 1u) {
             ret = -1;
         }
         else if (XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
@@ -213,20 +213,25 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
                               int detached, int useAad)
 {
     int ret = 0;
-    ecc_key eccKey1, eccKey2;
-    int ecc1Init = 0, ecc2Init = 0;
+    ecc_key eccKey1;
+    ecc_key eccKey2;
+    int ecc1Init = 0;
+    int ecc2Init = 0;
 #ifdef HAVE_ED25519
-    ed25519_key edKey1, edKey2;
-    int ed1Init = 0, ed2Init = 0;
+    ed25519_key edKey1;
+    ed25519_key edKey2;
+    int ed1Init = 0;
+    int ed2Init = 0;
 #endif
-    WOLFCOSE_KEY cosKey1, cosKey2;
+    WOLFCOSE_KEY cosKey1;
+    WOLFCOSE_KEY cosKey2;
     WOLFCOSE_SIGNATURE signers[2];
     WC_RNG rng;
     int rngInit = 0;
     uint8_t out[1024];
     uint8_t scratch[512];
-    uint8_t payload[] = "multi-signer test payload";
-    uint8_t aad[] = "multi-signer aad";
+    const uint8_t payload[] = "multi-signer test payload";
+    const uint8_t aad[] = "multi-signer aad";
     size_t outLen = 0;
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
@@ -242,7 +247,7 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
     }
 
     /* Setup key 1 */
-    if (ret == 0 && keySz1 == 0) {
+    if ((ret == 0) && (keySz1 == 0)) {
 #ifdef HAVE_ED25519
         ret = wc_ed25519_init(&edKey1);
         if (ret == 0) {
@@ -270,7 +275,7 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
     }
 
     /* Setup key 2 */
-    if (ret == 0 && keySz2 == 0) {
+    if ((ret == 0) && (keySz2 == 0)) {
 #ifdef HAVE_ED25519
         ret = wc_ed25519_init(&edKey2);
         if (ret == 0) {
@@ -366,20 +371,30 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
                               int detached, int useAad)
 {
     int ret = 0;
-    ecc_key eccKey1, eccKey2, eccKey3;
-    int ecc1Init = 0, ecc2Init = 0, ecc3Init = 0;
+    ecc_key eccKey1;
+    ecc_key eccKey2;
+    ecc_key eccKey3;
+    int ecc1Init = 0;
+    int ecc2Init = 0;
+    int ecc3Init = 0;
 #ifdef HAVE_ED25519
-    ed25519_key edKey1, edKey2, edKey3;
-    int ed1Init = 0, ed2Init = 0, ed3Init = 0;
+    ed25519_key edKey1;
+    ed25519_key edKey2;
+    ed25519_key edKey3;
+    int ed1Init = 0;
+    int ed2Init = 0;
+    int ed3Init = 0;
 #endif
-    WOLFCOSE_KEY cosKey1, cosKey2, cosKey3;
+    WOLFCOSE_KEY cosKey1;
+    WOLFCOSE_KEY cosKey2;
+    WOLFCOSE_KEY cosKey3;
     WOLFCOSE_SIGNATURE signers[3];
     WC_RNG rng;
     int rngInit = 0;
     uint8_t out[1536];
     uint8_t scratch[512];
-    uint8_t payload[] = "three signer payload";
-    uint8_t aad[] = "three signer aad";
+    const uint8_t payload[] = "three signer payload";
+    const uint8_t aad[] = "three signer aad";
     size_t outLen = 0;
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
@@ -500,17 +515,25 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
 static int test_sign_multi_4(int detached, int useAad)
 {
     int ret = 0;
-    ecc_key eccKey256, eccKey384, eccKey521;
+    ecc_key eccKey256;
+    ecc_key eccKey384;
+    ecc_key eccKey521;
     ed25519_key edKey;
-    int ecc256Init = 0, ecc384Init = 0, ecc521Init = 0, edInit = 0;
-    WOLFCOSE_KEY cosKey256, cosKey384, cosKey521, cosKeyEd;
+    int ecc256Init = 0;
+    int ecc384Init = 0;
+    int ecc521Init = 0;
+    int edInit = 0;
+    WOLFCOSE_KEY cosKey256;
+    WOLFCOSE_KEY cosKey384;
+    WOLFCOSE_KEY cosKey521;
+    WOLFCOSE_KEY cosKeyEd;
     WOLFCOSE_SIGNATURE signers[4];
     WC_RNG rng;
     int rngInit = 0;
     uint8_t out[2048];
     uint8_t scratch[512];
-    uint8_t payload[] = "four signer payload";
-    uint8_t aad[] = "four signer aad";
+    const uint8_t payload[] = "four signer payload";
+    const uint8_t aad[] = "four signer aad";
     size_t outLen = 0;
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
@@ -1063,7 +1086,7 @@ static int test_sign1_interop(void)
     if (ret == 0) {
         ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
             NULL, 0,
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
@@ -1078,13 +1101,13 @@ static int test_sign1_interop(void)
     }
 
     /* Validate */
-    if (ret == 0 && hdr.alg != WOLFCOSE_ALG_ES256) {
+    if ((ret == 0) && (hdr.alg != WOLFCOSE_ALG_ES256)) {
         ret = -1;
     }
-    if (ret == 0 && decPayloadLen != sizeof(payload) - 1) {
+    if ((ret == 0) && (decPayloadLen != (sizeof(payload) - 1u))) {
         ret = -2;
     }
-    if (ret == 0 && XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
+    if ((ret == 0) && (XMEMCMP(decPayload, payload, decPayloadLen) != 0)) {
         ret = -3;
     }
 

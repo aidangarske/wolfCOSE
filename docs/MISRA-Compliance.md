@@ -116,6 +116,34 @@ The following clang-tidy checks are suppressed in the MISRA 2023 workflow. GCC s
 
 **Justification:** Advisory warning about adjacent function parameters of the same type (e.g., `size_t payloadLen, size_t detachedLen`). Fixing requires reordering or wrapping parameters, which would break the public API. The parameter ordering follows RFC 9052 structure conventions.
 
+## Examples and Test Code
+
+`examples/` and `tests/` are runnable demonstration and test programs, not part of the shippable library, and are held to the same style rules where it keeps them useful as reference implementations. They are clean of the rules the library observes (no `goto`, fixed-length-coordinate checks, const-qualified literal payloads, braced statement bodies, unsigned size arithmetic, explicit precedence). The remaining deviations are inherent to runnable demos:
+
+### Rule 21.6 — Standard I/O (and 17.7 on its return value)
+
+**Location:** `examples/`, `tests/`.
+
+**Justification:** Demos and test harnesses print human-readable status and PASS/FAIL to the console with `printf`/`fprintf`; the ignored return value (Rule 17.7) is part of the same console-output use. A real integration replaces this one call with a platform output routine. Library code under `src/` uses no standard I/O.
+
+### Rule 15.5 — Multiple return / single point of exit
+
+**Location:** `examples/`, `tests/`.
+
+**Justification:** Demonstration code uses early returns for linear, readable top-to-bottom flow. The library itself observes single-exit with cascading `if (ret == 0)` and a single `return`.
+
+### Rule 2.5 — Unused macro definitions
+
+**Location:** `examples/`, `tests/`.
+
+**Justification:** Same false positive as the library: CI passes explicit `-D` feature flags so cppcheck checks one code path, which makes the guarded-away feature `#define`s look unused.
+
+### Rules 8.6 / 5.9 / 8.9 — External/internal identifier definitions
+
+**Location:** `examples/`.
+
+**Justification:** Each demo is a standalone program with its own `main` and `demo_*` helpers. cppcheck reports these when scanning all demo translation units in a single pass; each program links independently, so there is no real multiple-definition.
+
 ## Fully Compliant Rules (Notable)
 
 | Rule | Status | Notes |

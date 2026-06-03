@@ -304,6 +304,30 @@ extern "C" {
 #define WOLFCOSE_HDR_PARTIAL_IV  6
 #define WOLFCOSE_HDR_EPHEMERAL_KEY (-1)  /* Ephemeral COSE_Key for ECDH */
 
+/*
+ * Security considerations for the algorithms below:
+ *
+ * - Nonce/IV uniqueness: the AEAD encrypt APIs take a caller-supplied IV and
+ *   only validate its length. Reusing an (key, IV) pair with AES-GCM,
+ *   AES-CCM, or ChaCha20-Poly1305 breaks confidentiality and/or integrity.
+ *   Callers MUST supply a unique IV per encryption (e.g. from wc_RNG).
+ * - 64-bit authentication tags: the AES-CCM *_64_* and AES-MAC *_64
+ *   algorithms produce 8-byte tags with much lower forgery resistance than
+ *   their 128-bit counterparts. They exist for constrained interop only;
+ *   prefer the 128-bit-tag variants unless a peer requires otherwise.
+ * - Algorithm pinning: verify/decrypt dispatch on the message algorithm.
+ *   To avoid algorithm-confusion, set key->alg (or recipient->algId) so the
+ *   library enforces the expected algorithm rather than trusting the message.
+ * - HMAC key length: HMAC-256/384/512 require a key of at least 32/48/64
+ *   bytes (RFC 9053 Section 3.1). Shorter keys are rejected with
+ *   WOLFCOSE_E_COSE_KEY_TYPE unless WOLFCOSE_ALLOW_SHORT_HMAC_KEY is defined.
+ * - Strict decode: decoders require preferred (shortest-form) CBOR
+ *   (RFC 8949 Section 4.2.1) across all entry points, and verify/decrypt
+ *   APIs require inSz to be exactly the encoded object length (trailing bytes
+ *   are rejected). EC2 coordinates must be exactly the curve size. See
+ *   docs/cose-encoding-notes.md.
+ */
+
 /* Algorithms */
 #define WOLFCOSE_ALG_UNSET      ((int32_t)0)
 #define WOLFCOSE_ALG_ES256      (-7)
@@ -914,10 +938,15 @@ WOLFCOSE_API int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
  * \param alg             Algorithm (WOLFCOSE_ALG_HMAC_256_256).
  * \param kid             Key identifier for unprotected header (NULL if none).
  * \param kidLen          Key identifier length.
- * \param payload         Payload to authenticate (NULL if detached).
- * \param payloadLen      Payload length (0 if detached).
- * \param detachedPayload Detached payload for MAC (NULL if attached).
- *                        If non-NULL, payload is encoded as CBOR null.
+ * \param payload         Inline payload to authenticate (NULL only when a
+ *                        detached payload is supplied). An omitted payload
+ *                        (payload and detachedPayload both NULL) is rejected;
+ *                        authenticate an empty payload with a non-NULL
+ *                        zero-length buffer.
+ * \param payloadLen      Payload length (0 for an empty inline payload).
+ * \param detachedPayload Detached payload for MAC (NULL if attached). Must be
+ *                        NULL when payload is non-NULL. If non-NULL, payload
+ *                        is encoded as CBOR null.
  * \param detachedLen     Detached payload length.
  * \param extAad          External additional authenticated data (NULL if none).
  * \param extAadLen       External AAD length.
@@ -1058,10 +1087,13 @@ WOLFCOSE_API int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
  * \param contentAlgId     Content encryption algorithm (A128GCM, etc).
  * \param iv               Initialization vector.
  * \param ivLen            IV length.
- * \param payload          Payload to encrypt (NULL if detached).
- * \param payloadLen       Payload length (0 if detached).
- * \param detachedPayload  Detached payload for encryption (NULL if attached).
- * \param detachedLen      Detached payload length.
+ * \param payload          Payload to encrypt (inline).
+ * \param payloadLen       Payload length.
+ * \param detachedPayload  Not supported for multi-recipient COSE_Encrypt;
+ *                         must be NULL. A non-NULL value returns
+ *                         WOLFCOSE_E_UNSUPPORTED. See wolfSSL/wolfCOSE
+ *                         issue tracker for detached-create support.
+ * \param detachedLen      Must be 0.
  * \param extAad           External additional authenticated data (NULL if none).
  * \param extAadLen        External AAD length.
  * \param scratch          Working buffer for Enc_structure.
@@ -1130,9 +1162,12 @@ WOLFCOSE_API int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
  * \param recipients       Array of WOLFCOSE_RECIPIENT with keys.
  * \param recipientCount   Number of recipients (must be >= 1).
  * \param macAlgId         MAC algorithm (HMAC-256/256, etc).
- * \param payload          Payload to authenticate (NULL if detached).
- * \param payloadLen       Payload length (0 if detached).
- * \param detachedPayload  Detached payload for MAC (NULL if attached).
+ * \param payload          Inline payload (NULL only when detachedPayload is
+ *                         supplied; payload and detachedPayload must not both
+ *                         be NULL, nor both be non-NULL).
+ * \param payloadLen       Payload length (0 for an empty inline payload).
+ * \param detachedPayload  Detached payload for MAC (NULL if attached). Must be
+ *                         NULL when payload is non-NULL.
  * \param detachedLen      Detached payload length.
  * \param extAad           External additional authenticated data (NULL if none).
  * \param extAadLen        External AAD length.

@@ -232,6 +232,7 @@ static int unauthorized_device_fails(const uint8_t* encryptedMsg,
     int ret;
     WOLFCOSE_KEY wrongKey;
     WOLFCOSE_RECIPIENT recipient;
+    const uint8_t unauthKid[] = "unauthorized-device";
     uint8_t wrongKeyData[16] = {
         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
@@ -255,8 +256,8 @@ static int unauthorized_device_fails(const uint8_t* encryptedMsg,
     XMEMSET(&recipient, 0, sizeof(recipient));
     recipient.algId = WOLFCOSE_ALG_DIRECT;
     recipient.key = &wrongKey;
-    recipient.kid = (const uint8_t*)"unauthorized-device";
-    recipient.kidLen = 19;
+    recipient.kid = unauthKid;
+    recipient.kidLen = sizeof(unauthKid) - 1u;
 
     /* Decrypt should fail */
     ret = wc_CoseEncrypt_Decrypt(&recipient, 0,

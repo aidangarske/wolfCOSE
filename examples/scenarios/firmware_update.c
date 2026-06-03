@@ -131,7 +131,7 @@ static int oem_sign_firmware(WOLFCOSE_KEY* signingKey, int32_t alg,
     int ret;
     int i;
     uint8_t scratch[8192];  /* Larger for PQC */
-    uint8_t kid[] = "OEM-firmware-signing-key-v1";
+    const uint8_t kid[] = "OEM-firmware-signing-key-v1";
     uint8_t firmwareHash[32];
     wc_Sha256 sha;
 
@@ -155,7 +155,7 @@ static int oem_sign_firmware(WOLFCOSE_KEY* signingKey, int32_t alg,
 
     /* Sign with detached payload */
     ret = wc_CoseSign1_Sign(signingKey, alg,
-        kid, sizeof(kid) - 1,
+        kid, sizeof(kid) - 1u,
         NULL, 0,  /* No inline payload */
         firmware, firmwareSz,  /* Detached payload */
         NULL, 0,  /* No AAD */
@@ -200,7 +200,7 @@ static int device_verify_firmware(WOLFCOSE_KEY* oemPubKey,
 
     printf("  SUCCESS: Signature verified\n");
     printf("  Algorithm: %d\n", hdr.alg);
-    if (hdr.kidLen > 0) {
+    if (hdr.kidLen > 0u) {
         printf("  Key ID: %.*s\n", (int)hdr.kidLen, hdr.kid);
     }
     printf("  FIRMWARE APPROVED for installation\n");

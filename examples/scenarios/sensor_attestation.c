@@ -122,7 +122,7 @@ static int sensor_create_attestation(WOLFCOSE_KEY* deviceKey,
 {
     int ret;
     uint8_t scratch[512];
-    uint8_t kid[] = "device-attestation-key-001";
+    const uint8_t kid[] = "device-attestation-key-001";
 
     printf("[Sensor] Creating attestation token...\n");
     printf("  Reading size: %zu bytes\n", readingLen);
@@ -130,7 +130,7 @@ static int sensor_create_attestation(WOLFCOSE_KEY* deviceKey,
 
     /* Sign with nonce as external AAD */
     ret = wc_CoseSign1_Sign(deviceKey, WOLFCOSE_ALG_ES256,
-        kid, sizeof(kid) - 1,
+        kid, sizeof(kid) - 1u,
         reading, readingLen,
         NULL, 0,  /* No detached payload */
         nonce, nonceLen,  /* Nonce as external AAD */
@@ -176,7 +176,7 @@ static int verifier_check_attestation(WOLFCOSE_KEY* devicePubKey,
     printf("  Nonce binding verified (replay protection)\n");
     printf("  Payload: %zu bytes of sensor data\n", payloadLen);
 
-    if (hdr.kidLen > 0) {
+    if (hdr.kidLen > 0u) {
         printf("  Key ID: %.*s\n", (int)hdr.kidLen, hdr.kid);
     }
 

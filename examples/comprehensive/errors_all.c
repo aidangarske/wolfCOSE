@@ -86,7 +86,7 @@ static int test_sign1_tamper(int tamperPos)
     WOLFCOSE_KEY cosKey;
     WC_RNG rng;
     int rngInit = 0;
-    uint8_t payload[] = "tamper test payload";
+    const uint8_t payload[] = "tamper test payload";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -112,7 +112,7 @@ static int test_sign1_tamper(int tamperPos)
         /* Create valid signature */
         ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
             NULL, 0,
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
@@ -126,11 +126,11 @@ static int test_sign1_tamper(int tamperPos)
         }
         else if (tamperPos == 1) {
             /* Tamper at middle */
-            tampered[outLen / 2] ^= 0xFF;
+            tampered[outLen / 2u] ^= 0xFF;
         }
         else {
             /* Tamper at last byte */
-            tampered[outLen - 1] ^= 0xFF;
+            tampered[outLen - 1u] ^= 0xFF;
         }
 
         /* Verify should fail */
@@ -173,7 +173,7 @@ static int test_encrypt0_tamper(int tamperPos)
         0x02, 0xD1, 0xF7, 0xE6, 0xF2, 0x6C, 0x43, 0xD4,
         0x86, 0x8D, 0x87, 0xCE
     };
-    uint8_t payload[] = "tamper test payload";
+    const uint8_t payload[] = "tamper test payload";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -188,7 +188,7 @@ static int test_encrypt0_tamper(int tamperPos)
         /* Encrypt */
         ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
             iv, sizeof(iv),
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL,
             NULL, 0,
             scratch, sizeof(scratch),
@@ -201,10 +201,10 @@ static int test_encrypt0_tamper(int tamperPos)
             tampered[0] ^= 0xFF;
         }
         else if (tamperPos == 1) {
-            tampered[outLen / 2] ^= 0xFF;
+            tampered[outLen / 2u] ^= 0xFF;
         }
         else {
-            tampered[outLen - 1] ^= 0xFF;
+            tampered[outLen - 1u] ^= 0xFF;
         }
 
         /* Decrypt should fail */
@@ -237,7 +237,7 @@ static int test_mac0_tamper(int tamperPos)
         0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
         0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
     };
-    uint8_t payload[] = "tamper test payload";
+    const uint8_t payload[] = "tamper test payload";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -252,7 +252,7 @@ static int test_mac0_tamper(int tamperPos)
         /* Create MAC */
         ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
             NULL, 0,
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen);
@@ -264,10 +264,10 @@ static int test_mac0_tamper(int tamperPos)
             tampered[0] ^= 0xFF;
         }
         else if (tamperPos == 1) {
-            tampered[outLen / 2] ^= 0xFF;
+            tampered[outLen / 2u] ^= 0xFF;
         }
         else {
-            tampered[outLen - 1] ^= 0xFF;
+            tampered[outLen - 1u] ^= 0xFF;
         }
 
         /* Verify should fail */
@@ -297,7 +297,7 @@ static int test_sign1_truncated(void)
     WOLFCOSE_KEY cosKey;
     WC_RNG rng;
     int rngInit = 0;
-    uint8_t payload[] = "truncation test payload";
+    const uint8_t payload[] = "truncation test payload";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -322,14 +322,14 @@ static int test_sign1_truncated(void)
         /* Create valid message */
         ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
             NULL, 0,
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
     }
     if (ret == 0) {
         /* Truncate to half and verify - should fail */
-        ret = wc_CoseSign1_Verify(&cosKey, out, outLen / 2,
+        ret = wc_CoseSign1_Verify(&cosKey, out, outLen / 2u,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
@@ -365,7 +365,7 @@ static int test_encrypt0_truncated(void)
         0x02, 0xD1, 0xF7, 0xE6, 0xF2, 0x6C, 0x43, 0xD4,
         0x86, 0x8D, 0x87, 0xCE
     };
-    uint8_t payload[] = "truncation test payload";
+    const uint8_t payload[] = "truncation test payload";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -379,7 +379,7 @@ static int test_encrypt0_truncated(void)
         /* Encrypt */
         ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
             iv, sizeof(iv),
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL,
             NULL, 0,
             scratch, sizeof(scratch),
@@ -387,7 +387,7 @@ static int test_encrypt0_truncated(void)
     }
     if (ret == 0) {
         /* Truncate and decrypt - should fail */
-        ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen / 2,
+        ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen / 2u,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             &hdr,
@@ -415,7 +415,7 @@ static int test_mac0_truncated(void)
         0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
         0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
     };
-    uint8_t payload[] = "truncation test payload";
+    const uint8_t payload[] = "truncation test payload";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -429,14 +429,14 @@ static int test_mac0_truncated(void)
         /* Create MAC */
         ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
             NULL, 0,
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen);
     }
     if (ret == 0) {
         /* Truncate and verify - should fail */
-        ret = wc_CoseMac0_Verify(&cosKey, out, outLen / 2,
+        ret = wc_CoseMac0_Verify(&cosKey, out, outLen / 2u,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
@@ -462,9 +462,9 @@ static int test_sign1_aad_mismatch(void)
     WOLFCOSE_KEY cosKey;
     WC_RNG rng;
     int rngInit = 0;
-    uint8_t payload[] = "AAD mismatch test";
-    uint8_t aad[] = "correct aad";
-    uint8_t wrongAad[] = "wrong aad";
+    const uint8_t payload[] = "AAD mismatch test";
+    const uint8_t aad[] = "correct aad";
+    const uint8_t wrongAad[] = "wrong aad";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -489,9 +489,9 @@ static int test_sign1_aad_mismatch(void)
         /* Sign with AAD */
         ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
             NULL, 0,
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0,
-            aad, sizeof(aad) - 1,
+            aad, sizeof(aad) - 1u,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
     }
@@ -499,7 +499,7 @@ static int test_sign1_aad_mismatch(void)
         /* Verify with wrong AAD - should fail */
         ret = wc_CoseSign1_Verify(&cosKey, out, outLen,
             NULL, 0,
-            wrongAad, sizeof(wrongAad) - 1,
+            wrongAad, sizeof(wrongAad) - 1u,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
         if (ret == 0) {
@@ -534,9 +534,9 @@ static int test_encrypt0_aad_mismatch(void)
         0x02, 0xD1, 0xF7, 0xE6, 0xF2, 0x6C, 0x43, 0xD4,
         0x86, 0x8D, 0x87, 0xCE
     };
-    uint8_t payload[] = "AAD mismatch test";
-    uint8_t aad[] = "correct aad";
-    uint8_t wrongAad[] = "wrong aad";
+    const uint8_t payload[] = "AAD mismatch test";
+    const uint8_t aad[] = "correct aad";
+    const uint8_t wrongAad[] = "wrong aad";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -550,9 +550,9 @@ static int test_encrypt0_aad_mismatch(void)
         /* Encrypt with AAD */
         ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
             iv, sizeof(iv),
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL,
-            aad, sizeof(aad) - 1,
+            aad, sizeof(aad) - 1u,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen);
     }
@@ -560,7 +560,7 @@ static int test_encrypt0_aad_mismatch(void)
         /* Decrypt with wrong AAD - should fail */
         ret = wc_CoseEncrypt0_Decrypt(&cosKey, out, outLen,
             NULL, 0,
-            wrongAad, sizeof(wrongAad) - 1,
+            wrongAad, sizeof(wrongAad) - 1u,
             scratch, sizeof(scratch),
             &hdr,
             plaintext, sizeof(plaintext), &plaintextLen);
@@ -587,9 +587,9 @@ static int test_mac0_aad_mismatch(void)
         0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
         0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
     };
-    uint8_t payload[] = "AAD mismatch test";
-    uint8_t aad[] = "correct aad";
-    uint8_t wrongAad[] = "wrong aad";
+    const uint8_t payload[] = "AAD mismatch test";
+    const uint8_t aad[] = "correct aad";
+    const uint8_t wrongAad[] = "wrong aad";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -603,9 +603,9 @@ static int test_mac0_aad_mismatch(void)
         /* Create MAC with AAD */
         ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
             NULL, 0,
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0,
-            aad, sizeof(aad) - 1,
+            aad, sizeof(aad) - 1u,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen);
     }
@@ -613,7 +613,7 @@ static int test_mac0_aad_mismatch(void)
         /* Verify with wrong AAD - should fail */
         ret = wc_CoseMac0_Verify(&cosKey, out, outLen,
             NULL, 0,
-            wrongAad, sizeof(wrongAad) - 1,
+            wrongAad, sizeof(wrongAad) - 1u,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
         if (ret == 0) {
@@ -638,7 +638,7 @@ static int test_sign1_detached_missing(void)
     WOLFCOSE_KEY cosKey;
     WC_RNG rng;
     int rngInit = 0;
-    uint8_t payload[] = "detached payload";
+    const uint8_t payload[] = "detached payload";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -664,7 +664,7 @@ static int test_sign1_detached_missing(void)
         ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
             NULL, 0,
             NULL, 0,  /* no inline payload */
-            payload, sizeof(payload) - 1,  /* detached */
+            payload, sizeof(payload) - 1u,  /* detached */
             NULL, 0,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
@@ -704,7 +704,7 @@ static int test_sign1_with_symmetric_key(void)
     WC_RNG rng;
     int rngInit = 0;
     uint8_t keyData[32] = {0};
-    uint8_t payload[] = "wrong key type test";
+    const uint8_t payload[] = "wrong key type test";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -719,7 +719,7 @@ static int test_sign1_with_symmetric_key(void)
     if (ret == 0) {
         ret = wc_CoseSign1_Sign(&cosKey, WOLFCOSE_ALG_ES256,
             NULL, 0,
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen, &rng);
@@ -752,7 +752,7 @@ static int test_encrypt0_with_signing_key(void)
         0x02, 0xD1, 0xF7, 0xE6, 0xF2, 0x6C, 0x43, 0xD4,
         0x86, 0x8D, 0x87, 0xCE
     };
-    uint8_t payload[] = "wrong key type test";
+    const uint8_t payload[] = "wrong key type test";
     uint8_t scratch[512];
     uint8_t out[512];
     size_t outLen = 0;
@@ -774,7 +774,7 @@ static int test_encrypt0_with_signing_key(void)
     if (ret == 0) {
         ret = wc_CoseEncrypt0_Encrypt(&cosKey, WOLFCOSE_ALG_A128GCM,
             iv, sizeof(iv),
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL,
             NULL, 0,
             scratch, sizeof(scratch),
@@ -846,7 +846,7 @@ static int test_sign1_empty_payload(void)
     }
     if (ret == 0) {
         /* Empty payload expected */
-        if (decPayloadLen != 0) {
+        if (decPayloadLen != 0u) {
             ret = -101;
         }
     }
