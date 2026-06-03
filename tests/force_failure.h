@@ -56,13 +56,13 @@ typedef enum {
     WOLF_FAIL_ED448_IMPORT_PUB,      /* wc_ed448_import_public */
     WOLF_FAIL_ED448_IMPORT_PRIV,     /* wc_ed448_import_private_key */
 
-    /* Dilithium failures */
-    WOLF_FAIL_DILITHIUM_SIGN,        /* wc_dilithium_sign_msg */
-    WOLF_FAIL_DILITHIUM_VERIFY,      /* wc_dilithium_verify_msg */
-    WOLF_FAIL_DILITHIUM_EXPORT_PUB,  /* wc_dilithium_export_public */
-    WOLF_FAIL_DILITHIUM_EXPORT_PRIV, /* wc_dilithium_export_private */
-    WOLF_FAIL_DILITHIUM_IMPORT_PUB,  /* wc_dilithium_import_public */
-    WOLF_FAIL_DILITHIUM_IMPORT_PRIV, /* wc_dilithium_import_private */
+    /* ML-DSA failures */
+    WOLF_FAIL_MLDSA_SIGN,        /* wc_MlDsaKey_SignCtx */
+    WOLF_FAIL_MLDSA_VERIFY,      /* wc_MlDsaKey_VerifyCtx */
+    WOLF_FAIL_MLDSA_EXPORT_PUB,  /* wc_MlDsaKey_ExportPubRaw */
+    WOLF_FAIL_MLDSA_EXPORT_PRIV, /* wc_MlDsaKey_ExportPrivRaw */
+    WOLF_FAIL_MLDSA_IMPORT_PUB,  /* wc_MlDsaKey_ImportPubRaw */
+    WOLF_FAIL_MLDSA_IMPORT_PRIV, /* wc_MlDsaKey_ImportKey */
 
     /* HMAC failures */
     WOLF_FAIL_HMAC_SET_KEY,          /* wc_HmacSetKey */

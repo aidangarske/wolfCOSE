@@ -57,8 +57,8 @@
 #ifdef WC_RSA_PSS
     #include <wolfssl/wolfcrypt/rsa.h>
 #endif
-#ifdef HAVE_DILITHIUM
-    #include <wolfssl/wolfcrypt/dilithium.h>
+#ifdef WOLFSSL_HAVE_MLDSA
+    #include <wolfssl/wolfcrypt/wc_mldsa.h>
 #endif
 #include <stdio.h>
 #include <string.h>
@@ -344,12 +344,12 @@ static int demo_sign1_ps256(void)
 }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
-/* ----- COSE_Sign1 lifecycle: ML-DSA-44 (Dilithium) ----- */
-#ifdef HAVE_DILITHIUM
+/* ----- COSE_Sign1 lifecycle: ML-DSA-44 (ML-DSA) ----- */
+#ifdef WOLFSSL_HAVE_MLDSA
 static int demo_sign1_ml_dsa_44(void)
 {
     int ret = 0;
-    dilithium_key dlKey;
+    wc_MlDsaKey dlKey;
     WOLFCOSE_KEY signKey;
     WC_RNG rng;
     uint8_t payload[64];
@@ -374,23 +374,23 @@ static int demo_sign1_ml_dsa_44(void)
         }
     }
     if (ret == 0) {
-        ret = wc_dilithium_init(&dlKey);
+        ret = wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
         if (ret == 0) {
             dlInited = 1;
         }
     }
     if (ret == 0) {
-        ret = wc_dilithium_set_level(&dlKey, 2);
+        ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
     }
     if (ret == 0) {
-        ret = wc_dilithium_make_key(&dlKey, &rng);
+        ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
         if (ret != 0) {
             printf("  ML-DSA keygen failed: %d\n", ret);
         }
     }
     if (ret == 0) {
         wc_CoseKey_Init(&signKey);
-        wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+        wc_CoseKey_SetMlDsa(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
         ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44,
             g_kid, sizeof(g_kid) - 1,
@@ -417,7 +417,7 @@ static int demo_sign1_ml_dsa_44(void)
     }
 
     if (dlInited != 0) {
-        wc_dilithium_free(&dlKey);
+        wc_MlDsaKey_Free(&dlKey);
     }
     if (rngInited != 0) {
         wc_FreeRng(&rng);
@@ -426,7 +426,7 @@ static int demo_sign1_ml_dsa_44(void)
 
     return ret;
 }
-#endif /* HAVE_DILITHIUM */
+#endif /* WOLFSSL_HAVE_MLDSA */
 
 /* ----- COSE_Encrypt0 lifecycle: AES-GCM ----- */
 #ifdef HAVE_AESGCM
@@ -799,7 +799,7 @@ int main(int argc, char* argv[])
         if (demo_sign1_ps256() != 0) { failures++; }
     }
 #endif
-#ifdef HAVE_DILITHIUM
+#ifdef WOLFSSL_HAVE_MLDSA
     if (demoAlg == DEMO_ALG_ALL || demoAlg == DEMO_ALG_ML_DSA_44) {
         tests++;
         if (demo_sign1_ml_dsa_44() != 0) { failures++; }

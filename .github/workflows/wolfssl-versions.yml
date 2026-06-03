@@ -42,11 +42,21 @@ jobs:
           fi
           echo "Latest stable wolfSSL: $LATEST"
           echo "latest-stable=$LATEST" >> "$GITHUB_OUTPUT"
-          MATRIX=$(jq -nc --arg latest "$LATEST" '{
+          # Enable PQC only when $LATEST is strictly newer than v5.9.1-stable.
+          # The wc_MlDsaKey API lands post-v5.9.1-stable; older stables only
+          # ship the legacy ML-DSA API wolfCOSE no longer calls.
+          PQC_FLOOR="v5.9.1-stable"
+          if [ "$(printf '%s\n%s\n' "$PQC_FLOOR" "$LATEST" | sort -V | tail -n 1)" != "$PQC_FLOOR" ]; then
+            LATEST_PQC=true
+          else
+            LATEST_PQC=false
+          fi
+          echo "latest-stable PQC eligible: $LATEST_PQC"
+          MATRIX=$(jq -nc --arg latest "$LATEST" --argjson latest_pqc "$LATEST_PQC" '{
             include: [
-              {"wolfssl-version":"v5.8.0-stable","wolfssl-ref":"v5.8.0-stable","cache-key":"wolfssl-version-v5.8.0-v1"},
-              {"wolfssl-version":$latest,"wolfssl-ref":$latest,"cache-key":("wolfssl-version-" + $latest + "-v1")},
-              {"wolfssl-version":"master","wolfssl-ref":"master","cache-key":""}
+              {"wolfssl-version":"v5.8.0-stable","wolfssl-ref":"v5.8.0-stable","cache-key":"wolfssl-nopqc-v5.8.0-v1","pqc":false},
+              {"wolfssl-version":$latest,"wolfssl-ref":$latest,"cache-key":("wolfssl-" + (if $latest_pqc then "pqc" else "nopqc" end) + "-" + $latest + "-v1"),"pqc":$latest_pqc},
+              {"wolfssl-version":"master","wolfssl-ref":"master","cache-key":"","pqc":true}
             ]
           }')
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
@@ -79,19 +89,26 @@ jobs:
 
     - name: Build wolfSSL (${{ matrix.wolfssl-version }})
       if: matrix.wolfssl-version == 'master' || steps.cache-wolfssl.outputs.cache-hit != 'true'
+      env:
+        PQC: ${{ matrix.pqc }}
       run: |
         cd ~
         git clone --depth 1 --branch ${{ matrix.wolfssl-ref }} \
             https://github.com/wolfSSL/wolfssl.git
         cd wolfssl
         ./autogen.sh
+        if [ "$PQC" = "true" ]; then
+          PQC_FLAGS="--enable-mldsa"
+        else
+          PQC_FLAGS=""
+        fi
         ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
                     --enable-curve25519 --enable-curve448 \
                     --enable-aesgcm --enable-aesccm --enable-aescbc \
                     --enable-sha384 --enable-sha512 \
                     --enable-keygen --enable-hkdf --enable-aeskeywrap \
                     --enable-chacha --enable-poly1305 \
-                    --enable-dilithium --enable-rsapss \
+                    $PQC_FLAGS --enable-rsapss \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc)
         make install
@@ -99,21 +116,21 @@ jobs:
     - name: Build wolfCOSE
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
-        make CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run unit tests
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run tool round-trip test
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make tool-test CFLAGS="-std=c11 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -I$WOLFSSL_DIR/include" \
+        make tool-test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: wolfSSL version info

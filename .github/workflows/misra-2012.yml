@@ -30,12 +30,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cppcheck autoconf automake libtool
 
+    - name: Resolve wolfSSL master commit
+      id: wolfssl-rev
+      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
     - name: Cache wolfSSL
       id: cache-wolfssl
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-ubuntu-latest-v3
+        key: wolfssl-ubuntu-latest-v3-${{ steps.wolfssl-rev.outputs.sha }}
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -48,7 +51,7 @@ jobs:
                     --enable-curve25519 --enable-aesgcm --enable-aesccm \
                     --enable-sha384 --enable-sha512 --enable-keygen \
                     --enable-rsapss --enable-chacha --enable-poly1305 \
-                    --enable-dilithium \
+                    --enable-mldsa \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc)
         make install
@@ -60,7 +63,7 @@ jobs:
         # combinations (which takes 3+ hours with --force).
         #
         # wolfSSL algorithm/feature macros (match our ./configure flags):
-        #   Signing: ECC, Ed25519, Ed448, RSA-PSS, ML-DSA (Dilithium)
+        #   Signing: ECC, Ed25519, Ed448, RSA-PSS, ML-DSA
         #   Encryption: AES-GCM, AES-CCM, ChaCha20-Poly1305
         #   MAC: HMAC (enabled by default, NO_HMAC must NOT be defined)
         #   Hashing: SHA-384, SHA-512
@@ -123,7 +126,7 @@ jobs:
                  -DHAVE_ED25519 \
                  -DHAVE_ED448 \
                  -DWC_RSA_PSS \
-                 -DHAVE_DILITHIUM \
+                 -DWOLFSSL_HAVE_MLDSA \
                  -DHAVE_AESGCM \
                  -DHAVE_AESCCM \
                  -DHAVE_CHACHA \

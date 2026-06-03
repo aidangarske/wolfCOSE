@@ -54,8 +54,8 @@
 #ifdef HAVE_ED448
     #include <wolfssl/wolfcrypt/ed448.h>
 #endif
-#ifdef HAVE_DILITHIUM
-    #include <wolfssl/wolfcrypt/dilithium.h>
+#ifdef WOLFSSL_HAVE_MLDSA
+    #include <wolfssl/wolfcrypt/wc_mldsa.h>
 #endif
 #ifdef WC_RSA_PSS
     #include <wolfssl/wolfcrypt/rsa.h>
@@ -1397,12 +1397,12 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
 }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
-/* ----- COSE_Sign1 ML-DSA (Dilithium) tests ----- */
-#ifdef HAVE_DILITHIUM
+/* ----- COSE_Sign1 ML-DSA (ML-DSA) tests ----- */
+#ifdef WOLFSSL_HAVE_MLDSA
 static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
 {
     WOLFCOSE_KEY signKey;
-    dilithium_key dlKey;
+    wc_MlDsaKey dlKey;
     WC_RNG rng;
     int ret = 0;
     int rngInited = 0;
@@ -1425,7 +1425,7 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
     }
 
     if (ret == 0) {
-        ret = wc_dilithium_init(&dlKey);
+        ret = wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
         if (ret != 0) { TEST_ASSERT(0, "dl init"); }
         if (ret == 0) {
             dlInited = 1;
@@ -1433,18 +1433,18 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
     }
 
     if (ret == 0) {
-        ret = wc_dilithium_set_level(&dlKey, level);
+        ret = wc_MlDsaKey_SetParams(&dlKey, level);
         if (ret != 0) { TEST_ASSERT(0, "dl set level"); }
     }
 
     if (ret == 0) {
-        ret = wc_dilithium_make_key(&dlKey, &rng);
+        ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
         if (ret != 0) { TEST_ASSERT(0, "dl keygen"); }
     }
 
     if (ret == 0) {
         (void)wc_CoseKey_Init(&signKey);
-        (void)wc_CoseKey_SetDilithium(&signKey, alg, &dlKey);
+        (void)wc_CoseKey_SetMlDsa(&signKey, alg, &dlKey);
 
         /* Sign */
         ret = wc_CoseSign1_Sign(&signKey, alg,
@@ -1473,15 +1473,15 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
 
     if (ret == 0) {
         /* Wrong key should fail */
-        dilithium_key dlWrong;
+        wc_MlDsaKey dlWrong;
         WOLFCOSE_KEY wrongKey;
         int wrongRet;
-        wc_dilithium_init(&dlWrong);
-        wc_dilithium_set_level(&dlWrong, level);
-        wrongRet = wc_dilithium_make_key(&dlWrong, &rng);
+        wc_MlDsaKey_Init(&dlWrong, NULL, INVALID_DEVID);
+        wc_MlDsaKey_SetParams(&dlWrong, level);
+        wrongRet = wc_MlDsaKey_MakeKey(&dlWrong, &rng);
         if (wrongRet == 0) {
             (void)wc_CoseKey_Init(&wrongKey);
-            (void)wc_CoseKey_SetDilithium(&wrongKey, alg, &dlWrong);
+            (void)wc_CoseKey_SetMlDsa(&wrongKey, alg, &dlWrong);
             wrongRet = wc_CoseSign1_Verify(&wrongKey, out, outLen,
                 NULL, 0, /* detachedPayload, detachedLen */
                 NULL, 0, /* extAad, extAadLen */
@@ -1489,12 +1489,12 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
                 &hdr, &decPayload, &decPayloadLen);
             TEST_ASSERT(wrongRet != 0, "sign1 ml-dsa wrong key fails");
         }
-        (void)wc_dilithium_free(&dlWrong);
+        (void)wc_MlDsaKey_Free(&dlWrong);
     }
 
     /* Cleanup */
     if (dlInited != 0) {
-        (void)wc_dilithium_free(&dlKey);
+        (void)wc_MlDsaKey_Free(&dlKey);
     }
     if (rngInited != 0) {
         (void)wc_FreeRng(&rng);
@@ -1504,7 +1504,7 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
 static void test_cose_sign1_ml_dsa_level_mismatch(void)
 {
     WOLFCOSE_KEY signKey;
-    dilithium_key dlKey;
+    wc_MlDsaKey dlKey;
     WC_RNG rng;
     int ret = 0;
     int rngInited = 0;
@@ -1523,21 +1523,21 @@ static void test_cose_sign1_ml_dsa_level_mismatch(void)
     if (ret != 0) { TEST_ASSERT(0, "rng init"); }
     if (ret == 0) { rngInited = 1; }
     if (ret == 0) {
-        ret = wc_dilithium_init(&dlKey);
+        ret = wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
         if (ret != 0) { TEST_ASSERT(0, "dl init"); }
         if (ret == 0) { dlInited = 1; }
     }
     if (ret == 0) {
-        ret = wc_dilithium_set_level(&dlKey, 2);
+        ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
         if (ret != 0) { TEST_ASSERT(0, "dl set level"); }
     }
     if (ret == 0) {
-        ret = wc_dilithium_make_key(&dlKey, &rng);
+        ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
         if (ret != 0) { TEST_ASSERT(0, "dl keygen"); }
     }
     if (ret == 0) {
         (void)wc_CoseKey_Init(&signKey);
-        (void)wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+        (void)wc_CoseKey_SetMlDsa(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
         ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44,
             NULL, 0, payload, sizeof(payload) - 1,
             NULL, 0, NULL, 0,
@@ -1557,10 +1557,10 @@ static void test_cose_sign1_ml_dsa_level_mismatch(void)
                     "ml-dsa level mismatch rejected");
     }
 
-    if (dlInited != 0) { (void)wc_dilithium_free(&dlKey); }
+    if (dlInited != 0) { (void)wc_MlDsaKey_Free(&dlKey); }
     if (rngInited != 0) { (void)wc_FreeRng(&rng); }
 }
-#endif /* HAVE_DILITHIUM */
+#endif /* WOLFSSL_HAVE_MLDSA */
 
 /* ----- COSE_Sign1 with external AAD ----- */
 #ifdef HAVE_ECC
@@ -1778,13 +1778,13 @@ static void test_cose_key_rsa_scratch_scrubbed(void)
 }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
-/* ----- COSE_Key Dilithium encode/decode round-trip ----- */
-#ifdef HAVE_DILITHIUM
-static void test_cose_key_dilithium(const char* label, int32_t alg,
+/* ----- COSE_Key ML-DSA encode/decode round-trip ----- */
+#ifdef WOLFSSL_HAVE_MLDSA
+static void test_cose_key_mldsa(const char* label, int32_t alg,
                                       int level)
 {
     WOLFCOSE_KEY key;
-    dilithium_key dlKey;
+    wc_MlDsaKey dlKey;
     WC_RNG rng;
     static const uint8_t kid[] = "ml-dsa-key-1";
     int ret;
@@ -1795,21 +1795,21 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
-    ret = wc_dilithium_init(&dlKey);
+    ret = wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
     if (ret != 0) { TEST_ASSERT(0, "dl init"); wc_FreeRng(&rng); return; }
 
-    ret = wc_dilithium_set_level(&dlKey, (byte)level);
+    ret = wc_MlDsaKey_SetParams(&dlKey, (byte)level);
     if (ret != 0) {
         TEST_ASSERT(0, "dl set level");
-        (void)wc_dilithium_free(&dlKey); wc_FreeRng(&rng); return;
+        (void)wc_MlDsaKey_Free(&dlKey); wc_FreeRng(&rng); return;
     }
 
-    ret = wc_dilithium_make_key(&dlKey, &rng);
+    ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
     TEST_ASSERT(ret == 0, "dl keygen");
-    if (ret != 0) { wc_dilithium_free(&dlKey); wc_FreeRng(&rng); return; }
+    if (ret != 0) { wc_MlDsaKey_Free(&dlKey); wc_FreeRng(&rng); return; }
 
     (void)wc_CoseKey_Init(&key);
-    ret = wc_CoseKey_SetDilithium(&key, alg, &dlKey);
+    ret = wc_CoseKey_SetMlDsa(&key, alg, &dlKey);
     TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_OKP, "key set dl");
     key.kid = kid;
     key.kidLen = sizeof(kid) - 1u;
@@ -1820,14 +1820,14 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
         uint8_t cbuf[8192];
         size_t cLen = 0;
         WOLFCOSE_KEY key2;
-        dilithium_key dlKey2;
+        wc_MlDsaKey dlKey2;
 
         ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
         TEST_ASSERT(ret == 0 && cLen > 0, "key dl encode");
 
-        wc_dilithium_init(&dlKey2);
+        wc_MlDsaKey_Init(&dlKey2, NULL, INVALID_DEVID);
         (void)wc_CoseKey_Init(&key2);
-        key2.key.dilithium = &dlKey2;
+        key2.key.mldsa = &dlKey2;
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_OKP &&
                     key2.crv == key.crv && key2.hasPrivate == 1 &&
@@ -1839,7 +1839,7 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
         /* Verify decoded key can sign/verify */
         /* empty-brace-scan: allow - test-local temporary scope */
         {
-            uint8_t payload[] = "Dilithium key round-trip";
+            uint8_t payload[] = "ML-DSA key round-trip";
             uint8_t scratch[8192];
             uint8_t out[8192];
             size_t outLen = 0;
@@ -1865,14 +1865,14 @@ static void test_cose_key_dilithium(const char* label, int32_t alg,
             TEST_ASSERT(ret == 0, "key dl rt verify");
         }
 
-        (void)wc_dilithium_free(&dlKey2);
+        (void)wc_MlDsaKey_Free(&dlKey2);
     }
 
     wc_CoseKey_Free(&key);
-    (void)wc_dilithium_free(&dlKey);
+    (void)wc_MlDsaKey_Free(&dlKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_DILITHIUM */
+#endif /* WOLFSSL_HAVE_MLDSA */
 
 /* ----- COSE_Mac0 tests ----- */
 #ifndef NO_HMAC
@@ -2635,58 +2635,58 @@ static void test_cose_key_encode_errors(void)
     }
 #endif
 
-#ifdef HAVE_DILITHIUM
-    /* Dilithium key encode with buffer too small */
+#ifdef WOLFSSL_HAVE_MLDSA
+    /* ML-DSA key encode with buffer too small */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
-        dilithium_key dlKey;
+        wc_MlDsaKey dlKey;
         WC_RNG rng;
 
         wc_InitRng(&rng);
-        wc_dilithium_init(&dlKey);
-        wc_dilithium_set_level(&dlKey, 2);
-        wc_dilithium_make_key(&dlKey, &rng);
+        wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
+        wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
+        wc_MlDsaKey_MakeKey(&dlKey, &rng);
 
         (void)wc_CoseKey_Init(&key);
-        (void)wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+        (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
         /* Very small buffer should fail */
         ret = wc_CoseKey_Encode(&key, buf, 10, &len);
-        TEST_ASSERT(ret != 0, "dilithium encode buf too small");
+        TEST_ASSERT(ret != 0, "ml-dsa encode buf too small");
 
-        (void)wc_dilithium_free(&dlKey);
+        (void)wc_MlDsaKey_Free(&dlKey);
         (void)wc_FreeRng(&rng);
     }
 #endif
 }
 
-#ifdef HAVE_DILITHIUM
-static void test_cose_key_set_dilithium_errors(void)
+#ifdef WOLFSSL_HAVE_MLDSA
+static void test_cose_key_set_mldsa_errors(void)
 {
     WOLFCOSE_KEY key;
-    dilithium_key dlKey;
+    wc_MlDsaKey dlKey;
     int ret;
 
-    TEST_LOG("  [SetDilithium Errors]\n");
+    TEST_LOG("  [SetMlDsa Errors]\n");
 
     (void)wc_CoseKey_Init(&key);
-    wc_dilithium_init(&dlKey);
+    wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
 
     /* NULL args */
-    ret = wc_CoseKey_SetDilithium(NULL, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    ret = wc_CoseKey_SetMlDsa(NULL, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "set dl null key");
-    ret = wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, NULL);
+    ret = wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, NULL);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "set dl null dlkey");
 
     /* invalid alg */
-    ret = wc_CoseKey_SetDilithium(&key, -99, &dlKey);
+    ret = wc_CoseKey_SetMlDsa(&key, -99, &dlKey);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "set dl bad alg");
-    ret = wc_CoseKey_SetDilithium(&key, 0, &dlKey);
+    ret = wc_CoseKey_SetMlDsa(&key, 0, &dlKey);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "set dl zero alg");
 
-    (void)wc_dilithium_free(&dlKey);
+    (void)wc_MlDsaKey_Free(&dlKey);
 }
-#endif /* HAVE_DILITHIUM */
+#endif /* WOLFSSL_HAVE_MLDSA */
 
 #ifdef HAVE_ED25519
 static void test_cose_key_ed25519_public_only(void)
@@ -2801,11 +2801,11 @@ static void test_cose_key_ed448_public_only(void)
 }
 #endif /* HAVE_ED448 */
 
-#ifdef HAVE_DILITHIUM
-static void test_cose_key_dilithium_public_only(void)
+#ifdef WOLFSSL_HAVE_MLDSA
+static void test_cose_key_mldsa_public_only(void)
 {
     WOLFCOSE_KEY key;
-    dilithium_key dlKey, dlKey2;
+    wc_MlDsaKey dlKey, dlKey2;
     WC_RNG rng;
     uint8_t pubBuf[2048];
     WOLFCOSE_CBOR_CTX enc;
@@ -2816,11 +2816,11 @@ static void test_cose_key_dilithium_public_only(void)
     TEST_LOG("  [Key ML-DSA-44 Public-Only]\n");
 
     wc_InitRng(&rng);
-    wc_dilithium_init(&dlKey);
-    wc_dilithium_init(&dlKey2);
-    wc_dilithium_set_level(&dlKey, 2);
-    wc_dilithium_make_key(&dlKey, &rng);
-    wc_dilithium_export_public(&dlKey, xBuf, &xSz);
+    wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
+    wc_MlDsaKey_Init(&dlKey2, NULL, INVALID_DEVID);
+    wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
+    wc_MlDsaKey_MakeKey(&dlKey, &rng);
+    wc_MlDsaKey_ExportPubRaw(&dlKey, xBuf, &xSz);
 
     /* Build a public-only OKP key (no d label) */
     enc.buf = pubBuf; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
@@ -2834,7 +2834,7 @@ static void test_cose_key_dilithium_public_only(void)
 
     (void)wc_CoseKey_Init(&key);
     key.kty = WOLFCOSE_KTY_OKP;
-    key.key.dilithium = &dlKey2;
+    key.key.mldsa = &dlKey2;
     ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
     TEST_ASSERT(ret == 0, "dl pub-only decode");
     TEST_ASSERT(key.hasPrivate == 0, "dl pub-only no priv");
@@ -2852,7 +2852,7 @@ static void test_cose_key_dilithium_public_only(void)
         size_t decLen;
 
         (void)wc_CoseKey_Init(&signKey);
-        (void)wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+        (void)wc_CoseKey_SetMlDsa(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
         ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44, NULL, 0,
             payload, sizeof(payload),
@@ -2871,11 +2871,11 @@ static void test_cose_key_dilithium_public_only(void)
     }
 
     wc_CoseKey_Free(&key);
-    (void)wc_dilithium_free(&dlKey);
-    (void)wc_dilithium_free(&dlKey2);
+    (void)wc_MlDsaKey_Free(&dlKey);
+    (void)wc_MlDsaKey_Free(&dlKey2);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_DILITHIUM */
+#endif /* WOLFSSL_HAVE_MLDSA */
 
 #ifdef HAVE_ECC
 /* Test ECC public-only key decode (no d label) */
@@ -3703,11 +3703,11 @@ static void test_cose_sign_multi_signer(void)
     (void)wc_FreeRng(&rng);
 }
 
-#if defined(HAVE_DILITHIUM) && defined(WOLFCOSE_SIGN)
+#if defined(WOLFSSL_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
 static void test_cose_sign_ml_dsa_level_mismatch(void)
 {
     WOLFCOSE_KEY signKey;
-    dilithium_key dlKey;
+    wc_MlDsaKey dlKey;
     WOLFCOSE_SIGNATURE signers[1];
     WC_RNG rng;
     int ret;
@@ -3720,15 +3720,15 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "ml-dsa rng");
-    ret = wc_dilithium_init(&dlKey);
+    ret = wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
     TEST_ASSERT(ret == 0, "ml-dsa init");
-    ret = wc_dilithium_set_level(&dlKey, 2);
+    ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
     TEST_ASSERT(ret == 0, "ml-dsa set level 2");
-    ret = wc_dilithium_make_key(&dlKey, &rng);
+    ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
     TEST_ASSERT(ret == 0, "ml-dsa keygen");
 
     (void)wc_CoseKey_Init(&signKey);
-    ret = wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    ret = wc_CoseKey_SetMlDsa(&signKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
     TEST_ASSERT(ret == 0, "ml-dsa set key");
 
     /* algId says ML-DSA-65 but the key is level 2 (ML-DSA-44). */
@@ -3747,17 +3747,17 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
                 "Sign_Sign rejects ML-DSA-65 vs key-44 mismatch");
 
     wc_CoseKey_Free(&signKey);
-    (void)wc_dilithium_free(&dlKey);
+    (void)wc_MlDsaKey_Free(&dlKey);
 
     /* Level-3 key with ML-DSA-44 algId */
-    ret = wc_dilithium_init(&dlKey);
+    ret = wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
     TEST_ASSERT(ret == 0, "ml-dsa3 init");
-    ret = wc_dilithium_set_level(&dlKey, 3);
+    ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_65);
     TEST_ASSERT(ret == 0, "ml-dsa3 set level");
-    ret = wc_dilithium_make_key(&dlKey, &rng);
+    ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
     TEST_ASSERT(ret == 0, "ml-dsa3 keygen");
     (void)wc_CoseKey_Init(&signKey);
-    ret = wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_65, &dlKey);
+    ret = wc_CoseKey_SetMlDsa(&signKey, WOLFCOSE_ALG_ML_DSA_65, &dlKey);
     TEST_ASSERT(ret == 0, "ml-dsa3 set key");
     signers[0].algId = WOLFCOSE_ALG_ML_DSA_44;
     signers[0].key = &signKey;
@@ -3768,17 +3768,17 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                 "Sign_Sign rejects ML-DSA-44 vs key-65 mismatch");
     wc_CoseKey_Free(&signKey);
-    (void)wc_dilithium_free(&dlKey);
+    (void)wc_MlDsaKey_Free(&dlKey);
 
     /* Level-5 key with ML-DSA-44 algId */
-    ret = wc_dilithium_init(&dlKey);
+    ret = wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
     TEST_ASSERT(ret == 0, "ml-dsa5 init");
-    ret = wc_dilithium_set_level(&dlKey, 5);
+    ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_87);
     TEST_ASSERT(ret == 0, "ml-dsa5 set level");
-    ret = wc_dilithium_make_key(&dlKey, &rng);
+    ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
     TEST_ASSERT(ret == 0, "ml-dsa5 keygen");
     (void)wc_CoseKey_Init(&signKey);
-    ret = wc_CoseKey_SetDilithium(&signKey, WOLFCOSE_ALG_ML_DSA_87, &dlKey);
+    ret = wc_CoseKey_SetMlDsa(&signKey, WOLFCOSE_ALG_ML_DSA_87, &dlKey);
     TEST_ASSERT(ret == 0, "ml-dsa5 set key");
     signers[0].algId = WOLFCOSE_ALG_ML_DSA_44;
     signers[0].key = &signKey;
@@ -3789,7 +3789,7 @@ static void test_cose_sign_ml_dsa_level_mismatch(void)
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                 "Sign_Sign rejects ML-DSA-44 vs key-87 mismatch");
     wc_CoseKey_Free(&signKey);
-    (void)wc_dilithium_free(&dlKey);
+    (void)wc_MlDsaKey_Free(&dlKey);
 
     (void)wc_FreeRng(&rng);
 }
@@ -4283,7 +4283,8 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
 {
     int ret = -1;
     WOLFCOSE_CBOR_CTX ctx;
-    uint64_t count = 0;
+    size_t count = 0;
+    uint64_t tag = 0;
     const uint8_t* protectedData = NULL;
     size_t protectedLen = 0;
     size_t protectedOffset = 0u;
@@ -4294,7 +4295,7 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
 
     if ((ctx.idx < ctx.bufSz) &&
         (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
-        ret = wc_CBOR_DecodeTag(&ctx, &count);
+        ret = wc_CBOR_DecodeTag(&ctx, &tag);
     }
     else {
         ret = 0;
@@ -7771,13 +7772,13 @@ static void test_cose_null_params(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "SetRsa null rsaKey");
 #endif
 
-    /* Test SetDilithium with NULL */
-#ifdef HAVE_DILITHIUM
-    ret = wc_CoseKey_SetDilithium(NULL, WOLFCOSE_ALG_ML_DSA_44, NULL);
-    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "SetDilithium null key");
+    /* Test SetMlDsa with NULL */
+#ifdef WOLFSSL_HAVE_MLDSA
+    ret = wc_CoseKey_SetMlDsa(NULL, WOLFCOSE_ALG_ML_DSA_44, NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "SetMlDsa null key");
 
-    ret = wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, NULL);
-    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "SetDilithium null dlKey");
+    ret = wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "SetMlDsa null dlKey");
 #endif
 }
 
@@ -10305,11 +10306,11 @@ static void test_cose_sign_multi_pss_roundtrip(void)
 }
 #endif
 
-#if defined(HAVE_DILITHIUM) && defined(WOLFCOSE_SIGN)
-static void test_cose_sign_multi_dilithium_roundtrip(void)
+#if defined(WOLFSSL_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
+static void test_cose_sign_multi_mldsa_roundtrip(void)
 {
     WOLFCOSE_KEY key;
-    dilithium_key dlKey;
+    wc_MlDsaKey dlKey;
     WC_RNG rng;
     WOLFCOSE_SIGNATURE signers[1];
     WOLFCOSE_HDR hdr;
@@ -10325,15 +10326,15 @@ static void test_cose_sign_multi_dilithium_roundtrip(void)
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "multi dl rng init");
-    ret = wc_dilithium_init(&dlKey);
+    ret = wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
     TEST_ASSERT(ret == 0, "multi dl init");
-    ret = wc_dilithium_set_level(&dlKey, WC_ML_DSA_44);
+    ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
     TEST_ASSERT(ret == 0, "multi dl set level");
-    ret = wc_dilithium_make_key(&dlKey, &rng);
+    ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
     TEST_ASSERT(ret == 0, "multi dl keygen");
 
     (void)wc_CoseKey_Init(&key);
-    ret = wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    ret = wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
     TEST_ASSERT(ret == 0, "multi dl key set");
 
     signers[0].algId = WOLFCOSE_ALG_ML_DSA_44;
@@ -10364,7 +10365,7 @@ static void test_cose_sign_multi_dilithium_roundtrip(void)
                 "multi dl payload match");
 
     wc_CoseKey_Free(&key);
-    (void)wc_dilithium_free(&dlKey);
+    (void)wc_MlDsaKey_Free(&dlKey);
     (void)wc_FreeRng(&rng);
 }
 #endif
@@ -12208,46 +12209,46 @@ static void test_force_failure_crypto(void)
     }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
-#ifdef HAVE_DILITHIUM
+#ifdef WOLFSSL_HAVE_MLDSA
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
-        dilithium_key dlKey;
+        wc_MlDsaKey dlKey;
         uint8_t keyBuf[8192];
-        uint8_t dlScratch[4096];  /* Larger scratch for Dilithium sig */
+        uint8_t dlScratch[4096];  /* Larger scratch for ML-DSA sig */
         uint8_t dlCoseMsg[4096];
         size_t dlCoseMsgLen;
         size_t keyLen;
 
         (void)wc_CoseKey_Init(&key);
-        wc_dilithium_init(&dlKey);
-        ret = wc_dilithium_set_level(&dlKey, 2);
+        wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
+        ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
         if (ret == 0) {
-            ret = wc_dilithium_make_key(&dlKey, &rng);
+            ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
         }
         if (ret == 0) {
-            (void)wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+            (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
-            /* Test Dilithium export public failure */
+            /* Test ML-DSA export public failure */
             keyLen = sizeof(keyBuf);
-            wolfForceFailure_Set(WOLF_FAIL_DILITHIUM_EXPORT_PUB);
+            wolfForceFailure_Set(WOLF_FAIL_MLDSA_EXPORT_PUB);
             ret = wc_CoseKey_Encode(&key, keyBuf, sizeof(keyBuf), &keyLen);
-            TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Dilithium export pub forced failure");
+            TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ML-DSA export pub forced failure");
 
-            /* Test Dilithium export private failure */
+            /* Test ML-DSA export private failure */
             keyLen = sizeof(keyBuf);
-            wolfForceFailure_Set(WOLF_FAIL_DILITHIUM_EXPORT_PRIV);
+            wolfForceFailure_Set(WOLF_FAIL_MLDSA_EXPORT_PRIV);
             ret = wc_CoseKey_Encode(&key, keyBuf, sizeof(keyBuf), &keyLen);
-            TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Dilithium export priv forced failure");
+            TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ML-DSA export priv forced failure");
 
-            /* Test Dilithium sign failure */
+            /* Test ML-DSA sign failure */
             dlCoseMsgLen = sizeof(dlCoseMsg);
-            wolfForceFailure_Set(WOLF_FAIL_DILITHIUM_SIGN);
+            wolfForceFailure_Set(WOLF_FAIL_MLDSA_SIGN);
             ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ML_DSA_44,
                 NULL, 0, payload, sizeof(payload), NULL, 0, NULL, 0,
                 dlScratch, sizeof(dlScratch),
                 dlCoseMsg, sizeof(dlCoseMsg), &dlCoseMsgLen, &rng);
-            TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Dilithium sign forced failure");
+            TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ML-DSA sign forced failure");
 
             /* Create valid signature for verify test */
             dlCoseMsgLen = sizeof(dlCoseMsg);
@@ -12260,18 +12261,18 @@ static void test_force_failure_crypto(void)
                 size_t decodedPayloadLen;
                 WOLFCOSE_HDR hdr;
 
-                /* Test Dilithium verify failure */
-                wolfForceFailure_Set(WOLF_FAIL_DILITHIUM_VERIFY);
+                /* Test ML-DSA verify failure */
+                wolfForceFailure_Set(WOLF_FAIL_MLDSA_VERIFY);
                 ret = wc_CoseSign1_Verify(&key, dlCoseMsg, dlCoseMsgLen,
                     NULL, 0, NULL, 0, dlScratch, sizeof(dlScratch),
                     &hdr, &decodedPayload, &decodedPayloadLen);
-                TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Dilithium verify forced failure");
+                TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ML-DSA verify forced failure");
             }
         }
-        (void)wc_dilithium_free(&dlKey);
+        (void)wc_MlDsaKey_Free(&dlKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* HAVE_DILITHIUM */
+#endif /* WOLFSSL_HAVE_MLDSA */
 
 #ifdef HAVE_AESCCM
     /* empty-brace-scan: allow - test-local temporary scope */
@@ -12569,46 +12570,46 @@ static void test_force_failure_crypto(void)
     }
 #endif /* HAVE_ED448 */
 
-#ifdef HAVE_DILITHIUM
-    /* Test Dilithium import failure via CoseKey_Decode */
+#ifdef WOLFSSL_HAVE_MLDSA
+    /* Test ML-DSA import failure via CoseKey_Decode */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
-        dilithium_key dlKey;
+        wc_MlDsaKey dlKey;
         uint8_t keyBuf[8192];
         size_t keyLen;
         WOLFCOSE_KEY decodedKey;
-        dilithium_key decodedDlKey;
+        wc_MlDsaKey decodedDlKey;
 
         (void)wc_CoseKey_Init(&key);
-        wc_dilithium_init(&dlKey);
-        ret = wc_dilithium_set_level(&dlKey, 2);
+        wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
+        ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
         if (ret == 0) {
-            ret = wc_dilithium_make_key(&dlKey, &rng);
+            ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
         }
         if (ret == 0) {
-            (void)wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+            (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
             /* Encode the key */
             keyLen = sizeof(keyBuf);
             ret = wc_CoseKey_Encode(&key, keyBuf, sizeof(keyBuf), &keyLen);
             if (ret == 0) {
-                /* Test Dilithium import failure - must pre-allocate internal key */
-                wc_dilithium_init(&decodedDlKey);
-                wc_dilithium_set_level(&decodedDlKey, 2);
+                /* Test ML-DSA import failure - must pre-allocate internal key */
+                wc_MlDsaKey_Init(&decodedDlKey, NULL, INVALID_DEVID);
+                wc_MlDsaKey_SetParams(&decodedDlKey, WC_ML_DSA_44);
                 (void)wc_CoseKey_Init(&decodedKey);
-                decodedKey.key.dilithium = &decodedDlKey;
+                decodedKey.key.mldsa = &decodedDlKey;
                 decodedKey.crv = WOLFCOSE_CRV_ML_DSA_44;
-                wolfForceFailure_Set(WOLF_FAIL_DILITHIUM_IMPORT_PRIV);
+                wolfForceFailure_Set(WOLF_FAIL_MLDSA_IMPORT_PRIV);
                 ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
-                TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Dilithium import priv forced failure");
-                (void)wc_dilithium_free(&decodedDlKey);
+                TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ML-DSA import priv forced failure");
+                (void)wc_MlDsaKey_Free(&decodedDlKey);
             }
         }
-        (void)wc_dilithium_free(&dlKey);
+        (void)wc_MlDsaKey_Free(&dlKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* HAVE_DILITHIUM */
+#endif /* WOLFSSL_HAVE_MLDSA */
 
     /* Test WOLF_FAIL_HASH - covers hash operations in sign/verify paths */
 #if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
@@ -12745,44 +12746,44 @@ static void test_force_failure_crypto(void)
     }
 #endif /* HAVE_ED448 */
 
-#ifdef HAVE_DILITHIUM
+#ifdef WOLFSSL_HAVE_MLDSA
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY dlPubKey;
-        dilithium_key dlWolfKey;
+        wc_MlDsaKey dlWolfKey;
         uint8_t dlKeyBuf[4096];
         size_t dlKeyLen;
         WOLFCOSE_KEY dlDecKey;
-        dilithium_key dlDecWolfKey;
+        wc_MlDsaKey dlDecWolfKey;
 
         (void)wc_CoseKey_Init(&dlPubKey);
-        wc_dilithium_init(&dlWolfKey);
-        ret = wc_dilithium_set_level(&dlWolfKey, 2);
+        wc_MlDsaKey_Init(&dlWolfKey, NULL, INVALID_DEVID);
+        ret = wc_MlDsaKey_SetParams(&dlWolfKey, WC_ML_DSA_44);
         if (ret == 0) {
-            ret = wc_dilithium_make_key(&dlWolfKey, &rng);
+            ret = wc_MlDsaKey_MakeKey(&dlWolfKey, &rng);
         }
         if (ret == 0) {
-            (void)wc_CoseKey_SetDilithium(&dlPubKey, WOLFCOSE_ALG_ML_DSA_44, &dlWolfKey);
+            (void)wc_CoseKey_SetMlDsa(&dlPubKey, WOLFCOSE_ALG_ML_DSA_44, &dlWolfKey);
             dlPubKey.hasPrivate = 0; /* Encode as public key only */
 
             dlKeyLen = sizeof(dlKeyBuf);
             ret = wc_CoseKey_Encode(&dlPubKey, dlKeyBuf, sizeof(dlKeyBuf), &dlKeyLen);
             if (ret == 0) {
-                wc_dilithium_init(&dlDecWolfKey);
-                wc_dilithium_set_level(&dlDecWolfKey, 2);
+                wc_MlDsaKey_Init(&dlDecWolfKey, NULL, INVALID_DEVID);
+                wc_MlDsaKey_SetParams(&dlDecWolfKey, WC_ML_DSA_44);
                 (void)wc_CoseKey_Init(&dlDecKey);
-                dlDecKey.key.dilithium = &dlDecWolfKey;
+                dlDecKey.key.mldsa = &dlDecWolfKey;
                 dlDecKey.crv = WOLFCOSE_CRV_ML_DSA_44;
-                wolfForceFailure_Set(WOLF_FAIL_DILITHIUM_IMPORT_PUB);
+                wolfForceFailure_Set(WOLF_FAIL_MLDSA_IMPORT_PUB);
                 ret = wc_CoseKey_Decode(&dlDecKey, dlKeyBuf, dlKeyLen);
-                TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Dilithium import pub forced failure");
-                (void)wc_dilithium_free(&dlDecWolfKey);
+                TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ML-DSA import pub forced failure");
+                (void)wc_MlDsaKey_Free(&dlDecWolfKey);
             }
         }
-        (void)wc_dilithium_free(&dlWolfKey);
+        (void)wc_MlDsaKey_Free(&dlWolfKey);
         wc_CoseKey_Free(&dlPubKey);
     }
-#endif /* HAVE_DILITHIUM */
+#endif /* WOLFSSL_HAVE_MLDSA */
 
     (void)wc_FreeRng(&rng);
 
@@ -14202,51 +14203,51 @@ static void test_rsa_key_encode_buffer_small(void)
 }
 #endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
 
-#ifdef HAVE_DILITHIUM
-static void test_dilithium_key_encode_buffer_small(void)
+#ifdef WOLFSSL_HAVE_MLDSA
+static void test_mldsa_key_encode_buffer_small(void)
 {
     WOLFCOSE_KEY key;
-    dilithium_key dlKey;
+    wc_MlDsaKey dlKey;
     WC_RNG rng;
-    uint8_t tinyBuf[64]; /* Too small for Dilithium key */
+    uint8_t tinyBuf[64]; /* Too small for ML-DSA key */
     size_t outLen = 0;
     int ret;
 
-    TEST_LOG("  [Dilithium Key Encode - Buffer Too Small]\n");
+    TEST_LOG("  [ML-DSA Key Encode - Buffer Too Small]\n");
 
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
-    wc_dilithium_init(&dlKey);
-    ret = wc_dilithium_set_level(&dlKey, 2);
+    wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
+    ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
     if (ret != 0) {
-        TEST_ASSERT(0, "dilithium set level");
-        (void)wc_dilithium_free(&dlKey);
+        TEST_ASSERT(0, "ml-dsa set level");
+        (void)wc_MlDsaKey_Free(&dlKey);
         (void)wc_FreeRng(&rng);
         return;
     }
 
-    ret = wc_dilithium_make_key(&dlKey, &rng);
+    ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
     if (ret != 0) {
-        TEST_ASSERT(0, "dilithium keygen");
-        (void)wc_dilithium_free(&dlKey);
+        TEST_ASSERT(0, "ml-dsa keygen");
+        (void)wc_MlDsaKey_Free(&dlKey);
         (void)wc_FreeRng(&rng);
         return;
     }
 
     (void)wc_CoseKey_Init(&key);
-    (void)wc_CoseKey_SetDilithium(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
 
-    /* Dilithium key encode with tiny buffer */
+    /* ML-DSA key encode with tiny buffer */
     ret = wc_CoseKey_Encode(&key, tinyBuf, sizeof(tinyBuf), &outLen);
     /* Could be BUFFER_TOO_SMALL or CRYPTO error depending on how failure occurs */
-    TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "dilithium key encode tiny buf");
+    TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "ml-dsa key encode tiny buf");
 
     wc_CoseKey_Free(&key);
-    (void)wc_dilithium_free(&dlKey);
+    (void)wc_MlDsaKey_Free(&dlKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_DILITHIUM */
+#endif /* WOLFSSL_HAVE_MLDSA */
 
 static void test_key_decode_bad_kty(void)
 {
@@ -15583,10 +15584,10 @@ int test_cose(void)
     test_cose_key_rsa();
     test_cose_key_rsa_scratch_scrubbed();
 #endif
-#ifdef HAVE_DILITHIUM
-    test_cose_key_dilithium("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, 2);
-    test_cose_key_dilithium("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, 3);
-    test_cose_key_dilithium("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, 5);
+#ifdef WOLFSSL_HAVE_MLDSA
+    test_cose_key_mldsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, WC_ML_DSA_44);
+    test_cose_key_mldsa("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, WC_ML_DSA_65);
+    test_cose_key_mldsa("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, WC_ML_DSA_87);
 #endif
 
     /* Sign1 basic tests */
@@ -15635,11 +15636,11 @@ int test_cose(void)
     test_cose_sign1_pss("PS512", WOLFCOSE_ALG_PS512);
 #endif
 
-    /* ML-DSA (Dilithium) signature tests */
-#ifdef HAVE_DILITHIUM
-    test_cose_sign1_ml_dsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, 2);
-    test_cose_sign1_ml_dsa("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, 3);
-    test_cose_sign1_ml_dsa("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, 5);
+    /* ML-DSA signature tests */
+#ifdef WOLFSSL_HAVE_MLDSA
+    test_cose_sign1_ml_dsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, WC_ML_DSA_44);
+    test_cose_sign1_ml_dsa("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, WC_ML_DSA_65);
+    test_cose_sign1_ml_dsa("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, WC_ML_DSA_87);
     test_cose_sign1_ml_dsa_level_mismatch();
 #endif
 
@@ -15680,7 +15681,7 @@ int test_cose(void)
 #if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
     test_cose_sign_multi_signer();
     test_cose_sign_both_payloads();
-#if defined(HAVE_DILITHIUM) && defined(WOLFCOSE_SIGN)
+#if defined(WOLFSSL_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
     test_cose_sign_ml_dsa_level_mismatch();
 #endif
     test_cose_sign_verify_key_alg_mismatch();
@@ -15853,8 +15854,8 @@ int test_cose(void)
     defined(WOLFSSL_KEY_GEN)
     test_cose_sign_multi_pss_roundtrip();
 #endif
-#if defined(HAVE_DILITHIUM) && defined(WOLFCOSE_SIGN)
-    test_cose_sign_multi_dilithium_roundtrip();
+#if defined(WOLFSSL_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
+    test_cose_sign_multi_mldsa_roundtrip();
 #endif
 #if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESCCM)
     test_cose_encrypt_multi_ccm_roundtrip();
@@ -15949,8 +15950,8 @@ int test_cose(void)
 #endif
     test_cose_key_encode_errors();
     test_cose_key_decode_optional_labels();
-#ifdef HAVE_DILITHIUM
-    test_cose_key_set_dilithium_errors();
+#ifdef WOLFSSL_HAVE_MLDSA
+    test_cose_key_set_mldsa_errors();
 #endif
 #ifdef HAVE_ED25519
     test_cose_key_ed25519_public_only();
@@ -15958,8 +15959,8 @@ int test_cose(void)
 #ifdef HAVE_ED448
     test_cose_key_ed448_public_only();
 #endif
-#ifdef HAVE_DILITHIUM
-    test_cose_key_dilithium_public_only();
+#ifdef WOLFSSL_HAVE_MLDSA
+    test_cose_key_mldsa_public_only();
 #endif
 #ifdef HAVE_ECC
     test_cose_key_ecc_public_only();
@@ -16075,8 +16076,8 @@ int test_cose(void)
 #if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
     test_rsa_key_encode_buffer_small();
 #endif
-#ifdef HAVE_DILITHIUM
-    test_dilithium_key_encode_buffer_small();
+#ifdef WOLFSSL_HAVE_MLDSA
+    test_mldsa_key_encode_buffer_small();
 #endif
     test_key_decode_bad_kty();
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \

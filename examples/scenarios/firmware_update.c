@@ -48,8 +48,8 @@
 #ifdef HAVE_ECC
     #include <wolfssl/wolfcrypt/ecc.h>
 #endif
-#ifdef HAVE_DILITHIUM
-    #include <wolfssl/wolfcrypt/dilithium.h>
+#ifdef WOLFSSL_HAVE_MLDSA
+    #include <wolfssl/wolfcrypt/wc_mldsa.h>
 #endif
 #include <stdio.h>
 #include <string.h>
@@ -68,28 +68,28 @@ static const uint8_t g_firmwareBinary[] = {
 };
 
 /* ----- Step 1: OEM generates signing key (done once, stored securely) ----- */
-#ifdef HAVE_DILITHIUM
-static int oem_generate_key_mldsa(dilithium_key* key, WC_RNG* rng)
+#ifdef WOLFSSL_HAVE_MLDSA
+static int oem_generate_key_mldsa(wc_MlDsaKey* key, WC_RNG* rng)
 {
     int ret;
 
     printf("[OEM] Generating ML-DSA-65 key pair...\n");
 
-    ret = wc_dilithium_init(key);
+    ret = wc_MlDsaKey_Init(key, NULL, INVALID_DEVID);
     if (ret != 0) {
-        printf("  ERROR: wc_dilithium_init failed: %d\n", ret);
+        printf("  ERROR: wc_MlDsaKey_Init failed: %d\n", ret);
         return ret;
     }
 
-    ret = wc_dilithium_set_level(key, 3);  /* Level 3 = ML-DSA-65 */
+    ret = wc_MlDsaKey_SetParams(key, WC_ML_DSA_65);
     if (ret != 0) {
-        printf("  ERROR: wc_dilithium_set_level failed: %d\n", ret);
+        printf("  ERROR: wc_MlDsaKey_SetParams failed: %d\n", ret);
         return ret;
     }
 
-    ret = wc_dilithium_make_key(key, rng);
+    ret = wc_MlDsaKey_MakeKey(key, rng);
     if (ret != 0) {
-        printf("  ERROR: wc_dilithium_make_key failed: %d\n", ret);
+        printf("  ERROR: wc_MlDsaKey_MakeKey failed: %d\n", ret);
         return ret;
     }
 
@@ -98,7 +98,7 @@ static int oem_generate_key_mldsa(dilithium_key* key, WC_RNG* rng)
 }
 #endif
 
-#if defined(HAVE_ECC) && !defined(HAVE_DILITHIUM)
+#if defined(HAVE_ECC) && !defined(WOLFSSL_HAVE_MLDSA)
 static int oem_generate_key_ecdsa(ecc_key* key, WC_RNG* rng)
 {
     int ret;
@@ -120,7 +120,7 @@ static int oem_generate_key_ecdsa(ecc_key* key, WC_RNG* rng)
     printf("  SUCCESS: ECDSA P-256 key generated\n");
     return 0;
 }
-#endif /* HAVE_ECC && !HAVE_DILITHIUM */
+#endif /* HAVE_ECC && !WOLFSSL_HAVE_MLDSA */
 
 /* ----- Step 2: OEM signs firmware with detached payload ----- */
 static int oem_sign_firmware(WOLFCOSE_KEY* signingKey, int32_t alg,
@@ -256,8 +256,8 @@ int main(void)
     WOLFCOSE_KEY signingKey;
     int32_t alg = 0;
 
-#ifdef HAVE_DILITHIUM
-    dilithium_key dlKey;
+#ifdef WOLFSSL_HAVE_MLDSA
+    wc_MlDsaKey dlKey;
     int dlInit = 0;
 #endif
 #ifdef HAVE_ECC
@@ -276,7 +276,7 @@ int main(void)
     }
     rngInit = 1;
 
-#ifdef HAVE_DILITHIUM
+#ifdef WOLFSSL_HAVE_MLDSA
     /* Prefer ML-DSA (post-quantum) if available */
     if (ret == 0) {
         ret = oem_generate_key_mldsa(&dlKey, &rng);
@@ -287,10 +287,10 @@ int main(void)
 
     if (ret == 0) {
         wc_CoseKey_Init(&signingKey);
-        ret = wc_CoseKey_SetDilithium(&signingKey, WOLFCOSE_ALG_ML_DSA_65,
+        ret = wc_CoseKey_SetMlDsa(&signingKey, WOLFCOSE_ALG_ML_DSA_65,
                                       &dlKey);
         if (ret != 0) {
-            printf("ERROR: wc_CoseKey_SetDilithium failed: %d\n", ret);
+            printf("ERROR: wc_CoseKey_SetMlDsa failed: %d\n", ret);
         }
     }
 
@@ -362,8 +362,8 @@ int main(void)
     }
 
     /* Cleanup */
-#ifdef HAVE_DILITHIUM
-    if (dlInit != 0) { wc_dilithium_free(&dlKey); }
+#ifdef WOLFSSL_HAVE_MLDSA
+    if (dlInit != 0) { wc_MlDsaKey_Free(&dlKey); }
 #endif
 #ifdef HAVE_ECC
     if (eccInit != 0) { wc_ecc_free(&eccKey); }

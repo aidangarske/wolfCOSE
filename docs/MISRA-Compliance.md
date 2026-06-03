@@ -1,0 +1,127 @@
+# MISRA C Compliance
+
+wolfCOSE strives for MISRA C compliance and is checked in CI on every pull request. The project is not yet fully MISRA C:2023 compliant since there is no checker for 2023 that is publicly available yet. We do fully test and support the 2012 Misra-C standard. Full MISRA C:2023 verification requires commercial tooling (like LDRA, Polyspace, Cppcheck Premium). The current free tooling provides around 80% coverage across syntax, essential type, and data-flow rules.
+
+## Coverage
+
+### MISRA C:2012
+
+Verified via cppcheck's MISRA addon (`--addon=misra`) with all wolfCOSE algorithm and feature macros defined. Covers ~65-75% of decidable MISRA C:2023 rules including:
+
+- Syntax rules (comments, declarations, expressions)
+- Control flow rules (goto, switch, loops)
+- Declaration and type rules
+- Pointer and array rules
+
+**Workflow**: `.github/workflows/misra-2012.yml`
+
+All wolfCOSE and wolfSSL feature macros are explicitly defined so cppcheck checks the full code path rather than enumerating wolfSSL's hundreds of platform `#ifdef` configurations. See [[Macros]] for the complete list.
+
+### MISRA C:2023
+
+MISRA C:2023 is essentially MISRA C:2012 plus Amendments 1-4. Since free tooling does not directly support MISRA C:2023, compliance is approximated using two approaches:
+
+**Strict Compiler Warnings** 17 MISRA-adjacent GCC flags beyond the project's standard `-Wall -Wextra -Wpedantic -Wshadow -Wconversion`:
+
+| Flag | MISRA Rule | Purpose |
+|------|-----------|---------|
+| `-Wcast-qual` | Rule 11.8 | Const qualifier preservation |
+| `-Wstrict-prototypes` | Rule 8.2 | Function declaration completeness |
+| `-Wmissing-prototypes` | Rule 8.2 | Missing function prototypes |
+| `-Wold-style-definition` | Rule 8.2 | Old-style function definitions |
+| `-Wdeclaration-after-statement` | Rule 8.x | C90-style declaration ordering |
+| `-Wundef` | Rule 20.9 | Undefined macro in `#if` |
+| `-Wfloat-equal` | Rule 13.4 | Float equality comparison |
+| `-Wpointer-arith` | Rule 18.x | Pointer arithmetic safety |
+| `-Wredundant-decls` | Rule 8.x | Redundant declarations |
+| `-Wnested-externs` | Rule 8.x | Nested extern declarations |
+| `-Wformat=2` | Rule 21.6 | Format string safety |
+| `-Wformat-security` | Rule 21.6 | Format string security |
+| `-Wlogical-op` | Rule 12.x | Logical vs bitwise operators |
+| `-Wjump-misses-init` | Rule 15.1 | Goto skipping initialization |
+| `-Wdouble-promotion` | Rule 10.x | Implicit float-to-double |
+| `-Wnull-dereference` | Safety | Null pointer dereference |
+| `-Wsign-conversion` | Rule 10.x | Signed/unsigned conversion |
+
+**clang-tidy Checks** covers standard library safety (Amendment 3), deep data-flow analysis, and CERT C rules that map to MISRA 2023 logic:
+
+| Check Category | Coverage |
+|---------------|----------|
+| `bugprone-*` | Unsafe patterns (buffer overflows, integer overflows, suspicious constructs) |
+| `cert-*` | CERT C rules mapping to MISRA 2023 logic |
+| `clang-analyzer-*` | Inter-procedural data-flow analysis, pointer tracking |
+| `misc-*` | Miscellaneous safety checks (excluding `misc-include-cleaner`) |
+
+**Workflow**: `.github/workflows/misra-2023.yml`
+
+## Coverage Summary
+
+| Area | cppcheck (2012) | Compiler Flags + clang-tidy (2023) | Commercial Tools |
+|------|----------------|-----------------------------------|-----------------|
+| Syntax Rules | High (~90%) | High (~95%) | 100% |
+| Essential Types | Medium (~50%) | High (~80%) | 100% |
+| Data Flow | Low (~30%) | Medium (~50%) | 100% |
+| Std Lib Safety | Low (~20%) | Medium (~60%) | 100% |
+
+## Known Deviations in wolfCOSE
+
+wolfCOSE has the following documented MISRA C:2012 deviations. Each is suppressed in CI via `cppcheck --suppress` and justified below.
+
+### Rule 2.5: Unused Macro Definitions
+
+**Location:** `include/wolfcose/wolfcose.h` (feature gate macros)
+
+**Justification:** wolfCOSE feature-gate macros (`WOLFCOSE_SIGN1`, `WOLFCOSE_SIGN1_SIGN`, etc.) are defined conditionally via `#if !defined(NO_X) && !defined(X)` guards. When the CI passes both parent and child `-D` flags on the command line (e.g., `-DWOLFCOSE_SIGN1 -DWOLFCOSE_SIGN1_SIGN`), the child macro is pre-defined and the header guard skips the `#define`. cppcheck sees the guarded-away `#define` as "unused" — a false positive caused by the CI passing explicit flags for cppcheck path coverage.
+
+### Rule 8.7: Could Be Defined with Internal Linkage
+
+**Location:** `src/wolfcose.c:wolfCose_SigSize()`
+
+**Justification:** `wolfCose_SigSize()` is declared `WOLFCOSE_LOCAL` in `wolfcose_internal.h` and called from `tests/test_cose.c` for unit testing. cppcheck only scans `src/` and `include/`, so it does not see the test file usage and incorrectly reports the function could be `static`. Making it `static` would break the test suite.
+
+### Rule 11.8: Cast Removes Const Qualification
+
+**Location:** `src/wolfcose.c` (ECC/ECDH wolfSSL API calls)
+
+**Justification:** wolfSSL's ECC APIs (`wc_ecc_set_rng`, `wc_ecc_shared_secret`, `wc_ecc_sign_hash`, `wc_ecc_verify_hash`) take non-const `ecc_key*` parameters even for operations that do not modify the key data. wolfCOSE's public API correctly uses `const` qualifiers on key parameters (e.g., `const WOLFCOSE_KEY* key`) to communicate that keys are not modified. However, when passing the internal `ecc_key*` from a const `WOLFCOSE_KEY` to wolfSSL, cppcheck flags the implicit const-to-non-const conversion through the union member access chain. This is a wolfSSL API design limitation that wolfCOSE preserves const-correctness at its own API boundary but cannot enforce it through wolfSSL's non-const function signatures.
+
+### Rule 19.2: Union Type Used
+
+**Location:** `include/wolfcose/wolfcose.h:WOLFCOSE_KEY` struct (lines 443-464)
+
+**Justification:** The `WOLFCOSE_KEY` struct uses a tagged union to hold pointers to wolfCrypt key types (`ecc_key*`, `ed25519_key*`, `ed448_key*`, `RsaKey*`, `wc_MlDsaKey*`, symmetric key bytes). The `kty` field discriminates the active union member. This is the standard C pattern for polymorphic types and is fundamental to supporting a multi-algorithm COSE library without dynamic allocation. Replacing the union would require either:
+- `void*` pointers (less type-safe, violates Rule 11.5)
+- Separate functions per algorithm (massive API bloat)
+- Dynamic allocation (violates the zero-allocation design constraint)
+
+### Rule 21.15: Overlapping Memory in Copy
+
+**Location:** `src/wolfcose.c:wolfCose_EccSignRaw()` (XMEMMOVE calls)
+
+**Justification:** `XMEMMOVE` (`memmove`) is used intentionally for overlapping memory regions when right-justifying ECC r/s signature components within a single buffer. The signature buffer contains `r||s` where `r` or `s` may be shorter than the coordinate size and needs to be shifted right with zero-padding. `memmove` is the correct function for this — it handles overlapping source and destination by design. cppcheck flags the overlap as a potential issue, but this is the intended behavior per RFC 8152 Section 8.1.
+
+## MISRA C:2023 Deviations (clang-tidy)
+
+The following clang-tidy checks are suppressed in the MISRA 2023 workflow. GCC strict MISRA warnings are fully clean (0 warnings).
+
+### bugprone-branch-clone: Identical Consecutive Switch Branches
+
+**Location:** `src/wolfcose.c` (algorithm dispatch switches)
+
+**Justification:** Different COSE algorithms intentionally map to the same wolfCrypt value. For example, ES512 and EdDSA both use `WC_HASH_TYPE_SHA512`, and A128GCM/A192GCM share the same nonce length. The switch branches are not bugs — they represent distinct algorithm IDs with identical cryptographic parameters.
+
+### bugprone-easily-swappable-parameters: Adjacent Parameters of Similar Types
+
+**Location:** Multiple public API functions
+
+**Justification:** Advisory warning about adjacent function parameters of the same type (e.g., `size_t payloadLen, size_t detachedLen`). Fixing requires reordering or wrapping parameters, which would break the public API. The parameter ordering follows RFC 9052 structure conventions.
+
+## Fully Compliant Rules (Notable)
+
+| Rule | Status | Notes |
+|------|--------|-------|
+| Rule 15.1 (no goto) | Compliant | All functions use cascading `if (ret == WOLFCOSE_SUCCESS)` with a single `return ret` |
+| Rule 15.5 (single exit) | Compliant | All functions have exactly one return statement |
+| Rule 17.2 (no recursion) | Compliant | CBOR decoder uses iterative traversal with a bounded stack (`WOLFCOSE_CBOR_MAX_DEPTH`) |
+| Rule 17.7 (check returns) | Compliant | All return values checked or explicitly cast to `(void)` |
+| Rule 12.1 (explicit precedence) | Compliant | All `&&`/`||` operands and mixed arithmetic explicitly parenthesized |

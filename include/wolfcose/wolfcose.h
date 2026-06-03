@@ -47,8 +47,8 @@
 #ifdef HAVE_ED448
     #include <wolfssl/wolfcrypt/ed448.h>
 #endif
-#ifdef HAVE_DILITHIUM
-    #include <wolfssl/wolfcrypt/dilithium.h>
+#ifdef WOLFSSL_HAVE_MLDSA
+    #include <wolfssl/wolfcrypt/wc_mldsa.h>
 #endif
 #include <wolfssl/wolfcrypt/random.h>
 
@@ -230,7 +230,7 @@ extern "C" {
 
 /* ----- Configurable limits ----- */
 #ifndef WOLFCOSE_MAX_SCRATCH_SZ
-    #if defined(HAVE_DILITHIUM)
+    #if defined(WOLFSSL_HAVE_MLDSA)
         #define WOLFCOSE_MAX_SCRATCH_SZ      8192u
     #else
         #define WOLFCOSE_MAX_SCRATCH_SZ      512u
@@ -246,7 +246,7 @@ extern "C" {
     #define WOLFCOSE_MAX_MAP_ITEMS        16u
 #endif
 #ifndef WOLFCOSE_MAX_SIG_SZ
-    #if defined(HAVE_DILITHIUM)
+    #if defined(WOLFSSL_HAVE_MLDSA)
         #define WOLFCOSE_MAX_SIG_SZ  4627u
     #elif defined(WC_RSA_PSS)
         #define WOLFCOSE_MAX_SIG_SZ  512u
@@ -377,7 +377,7 @@ extern "C" {
 #define WOLFCOSE_ALG_ECDH_ES_A192KW    (-30)  /* ECDH-ES + A192KW */
 #define WOLFCOSE_ALG_ECDH_ES_A256KW    (-31)  /* ECDH-ES + A256KW */
 
-#define WOLFCOSE_ALG_ML_DSA_44   (-48)   /* ML-DSA (Dilithium) Level 2 */
+#define WOLFCOSE_ALG_ML_DSA_44   (-48)   /* ML-DSA Level 2 */
 #define WOLFCOSE_ALG_ML_DSA_65   (-49)   /* ML-DSA Level 3 */
 #define WOLFCOSE_ALG_ML_DSA_87   (-50)   /* ML-DSA Level 5 */
 
@@ -484,8 +484,8 @@ typedef struct WOLFCOSE_KEY {
 #ifdef WC_RSA_PSS
         RsaKey*        rsa;       /**< Caller-owned RSA key */
 #endif
-#ifdef HAVE_DILITHIUM
-        dilithium_key* dilithium; /**< PQC future: ML-DSA */
+#ifdef WOLFSSL_HAVE_MLDSA
+        wc_MlDsaKey*   mldsa;     /**< ML-DSA (FIPS 204), caller-owned */
 #endif
         void*          pqc;       /**< Generic PQC handle for future algos */
         struct {
@@ -753,9 +753,9 @@ WOLFCOSE_API int wc_CoseKey_SetEd25519(WOLFCOSE_KEY* key,
 WOLFCOSE_API int wc_CoseKey_SetEd448(WOLFCOSE_KEY* key, ed448_key* edKey);
 #endif
 
-#ifdef HAVE_DILITHIUM
-WOLFCOSE_API int wc_CoseKey_SetDilithium(WOLFCOSE_KEY* key, int32_t alg,
-                                           dilithium_key* dlKey);
+#ifdef WOLFSSL_HAVE_MLDSA
+WOLFCOSE_API int wc_CoseKey_SetMlDsa(WOLFCOSE_KEY* key, int32_t alg,
+                                       wc_MlDsaKey* mlDsaKey);
 #endif
 
 #ifdef WC_RSA_PSS

@@ -5,7 +5,7 @@ wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.r
 ## Main Features
 
 - **Complete RFC 9052 message set**: all six COSE message types, including multi-signer `COSE_Sign` and multi-recipient `COSE_Encrypt` / `COSE_Mac`
-- **Post-quantum signing**: ML-DSA (Dilithium) at all three security levels
+- **Post-quantum signing**: ML-DSA (FIPS 204) at all three security levels
 - **40 algorithms** across signing, encryption, MAC, and key distribution
 - **Zero dynamic allocation**: all operations use caller-provided buffers
 - **Tiny footprint**: 7.5 KB `.text` minimal build (Sign1+ECC), 25.6 KB full (40 algorithms), zero `.data`/`.bss`
@@ -38,7 +38,7 @@ wolfCOSE has implemented all RFC 9052 messages both single-actor and multi-actor
 
 ## Prerequisites (wolfSSL)
 
-wolfCOSE requires [wolfSSL](https://www.wolfssl.com/) as its crypto backend. **Minimum supported version: v5.8.0-stable** (first release with the public `wc_ForceZero` symbol alongside the FIPS 204 final ML-DSA and context-aware `wc_dilithium_*_ctx_msg` APIs). Older 5.x releases can technically be supported but require source-level changes; contact [wolfSSL](https://www.wolfssl.com/contact/) for commercial support.
+wolfCOSE requires [wolfSSL](https://www.wolfssl.com/) as its crypto backend. **Minimum supported version: v5.8.0-stable** (first release with the public `wc_ForceZero` symbol). Post-quantum signing uses the canonical FIPS 204 `wc_MlDsaKey` API, which lands in wolfSSL **after v5.9.1-stable**; building wolfCOSE against v5.8.0–v5.9.1 works for everything except ML-DSA. Older 5.x releases can technically be supported but require source-level changes; contact [wolfSSL](https://www.wolfssl.com/contact/) for commercial support.
 
 Choose a build configuration based on the algorithms you need.
 
@@ -64,13 +64,14 @@ For pure post-quantum signing with ML-DSA-44/65/87:
 ```bash
 cd wolfssl
 ./autogen.sh
-./configure --enable-cryptonly --enable-dilithium
+./configure --enable-cryptonly --enable-mldsa
 make && sudo make install
 sudo ldconfig
 ```
 
 **Algorithms enabled:** ML-DSA-44, ML-DSA-65, ML-DSA-87
-(SHAKE-128/256 are pulled in automatically by `--enable-dilithium`.)
+(SHAKE-128/256 are pulled in automatically by `--enable-mldsa`. The
+`wc_MlDsaKey` API requires wolfSSL newer than v5.9.1-stable.)
 
 ### Full Build (All Algorithms)
 
@@ -81,7 +82,8 @@ cd wolfssl
             --enable-curve25519 --enable-aesgcm --enable-aesccm \
             --enable-sha384 --enable-sha512 --enable-keygen \
             --enable-rsapss --enable-chacha --enable-poly1305 \
-            --enable-dilithium --enable-hkdf --enable-aeskeywrap
+            --enable-mldsa \
+            --enable-hkdf --enable-aeskeywrap
 make && sudo make install
 sudo ldconfig
 ```
