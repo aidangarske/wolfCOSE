@@ -43,7 +43,7 @@ static int demo_sign1_es256(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    uint8_t payload[] = "ES256 test payload";
+    const uint8_t payload[] ="ES256 test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
     size_t outLen = 0;
@@ -53,7 +53,7 @@ static int demo_sign1_es256(void)
     int ret;
 
     printf("--- COSE_Sign1 ES256 (P-256) ---\n");
-    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1);
+    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1u);
 
     ret = wc_InitRng(&rng);
     DEMO_ASSERT(ret == 0, "Init RNG");
@@ -68,7 +68,7 @@ static int demo_sign1_es256(void)
 
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
         NULL, 0,                           /* kid, kidLen */
-        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        payload, sizeof(payload) - 1u,      /* payload, payloadLen */
         NULL, 0,                           /* detachedPayload, detachedLen */
         NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
@@ -82,7 +82,7 @@ static int demo_sign1_es256(void)
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify");
-    DEMO_ASSERT(decPayloadLen == sizeof(payload) - 1, "Payload length");
+    DEMO_ASSERT(decPayloadLen == sizeof(payload) - 1u, "Payload length");
     DEMO_ASSERT(memcmp(decPayload, payload, decPayloadLen) == 0, "Payload match");
     DEMO_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256, "Algorithm");
 
@@ -98,7 +98,7 @@ static int demo_sign1_es384(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    uint8_t payload[] = "ES384 test payload";
+    const uint8_t payload[] ="ES384 test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
     size_t outLen = 0;
@@ -108,7 +108,7 @@ static int demo_sign1_es384(void)
     int ret;
 
     printf("--- COSE_Sign1 ES384 (P-384) ---\n");
-    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1);
+    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1u);
 
     ret = wc_InitRng(&rng);
     DEMO_ASSERT(ret == 0, "Init RNG");
@@ -123,7 +123,7 @@ static int demo_sign1_es384(void)
 
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES384,
         NULL, 0,                           /* kid, kidLen */
-        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        payload, sizeof(payload) - 1u,      /* payload, payloadLen */
         NULL, 0,                           /* detachedPayload, detachedLen */
         NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
@@ -152,7 +152,7 @@ static int demo_sign1_es512(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    uint8_t payload[] = "ES512 test payload";
+    const uint8_t payload[] ="ES512 test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[640];
     size_t outLen = 0;
@@ -162,7 +162,7 @@ static int demo_sign1_es512(void)
     int ret;
 
     printf("--- COSE_Sign1 ES512 (P-521) ---\n");
-    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1);
+    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1u);
 
     ret = wc_InitRng(&rng);
     DEMO_ASSERT(ret == 0, "Init RNG");
@@ -177,7 +177,7 @@ static int demo_sign1_es512(void)
 
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES512,
         NULL, 0,                           /* kid, kidLen */
-        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        payload, sizeof(payload) - 1u,      /* payload, payloadLen */
         NULL, 0,                           /* detachedPayload, detachedLen */
         NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
@@ -205,8 +205,8 @@ static int demo_sign1_with_aad(void)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
-    uint8_t payload[] = "Payload with AAD";
-    uint8_t aad[] = "Additional authenticated data";
+    const uint8_t payload[] ="Payload with AAD";
+    const uint8_t aad[] ="Additional authenticated data";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
     size_t outLen = 0;
@@ -235,9 +235,9 @@ static int demo_sign1_with_aad(void)
 
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
         NULL, 0,                           /* kid, kidLen */
-        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        payload, sizeof(payload) - 1u,      /* payload, payloadLen */
         NULL, 0,                           /* detachedPayload, detachedLen */
-        aad, sizeof(aad) - 1,              /* extAad, extAadLen */
+        aad, sizeof(aad) - 1u,             /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen, &rng);
     DEMO_ASSERT(ret == 0, "Sign with AAD");
@@ -246,7 +246,7 @@ static int demo_sign1_with_aad(void)
     /* Verify with correct AAD */
     ret = wc_CoseSign1_Verify(&key, out, outLen,
         NULL, 0,                           /* detachedPayload, detachedLen */
-        aad, sizeof(aad) - 1,              /* extAad, extAadLen */
+        aad, sizeof(aad) - 1u,             /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify with correct AAD");
@@ -254,7 +254,7 @@ static int demo_sign1_with_aad(void)
     /* Verify wrong AAD fails */
     ret = wc_CoseSign1_Verify(&key, out, outLen,
         NULL, 0,                           /* detachedPayload, detachedLen */
-        wrongAad, sizeof(wrongAad) - 1,    /* extAad, extAadLen */
+        wrongAad, sizeof(wrongAad) - 1u,   /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret != 0, "Wrong AAD rejected");
@@ -272,7 +272,7 @@ static int demo_sign1_eddsa(void)
     WOLFCOSE_KEY key;
     ed25519_key edKey;
     WC_RNG rng;
-    uint8_t payload[] = "EdDSA test payload";
+    const uint8_t payload[] ="EdDSA test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
     size_t outLen = 0;
@@ -282,7 +282,7 @@ static int demo_sign1_eddsa(void)
     int ret;
 
     printf("--- COSE_Sign1 EdDSA (Ed25519) ---\n");
-    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1);
+    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1u);
 
     ret = wc_InitRng(&rng);
     DEMO_ASSERT(ret == 0, "Init RNG");
@@ -297,7 +297,7 @@ static int demo_sign1_eddsa(void)
 
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_EDDSA,
         NULL, 0,                           /* kid, kidLen */
-        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        payload, sizeof(payload) - 1u,      /* payload, payloadLen */
         NULL, 0,                           /* detachedPayload, detachedLen */
         NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
@@ -327,18 +327,28 @@ int main(void)
     printf("=== wolfCOSE Sign1 Demo ===\n\n");
 
 #ifdef HAVE_ECC
-    if (demo_sign1_es256() != 0) failures++;
+    if (demo_sign1_es256() != 0) {
+        failures++;
+    }
 #ifdef WOLFSSL_SHA384
-    if (demo_sign1_es384() != 0) failures++;
+    if (demo_sign1_es384() != 0) {
+        failures++;
+    }
 #endif
 #ifdef WOLFSSL_SHA512
-    if (demo_sign1_es512() != 0) failures++;
+    if (demo_sign1_es512() != 0) {
+        failures++;
+    }
 #endif
-    if (demo_sign1_with_aad() != 0) failures++;
+    if (demo_sign1_with_aad() != 0) {
+        failures++;
+    }
 #endif
 
 #ifdef HAVE_ED25519
-    if (demo_sign1_eddsa() != 0) failures++;
+    if (demo_sign1_eddsa() != 0) {
+        failures++;
+    }
 #endif
 
     printf("\n=== Results: %d failure(s) ===\n", failures);

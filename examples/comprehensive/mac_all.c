@@ -82,8 +82,8 @@ static int test_mac0(int32_t alg, int keySz, int detached, int useAad)
     uint8_t keyData[64];
     uint8_t out[512];
     uint8_t scratch[512];
-    uint8_t payload[] = "test payload for MAC operation";
-    uint8_t aad[] = "external additional authenticated data";
+    const uint8_t payload[] = "test payload for MAC operation";
+    const uint8_t aad[] = "external additional authenticated data";
     size_t outLen = 0;
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
@@ -130,7 +130,7 @@ static int test_mac0(int32_t alg, int keySz, int detached, int useAad)
 
     /* Validate payload if inline */
     if ((ret == 0) && (detached == 0)) {
-        if (decPayloadLen != sizeof(payload) - 1) {
+        if (decPayloadLen != sizeof(payload) - 1u) {
             ret = -2;
         }
         else if (XMEMCMP(decPayload, payload, decPayloadLen) != 0) {
@@ -153,8 +153,8 @@ static int test_mac_multi_direct(int32_t macAlg, int keySz,
     uint8_t keyData[64];
     uint8_t out[1024];
     uint8_t scratch[512];
-    uint8_t payload[] = "multi-recipient MAC payload";
-    uint8_t aad[] = "multi-recipient mac aad";
+    const uint8_t payload[] = "multi-recipient MAC payload";
+    const uint8_t aad[] = "multi-recipient mac aad";
     static const uint8_t recipKid[] = { 0x6Du, 0x61u, 0x63u, 0x58u };
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
@@ -216,7 +216,8 @@ static int test_mac_multi_direct(int32_t macAlg, int keySz,
 static int test_mac_wrong_key(void)
 {
     int ret = 0;
-    WOLFCOSE_KEY macKey, wrongKey;
+    WOLFCOSE_KEY macKey;
+    WOLFCOSE_KEY wrongKey;
     WOLFCOSE_RECIPIENT recipients[2];
     WOLFCOSE_RECIPIENT wrongRecipient;
     uint8_t keyData1[32] = {
@@ -233,7 +234,10 @@ static int test_mac_wrong_key(void)
     };
     uint8_t out[512];
     uint8_t scratch[512];
-    uint8_t payload[] = "wrong key test";
+    const uint8_t payload[] = "wrong key test";
+    const uint8_t kid1[] = "recip1";
+    const uint8_t kid2[] = "recip2";
+    const uint8_t kidWrong[] = "wrong";
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
     size_t outLen = 0;
@@ -254,26 +258,26 @@ static int test_mac_wrong_key(void)
     if (ret == 0) {
         recipients[0].algId = WOLFCOSE_ALG_DIRECT;
         recipients[0].key = &macKey;
-        recipients[0].kid = (const uint8_t*)"recip1";
-        recipients[0].kidLen = 6;
+        recipients[0].kid = kid1;
+        recipients[0].kidLen = sizeof(kid1) - 1u;
 
         recipients[1].algId = WOLFCOSE_ALG_DIRECT;
         recipients[1].key = &macKey;
-        recipients[1].kid = (const uint8_t*)"recip2";
-        recipients[1].kidLen = 6;
+        recipients[1].kid = kid2;
+        recipients[1].kidLen = sizeof(kid2) - 1u;
 
         /* Wrong recipient with different key */
         wrongRecipient.algId = WOLFCOSE_ALG_DIRECT;
         wrongRecipient.key = &wrongKey;
-        wrongRecipient.kid = (const uint8_t*)"wrong";
-        wrongRecipient.kidLen = 5;
+        wrongRecipient.kid = kidWrong;
+        wrongRecipient.kidLen = sizeof(kidWrong) - 1u;
     }
 
     /* Create MAC */
     if (ret == 0) {
         ret = wc_CoseMac_Create(recipients, 2,
             WOLFCOSE_ALG_HMAC_256_256,
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0,
             NULL, 0,
             scratch, sizeof(scratch),
@@ -511,7 +515,7 @@ static int test_mac0_interop(void)
     if (ret == 0) {
         ret = wc_CoseMac0_Create(&cosKey, WOLFCOSE_ALG_HMAC_256_256,
             NULL, 0,
-            payload, sizeof(payload) - 1,
+            payload, sizeof(payload) - 1u,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             out, sizeof(out), &outLen);
@@ -532,7 +536,7 @@ static int test_mac0_interop(void)
         }
     }
     if (ret == 0) {
-        if (decPayloadLen != sizeof(payload) - 1) {
+        if (decPayloadLen != sizeof(payload) - 1u) {
             ret = -2;
         }
     }

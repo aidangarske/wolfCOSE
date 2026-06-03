@@ -132,6 +132,8 @@ static int sign_with_dual_control(WOLFCOSE_KEY* vendorKey, WOLFCOSE_KEY* oemKey,
     int ret;
     WOLFCOSE_SIGNATURE signers[2];
     uint8_t scratch[512];
+    const uint8_t vendorKid[] = "silicon-vendor-cert-001";
+    const uint8_t oemKid[] = "oem-production-key-v2";
 
     printf("[Signing] Creating dual-signed firmware approval...\n");
 
@@ -140,19 +142,19 @@ static int sign_with_dual_control(WOLFCOSE_KEY* vendorKey, WOLFCOSE_KEY* oemKey,
 
     signers[0].algId = WOLFCOSE_ALG_ES256;
     signers[0].key = vendorKey;
-    signers[0].kid = (const uint8_t*)"silicon-vendor-cert-001";
-    signers[0].kidLen = 23;
+    signers[0].kid = vendorKid;
+    signers[0].kidLen = sizeof(vendorKid) - 1u;
 
 #ifdef WOLFSSL_SHA384
     signers[1].algId = WOLFCOSE_ALG_ES384;
     signers[1].key = oemKey;
-    signers[1].kid = (const uint8_t*)"oem-production-key-v2";
-    signers[1].kidLen = 21;
+    signers[1].kid = oemKid;
+    signers[1].kidLen = sizeof(oemKid) - 1u;
 #else
     signers[1].algId = WOLFCOSE_ALG_ES256;
     signers[1].key = oemKey;
-    signers[1].kid = (const uint8_t*)"oem-production-key-v2";
-    signers[1].kidLen = 21;
+    signers[1].kid = oemKid;
+    signers[1].kidLen = sizeof(oemKid) - 1u;
 #endif
 
     /* Sign with both parties */

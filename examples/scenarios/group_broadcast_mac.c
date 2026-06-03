@@ -248,6 +248,7 @@ static int unauthorized_subscriber_fails(const uint8_t* macMsg, size_t macMsgLen
     const uint8_t* payload = NULL;
     size_t payloadLen = 0;
     WOLFCOSE_HDR hdr;
+    const uint8_t unauthorizedKid[] = "unauthorized-subscriber";
 
     printf("[Unauthorized Subscriber] Attempting to verify...\n");
 
@@ -263,8 +264,8 @@ static int unauthorized_subscriber_fails(const uint8_t* macMsg, size_t macMsgLen
     XMEMSET(&recipient, 0, sizeof(recipient));
     recipient.algId = WOLFCOSE_ALG_DIRECT;
     recipient.key = &wrongKey;
-    recipient.kid = (const uint8_t*)"unauthorized-subscriber";
-    recipient.kidLen = 23;
+    recipient.kid = unauthorizedKid;
+    recipient.kidLen = sizeof(unauthorizedKid) - 1u;
 
     /* Verify should fail */
     ret = wc_CoseMac_Verify(&recipient, 0,

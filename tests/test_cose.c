@@ -14411,53 +14411,56 @@ static void test_multi_sign_verify_wrong_signer(void)
     ret = wc_ecc_make_key(&rng, 32, &eccKey1);
     if (ret != 0) {
         TEST_ASSERT(0, "ecc keygen 1");
-        goto cleanup;
     }
 
-    ret = wc_ecc_make_key(&rng, 32, &eccKey2);
-    if (ret != 0) {
-        TEST_ASSERT(0, "ecc keygen 2");
-        goto cleanup;
+    if (ret == 0) {
+        ret = wc_ecc_make_key(&rng, 32, &eccKey2);
+        if (ret != 0) {
+            TEST_ASSERT(0, "ecc keygen 2");
+        }
     }
 
-    ret = wc_ecc_make_key(&rng, 32, &eccWrongKey);
-    if (ret != 0) {
-        TEST_ASSERT(0, "ecc keygen wrong");
-        goto cleanup;
+    if (ret == 0) {
+        ret = wc_ecc_make_key(&rng, 32, &eccWrongKey);
+        if (ret != 0) {
+            TEST_ASSERT(0, "ecc keygen wrong");
+        }
     }
 
-    (void)wc_CoseKey_Init(&key1);
-    (void)wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
-    (void)wc_CoseKey_Init(&key2);
-    (void)wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
-    (void)wc_CoseKey_Init(&wrongKey);
-    (void)wc_CoseKey_SetEcc(&wrongKey, WOLFCOSE_CRV_P256, &eccWrongKey);
+    if (ret == 0) {
+        (void)wc_CoseKey_Init(&key1);
+        (void)wc_CoseKey_SetEcc(&key1, WOLFCOSE_CRV_P256, &eccKey1);
+        (void)wc_CoseKey_Init(&key2);
+        (void)wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
+        (void)wc_CoseKey_Init(&wrongKey);
+        (void)wc_CoseKey_SetEcc(&wrongKey, WOLFCOSE_CRV_P256, &eccWrongKey);
 
-    memset(signers, 0, sizeof(signers));
-    signers[0].algId = WOLFCOSE_ALG_ES256;
-    signers[0].key = &key1;
-    signers[1].algId = WOLFCOSE_ALG_ES256;
-    signers[1].key = &key2;
+        memset(signers, 0, sizeof(signers));
+        signers[0].algId = WOLFCOSE_ALG_ES256;
+        signers[0].key = &key1;
+        signers[1].algId = WOLFCOSE_ALG_ES256;
+        signers[1].key = &key2;
 
-    ret = wc_CoseSign_Sign(signers, 2,
-        payload, sizeof(payload) - 1,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        out, sizeof(out), &outLen, &rng);
-    if (ret != WOLFCOSE_SUCCESS) {
-        TEST_ASSERT(0, "multi-sign create");
-        goto cleanup;
+        ret = wc_CoseSign_Sign(signers, 2,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, &rng);
+        if (ret != WOLFCOSE_SUCCESS) {
+            TEST_ASSERT(0, "multi-sign create");
+        }
     }
 
-    /* Try to verify with wrong key for signer 0 */
-    ret = wc_CoseSign_Verify(&wrongKey, 0,
-        out, outLen,
-        NULL, 0, NULL, 0,
-        scratch, sizeof(scratch),
-        &hdr, &decPayload, &decPayloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL, "multi sign wrong key verify");
+    if (ret == WOLFCOSE_SUCCESS) {
+        /* Try to verify with wrong key for signer 0 */
+        ret = wc_CoseSign_Verify(&wrongKey, 0,
+            out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL, "multi sign wrong key verify");
+    }
 
-cleanup:
     (void)wc_ecc_free(&eccKey1);
     (void)wc_ecc_free(&eccKey2);
     (void)wc_ecc_free(&eccWrongKey);

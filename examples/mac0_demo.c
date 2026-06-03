@@ -55,7 +55,7 @@ static int demo_mac0_hmac256(void)
         0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
         0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
     };
-    uint8_t payload[] = "HMAC-256 test payload";
+    const uint8_t payload[] = "HMAC-256 test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[256];
     size_t outLen = 0;
@@ -65,7 +65,7 @@ static int demo_mac0_hmac256(void)
     int ret;
 
     printf("--- COSE_Mac0 HMAC-256/256 ---\n");
-    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1);
+    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1u);
 
     wc_CoseKey_Init(&key);
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
@@ -73,7 +73,7 @@ static int demo_mac0_hmac256(void)
 
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0,                           /* kid, kidLen */
-        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        payload, sizeof(payload) - 1u,     /* payload, payloadLen */
         NULL, 0,                           /* detachedPayload, detachedLen */
         NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
@@ -87,7 +87,7 @@ static int demo_mac0_hmac256(void)
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify MAC");
-    DEMO_ASSERT(decPayloadLen == sizeof(payload) - 1, "Payload length");
+    DEMO_ASSERT(decPayloadLen == sizeof(payload) - 1u, "Payload length");
     DEMO_ASSERT(memcmp(decPayload, payload, decPayloadLen) == 0, "Payload match");
     DEMO_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_256_256, "Algorithm");
 
@@ -99,7 +99,7 @@ static int demo_mac0_hmac384(void)
 {
     WOLFCOSE_KEY key;
     uint8_t keyData[48];
-    uint8_t payload[] = "HMAC-384 test payload";
+    const uint8_t payload[] = "HMAC-384 test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[256];
     size_t outLen = 0;
@@ -110,11 +110,11 @@ static int demo_mac0_hmac384(void)
     size_t i;
 
     printf("--- COSE_Mac0 HMAC-384/384 ---\n");
-    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1);
+    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1u);
 
     /* Initialize 48-byte key */
     for (i = 0; i < sizeof(keyData); i++) {
-        keyData[i] = (uint8_t)(i + 1);
+        keyData[i] = (uint8_t)(i + 1u);
     }
 
     wc_CoseKey_Init(&key);
@@ -123,7 +123,7 @@ static int demo_mac0_hmac384(void)
 
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_384_384,
         NULL, 0,                           /* kid, kidLen */
-        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        payload, sizeof(payload) - 1u,     /* payload, payloadLen */
         NULL, 0,                           /* detachedPayload, detachedLen */
         NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
@@ -147,7 +147,7 @@ static int demo_mac0_hmac512(void)
 {
     WOLFCOSE_KEY key;
     uint8_t keyData[64];
-    uint8_t payload[] = "HMAC-512 test payload";
+    const uint8_t payload[] = "HMAC-512 test payload";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[256];
     size_t outLen = 0;
@@ -158,11 +158,11 @@ static int demo_mac0_hmac512(void)
     size_t i;
 
     printf("--- COSE_Mac0 HMAC-512/512 ---\n");
-    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1);
+    printf("  Payload: \"%s\" (%zu bytes)\n", payload, sizeof(payload) - 1u);
 
     /* Initialize 64-byte key */
     for (i = 0; i < sizeof(keyData); i++) {
-        keyData[i] = (uint8_t)(i + 1);
+        keyData[i] = (uint8_t)(i + 1u);
     }
 
     wc_CoseKey_Init(&key);
@@ -171,7 +171,7 @@ static int demo_mac0_hmac512(void)
 
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_512_512,
         NULL, 0,                           /* kid, kidLen */
-        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        payload, sizeof(payload) - 1u,     /* payload, payloadLen */
         NULL, 0,                           /* detachedPayload, detachedLen */
         NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
@@ -200,8 +200,8 @@ static int demo_mac0_with_aad(void)
         0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
         0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
     };
-    uint8_t payload[] = "Payload with AAD";
-    uint8_t aad[] = "Additional authenticated data";
+    const uint8_t payload[] = "Payload with AAD";
+    const uint8_t aad[] = "Additional authenticated data";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[256];
     size_t outLen = 0;
@@ -223,9 +223,9 @@ static int demo_mac0_with_aad(void)
 
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0,                           /* kid, kidLen */
-        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        payload, sizeof(payload) - 1u,     /* payload, payloadLen */
         NULL, 0,                           /* detachedPayload, detachedLen */
-        aad, sizeof(aad) - 1,              /* extAad, extAadLen */
+        aad, sizeof(aad) - 1u,             /* extAad, extAadLen */
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
     DEMO_ASSERT(ret == 0, "Create MAC with AAD");
@@ -234,7 +234,7 @@ static int demo_mac0_with_aad(void)
     /* Verify with correct AAD */
     ret = wc_CoseMac0_Verify(&key, out, outLen,
         NULL, 0,                           /* detachedPayload, detachedLen */
-        aad, sizeof(aad) - 1,              /* extAad, extAadLen */
+        aad, sizeof(aad) - 1u,             /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret == 0, "Verify with correct AAD");
@@ -242,7 +242,7 @@ static int demo_mac0_with_aad(void)
     /* Verify wrong AAD fails */
     ret = wc_CoseMac0_Verify(&key, out, outLen,
         NULL, 0,                           /* detachedPayload, detachedLen */
-        wrongAad, sizeof(wrongAad) - 1,    /* extAad, extAadLen */
+        wrongAad, sizeof(wrongAad) - 1u,   /* extAad, extAadLen */
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     DEMO_ASSERT(ret != 0, "Wrong AAD rejected");
@@ -260,7 +260,7 @@ static int demo_mac0_tamper_detection(void)
         0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
         0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
     };
-    uint8_t payload[] = "Tamper detection test";
+    const uint8_t payload[] = "Tamper detection test";
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[256];
     size_t outLen = 0;
@@ -277,7 +277,7 @@ static int demo_mac0_tamper_detection(void)
 
     ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0,                           /* kid, kidLen */
-        payload, sizeof(payload) - 1,      /* payload, payloadLen */
+        payload, sizeof(payload) - 1u,     /* payload, payloadLen */
         NULL, 0,                           /* detachedPayload, detachedLen */
         NULL, 0,                           /* extAad, extAadLen */
         scratch, sizeof(scratch),
@@ -285,7 +285,7 @@ static int demo_mac0_tamper_detection(void)
     DEMO_ASSERT(ret == 0, "Create MAC");
 
     /* Tamper with one byte */
-    out[outLen - 5] ^= 0xFF;
+    out[outLen - 5u] ^= 0xFF;
 
     ret = wc_CoseMac0_Verify(&key, out, outLen,
         NULL, 0,                           /* detachedPayload, detachedLen */
@@ -304,15 +304,25 @@ int main(void)
 
     printf("=== wolfCOSE Mac0 Demo ===\n\n");
 
-    if (demo_mac0_hmac256() != 0) failures++;
+    if (demo_mac0_hmac256() != 0) {
+        failures++;
+    }
 #ifdef WOLFSSL_SHA384
-    if (demo_mac0_hmac384() != 0) failures++;
+    if (demo_mac0_hmac384() != 0) {
+        failures++;
+    }
 #endif
 #ifdef WOLFSSL_SHA512
-    if (demo_mac0_hmac512() != 0) failures++;
+    if (demo_mac0_hmac512() != 0) {
+        failures++;
+    }
 #endif
-    if (demo_mac0_with_aad() != 0) failures++;
-    if (demo_mac0_tamper_detection() != 0) failures++;
+    if (demo_mac0_with_aad() != 0) {
+        failures++;
+    }
+    if (demo_mac0_tamper_detection() != 0) {
+        failures++;
+    }
 
     printf("\n=== Results: %d failure(s) ===\n", failures);
     return failures;
