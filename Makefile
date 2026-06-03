@@ -59,7 +59,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test coverage tool tool-test demo demos comprehensive scenarios c99-check clean
+.PHONY: all shared test coverage tool tool-test cmdline-test demo demos comprehensive scenarios c99-check clean
 
 # --- Core library ---
 all: $(LIB_A)
@@ -112,6 +112,10 @@ tool-test: tool
 	./$(TOOL_BIN) verify -k /tmp/wolfcose_test.key \
 	    -i /tmp/wolfcose_test.cose
 	@echo "PASS: round-trip sign/verify"
+
+# --- Command-line tool test: every subcommand across all algorithms ---
+cmdline-test: tool
+	./scripts/cmdline-test.sh ./$(TOOL_BIN)
 
 # --- Lifecycle demo ---
 demo: $(LIB_A)

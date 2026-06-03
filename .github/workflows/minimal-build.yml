@@ -35,8 +35,8 @@ jobs:
             wolfssl_flags: "--enable-cryptonly --enable-rsapss --enable-keygen --enable-sha384 --enable-sha512"
             cache_key: wolfssl-rsa-only-v5
           - name: PQ (ML-DSA) only
-            wolfssl_flags: "--enable-cryptonly --enable-dilithium"
-            cache_key: wolfssl-pq-only-v3
+            wolfssl_flags: "--enable-cryptonly --enable-mldsa"
+            cache_key: wolfssl-pq-only-v4
           - name: ECDH-ES (key agreement)
             wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-hkdf"
             cache_key: wolfssl-ecdh-es-v1
