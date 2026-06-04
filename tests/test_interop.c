@@ -42,10 +42,10 @@
 #include <wolfcose/wolfcose.h>
 #include "test_suite.h"
 #include <wolfssl/wolfcrypt/random.h>
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     #include <wolfssl/wolfcrypt/ecc.h>
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     #include <wolfssl/wolfcrypt/ed25519.h>
 #endif
 #include <stdio.h>
@@ -135,7 +135,7 @@ static const uint8_t mac0_vec1_key[] = {
 static const uint8_t mac0_vec1_payload[] = "This is the content.";
 
 /* ----- Sign1 Interop Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_interop_sign1_roundtrip(void)
 {
     WOLFCOSE_KEY signKey;
@@ -219,6 +219,7 @@ static void test_interop_sign1_roundtrip(void)
     }
 }
 
+#if defined(WOLFCOSE_HAVE_ES384)
 static void test_interop_sign1_es384_roundtrip(void)
 {
     WOLFCOSE_KEY signKey;
@@ -295,7 +296,9 @@ static void test_interop_sign1_es384_roundtrip(void)
         wc_FreeRng(&rng);
     }
 }
+#endif /* WOLFCOSE_HAVE_ES384 */
 
+#if defined(WOLFCOSE_HAVE_ES512)
 static void test_interop_sign1_es512_roundtrip(void)
 {
     WOLFCOSE_KEY signKey;
@@ -372,6 +375,7 @@ static void test_interop_sign1_es512_roundtrip(void)
         wc_FreeRng(&rng);
     }
 }
+#endif /* WOLFCOSE_HAVE_ES512 */
 
 static void test_interop_sign1_with_aad_roundtrip(void)
 {
@@ -550,10 +554,10 @@ static void test_interop_sign1_detached_roundtrip(void)
         wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
 /* ----- Encrypt0 Interop Tests ----- */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_interop_encrypt0_roundtrip(void)
 {
     WOLFCOSE_KEY key;
@@ -780,10 +784,10 @@ static void test_interop_encrypt0_detached(void)
     TEST_ASSERT(ret == 0, "decrypt detached");
     TEST_ASSERT((hdr.flags & WOLFCOSE_HDR_FLAG_DETACHED) != 0, "detached flag");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* ----- Mac0 Interop Tests ----- */
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_interop_mac0_roundtrip(void)
 {
     WOLFCOSE_KEY key;
@@ -871,6 +875,9 @@ static void test_interop_mac0_with_aad(void)
     }
 }
 
+#endif /* WOLFCOSE_HAVE_HMAC256 */
+
+#ifdef WOLFCOSE_HAVE_AESMAC
 static void test_interop_mac0_aes_cbc_mac_128_64(void)
 {
     WOLFCOSE_KEY key;
@@ -954,7 +961,9 @@ static void test_interop_mac0_aes_cbc_mac_256_128(void)
     TEST_ASSERT(ret == 0, "verify AES-MAC-256/128");
     TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_AES_MAC_256_128, "algorithm");
 }
+#endif /* WOLFCOSE_HAVE_AESMAC */
 
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_interop_mac0_detached(void)
 {
     WOLFCOSE_KEY key;
@@ -1003,10 +1012,10 @@ static void test_interop_mac0_detached(void)
         TEST_ASSERT(ret != 0, "wrong detached payload fails");
     }
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- EdDSA Interop Tests ----- */
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
 static void test_interop_sign1_eddsa_roundtrip(void)
 {
     WOLFCOSE_KEY signKey;
@@ -1160,10 +1169,10 @@ static void test_interop_sign1_eddsa_with_aad(void)
         wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ED25519 */
+#endif /* WOLFCOSE_HAVE_EDDSA */
 
 /* ----- Multi-Signer Interop Tests ----- */
-#ifdef HAVE_ECC
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_interop_sign_multi_signer(void)
 {
     WOLFCOSE_KEY key1, key2;
@@ -1277,6 +1286,7 @@ static void test_interop_sign_multi_signer(void)
     }
 }
 
+#ifdef WOLFCOSE_HAVE_ES384
 static void test_interop_sign_mixed_algorithms(void)
 {
     WOLFCOSE_KEY eccKey256, eccKey384;
@@ -1388,10 +1398,11 @@ static void test_interop_sign_mixed_algorithms(void)
         wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES384 */
+#endif /* WOLFCOSE_SIGN */
 
 /* ----- Multi-Recipient Interop Tests ----- */
-#ifdef HAVE_AESGCM
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_interop_encrypt_multi_recipient(void)
 {
     WOLFCOSE_KEY cek, kek1, kek2;
@@ -1483,9 +1494,9 @@ static void test_interop_encrypt_multi_recipient(void)
 
     wc_FreeRng(&rng);
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_ENCRYPT */
 
-#ifndef NO_HMAC
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_interop_mac_multi_recipient(void)
 {
     WOLFCOSE_KEY key;
@@ -1548,7 +1559,7 @@ static void test_interop_mac_multi_recipient(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == 0, "verify recipient 1");
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_MAC */
 
 /* ----- Entry point ----- */
 int test_interop(void)
@@ -1558,21 +1569,25 @@ int test_interop(void)
     printf("=== COSE Interoperability Tests ===\n\n");
 
     printf("[Sign1 Tests]\n");
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_interop_sign1_roundtrip();
+#if defined(WOLFCOSE_HAVE_ES384)
     test_interop_sign1_es384_roundtrip();
+#endif
+#if defined(WOLFCOSE_HAVE_ES512)
     test_interop_sign1_es512_roundtrip();
+#endif
     test_interop_sign1_with_aad_roundtrip();
     test_interop_sign1_detached_roundtrip();
 #endif
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     test_interop_sign1_eddsa_roundtrip();
     test_interop_sign1_eddsa_with_aad();
 #endif
 
     printf("\n[Encrypt0 Tests]\n");
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_interop_encrypt0_roundtrip();
     test_interop_encrypt0_a192gcm_roundtrip();
     test_interop_encrypt0_a256gcm_roundtrip();
@@ -1581,25 +1596,29 @@ int test_interop(void)
 #endif
 
     printf("\n[Mac0 Tests]\n");
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     test_interop_mac0_roundtrip();
     test_interop_mac0_with_aad();
+    test_interop_mac0_detached();
+#endif
+#ifdef WOLFCOSE_HAVE_AESMAC
     test_interop_mac0_aes_cbc_mac_128_64();
     test_interop_mac0_aes_cbc_mac_256_128();
-    test_interop_mac0_detached();
 #endif
 
     printf("\n[Multi-Signer Tests]\n");
-#ifdef HAVE_ECC
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
     test_interop_sign_multi_signer();
+#ifdef WOLFCOSE_HAVE_ES384
     test_interop_sign_mixed_algorithms();
+#endif
 #endif
 
     printf("\n[Multi-Recipient Tests]\n");
-#ifdef HAVE_AESGCM
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_interop_encrypt_multi_recipient();
 #endif
-#ifndef NO_HMAC
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_interop_mac_multi_recipient();
 #endif
 

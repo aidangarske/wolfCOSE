@@ -37,7 +37,7 @@
 } while(0)
 
 /* All buffers on stack - no dynamic allocation */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static int demo_sign1_es256(void)
 {
     WOLFCOSE_KEY key;
@@ -92,7 +92,7 @@ static int demo_sign1_es256(void)
     return 0;
 }
 
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
 static int demo_sign1_es384(void)
 {
     WOLFCOSE_KEY key;
@@ -146,7 +146,7 @@ static int demo_sign1_es384(void)
 }
 #endif
 
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_ES512
 static int demo_sign1_es512(void)
 {
     WOLFCOSE_KEY key;
@@ -264,9 +264,9 @@ static int demo_sign1_with_aad(void)
     printf("  Result: PASS\n");
     return 0;
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
 static int demo_sign1_eddsa(void)
 {
     WOLFCOSE_KEY key;
@@ -326,16 +326,16 @@ int main(void)
 
     printf("=== wolfCOSE Sign1 Demo ===\n\n");
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     if (demo_sign1_es256() != 0) {
         failures++;
     }
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
     if (demo_sign1_es384() != 0) {
         failures++;
     }
 #endif
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_ES512
     if (demo_sign1_es512() != 0) {
         failures++;
     }
@@ -345,7 +345,7 @@ int main(void)
     }
 #endif
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     if (demo_sign1_eddsa() != 0) {
         failures++;
     }

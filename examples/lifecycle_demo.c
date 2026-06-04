@@ -48,16 +48,16 @@
 
 #include <wolfcose/wolfcose.h>
 #include <wolfssl/wolfcrypt/random.h>
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     #include <wolfssl/wolfcrypt/ecc.h>
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     #include <wolfssl/wolfcrypt/ed25519.h>
 #endif
-#ifdef WC_RSA_PSS
+#ifdef WOLFCOSE_HAVE_RSAPSS
     #include <wolfssl/wolfcrypt/rsa.h>
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     #include <wolfssl/wolfcrypt/wc_mldsa.h>
 #endif
 #include <stdio.h>
@@ -104,7 +104,7 @@ static int encode_sensor_payload(uint8_t* payload, size_t payloadSz,
 }
 
 /* ----- COSE_Sign1 lifecycle: ES256 ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static int demo_sign1_es256(void)
 {
     int ret = 0;
@@ -185,10 +185,10 @@ static int demo_sign1_es256(void)
 
     return ret;
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
 /* ----- COSE_Sign1 lifecycle: EdDSA (Ed25519) ----- */
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
 static int demo_sign1_eddsa(void)
 {
     int ret = 0;
@@ -262,10 +262,10 @@ static int demo_sign1_eddsa(void)
 
     return ret;
 }
-#endif /* HAVE_ED25519 */
+#endif /* WOLFCOSE_HAVE_EDDSA */
 
 /* ----- COSE_Sign1 lifecycle: RSA-PSS (PS256) ----- */
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
 static int demo_sign1_ps256(void)
 {
     int ret = 0;
@@ -343,10 +343,10 @@ static int demo_sign1_ps256(void)
 
     return ret;
 }
-#endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
+#endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
 
-/* ----- COSE_Sign1 lifecycle: ML-DSA-44 (ML-DSA) ----- */
-#ifdef WOLFSSL_HAVE_MLDSA
+/* ----- COSE_Sign1 lifecycle: ML-DSA-44 ----- */
+#ifdef WOLFCOSE_HAVE_MLDSA
 static int demo_sign1_ml_dsa_44(void)
 {
     int ret = 0;
@@ -427,10 +427,10 @@ static int demo_sign1_ml_dsa_44(void)
 
     return ret;
 }
-#endif /* WOLFSSL_HAVE_MLDSA */
+#endif /* WOLFCOSE_HAVE_MLDSA */
 
 /* ----- COSE_Encrypt0 lifecycle: AES-GCM ----- */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static int demo_encrypt0_aesgcm(int32_t alg)
 {
     int ret;
@@ -504,10 +504,10 @@ static int demo_encrypt0_aesgcm(int32_t alg)
     printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
     return ret;
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* ----- COSE_Encrypt0 lifecycle: ChaCha20-Poly1305 ----- */
-#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+#if defined(WOLFCOSE_HAVE_CHACHA20)
 static int demo_encrypt0_chacha20(void)
 {
     int ret;
@@ -570,10 +570,10 @@ static int demo_encrypt0_chacha20(void)
     printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
     return ret;
 }
-#endif /* HAVE_CHACHA && HAVE_POLY1305 */
+#endif /* WOLFCOSE_HAVE_CHACHA20 && WOLFCOSE_HAVE_CHACHA20 */
 
 /* ----- COSE_Encrypt0 lifecycle: AES-CCM ----- */
-#ifdef HAVE_AESCCM
+#ifdef WOLFCOSE_HAVE_AESCCM
 static int demo_encrypt0_aes_ccm(void)
 {
     int ret;
@@ -636,10 +636,10 @@ static int demo_encrypt0_aes_ccm(void)
     printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
     return ret;
 }
-#endif /* HAVE_AESCCM */
+#endif /* WOLFCOSE_HAVE_AESCCM */
 
 /* ----- COSE_Mac0 lifecycle: HMAC ----- */
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
 static int demo_mac0_hmac(int32_t alg)
 {
     int ret;
@@ -712,7 +712,7 @@ static int demo_mac0_hmac(int32_t alg)
     printf("  Result: %s\n\n", (ret == 0) ? "PASS" : "FAIL");
     return ret;
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Algorithm name parser ----- */
 enum {
@@ -804,25 +804,25 @@ int main(int argc, char* argv[])
     printf("=== wolfCOSE Lifecycle Demo ===\n\n");
 
     /* COSE_Sign1 demos */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_ES256)) {
         tests++;
         if (demo_sign1_es256() != 0) { failures++; }
     }
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_EDDSA)) {
         tests++;
         if (demo_sign1_eddsa() != 0) { failures++; }
     }
 #endif
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_PS256)) {
         tests++;
         if (demo_sign1_ps256() != 0) { failures++; }
     }
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_ML_DSA_44)) {
         tests++;
         if (demo_sign1_ml_dsa_44() != 0) { failures++; }
@@ -830,7 +830,7 @@ int main(int argc, char* argv[])
 #endif
 
     /* COSE_Encrypt0 demos */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_A128GCM)) {
         tests++;
         if (demo_encrypt0_aesgcm(WOLFCOSE_ALG_A128GCM) != 0) { failures++; }
@@ -840,13 +840,13 @@ int main(int argc, char* argv[])
         if (demo_encrypt0_aesgcm(WOLFCOSE_ALG_A256GCM) != 0) { failures++; }
     }
 #endif
-#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+#if defined(WOLFCOSE_HAVE_CHACHA20)
     if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_CHACHA20)) {
         tests++;
         if (demo_encrypt0_chacha20() != 0) { failures++; }
     }
 #endif
-#ifdef HAVE_AESCCM
+#ifdef WOLFCOSE_HAVE_AESCCM
     if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_AES_CCM)) {
         tests++;
         if (demo_encrypt0_aes_ccm() != 0) { failures++; }
@@ -854,24 +854,24 @@ int main(int argc, char* argv[])
 #endif
 
     /* COSE_Mac0 demos */
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
     if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_HMAC256)) {
         tests++;
         if (demo_mac0_hmac(WOLFCOSE_ALG_HMAC256) != 0) { failures++; }
     }
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_HMAC384
     if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_HMAC384)) {
         tests++;
         if (demo_mac0_hmac(WOLFCOSE_ALG_HMAC384) != 0) { failures++; }
     }
 #endif
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_HMAC512
     if ((demoAlg == DEMO_ALG_ALL) || (demoAlg == DEMO_ALG_HMAC512)) {
         tests++;
         if (demo_mac0_hmac(WOLFCOSE_ALG_HMAC512) != 0) { failures++; }
     }
 #endif
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
     printf("=== Results: %d/%d passed", tests - failures, tests);
     if (failures > 0) {

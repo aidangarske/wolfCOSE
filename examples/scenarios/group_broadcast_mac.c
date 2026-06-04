@@ -35,13 +35,15 @@
     #include <wolfssl/options.h>
 #endif
 #include <wolfssl/wolfcrypt/settings.h>
+#include <wolfcose/settings.h>
+#include <stdio.h>
 
 /* Default: enabled */
 #ifndef WOLFCOSE_NO_EXAMPLE_GROUP_BROADCAST
     #define WOLFCOSE_EXAMPLE_GROUP_BROADCAST
 #endif
 
-#if defined(WOLFCOSE_EXAMPLE_GROUP_BROADCAST) && !defined(NO_HMAC) && \
+#if defined(WOLFCOSE_EXAMPLE_GROUP_BROADCAST) && defined(WOLFCOSE_HAVE_HMAC256) && \
     defined(WOLFCOSE_MAC)
 
 #include <wolfcose/wolfcose.h>
@@ -303,7 +305,10 @@ static int tampered_message_detected(const uint8_t* macMsg, size_t macMsgLen)
         return -1;
     }
     XMEMCPY(tamperedMsg, macMsg, macMsgLen);
-    tamperedMsg[macMsgLen / 2] ^= 0xFF;  /* Tamper with middle byte */
+    /* Tamper a byte in the MAC-covered front (protected header / payload / tag);
+     * the middle would land in a later recipient's data that recipient 0 never
+     * reads, so verification would not detect it. */
+    tamperedMsg[macMsgLen / 4] ^= 0xFF;
 
     /* Setup subscriber key */
     wc_CoseKey_Init(&subscriberKey);
@@ -421,7 +426,7 @@ int main(void)
 {
 #ifndef WOLFCOSE_EXAMPLE_GROUP_BROADCAST
     printf("group_broadcast_mac: example disabled\n");
-#elif defined(NO_HMAC)
+#elif !defined(WOLFCOSE_HAVE_HMAC256)
     printf("group_broadcast_mac: requires HMAC support\n");
 #elif !defined(WOLFCOSE_MAC)
     printf("group_broadcast_mac: requires WOLFCOSE_MAC\n");
@@ -429,4 +434,4 @@ int main(void)
     return 0;
 }
 
-#endif /* WOLFCOSE_EXAMPLE_GROUP_BROADCAST && !NO_HMAC && WOLFCOSE_MAC */
+#endif /* WOLFCOSE_EXAMPLE_GROUP_BROADCAST && WOLFCOSE_HAVE_HMAC256 && WOLFCOSE_MAC */

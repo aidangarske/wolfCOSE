@@ -74,7 +74,7 @@
  *
  * Returns 0 on success, negative error code on failure.
  * ----- */
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static int test_mac0(int32_t alg, int keySz, int detached, int useAad)
 {
     int ret = 0;
@@ -140,10 +140,10 @@ static int test_mac0(int32_t alg, int keySz, int detached, int useAad)
 
     return ret;
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Multi-Recipient Mac Worker (Direct Key) ----- */
-#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC)
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC)
 static int test_mac_multi_direct(int32_t macAlg, int keySz,
                                   int recipCount, int detached, int useAad)
 {
@@ -209,10 +209,10 @@ static int test_mac_multi_direct(int32_t macAlg, int keySz,
 
     return ret;
 }
-#endif /* !NO_HMAC && WOLFCOSE_MAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 && WOLFCOSE_MAC */
 
 /* ----- Multi-Recipient Wrong Key Test ----- */
-#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC)
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC)
 static int test_mac_wrong_key(void)
 {
     int ret = 0;
@@ -303,10 +303,10 @@ static int test_mac_wrong_key(void)
 
     return ret;
 }
-#endif /* !NO_HMAC && WOLFCOSE_MAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 && WOLFCOSE_MAC */
 
 /* ----- Mac0 Test Runner (20 tests) ----- */
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static int test_mac0_all(void)
 {
     int ret = 0;
@@ -334,7 +334,7 @@ static int test_mac0_all(void)
     CHECK_RESULT(ret, "hmac256_detached_aad");
 #endif
 
-#if defined(WOLFSSL_SHA384) && !defined(WOLFCOSE_NO_MAC_ALL_HMAC384)
+#if defined(WOLFCOSE_HAVE_HMAC384) && !defined(WOLFCOSE_NO_MAC_ALL_HMAC384)
     /* HMAC-384/384 - 4 combinations */
     PRINT_TEST("hmac384_inline_noaad");
     ret = test_mac0(WOLFCOSE_ALG_HMAC_384_384, 48, 0, 0);
@@ -353,7 +353,7 @@ static int test_mac0_all(void)
     CHECK_RESULT(ret, "hmac384_detached_aad");
 #endif
 
-#if defined(WOLFSSL_SHA512) && !defined(WOLFCOSE_NO_MAC_ALL_HMAC512)
+#if defined(WOLFCOSE_HAVE_HMAC512) && !defined(WOLFCOSE_NO_MAC_ALL_HMAC512)
     /* HMAC-512/512 - 4 combinations */
     PRINT_TEST("hmac512_inline_noaad");
     ret = test_mac0(WOLFCOSE_ALG_HMAC_512_512, 64, 0, 0);
@@ -372,7 +372,7 @@ static int test_mac0_all(void)
     CHECK_RESULT(ret, "hmac512_detached_aad");
 #endif
 
-#if defined(HAVE_AES_CBC) && !defined(WOLFCOSE_NO_MAC_ALL_AES_MAC)
+#if defined(WOLFCOSE_HAVE_AESMAC) && !defined(WOLFCOSE_NO_MAC_ALL_AES_MAC)
     /* AES-MAC-128/64 - 4 combinations */
     PRINT_TEST("aes_mac_128_64_inline_noaad");
     ret = test_mac0(WOLFCOSE_ALG_AES_MAC_128_64, 16, 0, 0);
@@ -411,10 +411,10 @@ static int test_mac0_all(void)
     printf("\nMac0 Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Multi-Recipient Test Runner ----- */
-#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC) && \
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC) && \
     !defined(WOLFCOSE_NO_MAC_ALL_MULTI)
 static int test_mac_multi_all(void)
 {
@@ -449,7 +449,7 @@ static int test_mac_multi_all(void)
     ret = test_mac_multi_direct(WOLFCOSE_ALG_HMAC_256_256, 32, 2, 1, 1);
     CHECK_RESULT(ret, "multi_hmac256_2recip_detached_aad");
 
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_HMAC384
     /* HMAC-384/384 with multiple recipients */
     PRINT_TEST("multi_hmac384_2recip_inline");
     ret = test_mac_multi_direct(WOLFCOSE_ALG_HMAC_384_384, 48, 2, 0, 0);
@@ -460,7 +460,7 @@ static int test_mac_multi_all(void)
     CHECK_RESULT(ret, "multi_hmac384_3recip_aad");
 #endif
 
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_HMAC512
     /* HMAC-512/512 with multiple recipients */
     PRINT_TEST("multi_hmac512_2recip_inline");
     ret = test_mac_multi_direct(WOLFCOSE_ALG_HMAC_512_512, 64, 2, 0, 0);
@@ -479,10 +479,10 @@ static int test_mac_multi_all(void)
     printf("\nMulti-Recipient Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* !NO_HMAC && WOLFCOSE_MAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 && WOLFCOSE_MAC */
 
 /* ----- Interop Vector Tests ----- */
-#if !defined(NO_HMAC) && !defined(WOLFCOSE_NO_MAC_ALL_INTEROP)
+#if defined(WOLFCOSE_HAVE_HMAC256) && !defined(WOLFCOSE_NO_MAC_ALL_INTEROP)
 static int test_mac0_interop(void)
 {
     int ret = 0;
@@ -551,7 +551,7 @@ static int test_mac0_interop(void)
     printf("\nInterop Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* !NO_HMAC && !WOLFCOSE_NO_MAC_ALL_INTEROP */
+#endif /* WOLFCOSE_HAVE_HMAC256 && !WOLFCOSE_NO_MAC_ALL_INTEROP */
 
 /* ----- Main Entry Point ----- */
 int main(void)
@@ -562,20 +562,20 @@ int main(void)
     printf("wolfCOSE Comprehensive MAC Tests\n");
     printf("========================================\n");
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     totalFailed += test_mac0_all();
 #endif
 
-#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC) && \
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC) && \
     !defined(WOLFCOSE_NO_MAC_ALL_MULTI)
     totalFailed += test_mac_multi_all();
 #endif
 
-#if !defined(NO_HMAC) && !defined(WOLFCOSE_NO_MAC_ALL_INTEROP)
+#if defined(WOLFCOSE_HAVE_HMAC256) && !defined(WOLFCOSE_NO_MAC_ALL_INTEROP)
     totalFailed += test_mac0_interop();
 #endif
 
-#ifdef NO_HMAC
+#ifndef WOLFCOSE_HAVE_HMAC256
     printf("HMAC not available - MAC tests skipped\n");
 #endif
 

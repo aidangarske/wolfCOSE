@@ -71,7 +71,7 @@
  * @param useAad    0=no AAD, 1=with external AAD
  * @return 0 on success, negative error code on failure.
  */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
 {
     int ret = 0;
@@ -164,10 +164,10 @@ static int test_encrypt0(int32_t alg, int keySz, int detached, int useAad)
 
     return ret;
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* ----- Multi-Recipient Encrypt Worker (Direct Key) ----- */
-#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT)
+#if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT)
 static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
                                       int recipCount, int detached, int useAad)
 {
@@ -255,10 +255,10 @@ static int test_encrypt_multi_direct(int32_t contentAlg, int keySz,
     }
     return ret;
 }
-#endif /* HAVE_AESGCM && WOLFCOSE_ENCRYPT */
+#endif /* WOLFCOSE_HAVE_AESGCM && WOLFCOSE_ENCRYPT */
 
 /* ----- Multi-Recipient with Different Keys (Wrong Key Test) ----- */
-#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT)
+#if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT)
 static int test_encrypt_wrong_key(void)
 {
     int ret = 0;
@@ -365,10 +365,10 @@ static int test_encrypt_wrong_key(void)
     }
     return ret;
 }
-#endif /* HAVE_AESGCM && WOLFCOSE_ENCRYPT */
+#endif /* WOLFCOSE_HAVE_AESGCM && WOLFCOSE_ENCRYPT */
 
 /* ----- Encrypt0 Test Runner (12 tests) ----- */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static int test_encrypt0_all(void)
 {
     int ret = 0;
@@ -437,10 +437,10 @@ static int test_encrypt0_all(void)
     printf("\nEncrypt0 Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* ----- Multi-Recipient Test Runner ----- */
-#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT) && \
+#if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT) && \
     !defined(WOLFCOSE_NO_ENCRYPT_ALL_MULTI)
 static int test_encrypt_multi_all(void)
 {
@@ -500,10 +500,10 @@ static int test_encrypt_multi_all(void)
     printf("\nMulti-Recipient Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* HAVE_AESGCM && WOLFCOSE_ENCRYPT */
+#endif /* WOLFCOSE_HAVE_AESGCM && WOLFCOSE_ENCRYPT */
 
 /* ----- Interop Vector Tests ----- */
-#if defined(HAVE_AESGCM) && !defined(WOLFCOSE_NO_ENCRYPT_ALL_INTEROP)
+#if defined(WOLFCOSE_HAVE_AESGCM) && !defined(WOLFCOSE_NO_ENCRYPT_ALL_INTEROP)
 static int test_encrypt0_interop(void)
 {
     int ret = 0;
@@ -576,7 +576,7 @@ static int test_encrypt0_interop(void)
     printf("\nInterop Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* HAVE_AESGCM && !WOLFCOSE_NO_ENCRYPT_ALL_INTEROP */
+#endif /* WOLFCOSE_HAVE_AESGCM && !WOLFCOSE_NO_ENCRYPT_ALL_INTEROP */
 
 /* ----- Main Entry Point ----- */
 int main(void)
@@ -587,20 +587,20 @@ int main(void)
     printf("wolfCOSE Comprehensive Encrypt Tests\n");
     printf("========================================\n");
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     totalFailed += test_encrypt0_all();
 #endif
 
-#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT) && \
+#if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT) && \
     !defined(WOLFCOSE_NO_ENCRYPT_ALL_MULTI)
     totalFailed += test_encrypt_multi_all();
 #endif
 
-#if defined(HAVE_AESGCM) && !defined(WOLFCOSE_NO_ENCRYPT_ALL_INTEROP)
+#if defined(WOLFCOSE_HAVE_AESGCM) && !defined(WOLFCOSE_NO_ENCRYPT_ALL_INTEROP)
     totalFailed += test_encrypt0_interop();
 #endif
 
-#ifndef HAVE_AESGCM
+#ifndef WOLFCOSE_HAVE_AESGCM
     printf("AES-GCM not available - encryption tests skipped\n");
 #endif
 

@@ -36,7 +36,7 @@
 
 /* Guard: this demo requires both Mac0 create and verify APIs */
 #if defined(WOLFCOSE_MAC0_CREATE) && defined(WOLFCOSE_MAC0_VERIFY) && \
-    !defined(NO_HMAC)
+    defined(WOLFCOSE_HAVE_HMAC256)
 
 #define DEMO_ASSERT(cond, msg) do { \
     if (!(cond)) { \
@@ -307,12 +307,12 @@ int main(void)
     if (demo_mac0_hmac256() != 0) {
         failures++;
     }
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_HMAC384
     if (demo_mac0_hmac384() != 0) {
         failures++;
     }
 #endif
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_HMAC512
     if (demo_mac0_hmac512() != 0) {
         failures++;
     }
@@ -336,10 +336,10 @@ int main(void)
     printf("mac0_demo: Mac0 create API disabled (WOLFCOSE_MAC0_CREATE not defined)\n");
 #elif !defined(WOLFCOSE_MAC0_VERIFY)
     printf("mac0_demo: Mac0 verify API disabled (WOLFCOSE_MAC0_VERIFY not defined)\n");
-#elif defined(NO_HMAC)
+#elif !defined(WOLFCOSE_HAVE_HMAC256)
     printf("mac0_demo: HMAC not enabled in wolfSSL\n");
 #endif
     return 0;
 }
 
-#endif /* WOLFCOSE_MAC0_CREATE && WOLFCOSE_MAC0_VERIFY && !NO_HMAC */
+#endif /* WOLFCOSE_MAC0_CREATE && WOLFCOSE_MAC0_VERIFY && WOLFCOSE_HAVE_HMAC256 */

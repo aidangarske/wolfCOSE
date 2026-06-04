@@ -1,6 +1,41 @@
 # Configuration Macros
 
-wolfCOSE uses an opt-out design: all features are enabled by default, and you disable the ones you don't need with `WOLFCOSE_NO_*` defines. A more configurable model — opt-in tuning via `user_settings.h` for features that should not be on by default — is on the roadmap.
+wolfCOSE has two configuration modes. The default is an opt-out full build: every algorithm wolfSSL provides is enabled, and you strip what you don't need with `WOLFCOSE_NO_*` defines. Alternatively, `WOLFCOSE_LEAN` switches to an opt-in core build and you add extensions with `WOLFCOSE_ENABLE_*`. See [Lean Configuration Layer](#lean-configuration-layer).
+
+## Lean Configuration Layer
+
+Defining `WOLFCOSE_LEAN` keeps only the core — `COSE_Sign1`/`Encrypt0`/`Mac0` with ES256, AES-GCM, and HMAC-SHA256 — and turns every other algorithm into an opt-in. This is the recommended starting point for constrained targets.
+
+| Define | Description |
+|--------|-------------|
+| `WOLFCOSE_LEAN` | Core-only base; all extensions become opt-in |
+| `WOLFCOSE_ENABLE_ALL` | Re-enable every extension on top of `WOLFCOSE_LEAN` |
+| `WOLFCOSE_ENABLE_<X>` | Opt in a single extension (see list below) |
+
+Extension names for `WOLFCOSE_ENABLE_<X>`: `ES384`, `ES512`, `EDDSA`, `ED448`, `RSAPSS`, `MLDSA`, `HMAC384`, `HMAC512`, `AESCCM`, `CHACHA20`, `AESMAC`, `AESWRAP`, `ECDH_ES`, `SIGN` (multi-signer), `ENCRYPT` (multi-recipient), `MAC` (multi-recipient).
+
+An extension is compiled in when it is explicitly enabled (`WOLFCOSE_ENABLE_<X>` or `WOLFCOSE_ENABLE_ALL`), or — in a non-lean build — when wolfSSL provides the primitive and it is not opted out with `WOLFCOSE_NO_<X>`. Enabling an extension wolfSSL cannot provide is a compile error. The resolved state is exposed internally as read-only `WOLFCOSE_HAVE_<X>` gates (e.g. `WOLFCOSE_HAVE_MLDSA`); sources, tests, and examples compile against those, so you set `WOLFCOSE_ENABLE_*`/`WOLFCOSE_NO_*`, not `WOLFCOSE_HAVE_*`.
+
+## Algorithm Gates
+
+Per-algorithm opt-outs for the default (non-lean) build. Each also has a `WOLFCOSE_ENABLE_<X>` form for lean opt-in. `ES256`, `AESGCM`, and `HMAC256` form the lean core and stay on unless explicitly opted out.
+
+| Opt-out | Algorithm | wolfSSL requirement |
+|---------|-----------|---------------------|
+| `WOLFCOSE_NO_ES256` | ECDSA P-256 (ES256) | `HAVE_ECC` |
+| `WOLFCOSE_NO_ES384` | ECDSA P-384 (ES384) | `HAVE_ECC` + `WOLFSSL_SHA384` |
+| `WOLFCOSE_NO_ES512` | ECDSA P-521 (ES512) | `HAVE_ECC` + `WOLFSSL_SHA512` |
+| `WOLFCOSE_NO_EDDSA` | Ed25519 | `HAVE_ED25519` |
+| `WOLFCOSE_NO_ED448` | Ed448 | `HAVE_ED448` |
+| `WOLFCOSE_NO_RSAPSS` | RSA-PSS (PS256/384/512) | `WC_RSA_PSS` |
+| `WOLFCOSE_NO_MLDSA` | ML-DSA (FIPS 204) | `WOLFSSL_HAVE_MLDSA` |
+| `WOLFCOSE_NO_AESGCM` | AES-GCM | `HAVE_AESGCM` |
+| `WOLFCOSE_NO_AESCCM` | AES-CCM | `HAVE_AESCCM` |
+| `WOLFCOSE_NO_CHACHA20` | ChaCha20-Poly1305 | `HAVE_CHACHA` + `HAVE_POLY1305` |
+| `WOLFCOSE_NO_HMAC256` | HMAC-SHA256 | HMAC (`NO_HMAC` unset) |
+| `WOLFCOSE_NO_HMAC384` | HMAC-SHA384 | `WOLFSSL_SHA384` |
+| `WOLFCOSE_NO_HMAC512` | HMAC-SHA512 | `WOLFSSL_SHA512` |
+| `WOLFCOSE_NO_AESMAC` | AES-CBC-MAC | `HAVE_AES_CBC` |
 
 ## Message Type Gates
 
@@ -76,16 +111,13 @@ wolfCOSE uses an opt-out design: all features are enabled by default, and you di
 
 | Define | Description | Default |
 |--------|-------------|---------|
-| `WOLFCOSE_RECIPIENTS` | Enable recipient array support | Enabled |
-| `WOLFCOSE_NO_RECIPIENTS` | Disable all multi-recipient support | - |
-| `WOLFCOSE_KEY_WRAP` | Enable AES Key Wrap (A128KW, A192KW, A256KW) | Enabled* |
-| `WOLFCOSE_NO_KEY_WRAP` | Disable AES Key Wrap | - |
-| `WOLFCOSE_ECDH` | Enable ECDH key distribution | Enabled* |
-| `WOLFCOSE_NO_ECDH` | Disable ECDH | - |
-| `WOLFCOSE_ECDH_WRAP` | Enable ECDH-ES + AES-KW combined modes | Enabled* |
-| `WOLFCOSE_NO_ECDH_WRAP` | Disable ECDH + wrap | - |
+| `WOLFCOSE_NO_RECIPIENTS` | Disable all multi-recipient support (COSE_Encrypt/COSE_Mac) | - |
+| `WOLFCOSE_NO_AESWRAP` | Disable AES Key Wrap (A128KW, A192KW, A256KW) | - |
+| `WOLFCOSE_NO_ECDH_ES` | Disable ECDH-ES key agreement | - |
+| `WOLFCOSE_ENABLE_AESWRAP` | Opt in AES Key Wrap under `WOLFCOSE_LEAN` | - |
+| `WOLFCOSE_ENABLE_ECDH_ES` | Opt in ECDH-ES under `WOLFCOSE_LEAN` | - |
 
-*Requires corresponding wolfSSL feature enabled (`HAVE_AES_KEYWRAP`, `HAVE_ECC`)
+Resolved internally as read-only `WOLFCOSE_KEY_WRAP`, `WOLFCOSE_ECDH`, and `WOLFCOSE_ECDH_WRAP` gates. Requires the matching wolfSSL feature (`HAVE_AES_KEYWRAP`; `HAVE_ECC` + `HAVE_HKDF` for ECDH-ES) and at least one multi-recipient message type enabled.
 
 ---
 

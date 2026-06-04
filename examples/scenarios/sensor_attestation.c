@@ -35,13 +35,15 @@
     #include <wolfssl/options.h>
 #endif
 #include <wolfssl/wolfcrypt/settings.h>
+#include <wolfcose/settings.h>
+#include <stdio.h>
 
 /* Default: enabled */
 #ifndef WOLFCOSE_NO_EXAMPLE_SENSOR_ATTEST
     #define WOLFCOSE_EXAMPLE_SENSOR_ATTEST
 #endif
 
-#if defined(WOLFCOSE_EXAMPLE_SENSOR_ATTEST) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_EXAMPLE_SENSOR_ATTEST) && defined(WOLFCOSE_HAVE_ES256)
 
 #include <wolfcose/wolfcose.h>
 #include <wolfssl/wolfcrypt/random.h>
@@ -319,10 +321,10 @@ int main(void)
 {
 #ifndef WOLFCOSE_EXAMPLE_SENSOR_ATTEST
     printf("sensor_attestation: example disabled\n");
-#elif !defined(HAVE_ECC)
+#elif !defined(WOLFCOSE_HAVE_ES256)
     printf("sensor_attestation: requires ECC support\n");
 #endif
     return 0;
 }
 
-#endif /* WOLFCOSE_EXAMPLE_SENSOR_ATTEST && HAVE_ECC */
+#endif /* WOLFCOSE_EXAMPLE_SENSOR_ATTEST && WOLFCOSE_HAVE_ES256 */

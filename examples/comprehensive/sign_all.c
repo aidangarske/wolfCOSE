@@ -47,10 +47,10 @@
 
 #include <wolfcose/wolfcose.h>
 #include <wolfssl/wolfcrypt/random.h>
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     #include <wolfssl/wolfcrypt/ecc.h>
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     #include <wolfssl/wolfcrypt/ed25519.h>
 #endif
 #include <stdio.h>
@@ -70,7 +70,7 @@
 } while (0)
 
 /* ----- Helper: Get ECC curve from key size ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static int crv_from_size(int keySz)
 {
     switch (keySz) {
@@ -96,11 +96,11 @@ static int crv_from_size(int keySz)
 static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
 {
     int ret = 0;
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     ecc_key eccKey;
     int eccInit = 0;
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     ed25519_key edKey;
     int edInit = 0;
 #endif
@@ -125,7 +125,7 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
 
     /* Key setup based on curve */
     if ((ret == 0) && (curveSize == 0)) {
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
         ret = wc_ed25519_init(&edKey);
         if (ret == 0) {
             edInit = 1;
@@ -140,7 +140,7 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
 #endif
     }
     else if (ret == 0) {
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
         ret = wc_ecc_init(&eccKey);
         if (ret == 0) {
             eccInit = 1;
@@ -196,10 +196,10 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
     }
 
     /* Cleanup */
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     if (edInit != 0) { wc_ed25519_free(&edKey); }
 #endif
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     if (eccInit != 0) { wc_ecc_free(&eccKey); }
 #endif
     if (rngInit != 0) { wc_FreeRng(&rng); }
@@ -208,7 +208,7 @@ static int test_sign1(int32_t alg, int curveSize, int detached, int useAad)
 }
 
 /* ----- Multi-Signer Worker Function (2 signers) ----- */
-#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN)
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN)
 static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
                               int detached, int useAad)
 {
@@ -217,7 +217,7 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
     ecc_key eccKey2;
     int ecc1Init = 0;
     int ecc2Init = 0;
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     ed25519_key edKey1;
     ed25519_key edKey2;
     int ed1Init = 0;
@@ -248,7 +248,7 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
 
     /* Setup key 1 */
     if ((ret == 0) && (keySz1 == 0)) {
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
         ret = wc_ed25519_init(&edKey1);
         if (ret == 0) {
             ed1Init = 1;
@@ -276,7 +276,7 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
 
     /* Setup key 2 */
     if ((ret == 0) && (keySz2 == 0)) {
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
         ret = wc_ed25519_init(&edKey2);
         if (ret == 0) {
             ed2Init = 1;
@@ -351,7 +351,7 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
     }
 
     /* Cleanup */
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     if (ed1Init != 0) { wc_ed25519_free(&edKey1); }
     if (ed2Init != 0) { wc_ed25519_free(&edKey2); }
 #endif
@@ -361,10 +361,10 @@ static int test_sign_multi_2(int32_t alg1, int keySz1, int32_t alg2, int keySz2,
 
     return ret;
 }
-#endif /* HAVE_ECC && WOLFCOSE_SIGN */
+#endif /* WOLFCOSE_HAVE_ES256 && WOLFCOSE_SIGN */
 
 /* ----- Multi-Signer Worker Function (3 signers) ----- */
-#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN)
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN)
 static int test_sign_multi_3(int32_t alg1, int keySz1,
                               int32_t alg2, int keySz2,
                               int32_t alg3, int keySz3,
@@ -377,7 +377,7 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
     int ecc1Init = 0;
     int ecc2Init = 0;
     int ecc3Init = 0;
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     ed25519_key edKey1;
     ed25519_key edKey2;
     ed25519_key edKey3;
@@ -405,7 +405,7 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
     ecc_key* eccKeys[3];
     int* eccInits[3];
     WOLFCOSE_KEY* cosKeys[3];
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     ed25519_key* edKeys[3];
     int* edInits[3];
 #endif
@@ -426,14 +426,14 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
     eccKeys[0] = &eccKey1; eccKeys[1] = &eccKey2; eccKeys[2] = &eccKey3;
     eccInits[0] = &ecc1Init; eccInits[1] = &ecc2Init; eccInits[2] = &ecc3Init;
     cosKeys[0] = &cosKey1; cosKeys[1] = &cosKey2; cosKeys[2] = &cosKey3;
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     edKeys[0] = &edKey1; edKeys[1] = &edKey2; edKeys[2] = &edKey3;
     edInits[0] = &ed1Init; edInits[1] = &ed2Init; edInits[2] = &ed3Init;
 #endif
 
     for (i = 0; (ret == 0) && (i < 3); i++) {
         if (keySizes[i] == 0) {
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
             ret = wc_ed25519_init(edKeys[i]);
             if (ret == 0) {
                 *edInits[i] = 1;
@@ -496,7 +496,7 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
     }
 
     /* Cleanup */
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     if (ed1Init != 0) { wc_ed25519_free(&edKey1); }
     if (ed2Init != 0) { wc_ed25519_free(&edKey2); }
     if (ed3Init != 0) { wc_ed25519_free(&edKey3); }
@@ -508,10 +508,10 @@ static int test_sign_multi_3(int32_t alg1, int keySz1,
 
     return ret;
 }
-#endif /* HAVE_ECC && WOLFCOSE_SIGN */
+#endif /* WOLFCOSE_HAVE_ES256 && WOLFCOSE_SIGN */
 
 /* ----- Multi-Signer Worker Function (4 signers) ----- */
-#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN) && defined(HAVE_ED25519)
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_EDDSA)
 static int test_sign_multi_4(int detached, int useAad)
 {
     int ret = 0;
@@ -680,7 +680,7 @@ static int test_sign_multi_4(int detached, int useAad)
 
     return ret;
 }
-#endif /* HAVE_ECC && WOLFCOSE_SIGN && HAVE_ED25519 */
+#endif /* WOLFCOSE_HAVE_ES256 && WOLFCOSE_SIGN && WOLFCOSE_HAVE_EDDSA */
 
 /* ----- Sign1 Test Runner (16 tests) ----- */
 static int test_sign1_all(void)
@@ -691,7 +691,7 @@ static int test_sign1_all(void)
 
     printf("\n=== COSE_Sign1 Comprehensive Tests ===\n\n");
 
-#if defined(HAVE_ECC) && !defined(WOLFCOSE_NO_SIGN_ALL_ES256)
+#if defined(WOLFCOSE_HAVE_ES256) && !defined(WOLFCOSE_NO_SIGN_ALL_ES256)
     /* ES256 - 4 combinations */
     PRINT_TEST("es256_inline_noaad");
     ret = test_sign1(WOLFCOSE_ALG_ES256, 32, 0, 0);
@@ -710,7 +710,7 @@ static int test_sign1_all(void)
     CHECK_RESULT(ret, "es256_detached_aad");
 #endif
 
-#if defined(HAVE_ECC) && defined(WOLFSSL_SHA384) && \
+#if defined(WOLFCOSE_HAVE_ES384) && \
     !defined(WOLFCOSE_NO_SIGN_ALL_ES384)
     /* ES384 - 4 combinations */
     PRINT_TEST("es384_inline_noaad");
@@ -730,7 +730,7 @@ static int test_sign1_all(void)
     CHECK_RESULT(ret, "es384_detached_aad");
 #endif
 
-#if defined(HAVE_ECC) && defined(WOLFSSL_SHA512) && \
+#if defined(WOLFCOSE_HAVE_ES512) && \
     !defined(WOLFCOSE_NO_SIGN_ALL_ES512)
     /* ES512 - 4 combinations */
     PRINT_TEST("es512_inline_noaad");
@@ -750,7 +750,7 @@ static int test_sign1_all(void)
     CHECK_RESULT(ret, "es512_detached_aad");
 #endif
 
-#if defined(HAVE_ED25519) && !defined(WOLFCOSE_NO_SIGN_ALL_EDDSA)
+#if defined(WOLFCOSE_HAVE_EDDSA) && !defined(WOLFCOSE_NO_SIGN_ALL_EDDSA)
     /* EdDSA - 4 combinations */
     PRINT_TEST("eddsa_inline_noaad");
     ret = test_sign1(WOLFCOSE_ALG_EDDSA, 0, 0, 0);
@@ -774,7 +774,7 @@ static int test_sign1_all(void)
 }
 
 /* ----- Multi-Signer Test Runner (52 tests total) ----- */
-#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN) && \
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN) && \
     !defined(WOLFCOSE_NO_SIGN_ALL_MULTI)
 static int test_sign_multi_all(void)
 {
@@ -801,7 +801,7 @@ static int test_sign_multi_all(void)
     ret = test_sign_multi_2(WOLFCOSE_ALG_ES256, 32, WOLFCOSE_ALG_ES256, 32, 1, 1);
     CHECK_RESULT(ret, "multi2_es256_es256_detached_aad");
 
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
     /* Two-signer: ES256 + ES384 */
     PRINT_TEST("multi2_es256_es384_inline_noaad");
     ret = test_sign_multi_2(WOLFCOSE_ALG_ES256, 32, WOLFCOSE_ALG_ES384, 48, 0, 0);
@@ -820,7 +820,7 @@ static int test_sign_multi_all(void)
     CHECK_RESULT(ret, "multi2_es256_es384_detached_aad");
 #endif
 
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_ES512
     /* Two-signer: ES256 + ES512 */
     PRINT_TEST("multi2_es256_es512_inline_noaad");
     ret = test_sign_multi_2(WOLFCOSE_ALG_ES256, 32, WOLFCOSE_ALG_ES512, 66, 0, 0);
@@ -839,7 +839,7 @@ static int test_sign_multi_all(void)
     CHECK_RESULT(ret, "multi2_es256_es512_detached_aad");
 #endif
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     /* Two-signer: ES256 + EdDSA */
     PRINT_TEST("multi2_es256_eddsa_inline_noaad");
     ret = test_sign_multi_2(WOLFCOSE_ALG_ES256, 32, WOLFCOSE_ALG_EDDSA, 0, 0, 0);
@@ -858,7 +858,7 @@ static int test_sign_multi_all(void)
     CHECK_RESULT(ret, "multi2_es256_eddsa_detached_aad");
 #endif
 
-#if defined(WOLFSSL_SHA384) && defined(WOLFSSL_SHA512)
+#if defined(WOLFCOSE_HAVE_ES384) && defined(WOLFCOSE_HAVE_ES512)
     /* Two-signer: ES384 + ES512 */
     PRINT_TEST("multi2_es384_es512_inline_noaad");
     ret = test_sign_multi_2(WOLFCOSE_ALG_ES384, 48, WOLFCOSE_ALG_ES512, 66, 0, 0);
@@ -877,7 +877,7 @@ static int test_sign_multi_all(void)
     CHECK_RESULT(ret, "multi2_es384_es512_detached_aad");
 #endif
 
-#if defined(WOLFSSL_SHA384) && defined(HAVE_ED25519)
+#if defined(WOLFCOSE_HAVE_ES384) && defined(WOLFCOSE_HAVE_EDDSA)
     /* Two-signer: ES384 + EdDSA */
     PRINT_TEST("multi2_es384_eddsa_inline_noaad");
     ret = test_sign_multi_2(WOLFCOSE_ALG_ES384, 48, WOLFCOSE_ALG_EDDSA, 0, 0, 0);
@@ -896,7 +896,7 @@ static int test_sign_multi_all(void)
     CHECK_RESULT(ret, "multi2_es384_eddsa_detached_aad");
 #endif
 
-#if defined(WOLFSSL_SHA384) && defined(WOLFSSL_SHA512)
+#if defined(WOLFCOSE_HAVE_ES384) && defined(WOLFCOSE_HAVE_ES512)
     /* Three-signer: ES256 + ES384 + ES512 */
     PRINT_TEST("multi3_es256_es384_es512_inline_noaad");
     ret = test_sign_multi_3(WOLFCOSE_ALG_ES256, 32, WOLFCOSE_ALG_ES384, 48,
@@ -919,7 +919,7 @@ static int test_sign_multi_all(void)
     CHECK_RESULT(ret, "multi3_es256_es384_es512_detached_aad");
 #endif
 
-#if defined(WOLFSSL_SHA384) && defined(HAVE_ED25519)
+#if defined(WOLFCOSE_HAVE_ES384) && defined(WOLFCOSE_HAVE_EDDSA)
     /* Three-signer: ES256 + ES384 + EdDSA */
     PRINT_TEST("multi3_es256_es384_eddsa_inline_noaad");
     ret = test_sign_multi_3(WOLFCOSE_ALG_ES256, 32, WOLFCOSE_ALG_ES384, 48,
@@ -942,7 +942,7 @@ static int test_sign_multi_all(void)
     CHECK_RESULT(ret, "multi3_es256_es384_eddsa_detached_aad");
 #endif
 
-#if defined(WOLFSSL_SHA512) && defined(HAVE_ED25519)
+#if defined(WOLFCOSE_HAVE_ES512) && defined(WOLFCOSE_HAVE_EDDSA)
     /* Three-signer: ES256 + ES512 + EdDSA */
     PRINT_TEST("multi3_es256_es512_eddsa_inline_noaad");
     ret = test_sign_multi_3(WOLFCOSE_ALG_ES256, 32, WOLFCOSE_ALG_ES512, 66,
@@ -965,7 +965,7 @@ static int test_sign_multi_all(void)
     CHECK_RESULT(ret, "multi3_es256_es512_eddsa_detached_aad");
 #endif
 
-#if defined(WOLFSSL_SHA384) && defined(WOLFSSL_SHA512) && defined(HAVE_ED25519)
+#if defined(WOLFCOSE_HAVE_ES384) && defined(WOLFCOSE_HAVE_ES512) && defined(WOLFCOSE_HAVE_EDDSA)
     /* Three-signer: ES384 + ES512 + EdDSA */
     PRINT_TEST("multi3_es384_es512_eddsa_inline_noaad");
     ret = test_sign_multi_3(WOLFCOSE_ALG_ES384, 48, WOLFCOSE_ALG_ES512, 66,
@@ -988,7 +988,7 @@ static int test_sign_multi_all(void)
     CHECK_RESULT(ret, "multi3_es384_es512_eddsa_detached_aad");
 #endif
 
-#if defined(WOLFSSL_SHA384) && defined(WOLFSSL_SHA512) && defined(HAVE_ED25519)
+#if defined(WOLFCOSE_HAVE_ES384) && defined(WOLFCOSE_HAVE_ES512) && defined(WOLFCOSE_HAVE_EDDSA)
     /* Four-signer: ES256 + ES384 + ES512 + EdDSA (4 modes) */
     PRINT_TEST("multi4_all_algos_inline_noaad");
     ret = test_sign_multi_4(0, 0);
@@ -1010,10 +1010,10 @@ static int test_sign_multi_all(void)
     printf("\nMulti-Signer Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* HAVE_ECC && WOLFCOSE_SIGN && !WOLFCOSE_NO_SIGN_ALL_MULTI */
+#endif /* WOLFCOSE_HAVE_ES256 && WOLFCOSE_SIGN && !WOLFCOSE_NO_SIGN_ALL_MULTI */
 
 /* ----- Interop Vector Tests (RFC 9052 Appendix C) ----- */
-#if defined(HAVE_ECC) && !defined(WOLFCOSE_NO_SIGN_ALL_INTEROP)
+#if defined(WOLFCOSE_HAVE_ES256) && !defined(WOLFCOSE_NO_SIGN_ALL_INTEROP)
 static int test_sign1_interop(void)
 {
     int ret = 0;
@@ -1120,7 +1120,7 @@ static int test_sign1_interop(void)
     printf("\nInterop Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* HAVE_ECC && !WOLFCOSE_NO_SIGN_ALL_INTEROP */
+#endif /* WOLFCOSE_HAVE_ES256 && !WOLFCOSE_NO_SIGN_ALL_INTEROP */
 
 /* ----- Main Entry Point ----- */
 int main(void)
@@ -1133,12 +1133,12 @@ int main(void)
 
     totalFailed += test_sign1_all();
 
-#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN) && \
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN) && \
     !defined(WOLFCOSE_NO_SIGN_ALL_MULTI)
     totalFailed += test_sign_multi_all();
 #endif
 
-#if defined(HAVE_ECC) && !defined(WOLFCOSE_NO_SIGN_ALL_INTEROP)
+#if defined(WOLFCOSE_HAVE_ES256) && !defined(WOLFCOSE_NO_SIGN_ALL_INTEROP)
     totalFailed += test_sign1_interop();
 #endif
 

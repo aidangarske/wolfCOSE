@@ -44,19 +44,19 @@
 
 #include <wolfcose/wolfcose.h>
 #include <wolfssl/wolfcrypt/random.h>
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ECDSA
     #include <wolfssl/wolfcrypt/ecc.h>
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     #include <wolfssl/wolfcrypt/ed25519.h>
 #endif
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     #include <wolfssl/wolfcrypt/ed448.h>
 #endif
-#ifdef WC_RSA_PSS
+#ifdef WOLFCOSE_HAVE_RSAPSS
     #include <wolfssl/wolfcrypt/rsa.h>
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     #include <wolfssl/wolfcrypt/wc_mldsa.h>
 #endif
 
@@ -69,7 +69,7 @@
 #endif
 
 #ifndef WOLFCOSE_TOOL_MAX_KEY
-    #ifdef WOLFSSL_HAVE_MLDSA
+    #ifdef WOLFCOSE_HAVE_MLDSA
         /* ML-DSA-87: pub=2592 + priv=4896 + CBOR overhead */
         #define WOLFCOSE_TOOL_MAX_KEY  8192
     #else
@@ -113,7 +113,7 @@ static int parse_alg(const char* name, int32_t* alg)
     else if (strcmp(name, "EdDSA") == 0) {
         *alg = WOLFCOSE_ALG_EDDSA;
     }
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     else if (strcmp(name, "Ed448") == 0) {
         *alg = WOLFCOSE_ALG_EDDSA;
     }
@@ -127,7 +127,7 @@ static int parse_alg(const char* name, int32_t* alg)
     else if (strcmp(name, "A256GCM") == 0) {
         *alg = WOLFCOSE_ALG_A256GCM;
     }
-#ifdef WC_RSA_PSS
+#ifdef WOLFCOSE_HAVE_RSAPSS
     else if (strcmp(name, "PS256") == 0) {
         *alg = WOLFCOSE_ALG_PS256;
     }
@@ -138,7 +138,7 @@ static int parse_alg(const char* name, int32_t* alg)
         *alg = WOLFCOSE_ALG_PS512;
     }
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     else if (strcmp(name, "ML-DSA-44") == 0) {
         *alg = WOLFCOSE_ALG_ML_DSA_44;
     }
@@ -149,12 +149,12 @@ static int parse_alg(const char* name, int32_t* alg)
         *alg = WOLFCOSE_ALG_ML_DSA_87;
     }
 #endif
-#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+#if defined(WOLFCOSE_HAVE_CHACHA20)
     else if (strcmp(name, "ChaCha20") == 0) {
         *alg = WOLFCOSE_ALG_CHACHA20_POLY1305;
     }
 #endif
-#ifdef HAVE_AESCCM
+#ifdef WOLFCOSE_HAVE_AESCCM
     else if (strcmp(name, "AES-CCM") == 0) {
         *alg = WOLFCOSE_ALG_AES_CCM_16_128_128;
     }
@@ -162,12 +162,12 @@ static int parse_alg(const char* name, int32_t* alg)
     else if (strcmp(name, "HMAC256") == 0) {
         *alg = WOLFCOSE_ALG_HMAC256;
     }
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_HMAC384
     else if (strcmp(name, "HMAC384") == 0) {
         *alg = WOLFCOSE_ALG_HMAC384;
     }
 #endif
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_HMAC512
     else if (strcmp(name, "HMAC512") == 0) {
         *alg = WOLFCOSE_ALG_HMAC512;
     }
@@ -238,7 +238,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
 
     wc_CoseKey_Init(&coseKey);
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     if (alg == WOLFCOSE_ALG_ES256) {
         ecc_key ecc;
         wc_ecc_init(&ecc);
@@ -255,7 +255,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
     }
     else
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     if (alg == WOLFCOSE_ALG_EDDSA && strcmp(algStr, "Ed448") != 0) {
         ed25519_key ed;
         wc_ed25519_init(&ed);
@@ -272,7 +272,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
     }
     else
 #endif
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     if (alg == WOLFCOSE_ALG_EDDSA && strcmp(algStr, "Ed448") == 0) {
         ed448_key ed;
         wc_ed448_init(&ed);
@@ -289,7 +289,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
     }
     else
 #endif
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     if (alg == WOLFCOSE_ALG_PS256 || alg == WOLFCOSE_ALG_PS384 ||
         alg == WOLFCOSE_ALG_PS512) {
         RsaKey rsa;
@@ -307,7 +307,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
     }
     else
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     if (alg == WOLFCOSE_ALG_ML_DSA_44 || alg == WOLFCOSE_ALG_ML_DSA_65 ||
         alg == WOLFCOSE_ALG_ML_DSA_87) {
         wc_MlDsaKey dl;
@@ -424,7 +424,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
 
     wc_CoseKey_Init(&coseKey);
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ECDSA
     if (alg == WOLFCOSE_ALG_ES256 || alg == WOLFCOSE_ALG_ES384 ||
         alg == WOLFCOSE_ALG_ES512) {
         ecc_key ecc;
@@ -453,7 +453,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
     }
     else
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     if (alg == WOLFCOSE_ALG_EDDSA && strcmp(algStr, "Ed448") != 0) {
         ed25519_key ed;
         wc_ed25519_init(&ed);
@@ -481,7 +481,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
     }
     else
 #endif
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     if (alg == WOLFCOSE_ALG_EDDSA && strcmp(algStr, "Ed448") == 0) {
         ed448_key ed;
         wc_ed448_init(&ed);
@@ -509,7 +509,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
     }
     else
 #endif
-#ifdef WC_RSA_PSS
+#ifdef WOLFCOSE_HAVE_RSAPSS
     if (alg == WOLFCOSE_ALG_PS256 || alg == WOLFCOSE_ALG_PS384 ||
         alg == WOLFCOSE_ALG_PS512) {
         RsaKey rsa;
@@ -538,7 +538,7 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
     }
     else
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     if (alg == WOLFCOSE_ALG_ML_DSA_44 || alg == WOLFCOSE_ALG_ML_DSA_65 ||
         alg == WOLFCOSE_ALG_ML_DSA_87) {
         wc_MlDsaKey dl;
@@ -622,7 +622,7 @@ static int tool_verify(const char* keyPath, const char* inPath)
         crv = coseKey.crv;
     }
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ECDSA
     if (ret == 0 && kty == WOLFCOSE_KTY_EC2) {
         ecc_key ecc;
         keyMatched = 1;
@@ -639,7 +639,7 @@ static int tool_verify(const char* keyPath, const char* inPath)
     }
     else
 #endif
-#ifdef WC_RSA_PSS
+#ifdef WOLFCOSE_HAVE_RSAPSS
     if (ret == 0 && kty == WOLFCOSE_KTY_RSA) {
         RsaKey rsa;
         keyMatched = 1;
@@ -656,7 +656,7 @@ static int tool_verify(const char* keyPath, const char* inPath)
     }
     else
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     if (ret == 0 && kty == WOLFCOSE_KTY_OKP &&
         crv == WOLFCOSE_CRV_ED25519) {
         ed25519_key ed;
@@ -674,7 +674,7 @@ static int tool_verify(const char* keyPath, const char* inPath)
     }
     else
 #endif
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     if (ret == 0 && kty == WOLFCOSE_KTY_OKP &&
         crv == WOLFCOSE_CRV_ED448) {
         ed448_key ed;
@@ -692,7 +692,7 @@ static int tool_verify(const char* keyPath, const char* inPath)
     }
     else
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     if (ret == 0 && kty == WOLFCOSE_KTY_OKP &&
         (crv == WOLFCOSE_CRV_ML_DSA_44 ||
          crv == WOLFCOSE_CRV_ML_DSA_65 ||
@@ -733,8 +733,8 @@ static int tool_verify(const char* keyPath, const char* inPath)
 }
 
 /* ----- enc: COSE_Encrypt0 encrypt ----- */
-#if defined(HAVE_AESGCM) || defined(HAVE_AESCCM) || \
-    (defined(HAVE_CHACHA) && defined(HAVE_POLY1305))
+#if defined(WOLFCOSE_HAVE_AESGCM) || defined(WOLFCOSE_HAVE_AESCCM) || \
+    (defined(WOLFCOSE_HAVE_CHACHA20))
 static int tool_enc(const char* keyPath, int32_t alg,
                      const char* inPath, const char* outPath)
 {
@@ -856,10 +856,10 @@ static int tool_dec(const char* keyPath, const char* inPath,
     }
     return ret;
 }
-#endif /* HAVE_AESGCM || HAVE_AESCCM || (HAVE_CHACHA && HAVE_POLY1305) */
+#endif /* WOLFCOSE_HAVE_AESGCM || WOLFCOSE_HAVE_AESCCM || (WOLFCOSE_HAVE_CHACHA20) */
 
 /* ----- mac: COSE_Mac0 create ----- */
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC)
 static int tool_mac(const char* keyPath, int32_t alg,
                      const char* inPath, const char* outPath)
 {
@@ -943,7 +943,7 @@ static int tool_macverify(const char* keyPath, const char* inPath)
     printf("MAC verification OK. Payload: %zu bytes\n", payloadLen);
     return 0;
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC */
 
 /* ----- info: dump CBOR structure of a COSE message ----- */
 static int tool_info(const char* inPath)
@@ -1027,7 +1027,7 @@ static int tool_info(const char* inPath)
 /* ----- test: in-memory round-trip self-tests for all algorithms ----- */
 
 /* Sign round-trip: keygen -> sign -> verify -> check payload */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static int test_sign_es256(void)
 {
     int ret = 0;
@@ -1087,7 +1087,7 @@ static int test_sign_es256(void)
 }
 #endif
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
 static int test_sign_eddsa(void)
 {
     int ret = 0;
@@ -1147,7 +1147,7 @@ static int test_sign_eddsa(void)
 }
 #endif
 
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
 static int test_sign_ed448(void)
 {
     int ret = 0;
@@ -1207,7 +1207,7 @@ static int test_sign_ed448(void)
 }
 #endif
 
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
 static int test_sign_pss(const char* name, int32_t alg)
 {
     int ret = 0;
@@ -1267,7 +1267,7 @@ static int test_sign_pss(const char* name, int32_t alg)
 }
 #endif
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
 static int test_sign_mldsa(const char* name, int32_t alg, byte level)
 {
     int ret = 0;
@@ -1331,8 +1331,8 @@ static int test_sign_mldsa(const char* name, int32_t alg, byte level)
 #endif
 
 /* Encrypt round-trip: keygen -> encrypt -> decrypt -> check payload */
-#if defined(HAVE_AESGCM) || defined(HAVE_AESCCM) || \
-    (defined(HAVE_CHACHA) && defined(HAVE_POLY1305))
+#if defined(WOLFCOSE_HAVE_AESGCM) || defined(WOLFCOSE_HAVE_AESCCM) || \
+    (defined(WOLFCOSE_HAVE_CHACHA20))
 static int test_enc_roundtrip(const char* name, int32_t alg,
                                size_t keyLen, size_t nonceLen)
 {
@@ -1391,7 +1391,7 @@ static int test_enc_roundtrip(const char* name, int32_t alg,
 #endif
 
 /* MAC round-trip: keygen -> mac -> macverify -> check payload */
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC)
 static int test_mac_roundtrip(const char* name, int32_t alg, size_t keyLen)
 {
     int ret = 0;
@@ -1453,22 +1453,22 @@ static int tool_test(const char* filter)
     printf("=== wolfCOSE Round-Trip Tests ===\n\n");
 
     /* --- COSE_Sign1 --- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     if (all || strcmp(filter, "ES256") == 0) {
         tests++; if (test_sign_es256() != 0) failures++;
     }
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     if (all || strcmp(filter, "EdDSA") == 0) {
         tests++; if (test_sign_eddsa() != 0) failures++;
     }
 #endif
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     if (all || strcmp(filter, "Ed448") == 0) {
         tests++; if (test_sign_ed448() != 0) failures++;
     }
 #endif
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     if (all || strcmp(filter, "PS256") == 0) {
         tests++;
         if (test_sign_pss("PS256", WOLFCOSE_ALG_PS256) != 0) failures++;
@@ -1482,7 +1482,7 @@ static int tool_test(const char* filter)
         if (test_sign_pss("PS512", WOLFCOSE_ALG_PS512) != 0) failures++;
     }
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     if (all || strcmp(filter, "ML-DSA-44") == 0) {
         tests++;
         if (test_sign_mldsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, WC_ML_DSA_44) != 0)
@@ -1501,7 +1501,7 @@ static int tool_test(const char* filter)
 #endif
 
     /* --- COSE_Encrypt0 --- */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     if (all || strcmp(filter, "A128GCM") == 0) {
         tests++;
         if (test_enc_roundtrip("A128GCM", WOLFCOSE_ALG_A128GCM, 16, 12) != 0)
@@ -1518,7 +1518,7 @@ static int tool_test(const char* filter)
             failures++;
     }
 #endif
-#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+#if defined(WOLFCOSE_HAVE_CHACHA20)
     if (all || strcmp(filter, "ChaCha20") == 0) {
         tests++;
         if (test_enc_roundtrip("ChaCha20",
@@ -1526,7 +1526,7 @@ static int tool_test(const char* filter)
             failures++;
     }
 #endif
-#ifdef HAVE_AESCCM
+#ifdef WOLFCOSE_HAVE_AESCCM
     if (all || strcmp(filter, "AES-CCM") == 0) {
         tests++;
         if (test_enc_roundtrip("AES-CCM",
@@ -1536,27 +1536,29 @@ static int tool_test(const char* filter)
 #endif
 
     /* --- COSE_Mac0 --- */
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC)
+#ifdef WOLFCOSE_HAVE_HMAC256
     if (all || strcmp(filter, "HMAC256") == 0) {
         tests++;
         if (test_mac_roundtrip("HMAC256", WOLFCOSE_ALG_HMAC256, 32) != 0)
             failures++;
     }
-#ifdef WOLFSSL_SHA384
+#endif
+#ifdef WOLFCOSE_HAVE_HMAC384
     if (all || strcmp(filter, "HMAC384") == 0) {
         tests++;
         if (test_mac_roundtrip("HMAC384", WOLFCOSE_ALG_HMAC384, 48) != 0)
             failures++;
     }
 #endif
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_HMAC512
     if (all || strcmp(filter, "HMAC512") == 0) {
         tests++;
         if (test_mac_roundtrip("HMAC512", WOLFCOSE_ALG_HMAC512, 64) != 0)
             failures++;
     }
 #endif
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC */
 
     if (tests == 0) {
         printf("  No matching algorithm: %s\n", filter ? filter : "(none)");
@@ -1653,7 +1655,7 @@ int main(int argc, char* argv[])
         }
         return tool_verify(keyPath, inPath);
     }
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC)
     else if (strcmp(cmd, "mac") == 0) {
         if (keyPath == NULL || algStr == NULL || inPath == NULL ||
             outPath == NULL) {
@@ -1671,8 +1673,8 @@ int main(int argc, char* argv[])
         return tool_macverify(keyPath, inPath);
     }
 #endif
-#if defined(HAVE_AESGCM) || defined(HAVE_AESCCM) || \
-    (defined(HAVE_CHACHA) && defined(HAVE_POLY1305))
+#if defined(WOLFCOSE_HAVE_AESGCM) || defined(WOLFCOSE_HAVE_AESCCM) || \
+    (defined(WOLFCOSE_HAVE_CHACHA20))
     else if (strcmp(cmd, "enc") == 0) {
         if (keyPath == NULL || algStr == NULL || inPath == NULL ||
             outPath == NULL) {
@@ -1690,7 +1692,7 @@ int main(int argc, char* argv[])
         }
         return tool_dec(keyPath, inPath, outPath);
     }
-#endif /* HAVE_AESGCM || HAVE_AESCCM || (HAVE_CHACHA && HAVE_POLY1305) */
+#endif /* WOLFCOSE_HAVE_AESGCM || WOLFCOSE_HAVE_AESCCM || (WOLFCOSE_HAVE_CHACHA20) */
     else if (strcmp(cmd, "info") == 0) {
         if (inPath == NULL) {
             fprintf(stderr, "info requires -i <input>\n");
