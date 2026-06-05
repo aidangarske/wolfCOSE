@@ -45,10 +45,10 @@
 #include <wolfcose/wolfcose.h>
 #include <wolfssl/wolfcrypt/random.h>
 #include <wolfssl/wolfcrypt/sha256.h>
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     #include <wolfssl/wolfcrypt/ecc.h>
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     #include <wolfssl/wolfcrypt/wc_mldsa.h>
 #endif
 #include <stdio.h>
@@ -68,7 +68,7 @@ static const uint8_t g_firmwareBinary[] = {
 };
 
 /* ----- Step 1: OEM generates signing key (done once, stored securely) ----- */
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
 static int oem_generate_key_mldsa(wc_MlDsaKey* key, WC_RNG* rng)
 {
     int ret;
@@ -98,7 +98,7 @@ static int oem_generate_key_mldsa(wc_MlDsaKey* key, WC_RNG* rng)
 }
 #endif
 
-#if defined(HAVE_ECC) && !defined(WOLFSSL_HAVE_MLDSA)
+#if defined(WOLFCOSE_HAVE_ES256) && !defined(WOLFCOSE_HAVE_MLDSA)
 static int oem_generate_key_ecdsa(ecc_key* key, WC_RNG* rng)
 {
     int ret;
@@ -120,7 +120,7 @@ static int oem_generate_key_ecdsa(ecc_key* key, WC_RNG* rng)
     printf("  SUCCESS: ECDSA P-256 key generated\n");
     return 0;
 }
-#endif /* HAVE_ECC && !WOLFSSL_HAVE_MLDSA */
+#endif /* WOLFCOSE_HAVE_ES256 && !WOLFCOSE_HAVE_MLDSA */
 
 /* ----- Step 2: OEM signs firmware with detached payload ----- */
 static int oem_sign_firmware(WOLFCOSE_KEY* signingKey, int32_t alg,
@@ -256,11 +256,11 @@ int main(void)
     WOLFCOSE_KEY signingKey;
     int32_t alg = 0;
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     wc_MlDsaKey dlKey;
     int dlInit = 0;
 #endif
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     ecc_key eccKey;
     int eccInit = 0;
 #endif
@@ -276,7 +276,7 @@ int main(void)
     }
     rngInit = 1;
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     /* Prefer ML-DSA (post-quantum) if available */
     if (ret == 0) {
         ret = oem_generate_key_mldsa(&dlKey, &rng);
@@ -299,7 +299,7 @@ int main(void)
         printf("Using post-quantum ML-DSA-65 algorithm\n\n");
     }
 
-#elif defined(HAVE_ECC)
+#elif defined(WOLFCOSE_HAVE_ES256)
     /* Fallback to ECDSA */
     if (ret == 0) {
         ret = oem_generate_key_ecdsa(&eccKey, &rng);
@@ -362,10 +362,10 @@ int main(void)
     }
 
     /* Cleanup */
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     if (dlInit != 0) { wc_MlDsaKey_Free(&dlKey); }
 #endif
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     if (eccInit != 0) { wc_ecc_free(&eccKey); }
 #endif
     if (rngInit != 0) { wc_FreeRng(&rng); }

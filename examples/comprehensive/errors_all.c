@@ -44,10 +44,10 @@
 
 #include <wolfcose/wolfcose.h>
 #include <wolfssl/wolfcrypt/random.h>
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     #include <wolfssl/wolfcrypt/ecc.h>
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     #include <wolfssl/wolfcrypt/ed25519.h>
 #endif
 #include <stdio.h>
@@ -77,7 +77,7 @@
 } while (0)
 
 /* ----- Sign1 Tamper Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static int test_sign1_tamper(int tamperPos)
 {
     int ret = 0;
@@ -157,10 +157,10 @@ static int test_sign1_tamper(int tamperPos)
     }
     return ret;
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
 /* ----- Encrypt0 Tamper Tests ----- */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static int test_encrypt0_tamper(int tamperPos)
 {
     int ret = 0;
@@ -223,10 +223,10 @@ static int test_encrypt0_tamper(int tamperPos)
 
     return ret;
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* ----- Mac0 Tamper Tests ----- */
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static int test_mac0_tamper(int tamperPos)
 {
     int ret = 0;
@@ -285,10 +285,10 @@ static int test_mac0_tamper(int tamperPos)
 
     return ret;
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Truncated Input Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static int test_sign1_truncated(void)
 {
     int ret = 0;
@@ -350,9 +350,9 @@ static int test_sign1_truncated(void)
     }
     return ret;
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static int test_encrypt0_truncated(void)
 {
     int ret = 0;
@@ -402,9 +402,9 @@ static int test_encrypt0_truncated(void)
 
     return ret;
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static int test_mac0_truncated(void)
 {
     int ret = 0;
@@ -450,10 +450,10 @@ static int test_mac0_truncated(void)
 
     return ret;
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- AAD Mismatch Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static int test_sign1_aad_mismatch(void)
 {
     int ret = 0;
@@ -519,9 +519,9 @@ static int test_sign1_aad_mismatch(void)
     }
     return ret;
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static int test_encrypt0_aad_mismatch(void)
 {
     int ret = 0;
@@ -574,9 +574,9 @@ static int test_encrypt0_aad_mismatch(void)
 
     return ret;
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static int test_mac0_aad_mismatch(void)
 {
     int ret = 0;
@@ -626,10 +626,10 @@ static int test_mac0_aad_mismatch(void)
 
     return ret;
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Detached Payload Missing Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static int test_sign1_detached_missing(void)
 {
     int ret = 0;
@@ -693,10 +693,10 @@ static int test_sign1_detached_missing(void)
     }
     return ret;
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
 /* ----- Wrong Key Type Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static int test_sign1_with_symmetric_key(void)
 {
     int ret = 0;
@@ -737,9 +737,9 @@ static int test_sign1_with_symmetric_key(void)
     }
     return ret;
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#if defined(HAVE_ECC) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_HAVE_AESGCM)
 static int test_encrypt0_with_signing_key(void)
 {
     int ret = 0;
@@ -796,10 +796,10 @@ static int test_encrypt0_with_signing_key(void)
     }
     return ret;
 }
-#endif /* HAVE_ECC && HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_ES256 && WOLFCOSE_HAVE_AESGCM */
 
 /* ----- Empty Payload Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static int test_sign1_empty_payload(void)
 {
     int ret = 0;
@@ -860,10 +860,10 @@ static int test_sign1_empty_payload(void)
     }
     return ret;
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
 /* ----- Error Test Runners ----- */
-#if defined(HAVE_ECC) && !defined(WOLFCOSE_NO_ERRORS_ALL_SIGN)
+#if defined(WOLFCOSE_HAVE_ES256) && !defined(WOLFCOSE_NO_ERRORS_ALL_SIGN)
 static int test_sign_errors_all(void)
 {
     int ret = 0;
@@ -913,9 +913,9 @@ static int test_sign_errors_all(void)
     printf("\nSign1 Error Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* HAVE_ECC && !WOLFCOSE_NO_ERRORS_ALL_SIGN */
+#endif /* WOLFCOSE_HAVE_ES256 && !WOLFCOSE_NO_ERRORS_ALL_SIGN */
 
-#if defined(HAVE_AESGCM) && !defined(WOLFCOSE_NO_ERRORS_ALL_ENCRYPT)
+#if defined(WOLFCOSE_HAVE_AESGCM) && !defined(WOLFCOSE_NO_ERRORS_ALL_ENCRYPT)
 static int test_encrypt_errors_all(void)
 {
     int ret = 0;
@@ -947,7 +947,7 @@ static int test_encrypt_errors_all(void)
     ret = test_encrypt0_aad_mismatch();
     CHECK_RESULT(ret, "encrypt0_aad_mismatch");
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* Wrong key type */
     PRINT_TEST("encrypt0_with_signing_key");
     ret = test_encrypt0_with_signing_key();
@@ -957,9 +957,9 @@ static int test_encrypt_errors_all(void)
     printf("\nEncrypt0 Error Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* HAVE_AESGCM && !WOLFCOSE_NO_ERRORS_ALL_ENCRYPT */
+#endif /* WOLFCOSE_HAVE_AESGCM && !WOLFCOSE_NO_ERRORS_ALL_ENCRYPT */
 
-#if !defined(NO_HMAC) && !defined(WOLFCOSE_NO_ERRORS_ALL_MAC)
+#if defined(WOLFCOSE_HAVE_HMAC256) && !defined(WOLFCOSE_NO_ERRORS_ALL_MAC)
 static int test_mac_errors_all(void)
 {
     int ret = 0;
@@ -994,7 +994,7 @@ static int test_mac_errors_all(void)
     printf("\nMac0 Error Summary: %d passed, %d failed\n", passed, failed);
     return failed;
 }
-#endif /* !NO_HMAC && !WOLFCOSE_NO_ERRORS_ALL_MAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 && !WOLFCOSE_NO_ERRORS_ALL_MAC */
 
 /* ----- Main Entry Point ----- */
 int main(void)
@@ -1005,15 +1005,15 @@ int main(void)
     printf("wolfCOSE Comprehensive Error Tests\n");
     printf("========================================\n");
 
-#if defined(HAVE_ECC) && !defined(WOLFCOSE_NO_ERRORS_ALL_SIGN)
+#if defined(WOLFCOSE_HAVE_ES256) && !defined(WOLFCOSE_NO_ERRORS_ALL_SIGN)
     totalFailed += test_sign_errors_all();
 #endif
 
-#if defined(HAVE_AESGCM) && !defined(WOLFCOSE_NO_ERRORS_ALL_ENCRYPT)
+#if defined(WOLFCOSE_HAVE_AESGCM) && !defined(WOLFCOSE_NO_ERRORS_ALL_ENCRYPT)
     totalFailed += test_encrypt_errors_all();
 #endif
 
-#if !defined(NO_HMAC) && !defined(WOLFCOSE_NO_ERRORS_ALL_MAC)
+#if defined(WOLFCOSE_HAVE_HMAC256) && !defined(WOLFCOSE_NO_ERRORS_ALL_MAC)
     totalFailed += test_mac_errors_all();
 #endif
 

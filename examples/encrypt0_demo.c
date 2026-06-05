@@ -268,7 +268,7 @@ int main(void)
 
     printf("=== wolfCOSE Encrypt0 Demo ===\n\n");
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     if (demo_encrypt0_a128gcm() != 0) {
         failures++;
     }

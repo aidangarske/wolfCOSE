@@ -56,157 +56,9 @@
 extern "C" {
 #endif
 
-/* -----
- * Compile-time feature gates — opt-out design
- *
- * Users exclude features via WOLFCOSE_NO_* defines:
- *   -DWOLFCOSE_NO_ENCRYPT0 -DWOLFCOSE_NO_MAC0   → Sign-only build
- *   -DWOLFCOSE_NO_SIGN1_SIGN -DWOLFCOSE_NO_CBOR_ENCODE → Verify-only build
- *
- * Parent gates imply children unless child is explicitly excluded.
- * ----- */
-
-/* === Message Type Gates === */
-
-/* SIGN1 */
-#if !defined(WOLFCOSE_NO_SIGN1) && !defined(WOLFCOSE_SIGN1)
-    #define WOLFCOSE_SIGN1
-#endif
-#if defined(WOLFCOSE_SIGN1)
-    #if !defined(WOLFCOSE_NO_SIGN1_SIGN) && !defined(WOLFCOSE_SIGN1_SIGN)
-        #define WOLFCOSE_SIGN1_SIGN
-    #endif
-    #if !defined(WOLFCOSE_NO_SIGN1_VERIFY) && !defined(WOLFCOSE_SIGN1_VERIFY)
-        #define WOLFCOSE_SIGN1_VERIFY
-    #endif
-#endif
-
-/* ENCRYPT0 */
-#if !defined(WOLFCOSE_NO_ENCRYPT0) && !defined(WOLFCOSE_ENCRYPT0)
-    #define WOLFCOSE_ENCRYPT0
-#endif
-#if defined(WOLFCOSE_ENCRYPT0)
-    #if !defined(WOLFCOSE_NO_ENCRYPT0_ENCRYPT) && !defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
-        #define WOLFCOSE_ENCRYPT0_ENCRYPT
-    #endif
-    #if !defined(WOLFCOSE_NO_ENCRYPT0_DECRYPT) && !defined(WOLFCOSE_ENCRYPT0_DECRYPT)
-        #define WOLFCOSE_ENCRYPT0_DECRYPT
-    #endif
-#endif
-
-/* MAC0 */
-#if !defined(WOLFCOSE_NO_MAC0) && !defined(WOLFCOSE_MAC0)
-    #define WOLFCOSE_MAC0
-#endif
-#if defined(WOLFCOSE_MAC0)
-    #if !defined(WOLFCOSE_NO_MAC0_CREATE) && !defined(WOLFCOSE_MAC0_CREATE)
-        #define WOLFCOSE_MAC0_CREATE
-    #endif
-    #if !defined(WOLFCOSE_NO_MAC0_VERIFY) && !defined(WOLFCOSE_MAC0_VERIFY)
-        #define WOLFCOSE_MAC0_VERIFY
-    #endif
-#endif
-
-/* Multi-signer SIGN */
-#if !defined(WOLFCOSE_NO_SIGN) && !defined(WOLFCOSE_SIGN)
-    #define WOLFCOSE_SIGN
-#endif
-#if defined(WOLFCOSE_SIGN)
-    #if !defined(WOLFCOSE_NO_SIGN_SIGN) && !defined(WOLFCOSE_SIGN_SIGN)
-        #define WOLFCOSE_SIGN_SIGN
-    #endif
-    #if !defined(WOLFCOSE_NO_SIGN_VERIFY) && !defined(WOLFCOSE_SIGN_VERIFY)
-        #define WOLFCOSE_SIGN_VERIFY
-    #endif
-#endif
-
-/* Multi-recipient ENCRYPT */
-#if !defined(WOLFCOSE_NO_ENCRYPT) && !defined(WOLFCOSE_ENCRYPT)
-    #define WOLFCOSE_ENCRYPT
-#endif
-#if defined(WOLFCOSE_ENCRYPT)
-    #if !defined(WOLFCOSE_NO_ENCRYPT_ENCRYPT) && !defined(WOLFCOSE_ENCRYPT_ENCRYPT)
-        #define WOLFCOSE_ENCRYPT_ENCRYPT
-    #endif
-    #if !defined(WOLFCOSE_NO_ENCRYPT_DECRYPT) && !defined(WOLFCOSE_ENCRYPT_DECRYPT)
-        #define WOLFCOSE_ENCRYPT_DECRYPT
-    #endif
-#endif
-
-/* Multi-recipient MAC */
-#if !defined(WOLFCOSE_NO_MAC) && !defined(WOLFCOSE_MAC)
-    #define WOLFCOSE_MAC
-#endif
-#if defined(WOLFCOSE_MAC)
-    #if !defined(WOLFCOSE_NO_MAC_CREATE) && !defined(WOLFCOSE_MAC_CREATE)
-        #define WOLFCOSE_MAC_CREATE
-    #endif
-    #if !defined(WOLFCOSE_NO_MAC_VERIFY) && !defined(WOLFCOSE_MAC_VERIFY)
-        #define WOLFCOSE_MAC_VERIFY
-    #endif
-#endif
-
-/* === Recipient/Key Distribution Gates === */
-
-#if !defined(WOLFCOSE_NO_RECIPIENTS) && !defined(WOLFCOSE_RECIPIENTS)
-    #define WOLFCOSE_RECIPIENTS
-#endif
-#if defined(WOLFCOSE_RECIPIENTS)
-    #if !defined(WOLFCOSE_NO_KEY_WRAP) && defined(HAVE_AES_KEYWRAP) && \
-        !defined(WOLFCOSE_KEY_WRAP)
-        #define WOLFCOSE_KEY_WRAP
-    #endif
-    #if !defined(WOLFCOSE_NO_ECDH) && (defined(HAVE_ECC) || defined(HAVE_CURVE25519)) && \
-        !defined(WOLFCOSE_ECDH)
-        #define WOLFCOSE_ECDH
-    #endif
-    #if !defined(WOLFCOSE_NO_ECDH_WRAP) && defined(WOLFCOSE_ECDH) && \
-        defined(WOLFCOSE_KEY_WRAP) && !defined(WOLFCOSE_ECDH_WRAP)
-        #define WOLFCOSE_ECDH_WRAP
-    #endif
-    #if !defined(WOLFCOSE_NO_ECDH_ES_DIRECT) && defined(WOLFCOSE_ECDH) && \
-        defined(HAVE_ECC) && defined(HAVE_HKDF) && !defined(WOLFCOSE_ECDH_ES_DIRECT)
-        #define WOLFCOSE_ECDH_ES_DIRECT
-    #endif
-#endif
-
-/* === CBOR Layer Gates === */
-
-#if !defined(WOLFCOSE_NO_CBOR_ENCODE) && !defined(WOLFCOSE_CBOR_ENCODE)
-    #define WOLFCOSE_CBOR_ENCODE
-#endif
-#if !defined(WOLFCOSE_NO_CBOR_DECODE) && !defined(WOLFCOSE_CBOR_DECODE)
-    #define WOLFCOSE_CBOR_DECODE
-#endif
-
-/* === COSE_Key Gates === */
-
-#if !defined(WOLFCOSE_NO_KEY_ENCODE) && !defined(WOLFCOSE_KEY_ENCODE)
-    #define WOLFCOSE_KEY_ENCODE
-#endif
-#if !defined(WOLFCOSE_NO_KEY_DECODE) && !defined(WOLFCOSE_KEY_DECODE)
-    #define WOLFCOSE_KEY_DECODE
-#endif
-
-/* === Auto-enable dependencies === */
-
-/* Sign/Encrypt/Mac operations need CBOR encode */
-#if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_ENCRYPT0_ENCRYPT) || \
-    defined(WOLFCOSE_MAC0_CREATE) || defined(WOLFCOSE_SIGN_SIGN) || \
-    defined(WOLFCOSE_ENCRYPT_ENCRYPT) || defined(WOLFCOSE_MAC_CREATE)
-    #if !defined(WOLFCOSE_CBOR_ENCODE)
-        #define WOLFCOSE_CBOR_ENCODE
-    #endif
-#endif
-
-/* Verify/Decrypt operations need CBOR decode */
-#if defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_ENCRYPT0_DECRYPT) || \
-    defined(WOLFCOSE_MAC0_VERIFY) || defined(WOLFCOSE_SIGN_VERIFY) || \
-    defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY)
-    #if !defined(WOLFCOSE_CBOR_DECODE)
-        #define WOLFCOSE_CBOR_DECODE
-    #endif
-#endif
+/* Compile-time configuration: NO_/ENABLE_ feature gates, per-algorithm
+ * WOLFCOSE_HAVE_* flags, and tunable limits all resolve here. */
+#include <wolfcose/settings.h>
 
 /* ----- Error codes (-9000 to -9099) ----- */
 #define WOLFCOSE_SUCCESS             0
@@ -227,33 +79,6 @@ extern "C" {
 #define WOLFCOSE_E_UNSUPPORTED      (-9021)
 #define WOLFCOSE_E_MAC_FAIL         (-9022)
 #define WOLFCOSE_E_DETACHED_PAYLOAD (-9023)
-
-/* ----- Configurable limits ----- */
-#ifndef WOLFCOSE_MAX_SCRATCH_SZ
-    #if defined(WOLFSSL_HAVE_MLDSA)
-        #define WOLFCOSE_MAX_SCRATCH_SZ      8192u
-    #else
-        #define WOLFCOSE_MAX_SCRATCH_SZ      512u
-    #endif
-#endif
-#ifndef WOLFCOSE_PROTECTED_HDR_MAX
-    #define WOLFCOSE_PROTECTED_HDR_MAX    64u
-#endif
-#ifndef WOLFCOSE_CBOR_MAX_DEPTH
-    #define WOLFCOSE_CBOR_MAX_DEPTH        8u
-#endif
-#ifndef WOLFCOSE_MAX_MAP_ITEMS
-    #define WOLFCOSE_MAX_MAP_ITEMS        16u
-#endif
-#ifndef WOLFCOSE_MAX_SIG_SZ
-    #if defined(WOLFSSL_HAVE_MLDSA)
-        #define WOLFCOSE_MAX_SIG_SZ  4627u
-    #elif defined(WC_RSA_PSS)
-        #define WOLFCOSE_MAX_SIG_SZ  512u
-    #else
-        #define WOLFCOSE_MAX_SIG_SZ  132u
-    #endif
-#endif
 
 /* ----- CBOR constants (RFC 8949) ----- */
 
@@ -738,7 +563,7 @@ WOLFCOSE_API int wc_CoseKey_SetEcc(WOLFCOSE_KEY* key, int32_t crv,
                                     ecc_key* eccKey);
 #endif
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
 /**
  * \brief Attach an Ed25519 key to a COSE key structure.
  * \param key    COSE key (must be initialized).
@@ -749,16 +574,16 @@ WOLFCOSE_API int wc_CoseKey_SetEd25519(WOLFCOSE_KEY* key,
                                         ed25519_key* edKey);
 #endif
 
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
 WOLFCOSE_API int wc_CoseKey_SetEd448(WOLFCOSE_KEY* key, ed448_key* edKey);
 #endif
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
 WOLFCOSE_API int wc_CoseKey_SetMlDsa(WOLFCOSE_KEY* key, int32_t alg,
                                        wc_MlDsaKey* mlDsaKey);
 #endif
 
-#ifdef WC_RSA_PSS
+#ifdef WOLFCOSE_HAVE_RSAPSS
 WOLFCOSE_API int wc_CoseKey_SetRsa(WOLFCOSE_KEY* key, RsaKey* rsaKey);
 #endif
 
@@ -930,7 +755,7 @@ WOLFCOSE_API int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
 
 /* ----- COSE_Mac0 API (RFC 9052 Section 6.2) ----- */
 
-#if defined(WOLFCOSE_MAC0_CREATE) && (!defined(NO_HMAC) || defined(HAVE_AES_CBC))
+#if defined(WOLFCOSE_MAC0_CREATE) && (defined(WOLFCOSE_HAVE_HMAC) || defined(WOLFCOSE_HAVE_AESMAC))
 /**
  * \brief Create a COSE_Mac0 message (RFC 9052 Section 6.2).
  *
@@ -964,9 +789,9 @@ WOLFCOSE_API int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
     const uint8_t* extAad, size_t extAadLen,
     uint8_t* scratch, size_t scratchSz,
     uint8_t* out, size_t outSz, size_t* outLen);
-#endif /* WOLFCOSE_MAC0_CREATE && (!NO_HMAC || HAVE_AES_CBC) */
+#endif /* WOLFCOSE_MAC0_CREATE && (WOLFCOSE_HAVE_HMAC || WOLFCOSE_HAVE_AESMAC) */
 
-#if defined(WOLFCOSE_MAC0_VERIFY) && (!defined(NO_HMAC) || defined(HAVE_AES_CBC))
+#if defined(WOLFCOSE_MAC0_VERIFY) && (defined(WOLFCOSE_HAVE_HMAC) || defined(WOLFCOSE_HAVE_AESMAC))
 /**
  * \brief Verify a COSE_Mac0 message and extract the payload.
  *
@@ -993,7 +818,7 @@ WOLFCOSE_API int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
     uint8_t* scratch, size_t scratchSz,
     WOLFCOSE_HDR* hdr,
     const uint8_t** payload, size_t* payloadLen);
-#endif /* WOLFCOSE_MAC0_VERIFY && !NO_HMAC */
+#endif /* WOLFCOSE_MAC0_VERIFY && WOLFCOSE_HAVE_HMAC */
 
 /* ----- COSE_Sign Multi-Signer API (RFC 9052 Section 4.1) ----- */
 

@@ -35,13 +35,15 @@
     #include <wolfssl/options.h>
 #endif
 #include <wolfssl/wolfcrypt/settings.h>
+#include <wolfcose/settings.h>
+#include <stdio.h>
 
 /* Default: enabled */
 #ifndef WOLFCOSE_NO_EXAMPLE_IOT_FLEET
     #define WOLFCOSE_EXAMPLE_IOT_FLEET
 #endif
 
-#if defined(WOLFCOSE_EXAMPLE_IOT_FLEET) && defined(HAVE_AESGCM) && \
+#if defined(WOLFCOSE_EXAMPLE_IOT_FLEET) && defined(WOLFCOSE_HAVE_AESGCM) && \
     defined(WOLFCOSE_ENCRYPT)
 
 #include <wolfcose/wolfcose.h>
@@ -360,7 +362,7 @@ int main(void)
 {
 #ifndef WOLFCOSE_EXAMPLE_IOT_FLEET
     printf("iot_fleet_config: example disabled\n");
-#elif !defined(HAVE_AESGCM)
+#elif !defined(WOLFCOSE_HAVE_AESGCM)
     printf("iot_fleet_config: requires AES-GCM support\n");
 #elif !defined(WOLFCOSE_ENCRYPT)
     printf("iot_fleet_config: requires WOLFCOSE_ENCRYPT\n");
@@ -368,4 +370,4 @@ int main(void)
     return 0;
 }
 
-#endif /* WOLFCOSE_EXAMPLE_IOT_FLEET && HAVE_AESGCM && WOLFCOSE_ENCRYPT */
+#endif /* WOLFCOSE_EXAMPLE_IOT_FLEET && WOLFCOSE_HAVE_AESGCM && WOLFCOSE_ENCRYPT */

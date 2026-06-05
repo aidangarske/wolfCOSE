@@ -35,13 +35,15 @@
     #include <wolfssl/options.h>
 #endif
 #include <wolfssl/wolfcrypt/settings.h>
+#include <wolfcose/settings.h>
+#include <stdio.h>
 
 /* Default: enabled */
 #ifndef WOLFCOSE_NO_EXAMPLE_MULTI_PARTY
     #define WOLFCOSE_EXAMPLE_MULTI_PARTY
 #endif
 
-#if defined(WOLFCOSE_EXAMPLE_MULTI_PARTY) && defined(HAVE_ECC) && \
+#if defined(WOLFCOSE_EXAMPLE_MULTI_PARTY) && defined(WOLFCOSE_HAVE_ES256) && \
     defined(WOLFCOSE_SIGN)
 
 #include <wolfcose/wolfcose.h>
@@ -92,7 +94,7 @@ static int silicon_vendor_init(ecc_key* key, WOLFCOSE_KEY* cosKey, WC_RNG* rng)
 }
 
 /* ----- OEM Key Generation ----- */
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
 static int oem_init(ecc_key* key, WOLFCOSE_KEY* cosKey, WC_RNG* rng)
 {
     int ret;
@@ -145,7 +147,7 @@ static int sign_with_dual_control(WOLFCOSE_KEY* vendorKey, WOLFCOSE_KEY* oemKey,
     signers[0].kid = vendorKid;
     signers[0].kidLen = sizeof(vendorKid) - 1u;
 
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
     signers[1].algId = WOLFCOSE_ALG_ES384;
     signers[1].key = oemKey;
     signers[1].kid = oemKid;
@@ -172,7 +174,7 @@ static int sign_with_dual_control(WOLFCOSE_KEY* vendorKey, WOLFCOSE_KEY* oemKey,
 
     printf("  SUCCESS: Dual-signed message created (%zu bytes)\n", *signedLen);
     printf("  Signer 0: Silicon Vendor (ES256)\n");
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
     printf("  Signer 1: OEM (ES384)\n");
 #else
     printf("  Signer 1: OEM (ES256)\n");
@@ -252,7 +254,7 @@ int main(void)
         }
     }
 
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
     if (ret == 0) {
         ret = oem_init(&oemEccKey, &oemKey, &rng);
         if (ret == 0) {
@@ -328,7 +330,7 @@ int main(void)
 {
 #ifndef WOLFCOSE_EXAMPLE_MULTI_PARTY
     printf("multi_party_approval: example disabled\n");
-#elif !defined(HAVE_ECC)
+#elif !defined(WOLFCOSE_HAVE_ES256)
     printf("multi_party_approval: requires ECC support\n");
 #elif !defined(WOLFCOSE_SIGN)
     printf("multi_party_approval: requires WOLFCOSE_SIGN\n");
@@ -336,4 +338,4 @@ int main(void)
     return 0;
 }
 
-#endif /* WOLFCOSE_EXAMPLE_MULTI_PARTY && HAVE_ECC && WOLFCOSE_SIGN */
+#endif /* WOLFCOSE_EXAMPLE_MULTI_PARTY && WOLFCOSE_HAVE_ES256 && WOLFCOSE_SIGN */

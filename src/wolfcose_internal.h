@@ -24,13 +24,13 @@
 #include <wolfcose/wolfcose.h>
 #include <wolfssl/wolfcrypt/error-crypt.h>
 #include <wolfssl/wolfcrypt/hash.h>
-#if defined(HAVE_AESGCM) || defined(HAVE_AESCCM)
+#if defined(WOLFCOSE_HAVE_AESGCM) || defined(WOLFCOSE_HAVE_AESCCM)
     #include <wolfssl/wolfcrypt/aes.h>
 #endif
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC)
     #include <wolfssl/wolfcrypt/hmac.h>
 #endif
-#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+#if defined(WOLFCOSE_HAVE_CHACHA20)
     #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #endif
 
@@ -269,7 +269,7 @@ WOLFCOSE_LOCAL int wolfCose_AeadNonceLen(int32_t alg, size_t* nonceLen);
  */
 WOLFCOSE_LOCAL int wolfCose_AeadTagLen(int32_t alg, size_t* tagLen);
 
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC)
 /**
  * \brief Map COSE HMAC algorithm ID to wolfCrypt HMAC type.
  * \param alg       COSE algorithm ID.
@@ -277,9 +277,9 @@ WOLFCOSE_LOCAL int wolfCose_AeadTagLen(int32_t alg, size_t* tagLen);
  * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_COSE_BAD_ALG.
  */
 WOLFCOSE_LOCAL int wolfCose_HmacType(int32_t alg, int* hmacType);
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC */
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ECDSA
 /**
  * \brief Sign a hash with ECC, producing raw r||s output.
  *        Wraps wolfCrypt DER signature -> fixed-width r||s conversion.
@@ -313,7 +313,7 @@ WOLFCOSE_LOCAL int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
                                           const uint8_t* hash, size_t hashLen,
                                           size_t coordSz,
                                           ecc_key* eccKey, int* verified);
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ECDSA */
 
 #ifdef __cplusplus
 }

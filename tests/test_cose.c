@@ -42,22 +42,22 @@
 #include "../src/wolfcose_internal.h"  /* For testing internal helpers */
 #include "test_suite.h"
 #include <wolfssl/wolfcrypt/random.h>
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     #include <wolfssl/wolfcrypt/ecc.h>
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     #include <wolfssl/wolfcrypt/ed25519.h>
 #endif
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     #include <wolfssl/wolfcrypt/aes.h>
 #endif
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     #include <wolfssl/wolfcrypt/ed448.h>
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     #include <wolfssl/wolfcrypt/wc_mldsa.h>
 #endif
-#ifdef WC_RSA_PSS
+#ifdef WOLFCOSE_HAVE_RSAPSS
     #include <wolfssl/wolfcrypt/rsa.h>
 #endif
 #ifdef WOLFCOSE_TEST_LOG_ENABLE
@@ -169,7 +169,7 @@ static void test_cose_key_init(void)
     TEST_ASSERT(1, "key free null safe");
 }
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_key_ecc(void)
 {
     WOLFCOSE_KEY key;
@@ -240,9 +240,9 @@ static void test_cose_key_ecc(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
 static void test_cose_key_ed25519(void)
 {
     WOLFCOSE_KEY key;
@@ -314,7 +314,7 @@ static void test_cose_key_ed25519(void)
     (void)wc_ed25519_free(&edKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ED25519 */
+#endif /* WOLFCOSE_HAVE_EDDSA */
 
 static void test_cose_key_symmetric(void)
 {
@@ -381,7 +381,7 @@ static void test_cose_key_symmetric(void)
 }
 
 /* ----- COSE_Sign1 tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
                                  int keySz)
 {
@@ -523,9 +523,9 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
         (void)wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
 static void test_cose_sign1_eddsa(void)
 {
     WOLFCOSE_KEY signKey;
@@ -610,9 +610,9 @@ static void test_cose_sign1_eddsa(void)
         (void)wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ED25519 */
+#endif /* WOLFCOSE_HAVE_EDDSA */
 
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
 static void test_cose_sign1_ed448(void)
 {
     WOLFCOSE_KEY signKey;
@@ -732,10 +732,10 @@ static void test_cose_sign1_ed448(void)
         (void)wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ED448 */
+#endif /* WOLFCOSE_HAVE_ED448 */
 
 /* ----- COSE_Encrypt0 tests ----- */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_cose_encrypt0_a128gcm(void)
 {
     WOLFCOSE_KEY key;
@@ -943,10 +943,10 @@ static void test_cose_encrypt0_with_aad(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret != 0, "enc0 missing aad fails");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* ----- COSE_Encrypt0 ChaCha20-Poly1305 tests ----- */
-#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+#if defined(WOLFCOSE_HAVE_CHACHA20)
 static void test_cose_encrypt0_chacha20(void)
 {
     WOLFCOSE_KEY key;
@@ -1100,10 +1100,10 @@ static void test_cose_encrypt0_chacha20_with_aad(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret != 0, "enc0 chacha20 missing aad fails");
 }
-#endif /* HAVE_CHACHA && HAVE_POLY1305 */
+#endif /* WOLFCOSE_HAVE_CHACHA20 && WOLFCOSE_HAVE_CHACHA20 */
 
 /* ----- COSE_Encrypt0 AES-CCM tests ----- */
-#ifdef HAVE_AESCCM
+#ifdef WOLFCOSE_HAVE_AESCCM
 static void test_cose_encrypt0_aes_ccm(void)
 {
     WOLFCOSE_KEY key;
@@ -1296,10 +1296,10 @@ static void test_cose_aes_ccm_all_params(void)
                     "ccm sweep multi roundtrip");
     }
 }
-#endif /* HAVE_AESCCM */
+#endif /* WOLFCOSE_HAVE_AESCCM */
 
 /* ----- COSE_Sign1 RSA-PSS tests ----- */
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
 static void test_cose_sign1_pss(const char* label, int32_t alg)
 {
     WOLFCOSE_KEY signKey;
@@ -1395,10 +1395,10 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
         (void)wc_FreeRng(&rng);
     }
 }
-#endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
+#endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
 
-/* ----- COSE_Sign1 ML-DSA (ML-DSA) tests ----- */
-#ifdef WOLFSSL_HAVE_MLDSA
+/* ----- COSE_Sign1 ML-DSA tests ----- */
+#ifdef WOLFCOSE_HAVE_MLDSA
 static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
 {
     WOLFCOSE_KEY signKey;
@@ -1560,10 +1560,10 @@ static void test_cose_sign1_ml_dsa_level_mismatch(void)
     if (dlInited != 0) { (void)wc_MlDsaKey_Free(&dlKey); }
     if (rngInited != 0) { (void)wc_FreeRng(&rng); }
 }
-#endif /* WOLFSSL_HAVE_MLDSA */
+#endif /* WOLFCOSE_HAVE_MLDSA */
 
 /* ----- COSE_Sign1 with external AAD ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_sign1_with_aad(void)
 {
     WOLFCOSE_KEY key;
@@ -1643,7 +1643,7 @@ static void test_cose_sign1_with_aad(void)
 #endif
 
 /* ----- COSE_Key RSA encode/decode round-trip ----- */
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
 static void test_cose_key_rsa(void)
 {
     WOLFCOSE_KEY key;
@@ -1776,10 +1776,10 @@ static void test_cose_key_rsa_scratch_scrubbed(void)
     (void)wc_FreeRsaKey(&rsaKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
+#endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
 
 /* ----- COSE_Key ML-DSA encode/decode round-trip ----- */
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
 static void test_cose_key_mldsa(const char* label, int32_t alg,
                                       int level)
 {
@@ -1872,10 +1872,10 @@ static void test_cose_key_mldsa(const char* label, int32_t alg,
     (void)wc_MlDsaKey_Free(&dlKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFSSL_HAVE_MLDSA */
+#endif /* WOLFCOSE_HAVE_MLDSA */
 
 /* ----- COSE_Mac0 tests ----- */
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_cose_mac0_hmac256(void)
 {
     WOLFCOSE_KEY key;
@@ -1996,6 +1996,7 @@ static void test_cose_mac0_short_hmac_key(void)
                 "mac0 short hmac key rejected");
 }
 
+#ifdef WOLFCOSE_MAC
 static void test_cose_mac_payload_validation(void)
 {
     WOLFCOSE_KEY key;
@@ -2032,6 +2033,7 @@ static void test_cose_mac_payload_validation(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
                 "mac both payloads rejected");
 }
+#endif /* WOLFCOSE_MAC */
 
 static void test_cose_mac0_empty_inline_payload(void)
 {
@@ -2069,6 +2071,7 @@ static void test_cose_mac0_empty_inline_payload(void)
                 "mac0 empty payload not detached");
 }
 
+#ifdef WOLFCOSE_MAC
 static void test_cose_mac_multi_per_recipient(void)
 {
     WOLFCOSE_KEY key;
@@ -2113,8 +2116,9 @@ static void test_cose_mac_multi_per_recipient(void)
                     "multi recipient mac payload len");
     }
 }
+#endif /* WOLFCOSE_MAC */
 
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_HMAC384
 static void test_cose_mac0_hmac384(void)
 {
     WOLFCOSE_KEY key;
@@ -2150,9 +2154,9 @@ static void test_cose_mac0_hmac384(void)
     TEST_ASSERT(ret == 0, "mac0 hmac384 verify");
     TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_384_384, "mac0 hmac384 hdr alg");
 }
-#endif /* WOLFSSL_SHA384 */
+#endif /* WOLFCOSE_HAVE_HMAC384 */
 
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_HMAC512
 static void test_cose_mac0_hmac512(void)
 {
     WOLFCOSE_KEY key;
@@ -2188,7 +2192,7 @@ static void test_cose_mac0_hmac512(void)
     TEST_ASSERT(ret == 0, "mac0 hmac512 verify");
     TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_512_512, "mac0 hmac512 hdr alg");
 }
-#endif /* WOLFSSL_SHA512 */
+#endif /* WOLFCOSE_HAVE_HMAC512 */
 
 static void test_cose_mac0_with_aad(void)
 {
@@ -2250,11 +2254,11 @@ static void test_cose_mac0_with_aad(void)
         &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "mac0 missing aad fails");
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Hardened / error-path / boundary tests ----- */
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_sign1_buffer_too_small(void)
 {
     WOLFCOSE_KEY key;
@@ -2420,9 +2424,9 @@ static void test_cose_sign1_detached(void)
         (void)wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_cose_encrypt0_buffer_errors(void)
 {
     WOLFCOSE_KEY key;
@@ -2481,9 +2485,9 @@ static void test_cose_encrypt0_buffer_errors(void)
 
     wc_CoseKey_Free(&key);
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
 static void test_cose_mac0_buffer_errors(void)
 {
     WOLFCOSE_KEY key;
@@ -2537,7 +2541,7 @@ static void test_cose_mac0_buffer_errors(void)
 
     wc_CoseKey_Free(&key);
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 static void test_cose_key_encode_errors(void)
 {
@@ -2585,7 +2589,7 @@ static void test_cose_key_encode_errors(void)
     ret = wc_CoseKey_Decode(&key, NULL, sizeof(buf));
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode null buf");
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* ECC key encode with buffer too small */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -2608,7 +2612,7 @@ static void test_cose_key_encode_errors(void)
     }
 #endif
 
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     /* RSA key encode with buffer too small */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -2635,7 +2639,7 @@ static void test_cose_key_encode_errors(void)
     }
 #endif
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     /* ML-DSA key encode with buffer too small */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -2660,7 +2664,7 @@ static void test_cose_key_encode_errors(void)
 #endif
 }
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
 static void test_cose_key_set_mldsa_errors(void)
 {
     WOLFCOSE_KEY key;
@@ -2686,9 +2690,9 @@ static void test_cose_key_set_mldsa_errors(void)
 
     (void)wc_MlDsaKey_Free(&dlKey);
 }
-#endif /* WOLFSSL_HAVE_MLDSA */
+#endif /* WOLFCOSE_HAVE_MLDSA */
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
 static void test_cose_key_ed25519_public_only(void)
 {
     WOLFCOSE_KEY key, key2;
@@ -2756,9 +2760,9 @@ static void test_cose_key_ed25519_public_only(void)
     (void)wc_ed25519_free(&edKey2);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ED25519 */
+#endif /* WOLFCOSE_HAVE_EDDSA */
 
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
 static void test_cose_key_ed448_public_only(void)
 {
     WOLFCOSE_KEY key;
@@ -2799,9 +2803,9 @@ static void test_cose_key_ed448_public_only(void)
     (void)wc_ed448_free(&edKey2);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ED448 */
+#endif /* WOLFCOSE_HAVE_ED448 */
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
 static void test_cose_key_mldsa_public_only(void)
 {
     WOLFCOSE_KEY key;
@@ -2875,9 +2879,9 @@ static void test_cose_key_mldsa_public_only(void)
     (void)wc_MlDsaKey_Free(&dlKey2);
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFSSL_HAVE_MLDSA */
+#endif /* WOLFCOSE_HAVE_MLDSA */
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 /* Test ECC public-only key decode (no d label) */
 static void test_cose_key_ecc_public_only(void)
 {
@@ -2920,7 +2924,7 @@ static void test_cose_key_ecc_public_only(void)
     (void)wc_ecc_free(&eccKey2);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
 /* Test COSE_Key decode with kid and alg labels */
 static void test_cose_key_decode_optional_labels(void)
@@ -2970,7 +2974,7 @@ static void test_cose_key_decode_optional_labels(void)
 /* ----- RFC 9052 interop test vectors (cose-wg/Examples) ----- */
 
 /* ECDSA-01: P-256 / ES256 Sign1 (ecdsa-sig-01.json) */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_rfc_sign1_ecdsa_01(void)
 {
     /* Known P-256 public key (x, y from test vector) */
@@ -3048,10 +3052,10 @@ static void test_rfc_sign1_ecdsa_01(void)
     wc_CoseKey_Free(&key);
     (void)wc_ecc_free(&eccKey);
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
 /* HMAC-01: HMAC-SHA256 Mac0 (mac0-tests/HMac-01.json) */
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
 static void test_rfc_mac0_hmac_01(void)
 {
     /* Known HMAC-SHA256 symmetric key (32 bytes) */
@@ -3101,9 +3105,9 @@ static void test_rfc_mac0_hmac_01(void)
 
     wc_CoseKey_Free(&key);
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_cose_encrypt0_detached(void)
 {
     WOLFCOSE_KEY key;
@@ -3175,9 +3179,9 @@ static void test_cose_encrypt0_detached(void)
         TEST_ASSERT(ret != 0, "enc0 detached tampered ct fails");
     }
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_cose_mac0_detached(void)
 {
     WOLFCOSE_KEY key;
@@ -3294,9 +3298,9 @@ static void test_cose_mac0_detached_with_aad(void)
         TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "mac0 detached wrong aad fails");
     }
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
-#ifdef HAVE_AES_CBC
+#ifdef WOLFCOSE_HAVE_AESMAC
 /**
  * Test AES-CBC-MAC algorithms (RFC 9053 Section 3.2)
  */
@@ -3567,10 +3571,10 @@ static void test_cose_mac0_aes_cbc_mac_detached(void)
         TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "mac0 aes detached wrong payload fails");
     }
 }
-#endif /* HAVE_AES_CBC */
+#endif /* WOLFCOSE_HAVE_AESMAC */
 
 /* ----- COSE_Sign Multi-Signer Tests (RFC 9052 Section 4.1) ----- */
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_cose_sign_multi_signer(void)
 {
     WOLFCOSE_KEY key1, key2;
@@ -3703,7 +3707,7 @@ static void test_cose_sign_multi_signer(void)
     (void)wc_FreeRng(&rng);
 }
 
-#if defined(WOLFSSL_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
+#if defined(WOLFCOSE_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
 static void test_cose_sign_ml_dsa_level_mismatch(void)
 {
     WOLFCOSE_KEY signKey;
@@ -4167,7 +4171,7 @@ static void test_cose_sign_detached(void)
     (void)wc_FreeRng(&rng);
 }
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
 static void test_cose_sign_mixed_algorithms(void)
 {
     WOLFCOSE_KEY keyEc, keyEd;
@@ -4272,11 +4276,11 @@ static void test_cose_sign_mixed_algorithms(void)
     (void)wc_ed25519_free(&edKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ED25519 */
-#endif /* WOLFCOSE_SIGN && HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_EDDSA */
+#endif /* WOLFCOSE_SIGN && WOLFCOSE_HAVE_ES256 */
 
 /* ----- COSE_Encrypt Multi-Recipient Tests (RFC 9052 Section 5.1) ----- */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM) && \
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM) && \
     defined(WOLFCOSE_KEY_WRAP)
 static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
     uint8_t algByte)
@@ -4287,7 +4291,7 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
     uint64_t tag = 0;
     const uint8_t* protectedData = NULL;
     size_t protectedLen = 0;
-    size_t protectedOffset = 0u;
+    size_t protectedOffset;
 
     (void)XMEMSET(&ctx, 0, sizeof(ctx));
     ctx.cbuf = msg;
@@ -4775,7 +4779,7 @@ static void test_cose_encrypt_direct_multi_key_alg_mismatch(void)
     wc_CoseKey_Free(&key2);
 }
 
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
 /**
  * Test ECDH-ES (Ephemeral-Static) encryption and decryption.
  * - Encrypt with recipient's EC public key
@@ -5177,7 +5181,7 @@ static void test_cose_encrypt_ecdh_es_wrong_key_type(void)
 
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_ECDH_ES_DIRECT && HAVE_ECC && HAVE_HKDF */
+#endif /* WOLFCOSE_ECDH_ES_DIRECT && WOLFCOSE_HAVE_ES256 && HAVE_HKDF */
 
 #if defined(WOLFCOSE_KEY_WRAP)
 /**
@@ -5185,7 +5189,7 @@ static void test_cose_encrypt_ecdh_es_wrong_key_type(void)
  */
 static void test_cose_encrypt_kw_wrong_key_type(void)
 {
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     WOLFCOSE_KEY eccKey;
     WOLFCOSE_RECIPIENT recipient;
     ecc_key key;
@@ -5228,7 +5232,7 @@ static void test_cose_encrypt_kw_wrong_key_type(void)
 
     (void)wc_ecc_free(&key);
     (void)wc_FreeRng(&rng);
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 }
 
 /**
@@ -5741,7 +5745,7 @@ static void test_cose_encrypt_kw_wrong_keysize(void)
  * Test COSE_Encrypt with direct key mode (algId=0) using wrong key type (ECC).
  * This tests the direct key path in multi-recipient encryption.
  */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_encrypt_direct_wrong_key_type(void)
 {
     WOLFCOSE_KEY eccKey;
@@ -5787,12 +5791,12 @@ static void test_cose_encrypt_direct_wrong_key_type(void)
     (void)wc_ecc_free(&key);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
+#endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
 /* ----- COSE_Mac Multi-Recipient Tests (RFC 9052 Section 6.1) ----- */
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_cose_mac_multi_recipient(void)
 {
     WOLFCOSE_KEY key1, key2;
@@ -6125,7 +6129,7 @@ static void test_cose_mac_detached(void)
 /**
  * Test COSE_Mac with wrong key type (ECC key should fail)
  */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_mac_wrong_key_type(void)
 {
     WOLFCOSE_KEY eccKey;
@@ -6168,11 +6172,11 @@ static void test_cose_mac_wrong_key_type(void)
     (void)wc_ecc_free(&key);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC */
-#endif /* WOLFCOSE_MAC && !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_ES256 */
+#endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Phase 1: Algorithm Combination Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES384
 static void test_cose_sign1_es384(void)
 {
     WOLFCOSE_KEY key;
@@ -6239,7 +6243,9 @@ static void test_cose_sign1_es384(void)
         (void)wc_FreeRng(&rng);
     }
 }
+#endif /* WOLFCOSE_HAVE_ES384 */
 
+#ifdef WOLFCOSE_HAVE_ES512
 static void test_cose_sign1_es512(void)
 {
     WOLFCOSE_KEY key;
@@ -6305,9 +6311,9 @@ static void test_cose_sign1_es512(void)
         (void)wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES512 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_cose_encrypt0_a192gcm(void)
 {
     WOLFCOSE_KEY key;
@@ -6355,13 +6361,13 @@ static void test_cose_encrypt0_a192gcm(void)
                 memcmp(plaintext, payload, plaintextLen) == 0,
                 "enc0 a192gcm payload match");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* -----
  * Phase 3B: Negative Crypto Tests (Tamper Detection)
  * Critical security tests - must detect single-byte tampering
  * ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_sign1_tampered_sig_byte(void)
 {
     WOLFCOSE_KEY key;
@@ -6740,9 +6746,9 @@ static void test_cose_sign1_truncated_sig(void)
         (void)wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_cose_encrypt0_tampered_ct_byte(void)
 {
     WOLFCOSE_KEY key;
@@ -6880,9 +6886,9 @@ static void test_cose_encrypt0_wrong_key(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL, "wrong key detected");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_cose_mac0_tampered_tag_byte(void)
 {
     WOLFCOSE_KEY key;
@@ -6964,10 +6970,10 @@ static void test_cose_mac0_truncated_tag(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret != 0, "truncated MAC tag detected");
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Phase 3A: Boundary Condition Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_empty_payload(void)
 {
     WOLFCOSE_KEY key;
@@ -7235,10 +7241,10 @@ static void test_cose_long_kid(void)
         (void)wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
 /* ----- Phase 3E: Buffer Overflow Prevention Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_sign_output_too_small(void)
 {
     WOLFCOSE_KEY key;
@@ -7340,9 +7346,9 @@ static void test_cose_sign_scratch_too_small(void)
         (void)wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_cose_encrypt_output_too_small(void)
 {
     WOLFCOSE_KEY key;
@@ -7373,10 +7379,10 @@ static void test_cose_encrypt_output_too_small(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "small encrypt buffer detected");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* ----- Phase 3C: Malformed CBOR Input Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_decode_truncated_message(void)
 {
     WOLFCOSE_KEY key;
@@ -7507,12 +7513,12 @@ static void test_decode_wrong_tag(void)
         (void)wc_FreeRng(&rng);
     }
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
 /* ----- Additional coverage tests ----- */
 
 /* Test bad/unsupported algorithm handling */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_bad_algorithm(void)
 {
     WOLFCOSE_KEY key;
@@ -7617,7 +7623,7 @@ static void test_cose_null_params(void)
     ret = wc_CoseKey_Decode(&key, NULL, sizeof(data));
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decode null data");
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     /* Encrypt0 with NULL params */
     (void)wc_CoseKey_SetSymmetric(&key, data, 16);
     ret = wc_CoseEncrypt0_Encrypt(NULL, WOLFCOSE_ALG_A128GCM,
@@ -7683,7 +7689,7 @@ static void test_cose_null_params(void)
     }
 #endif
 
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
     /* Mac0 with NULL params */
     (void)wc_CoseKey_SetSymmetric(&key, data, 32);
     ret = wc_CoseMac0_Create(NULL, WOLFCOSE_ALG_HMAC_256_256,
@@ -7737,7 +7743,7 @@ static void test_cose_null_params(void)
 #endif
 
     /* Test SetEcc with NULL */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     ret = wc_CoseKey_SetEcc(NULL, WOLFCOSE_CRV_P256, NULL);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "SetEcc null key");
 
@@ -7746,7 +7752,7 @@ static void test_cose_null_params(void)
 #endif
 
     /* Test SetEd25519 with NULL */
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     ret = wc_CoseKey_SetEd25519(NULL, NULL);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "SetEd25519 null key");
 
@@ -7755,7 +7761,7 @@ static void test_cose_null_params(void)
 #endif
 
     /* Test SetEd448 with NULL */
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     ret = wc_CoseKey_SetEd448(NULL, NULL);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "SetEd448 null key");
 
@@ -7764,7 +7770,7 @@ static void test_cose_null_params(void)
 #endif
 
     /* Test SetRsa with NULL */
-#ifdef WC_RSA_PSS
+#ifdef WOLFCOSE_HAVE_RSAPSS
     ret = wc_CoseKey_SetRsa(NULL, NULL);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "SetRsa null key");
 
@@ -7773,7 +7779,7 @@ static void test_cose_null_params(void)
 #endif
 
     /* Test SetMlDsa with NULL */
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     ret = wc_CoseKey_SetMlDsa(NULL, WOLFCOSE_ALG_ML_DSA_44, NULL);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "SetMlDsa null key");
 
@@ -7798,7 +7804,7 @@ static void test_cose_invalid_algorithms(void)
     (void)wc_CoseKey_Init(&key);
     (void)wc_CoseKey_SetSymmetric(&key, data, 16);
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     /* Invalid algorithm ID for Encrypt0 */
     ret = wc_CoseEncrypt0_Encrypt(&key, 9999, /* invalid alg */
         iv, sizeof(iv), data, 16, NULL, 0, NULL, NULL, 0,
@@ -7811,7 +7817,7 @@ static void test_cose_invalid_algorithms(void)
     TEST_ASSERT(ret != 0, "enc0 neg invalid alg rejected");
 #endif
 
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
     /* Invalid algorithm ID for Mac0 */
     (void)wc_CoseKey_SetSymmetric(&key, data, 32);
     ret = wc_CoseMac0_Create(&key, 9999, /* invalid alg */
@@ -7826,7 +7832,7 @@ static void test_cose_error_paths(void)
 {
     TEST_LOG("  [Comprehensive Error Path Tests]\n");
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* Test Sign1 with wrong key type (symmetric key for ECC algorithm) */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -7853,11 +7859,11 @@ static void test_cose_error_paths(void)
 
         (void)wc_FreeRng(&rng);
     }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
     /* Test Mac0 with wrong key type (ECC key for HMAC) */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY eccKey;
@@ -7887,7 +7893,7 @@ static void test_cose_error_paths(void)
         (void)wc_ecc_free(&key);
         (void)wc_FreeRng(&rng);
     }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
     /* Test Mac0 verify with wrong key */
     /* empty-brace-scan: allow - test-local temporary scope */
@@ -7971,11 +7977,11 @@ static void test_cose_error_paths(void)
             &hdr, &decPayload, &decPayloadLen);
         TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "mac0 corrupted tag fails");
     }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     /* Test Encrypt0 with wrong key type */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY eccKey;
@@ -8007,7 +8013,7 @@ static void test_cose_error_paths(void)
         (void)wc_ecc_free(&key);
         (void)wc_FreeRng(&rng);
     }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
     /* Test Encrypt0 decrypt with wrong key */
     /* empty-brace-scan: allow - test-local temporary scope */
@@ -8090,9 +8096,9 @@ static void test_cose_error_paths(void)
             &hdr, plaintext, sizeof(plaintext), &plaintextLen);
         TEST_ASSERT(ret != 0, "enc0 corrupted ct fails");
     }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* Test Sign1 verify with wrong key */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -8184,10 +8190,10 @@ static void test_cose_error_paths(void)
         (void)wc_ecc_free(&eccKey);
         (void)wc_FreeRng(&rng);
     }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
     /* Test malformed COSE messages */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
@@ -8242,10 +8248,10 @@ static void test_cose_error_paths(void)
         (void)wc_ecc_free(&eccKey);
         (void)wc_FreeRng(&rng);
     }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
     /* Test buffer too small for sign output */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
@@ -8274,9 +8280,9 @@ static void test_cose_error_paths(void)
         (void)wc_ecc_free(&eccKey);
         (void)wc_FreeRng(&rng);
     }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     /* Test buffer too small for encrypt output */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -8302,7 +8308,7 @@ static void test_cose_error_paths(void)
     }
 #endif
 
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
     /* Test buffer too small for mac output */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -8327,7 +8333,7 @@ static void test_cose_error_paths(void)
 #endif
 
     /* Test key decode with malformed/missing data */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         /* ECC key with kty but missing x/y coordinates */
@@ -8351,7 +8357,7 @@ static void test_cose_error_paths(void)
     }
 #endif
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         /* EdDSA key with kty but missing x coordinate */
@@ -8394,7 +8400,7 @@ static void test_cose_error_paths(void)
 }
 
 /* Test header edge cases (partial_iv, alg in unprotected header) */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_cose_header_edge_cases(void)
 {
     TEST_LOG("  [Header Edge Cases]\n");
@@ -8458,7 +8464,7 @@ static void test_cose_header_edge_cases(void)
         (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     }
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* Test COSE_Key with KID field */
 static void test_cose_key_with_kid(void)
@@ -8501,7 +8507,7 @@ static void test_cose_key_with_kid(void)
     }
 }
 
-#ifdef HAVE_ECC
+#if defined(WOLFCOSE_HAVE_ES384) || defined(WOLFCOSE_HAVE_ES512)
 /* Test COSE_Key ECC with P-384 and P-521 curves */
 static void test_cose_key_ecc_curves(void)
 {
@@ -8517,7 +8523,7 @@ static void test_cose_key_ecc_curves(void)
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
 
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
     /* Test P-384 */
     wc_ecc_init(&eccKey);
     ret = wc_ecc_make_key(&rng, 48, &eccKey);  /* 48 bytes = 384 bits */
@@ -8542,7 +8548,7 @@ static void test_cose_key_ecc_curves(void)
     (void)wc_ecc_free(&eccKey);
 #endif
 
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_ES512
     /* Test P-521 */
     wc_ecc_init(&eccKey);
     ret = wc_ecc_make_key(&rng, 66, &eccKey);  /* 66 bytes = 521 bits */
@@ -8571,7 +8577,7 @@ static void test_cose_key_ecc_curves(void)
 }
 #endif
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 /* Test Encrypt0 with all AES-GCM key sizes */
 static void test_cose_encrypt0_key_sizes(void)
 {
@@ -8649,7 +8655,7 @@ static void test_cose_encrypt0_key_sizes(void)
 }
 #endif
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 /* Test Mac0 with different HMAC key sizes */
 static void test_cose_mac0_key_sizes(void)
 {
@@ -9296,7 +9302,7 @@ static void test_cose_oversized_int_narrowing(void)
                 "CoseKey_Decode rejects oversized kty");
 }
 
-#ifdef HAVE_ECC
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_cose_sign_dup_signer_unprot_hdr(void)
 {
     WOLFCOSE_KEY key;
@@ -9343,9 +9349,9 @@ static void test_cose_sign_dup_signer_unprot_hdr(void)
     if (eccInited != 0) { (void)wc_ecc_free(&eccKey); }
     if (rngInited != 0) { (void)wc_FreeRng(&rng); }
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_SIGN && WOLFCOSE_HAVE_ES256 */
 
-#ifndef NO_HMAC
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_cose_mac_dup_recipient_unprot_hdr(void)
 {
     WOLFCOSE_KEY key;
@@ -9384,9 +9390,9 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "dup recipient unprotected label rejected (mac)");
 }
-#endif /* NO_HMAC */
+#endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
-#ifdef HAVE_AESGCM
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
 {
     WOLFCOSE_KEY key;
@@ -9612,7 +9618,7 @@ static void test_cose_encrypt_multi_per_recipient(void)
                     "multi recipient payload match");
     }
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
 static void test_cose_protected_hdr_content_type(void)
 {
@@ -9820,7 +9826,7 @@ static void test_cose_iv_partial_iv(void)
 }
 
 /* ----- Signature path compliance tests ----- */
-#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN1_SIGN)
 static void test_cose_sign1_alg_curve_mismatch(void)
 {
     WOLFCOSE_KEY key;
@@ -9915,9 +9921,9 @@ static void test_cose_sign1_inconsistent_kid(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC && WOLFCOSE_SIGN1_SIGN */
+#endif /* WOLFCOSE_HAVE_ES256 && WOLFCOSE_SIGN1_SIGN */
 
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_cose_sign_multi_public_only_key(void)
 {
     WOLFCOSE_KEY key1, key2;
@@ -9974,9 +9980,9 @@ static void test_cose_sign_multi_public_only_key(void)
     (void)wc_ecc_free(&eccKey2);
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_SIGN && HAVE_ECC */
+#endif /* WOLFCOSE_SIGN && WOLFCOSE_HAVE_ES256 */
 
-#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
+#if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
 static void test_cose_encrypt0_nonce_length(void)
 {
     WOLFCOSE_KEY key;
@@ -10057,8 +10063,9 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
     wc_CoseKey_Free(&encKey);
     wc_CoseKey_Free(&decKey);
 }
-#endif /* HAVE_AESGCM && encrypt0 */
+#endif /* WOLFCOSE_HAVE_AESGCM && encrypt0 */
 
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_cose_hmac_type_constants(void)
 {
     int ret;
@@ -10066,22 +10073,23 @@ static void test_cose_hmac_type_constants(void)
 
     TEST_LOG("  [HmacType constants]\n");
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     ret = wolfCose_HmacType(WOLFCOSE_ALG_HMAC_256_256, &hmacType);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (hmacType == WC_SHA256),
                 "HmacType HMAC-256 -> WC_SHA256");
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_HMAC384
     ret = wolfCose_HmacType(WOLFCOSE_ALG_HMAC_384_384, &hmacType);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (hmacType == WC_SHA384),
                 "HmacType HMAC-384 -> WC_SHA384");
 #endif
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_HMAC512
     ret = wolfCose_HmacType(WOLFCOSE_ALG_HMAC_512_512, &hmacType);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (hmacType == WC_SHA512),
                 "HmacType HMAC-512 -> WC_SHA512");
 #endif
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 }
+#endif /* test_cose_hmac_type_constants */
 
 static void test_cose_aead_tag_len(void)
 {
@@ -10090,7 +10098,7 @@ static void test_cose_aead_tag_len(void)
 
     TEST_LOG("  [AeadTagLen constants]\n");
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     ret = wolfCose_AeadTagLen(WOLFCOSE_ALG_A128GCM, &tagLen);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (tagLen == 16u),
                 "A128GCM tag length");
@@ -10098,7 +10106,7 @@ static void test_cose_aead_tag_len(void)
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (tagLen == 16u),
                 "A256GCM tag length");
 #endif
-#ifdef HAVE_AESCCM
+#ifdef WOLFCOSE_HAVE_AESCCM
     ret = wolfCose_AeadTagLen(WOLFCOSE_ALG_AES_CCM_16_64_128, &tagLen);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (tagLen == 8u),
                 "AES-CCM-64 short tag length");
@@ -10106,7 +10114,7 @@ static void test_cose_aead_tag_len(void)
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (tagLen == 16u),
                 "AES-CCM-128 tag length");
 #endif
-#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+#if defined(WOLFCOSE_HAVE_CHACHA20)
     ret = wolfCose_AeadTagLen(WOLFCOSE_ALG_CHACHA20_POLY1305, &tagLen);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (tagLen == 16u),
                 "ChaCha20-Poly1305 tag length");
@@ -10120,36 +10128,36 @@ static void test_cose_alg_to_hash_constants(void)
 
     TEST_LOG("  [Algorithm-to-hash constants]\n");
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_ES256, &ht);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA256),
                 "AlgToHashType ES256 -> SHA-256");
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
     ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_ES384, &ht);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA384),
                 "AlgToHashType ES384 -> SHA-384");
 #endif
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_ES512
     ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_ES512, &ht);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA512),
                 "AlgToHashType ES512 -> SHA-512");
 #endif
-#endif /* HAVE_ECC */
-#ifdef WC_RSA_PSS
+#endif /* WOLFCOSE_HAVE_ES256 */
+#ifdef WOLFCOSE_HAVE_RSAPSS
     ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_PS256, &ht);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA256),
                 "AlgToHashType PS256 -> SHA-256");
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_PS384
     ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_PS384, &ht);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA384),
                 "AlgToHashType PS384 -> SHA-384");
 #endif
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_PS512
     ret = wolfCose_AlgToHashType(WOLFCOSE_ALG_PS512, &ht);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (ht == WC_HASH_TYPE_SHA512),
                 "AlgToHashType PS512 -> SHA-512");
 #endif
-#endif /* WC_RSA_PSS */
+#endif /* WOLFCOSE_HAVE_RSAPSS */
 }
 
 static void test_cose_build_sig_structure_context(void)
@@ -10242,7 +10250,7 @@ static void test_cose_build_sig_structure_context(void)
  *       99% on src/wolfcose.c is preserved. -----
  */
 
-#if defined(WC_RSA_PSS) && defined(WOLFCOSE_SIGN) && \
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFCOSE_SIGN) && \
     defined(WOLFSSL_KEY_GEN)
 static void test_cose_sign_multi_pss_roundtrip(void)
 {
@@ -10306,7 +10314,7 @@ static void test_cose_sign_multi_pss_roundtrip(void)
 }
 #endif
 
-#if defined(WOLFSSL_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
+#if defined(WOLFCOSE_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
 static void test_cose_sign_multi_mldsa_roundtrip(void)
 {
     WOLFCOSE_KEY key;
@@ -10370,7 +10378,7 @@ static void test_cose_sign_multi_mldsa_roundtrip(void)
 }
 #endif
 
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESCCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESCCM)
 static void test_cose_encrypt_multi_ccm_roundtrip(void)
 {
     WOLFCOSE_KEY key;
@@ -10423,7 +10431,7 @@ static void test_cose_encrypt_multi_ccm_roundtrip(void)
 }
 #endif
 
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_CHACHA20)
 static void test_cose_encrypt_multi_chacha_roundtrip(void)
 {
     WOLFCOSE_KEY key;
@@ -10478,7 +10486,7 @@ static void test_cose_encrypt_multi_chacha_roundtrip(void)
 #endif
 
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
-    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(HAVE_AESCCM)
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(WOLFCOSE_HAVE_AESCCM)
 static void test_cose_encrypt0_detached_ccm(void)
 {
     WOLFCOSE_KEY key;
@@ -10514,7 +10522,7 @@ static void test_cose_encrypt0_detached_ccm(void)
 #endif
 
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
-    defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+    defined(WOLFCOSE_HAVE_CHACHA20)
 static void test_cose_encrypt0_detached_chacha(void)
 {
     WOLFCOSE_KEY key;
@@ -10549,7 +10557,7 @@ static void test_cose_encrypt0_detached_chacha(void)
 }
 #endif
 
-#if defined(WOLFCOSE_MAC) && defined(HAVE_AES_CBC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_AESMAC)
 static void test_cose_mac_multi_aescbc_roundtrip(void)
 {
     WOLFCOSE_KEY key;
@@ -10599,7 +10607,7 @@ static void test_cose_mac_multi_aescbc_roundtrip(void)
 }
 #endif
 
-#if defined(HAVE_ECC) && \
+#if defined(WOLFCOSE_HAVE_ES256) && \
     defined(WOLFCOSE_KEY_ENCODE) && defined(WOLFCOSE_KEY_DECODE)
 static void test_cose_key_kid_alg_roundtrip(void)
 {
@@ -10654,8 +10662,8 @@ static void test_cose_key_kid_alg_roundtrip(void)
 }
 #endif
 
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
-    defined(HAVE_HKDF) && defined(WOLFSSL_SHA512)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && \
+    defined(HAVE_HKDF) && defined(WOLFCOSE_HAVE_ES512)
 static void test_cose_encrypt_ecdh_es_hkdf512(void)
 {
     WOLFCOSE_KEY recipientKey;
@@ -10720,7 +10728,7 @@ static void test_cose_encrypt_ecdh_es_hkdf512(void)
 }
 #endif
 
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_cose_sign_multi_alg_key_mismatch(void)
 {
     WOLFCOSE_KEY key;
@@ -10768,8 +10776,8 @@ static void test_cose_sign_multi_alg_key_mismatch(void)
 }
 #endif
 
-#if defined(WOLFCOSE_SIGN) && defined(WC_RSA_PSS) && \
-    defined(HAVE_ECC) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_RSAPSS) && \
+    defined(WOLFCOSE_HAVE_ES256) && defined(WOLFSSL_KEY_GEN)
 static void test_cose_sign_multi_wrong_kty_for_pss(void)
 {
     WOLFCOSE_KEY key;
@@ -10816,7 +10824,7 @@ static void test_cose_sign_multi_wrong_kty_for_pss(void)
 }
 #endif
 
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ED448)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ED448)
 static void test_cose_sign_multi_ed448_roundtrip(void)
 {
     WOLFCOSE_KEY key;
@@ -10887,17 +10895,17 @@ static void test_cose_sigsize_known_algs(void)
 
     TEST_LOG("  [SigSize known algorithms]\n");
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     ret = wolfCose_SigSize(WOLFCOSE_ALG_ES256, &sz);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (sz == 64u),
                 "SigSize ES256 -> 64");
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
     ret = wolfCose_SigSize(WOLFCOSE_ALG_ES384, &sz);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (sz == 96u),
                 "SigSize ES384 -> 96");
 #endif
 #endif
-#if defined(HAVE_ED25519) || defined(HAVE_ED448)
+#if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448)
     ret = wolfCose_SigSize(WOLFCOSE_ALG_EDDSA, &sz);
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && ((sz == 64u) || (sz == 114u)),
                 "SigSize EDDSA returns curve max");
@@ -11005,7 +11013,7 @@ static void test_cose_key_decode_tstr_alg_rejected(void)
 
 /* ----- Negative-path tests for caller-error rejection logic ----- */
 
-#if defined(HAVE_ECC)
+#if defined(WOLFCOSE_HAVE_ES256)
 static void test_cose_setecc_invalid_curve(void)
 {
     WOLFCOSE_KEY key;
@@ -11031,7 +11039,7 @@ static void test_cose_setecc_invalid_curve(void)
 }
 #endif
 
-#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE)
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE)
 static void test_cose_mac0_hmac_short_key_rejected(void)
 {
     WOLFCOSE_KEY key;
@@ -11062,7 +11070,7 @@ static void test_cose_mac0_hmac_short_key_rejected(void)
 }
 #endif
 
-#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE) && \
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE) && \
     defined(WOLFCOSE_MAC0_VERIFY)
 static void test_cose_mac0_verify_short_key_rejected(void)
 {
@@ -11112,7 +11120,7 @@ static void test_cose_mac0_verify_short_key_rejected(void)
 }
 #endif
 
-#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE)
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE)
 static void test_cose_mac0_create_key_alg_mismatch(void)
 {
     WOLFCOSE_KEY key;
@@ -11145,7 +11153,7 @@ static void test_cose_mac0_create_key_alg_mismatch(void)
 }
 #endif
 
-#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
+#if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
 static void test_cose_encrypt0_key_alg_mismatch(void)
 {
     WOLFCOSE_KEY key;
@@ -11179,7 +11187,7 @@ static void test_cose_encrypt0_key_alg_mismatch(void)
 }
 #endif
 
-#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN1_SIGN)
 static void test_cose_sign1_key_alg_mismatch(void)
 {
     WOLFCOSE_KEY key;
@@ -11322,7 +11330,7 @@ static void test_cose_sign1_both_payloads(void)
 }
 #endif
 
-#if defined(WOLFCOSE_MAC0_CREATE) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC0_CREATE) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_cose_mac0_both_payloads(void)
 {
     WOLFCOSE_KEY key;
@@ -11440,7 +11448,7 @@ static void test_cose_key_decode_symmetric_missing_k(void)
                 "CoseKey_Decode rejects symmetric w/o k");
 }
 
-#if defined(HAVE_ECC)
+#if defined(WOLFCOSE_HAVE_ES256)
 static void test_cose_key_decode_ec2_short_coord(void)
 {
     WOLFCOSE_KEY key;
@@ -11468,7 +11476,7 @@ static void test_cose_key_decode_ec2_short_coord(void)
 #endif
 
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
-    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(HAVE_AESCCM)
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(WOLFCOSE_HAVE_AESCCM)
 static void test_cose_encrypt0_detached_ccm_roundtrip(void)
 {
     WOLFCOSE_KEY key;
@@ -11517,7 +11525,7 @@ static void test_cose_encrypt0_detached_ccm_roundtrip(void)
 
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
     defined(WOLFCOSE_ENCRYPT0_DECRYPT) && \
-    defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+    defined(WOLFCOSE_HAVE_CHACHA20)
 static void test_cose_encrypt0_detached_chacha_roundtrip(void)
 {
     WOLFCOSE_KEY key;
@@ -11601,7 +11609,7 @@ static void test_internal_helpers(void)
     ret = wolfCose_CrvKeySize(9999, &sz);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "CrvKeySize bad crv");
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* ----- wolfCose_CrvToWcCurve ----- */
     /* NULL output pointer */
     ret = wolfCose_CrvToWcCurve(WOLFCOSE_CRV_P256, NULL);
@@ -11639,7 +11647,7 @@ static void test_internal_helpers(void)
     ret = wolfCose_AeadTagLen(9999, &sz);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "AeadTagLen bad alg");
 
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
     /* ----- wolfCose_HmacType ----- */
     /* NULL output pointer */
     ret = wolfCose_HmacType(WOLFCOSE_ALG_HMAC_256_256, NULL);
@@ -11661,7 +11669,7 @@ static void test_internal_helpers(void)
     ret = wolfCose_CrvKeySize(WOLFCOSE_CRV_ED448, &sz);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS && sz == 57, "CrvKeySize ED448");
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* P-521 curve tests */
     ret = wolfCose_CrvToWcCurve(WOLFCOSE_CRV_P521, &wcType);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "CrvToWcCurve P521");
@@ -11671,14 +11679,14 @@ static void test_internal_helpers(void)
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "CrvToWcCurve P384");
 #endif
 
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_ES512
     /* ES512 signature size */
     ret = wolfCose_SigSize(WOLFCOSE_ALG_ES512, &sz);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS && sz == 132, "SigSize ES512");
 #endif
 
     /* Test AES-CCM-256 key length path */
-#ifdef HAVE_AESCCM
+#ifdef WOLFCOSE_HAVE_AESCCM
     ret = wolfCose_AeadKeyLen(WOLFCOSE_ALG_AES_CCM_16_64_256, &sz);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS && sz == 32, "AeadKeyLen CCM-256");
 
@@ -11696,7 +11704,7 @@ static void test_internal_helpers(void)
 #endif
 
     /* ----- Test wolfCose_EccSignRaw/EccVerifyRaw error paths ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     TEST_LOG("  [ECC Sign/Verify Raw Error Tests]\n");
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -11886,7 +11894,7 @@ static void test_force_failure_crypto(void)
         return;
     }
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
@@ -11973,9 +11981,9 @@ static void test_force_failure_crypto(void)
         (void)wc_ecc_free(&eccKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
@@ -12037,9 +12045,9 @@ static void test_force_failure_crypto(void)
 
         wc_CoseKey_Free(&key);
     }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
@@ -12086,9 +12094,9 @@ static void test_force_failure_crypto(void)
 
         wc_CoseKey_Free(&key);
     }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
@@ -12145,9 +12153,9 @@ static void test_force_failure_crypto(void)
         (void)wc_ed25519_free(&edKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* HAVE_ED25519 */
+#endif /* WOLFCOSE_HAVE_EDDSA */
 
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
@@ -12207,9 +12215,9 @@ static void test_force_failure_crypto(void)
         (void)wc_FreeRsaKey(&rsaKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
+#endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
@@ -12272,9 +12280,9 @@ static void test_force_failure_crypto(void)
         (void)wc_MlDsaKey_Free(&dlKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* WOLFSSL_HAVE_MLDSA */
+#endif /* WOLFCOSE_HAVE_MLDSA */
 
-#ifdef HAVE_AESCCM
+#ifdef WOLFCOSE_HAVE_AESCCM
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
@@ -12351,9 +12359,9 @@ static void test_force_failure_crypto(void)
             wc_CoseKey_Free(&key);
         }
     }
-#endif /* HAVE_AESCCM */
+#endif /* WOLFCOSE_HAVE_AESCCM */
 
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY key;
@@ -12413,9 +12421,9 @@ static void test_force_failure_crypto(void)
         (void)wc_ed448_free(&edKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* HAVE_ED448 */
+#endif /* WOLFCOSE_HAVE_ED448 */
 
-#if defined(HAVE_ECC) && defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_HKDF)
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_HKDF)
     /* Test ECDH shared secret failure (via ECDH-ES encrypt) */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -12459,9 +12467,9 @@ static void test_force_failure_crypto(void)
         (void)wc_ecc_free(&recipEcc);
         wc_CoseKey_Free(&recipKey);
     }
-#endif /* HAVE_ECC && WOLFCOSE_ECDH_ES_DIRECT && HAVE_HKDF */
+#endif /* WOLFCOSE_HAVE_ES256 && WOLFCOSE_ECDH_ES_DIRECT && HAVE_HKDF */
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 
     /* Test ECC import failure via CoseKey_Decode */
     /* empty-brace-scan: allow - test-local temporary scope */
@@ -12496,9 +12504,9 @@ static void test_force_failure_crypto(void)
         (void)wc_ecc_free(&eccKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     /* Test Ed25519 import failure via CoseKey_Decode */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -12532,9 +12540,9 @@ static void test_force_failure_crypto(void)
         (void)wc_ed25519_free(&edKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* HAVE_ED25519 */
+#endif /* WOLFCOSE_HAVE_EDDSA */
 
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     /* Test Ed448 import failure via CoseKey_Decode */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -12568,9 +12576,9 @@ static void test_force_failure_crypto(void)
         (void)wc_ed448_free(&edKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* HAVE_ED448 */
+#endif /* WOLFCOSE_HAVE_ED448 */
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     /* Test ML-DSA import failure via CoseKey_Decode */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
@@ -12609,10 +12617,10 @@ static void test_force_failure_crypto(void)
         (void)wc_MlDsaKey_Free(&dlKey);
         wc_CoseKey_Free(&key);
     }
-#endif /* WOLFSSL_HAVE_MLDSA */
+#endif /* WOLFCOSE_HAVE_MLDSA */
 
     /* Test WOLF_FAIL_HASH - covers hash operations in sign/verify paths */
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY hashKey;
@@ -12678,7 +12686,7 @@ static void test_force_failure_crypto(void)
 #endif
 
     /* Test import_pub failures - encode public-only key, then test import failure */
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY ed25PubKey;
@@ -12710,9 +12718,9 @@ static void test_force_failure_crypto(void)
         (void)wc_ed25519_free(&ed25WolfKey);
         wc_CoseKey_Free(&ed25PubKey);
     }
-#endif /* HAVE_ED25519 */
+#endif /* WOLFCOSE_HAVE_EDDSA */
 
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY ed448PubKey;
@@ -12744,9 +12752,9 @@ static void test_force_failure_crypto(void)
         (void)wc_ed448_free(&ed448WolfKey);
         wc_CoseKey_Free(&ed448PubKey);
     }
-#endif /* HAVE_ED448 */
+#endif /* WOLFCOSE_HAVE_ED448 */
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         WOLFCOSE_KEY dlPubKey;
@@ -12783,7 +12791,7 @@ static void test_force_failure_crypto(void)
         (void)wc_MlDsaKey_Free(&dlWolfKey);
         wc_CoseKey_Free(&dlPubKey);
     }
-#endif /* WOLFSSL_HAVE_MLDSA */
+#endif /* WOLFCOSE_HAVE_MLDSA */
 
     (void)wc_FreeRng(&rng);
 
@@ -12798,7 +12806,7 @@ static void test_force_failure_crypto(void)
  * ======================================================== */
 
 /* ----- Phase 1: Buffer Too Small Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_buffer_too_small_key_encode(void)
 {
     WOLFCOSE_KEY key;
@@ -12834,9 +12842,9 @@ static void test_buffer_too_small_key_encode(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_buffer_too_small_encrypt(void)
 {
     WOLFCOSE_KEY key;
@@ -12870,9 +12878,9 @@ static void test_buffer_too_small_encrypt(void)
         tinyBuf, sizeof(tinyBuf), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "encrypt tiny output");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_buffer_too_small_mac(void)
 {
     WOLFCOSE_KEY key;
@@ -12904,10 +12912,10 @@ static void test_buffer_too_small_mac(void)
         tinyBuf, sizeof(tinyBuf), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "mac tiny output");
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Phase 2: Wrong Key Type Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_wrong_key_type_sign(void)
 {
     WOLFCOSE_KEY symmKey;
@@ -12944,6 +12952,7 @@ static void test_wrong_key_type_sign(void)
     (void)wc_FreeRng(&rng);
 }
 
+#ifdef WOLFCOSE_HAVE_RSAPSS
 static void test_wrong_key_type_ecc_for_rsa(void)
 {
     WOLFCOSE_KEY eccCoseKey;
@@ -12972,7 +12981,7 @@ static void test_wrong_key_type_ecc_for_rsa(void)
     (void)wc_CoseKey_Init(&eccCoseKey);
     (void)wc_CoseKey_SetEcc(&eccCoseKey, WOLFCOSE_CRV_P256, &eccKey);
 
-#ifdef WC_RSA_PSS
+#ifdef WOLFCOSE_HAVE_RSAPSS
     /* ECC key with RSA algorithm (should fail) */
     ret = wc_CoseSign1_Sign(&eccCoseKey, WOLFCOSE_ALG_PS256,
         NULL, 0,
@@ -12992,9 +13001,10 @@ static void test_wrong_key_type_ecc_for_rsa(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_RSAPSS */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_wrong_key_type_decrypt(void)
 {
     WOLFCOSE_KEY symmKey;
@@ -13014,7 +13024,7 @@ static void test_wrong_key_type_decrypt(void)
     size_t plaintextLen = 0;
     WOLFCOSE_HDR hdr;
     int ret;
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     ecc_key eccKey;
     WOLFCOSE_KEY eccCoseKey;
     WC_RNG rng;
@@ -13037,7 +13047,7 @@ static void test_wrong_key_type_decrypt(void)
         return;
     }
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     /* Try to decrypt with ECC key (should fail) */
     ret = wc_InitRng(&rng);
     if (ret != 0) { TEST_ASSERT(0, "rng init"); return; }
@@ -13063,9 +13073,9 @@ static void test_wrong_key_type_decrypt(void)
     TEST_ASSERT(1, "ecc not available, skip");
 #endif
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#if !defined(NO_HMAC) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_HAVE_ES256)
 static void test_wrong_key_type_mac_verify(void)
 {
     WOLFCOSE_KEY symmKey, eccCoseKey;
@@ -13122,10 +13132,10 @@ static void test_wrong_key_type_mac_verify(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* !NO_HMAC && HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_HMAC256 && WOLFCOSE_HAVE_ES256 */
 
 /* ----- Phase 3: Invalid Algorithm Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_invalid_sign_algorithm(void)
 {
     WOLFCOSE_KEY key;
@@ -13166,9 +13176,9 @@ static void test_invalid_sign_algorithm(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_invalid_encrypt_algorithm(void)
 {
     WOLFCOSE_KEY key;
@@ -13200,9 +13210,9 @@ static void test_invalid_encrypt_algorithm(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "invalid encrypt alg");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_invalid_mac_algorithm(void)
 {
     WOLFCOSE_KEY key;
@@ -13232,7 +13242,7 @@ static void test_invalid_mac_algorithm(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "invalid mac alg");
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Phase 4: NULL/Invalid Argument Tests ----- */
 static void test_null_key_operations(void)
@@ -13249,13 +13259,13 @@ static void test_null_key_operations(void)
     size_t decPayloadLen = 0;
     WOLFCOSE_HDR hdr;
     int ret;
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     WC_RNG rng;
 #endif
 
     TEST_LOG("  [NULL Arguments - Various]\n");
 
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     ret = wc_InitRng(&rng);
     if (ret == 0) {
         /* NULL key for sign */
@@ -13277,7 +13287,7 @@ static void test_null_key_operations(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "verify null key");
 #endif
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     /* NULL key for encrypt */
     ret = wc_CoseEncrypt0_Encrypt(NULL, WOLFCOSE_ALG_A128GCM,
         ivBytes, sizeof(ivBytes),
@@ -13295,7 +13305,7 @@ static void test_null_key_operations(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "decrypt null key");
 #endif
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     /* NULL key for MAC create */
     ret = wc_CoseMac0_Create(NULL, WOLFCOSE_ALG_HMAC_256_256,
         NULL, 0,
@@ -13314,7 +13324,7 @@ static void test_null_key_operations(void)
 #endif
 }
 
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_multi_sign_null_signers(void)
 {
     uint8_t payload[] = "Test payload";
@@ -13341,7 +13351,7 @@ static void test_multi_sign_null_signers(void)
 }
 #endif
 
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_multi_encrypt_null_recipients(void)
 {
     uint8_t payload[] = "Test payload";
@@ -13387,7 +13397,7 @@ static void test_multi_encrypt_null_recipients(void)
 }
 #endif
 
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_multi_mac_null_recipients(void)
 {
     uint8_t payload[] = "Test payload";
@@ -13424,7 +13434,7 @@ static void test_multi_mac_null_recipients(void)
 #endif
 
 /* ----- Phase 5: CBOR Parsing Error Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_cbor_truncated_sign1(void)
 {
     WOLFCOSE_KEY key;
@@ -13465,9 +13475,9 @@ static void test_cbor_truncated_sign1(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_cbor_malformed_encrypt0(void)
 {
     WOLFCOSE_KEY key;
@@ -13538,10 +13548,10 @@ static void test_cbor_missing_iv(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "missing iv detected");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* ----- Phase 6: Wrong CBOR Tag Tests ----- */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
 static void test_wrong_tag_sign1(void)
 {
     WOLFCOSE_KEY key;
@@ -13597,9 +13607,9 @@ static void test_wrong_tag_sign1(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_ES256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_wrong_tag_encrypt0(void)
 {
     WOLFCOSE_KEY key;
@@ -13633,9 +13643,9 @@ static void test_wrong_tag_encrypt0(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_TAG, "wrong tag encrypt0 detected");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_wrong_tag_mac0(void)
 {
     WOLFCOSE_KEY key;
@@ -13676,10 +13686,10 @@ static void test_wrong_tag_mac0(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_TAG, "wrong tag mac0 detected");
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Phase 7: Signature/MAC Verification Failures ----- */
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
 static void test_corrupted_eddsa_signature(void)
 {
     WOLFCOSE_KEY key;
@@ -13738,9 +13748,9 @@ static void test_corrupted_eddsa_signature(void)
     (void)wc_ed25519_free(&edKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ED25519 */
+#endif /* WOLFCOSE_HAVE_EDDSA */
 
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_corrupted_mac_tag(void)
 {
     WOLFCOSE_KEY key;
@@ -13785,10 +13795,10 @@ static void test_corrupted_mac_tag(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "corrupted mac tag detected");
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Phase 8: ECDH-ES Key Agreement Tests ----- */
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
 static void test_ecdh_es_wrong_key_type_sender(void)
 {
     WOLFCOSE_RECIPIENT recipient;
@@ -13830,10 +13840,10 @@ static void test_ecdh_es_wrong_key_type_sender(void)
 
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_ECDH_ES_DIRECT && HAVE_ECC && HAVE_HKDF */
+#endif /* WOLFCOSE_ECDH_ES_DIRECT && WOLFCOSE_HAVE_ES256 && HAVE_HKDF */
 
 /* ----- Phase 9: Multi-recipient KID Encoding Tests ----- */
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
 static void test_mac0_with_kid(void)
 {
     WOLFCOSE_KEY key;
@@ -13876,9 +13886,9 @@ static void test_mac0_with_kid(void)
         TEST_ASSERT(hdr.kidLen == sizeof(kid) - 1, "mac0 kid length");
     }
 }
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_multi_encrypt_with_kids(void)
 {
     WOLFCOSE_RECIPIENT recipients[2];
@@ -13934,10 +13944,10 @@ static void test_multi_encrypt_with_kids(void)
 
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
+#endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
 /* ----- Phase 10: Multi-recipient Decrypt Error Tests ----- */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_multi_decrypt_wrong_key(void)
 {
     WOLFCOSE_RECIPIENT createRecip, decryptRecip;
@@ -14005,9 +14015,9 @@ static void test_multi_decrypt_wrong_key(void)
 
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
+#endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_multi_mac_verify_wrong_key(void)
 {
     WOLFCOSE_RECIPIENT createRecip, verifyRecip;
@@ -14069,10 +14079,10 @@ static void test_multi_mac_verify_wrong_key(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "multi mac verify wrong key");
 }
-#endif /* WOLFCOSE_MAC && !NO_HMAC */
+#endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- Additional Key Type Tests ----- */
-#if defined(HAVE_ECC) && (defined(HAVE_ED25519) || defined(HAVE_ED448))
+#if defined(WOLFCOSE_HAVE_ES256) && (defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448))
 static void test_key_type_eddsa_wrong_crv(void)
 {
     WOLFCOSE_KEY key;
@@ -14113,9 +14123,9 @@ static void test_key_type_eddsa_wrong_crv(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ECC && (HAVE_ED25519 || HAVE_ED448) */
+#endif /* WOLFCOSE_HAVE_ES256 && (WOLFCOSE_HAVE_EDDSA || WOLFCOSE_HAVE_ED448) */
 
-#if defined(HAVE_ED25519) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_HAVE_EDDSA) && defined(WOLFCOSE_HAVE_ES256)
 static void test_key_type_okp_for_ecdsa(void)
 {
     WOLFCOSE_KEY key;
@@ -14156,10 +14166,10 @@ static void test_key_type_okp_for_ecdsa(void)
     (void)wc_ed25519_free(&edKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* HAVE_ED25519 && HAVE_ECC */
+#endif /* WOLFCOSE_HAVE_EDDSA && WOLFCOSE_HAVE_ES256 */
 
 /* ----- Additional Coverage Tests ----- */
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
 static void test_rsa_key_encode_buffer_small(void)
 {
     WOLFCOSE_KEY key;
@@ -14201,9 +14211,9 @@ static void test_rsa_key_encode_buffer_small(void)
     (void)wc_FreeRsaKey(&rsaKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* WC_RSA_PSS && WOLFSSL_KEY_GEN */
+#endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
 
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
 static void test_mldsa_key_encode_buffer_small(void)
 {
     WOLFCOSE_KEY key;
@@ -14247,7 +14257,7 @@ static void test_mldsa_key_encode_buffer_small(void)
     (void)wc_MlDsaKey_Free(&dlKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFSSL_HAVE_MLDSA */
+#endif /* WOLFCOSE_HAVE_MLDSA */
 
 static void test_key_decode_bad_kty(void)
 {
@@ -14268,8 +14278,8 @@ static void test_key_decode_bad_kty(void)
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS || ret < 0, "key decode invalid kty");
 }
 
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
-    defined(HAVE_HKDF) && defined(WOLFSSL_SHA512)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && \
+    defined(HAVE_HKDF) && defined(WOLFCOSE_HAVE_ES512)
 static void test_ecdh_es_hkdf_512(void)
 {
     WOLFCOSE_RECIPIENT recipient;
@@ -14318,9 +14328,9 @@ static void test_ecdh_es_hkdf_512(void)
     (void)wc_ecc_free(&eccWolfKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_ECDH_ES_DIRECT && HAVE_ECC && HAVE_HKDF && WOLFSSL_SHA512 */
+#endif /* WOLFCOSE_ECDH_ES_DIRECT && WOLFCOSE_HAVE_ES256 && HAVE_HKDF && WOLFCOSE_HAVE_ES512 */
 
-#if defined(WOLFCOSE_KEY_WRAP) && defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_KEY_WRAP) && defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_key_wrap_decrypt_wrong_cek_size(void)
 {
     WOLFCOSE_RECIPIENT createRecip, decryptRecip;
@@ -14381,9 +14391,9 @@ static void test_key_wrap_decrypt_wrong_cek_size(void)
 
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_KEY_WRAP && WOLFCOSE_ENCRYPT && HAVE_AESGCM */
+#endif /* WOLFCOSE_KEY_WRAP && WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_multi_sign_verify_wrong_signer(void)
 {
     WOLFCOSE_SIGNATURE signers[2];
@@ -14466,9 +14476,9 @@ static void test_multi_sign_verify_wrong_signer(void)
     (void)wc_ecc_free(&eccWrongKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_SIGN && HAVE_ECC */
+#endif /* WOLFCOSE_SIGN && WOLFCOSE_HAVE_ES256 */
 
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_multi_mac_with_kid(void)
 {
     WOLFCOSE_RECIPIENT recipients[2];
@@ -14530,10 +14540,10 @@ static void test_multi_mac_with_kid(void)
         TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "multi mac verify recipient 1");
     }
 }
-#endif /* WOLFCOSE_MAC && !NO_HMAC */
+#endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
 /* Additional targeted coverage tests */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_encrypt0_detached_buffer_small(void)
 {
     WOLFCOSE_KEY key;
@@ -14571,9 +14581,9 @@ static void test_encrypt0_detached_buffer_small(void)
     /* Should fail because detached buffer is too small for payload + tag */
     TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "encrypt0 detached tiny buf");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_multi_sign_verify_null_payload(void)
 {
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
@@ -14662,9 +14672,9 @@ static void test_multi_sign_wrong_tag(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_SIGN && HAVE_ECC */
+#endif /* WOLFCOSE_SIGN && WOLFCOSE_HAVE_ES256 */
 
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_multi_encrypt_decrypt_null_recipient(void)
 {
     static const uint8_t dummyMsg[] = { 0x64u, 0x75u, 0x6Du, 0x6Du, 0x79u };
@@ -14684,9 +14694,9 @@ static void test_multi_encrypt_decrypt_null_recipient(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "multi decrypt null recipient");
 }
-#endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
+#endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_multi_mac_verify_null_recipient(void)
 {
     static const uint8_t dummyMsg[] = { 0x64u, 0x75u, 0x6Du, 0x6Du, 0x79u };
@@ -14706,9 +14716,9 @@ static void test_multi_mac_verify_null_recipient(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "multi mac verify null recipient");
 }
-#endif /* WOLFCOSE_MAC && !NO_HMAC */
+#endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
 static void test_encrypt0_decrypt_wrong_key_size(void)
 {
     WOLFCOSE_KEY createKey, decryptKey;
@@ -14762,10 +14772,10 @@ static void test_encrypt0_decrypt_wrong_key_size(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "decrypt wrong key size");
 }
-#endif /* HAVE_AESGCM */
+#endif /* WOLFCOSE_HAVE_AESGCM */
 
 /* Test multi-recipient encrypt with detached payload to cover lines 4936-4948 */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_multi_encrypt_with_detached(void)
 {
     WOLFCOSE_KEY key;
@@ -14810,10 +14820,10 @@ static void test_multi_encrypt_with_detached(void)
 
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
+#endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
 /* Test multi-recipient decrypt with malformed messages - covers lines 5317-5615 */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_multi_decrypt_malformed_recipients(void)
 {
     WOLFCOSE_KEY key;
@@ -14875,10 +14885,10 @@ static void test_multi_decrypt_malformed_recipients(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "decrypt missing IV");
 }
-#endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
+#endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
 /* Test multi-MAC create with various error conditions - covers lines 5708-5889 */
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_multi_mac_create_errors(void)
 {
     WOLFCOSE_KEY key;
@@ -14935,10 +14945,10 @@ static void test_multi_mac_create_errors(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "multi mac invalid alg");
 }
-#endif /* WOLFCOSE_MAC && !NO_HMAC */
+#endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
 /* Test multi-MAC verify with various errors - covers lines 5947-6099 */
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_multi_mac_verify_malformed(void)
 {
     WOLFCOSE_KEY key;
@@ -15000,10 +15010,10 @@ static void test_multi_mac_verify_malformed(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "multi mac verify truncated");
 }
-#endif /* WOLFCOSE_MAC && !NO_HMAC */
+#endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
 /* Test MAC0 verify with unknown algorithm - covers lines 4818-4819 */
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_mac0_verify_unknown_alg(void)
 {
     WOLFCOSE_KEY key;
@@ -15040,10 +15050,10 @@ static void test_mac0_verify_unknown_alg(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "mac0 verify unknown alg");
 }
-#endif /* WOLFCOSE_MAC && !NO_HMAC */
+#endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
 /* Test MAC0 verify failure (corrupted tag) - covers lines 4753-4754 */
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
 static void test_mac0_verify_corrupted_tag(void)
 {
     WOLFCOSE_KEY key;
@@ -15090,10 +15100,10 @@ static void test_mac0_verify_corrupted_tag(void)
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "mac0 verify corrupted tag");
 }
-#endif /* WOLFCOSE_MAC && !NO_HMAC */
+#endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
 /* Test multi-encrypt with recipients having KIDs - covers lines 5176-5200 */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_multi_encrypt_recipients_with_kids(void)
 {
     WOLFCOSE_KEY key1, key2;
@@ -15161,12 +15171,12 @@ static void test_multi_encrypt_recipients_with_kids(void)
 
     (void)wc_FreeRng(&rng);
 }
-#endif /* WOLFCOSE_ENCRYPT && HAVE_AESGCM */
+#endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
 /* ----- wolfReview Regression Tests ----- */
 
 /* Test #1: wc_CoseSign_Sign encodes outer array as 4 (not 3) */
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_sign_multi_array_count(void)
 {
     WOLFCOSE_KEY key1;
@@ -15225,7 +15235,7 @@ static void test_sign_multi_array_count(void)
 #endif
 
 /* Test #2: wc_CoseEncrypt_Encrypt rejects detached mode */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_encrypt_multi_detached_rejected(void)
 {
     WOLFCOSE_KEY key1;
@@ -15260,7 +15270,7 @@ static void test_encrypt_multi_detached_rejected(void)
 #endif
 
 /* Test #5: wc_CoseEncrypt_Encrypt rejects wrong IV length */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
 static void test_encrypt_multi_wrong_iv_len(void)
 {
     WOLFCOSE_KEY key1;
@@ -15294,8 +15304,8 @@ static void test_encrypt_multi_wrong_iv_len(void)
 #endif
 
 /* Test #7: ECDH-ES multi-recipient rejected */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM) && \
-    defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM) && \
+    defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
 static void test_ecdh_es_multi_recipient_rejected(void)
 {
     WOLFCOSE_KEY key1, key2;
@@ -15521,7 +15531,7 @@ static void test_ecdh_es_recipient_protected_bound(void)
 #endif
 
 /* Test #9: wc_CoseSign_Verify rejects wrong array count */
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_sign_verify_bad_array_count(void)
 {
     WOLFCOSE_KEY key;
@@ -15576,44 +15586,44 @@ int test_cose(void)
 
     /* Key tests */
     test_cose_key_init();
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cose_key_ecc();
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     test_cose_key_ed25519();
 #endif
     test_cose_key_symmetric();
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     test_cose_key_rsa();
     test_cose_key_rsa_scratch_scrubbed();
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_key_mldsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, WC_ML_DSA_44);
     test_cose_key_mldsa("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, WC_ML_DSA_65);
     test_cose_key_mldsa("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, WC_ML_DSA_87);
 #endif
 
     /* Sign1 basic tests */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cose_sign1_ecc("ES256", WOLFCOSE_ALG_ES256, WOLFCOSE_CRV_P256, 32);
     test_cose_sign1_with_aad();
     test_cose_sign1_detached();
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_ES384
     test_cose_sign1_ecc("ES384", WOLFCOSE_ALG_ES384, WOLFCOSE_CRV_P384, 48);
 #endif
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_ES512
     test_cose_sign1_ecc("ES512", WOLFCOSE_ALG_ES512, WOLFCOSE_CRV_P521, 66);
 #endif
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     test_cose_sign1_eddsa();
 #endif
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     test_cose_sign1_ed448();
 #endif
 
     /* Encrypt0 basic tests */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_cose_encrypt0_a128gcm();
     test_cose_encrypt0_a256gcm();
     test_cose_encrypt0_with_aad();
@@ -15621,26 +15631,26 @@ int test_cose(void)
 #endif
 
     /* ChaCha20-Poly1305 encryption tests */
-#if defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+#if defined(WOLFCOSE_HAVE_CHACHA20)
     test_cose_encrypt0_chacha20();
     test_cose_encrypt0_chacha20_with_aad();
 #endif
 
     /* AES-CCM encryption tests */
-#ifdef HAVE_AESCCM
+#ifdef WOLFCOSE_HAVE_AESCCM
     test_cose_encrypt0_aes_ccm();
     test_cose_aes_ccm_all_params();
 #endif
 
     /* RSA-PSS signature tests */
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     test_cose_sign1_pss("PS256", WOLFCOSE_ALG_PS256);
     test_cose_sign1_pss("PS384", WOLFCOSE_ALG_PS384);
     test_cose_sign1_pss("PS512", WOLFCOSE_ALG_PS512);
 #endif
 
     /* ML-DSA signature tests */
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_sign1_ml_dsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, WC_ML_DSA_44);
     test_cose_sign1_ml_dsa("ML-DSA-65", WOLFCOSE_ALG_ML_DSA_65, WC_ML_DSA_65);
     test_cose_sign1_ml_dsa("ML-DSA-87", WOLFCOSE_ALG_ML_DSA_87, WC_ML_DSA_87);
@@ -15648,43 +15658,47 @@ int test_cose(void)
 #endif
 
     /* Mac0 basic tests */
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac0_hmac256();
     test_cose_mac0_short_hmac_key();
+#ifdef WOLFCOSE_MAC
     test_cose_mac_payload_validation();
+#endif
     test_cose_mac0_empty_inline_payload();
+#ifdef WOLFCOSE_MAC
     test_cose_mac_multi_per_recipient();
+#endif
     test_cose_mac0_with_aad();
     test_cose_mac0_detached();
     test_cose_mac0_detached_with_aad();
-#ifdef WOLFSSL_SHA384
+#ifdef WOLFCOSE_HAVE_HMAC384
     test_cose_mac0_hmac384();
 #endif
-#ifdef WOLFSSL_SHA512
+#ifdef WOLFCOSE_HAVE_HMAC512
     test_cose_mac0_hmac512();
 #endif
-#endif /* !NO_HMAC */
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
     /* AES-CBC-MAC tests */
-#ifdef HAVE_AES_CBC
+#ifdef WOLFCOSE_HAVE_AESMAC
     test_cose_mac0_aes_cbc_mac();
     test_cose_mac0_aes_cbc_mac_with_aad();
     test_cose_mac0_aes_cbc_mac_detached();
 #endif
 
     /* RFC 9052 interop test vectors */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_rfc_sign1_ecdsa_01();
 #endif
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
     test_rfc_mac0_hmac_01();
 #endif
 
     /* Multi-signer tests */
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
     test_cose_sign_multi_signer();
     test_cose_sign_both_payloads();
-#if defined(WOLFSSL_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
+#if defined(WOLFCOSE_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
     test_cose_sign_ml_dsa_level_mismatch();
 #endif
     test_cose_sign_verify_key_alg_mismatch();
@@ -15692,13 +15706,13 @@ int test_cose(void)
     test_cose_mac0_verify_key_alg_mismatch();
     test_cose_sign_with_aad();
     test_cose_sign_detached();
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     test_cose_sign_mixed_algorithms();
 #endif
 #endif
 
     /* Multi-recipient encryption tests */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM) && \
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM) && \
     defined(WOLFCOSE_KEY_WRAP)
     test_cose_encrypt_multi_recipient();
     test_cose_encrypt_with_aad();
@@ -15706,7 +15720,7 @@ int test_cose(void)
     test_cose_encrypt_direct_key_alg_pin_roundtrip();
     test_cose_encrypt_direct_alg_id_key_alg_roundtrip();
     test_cose_encrypt_direct_multi_key_alg_mismatch();
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
     test_cose_encrypt_ecdh_es_kid_and_alg_pin();
     test_cose_encrypt_ecdh_es_hkdf_256();
     test_cose_encrypt_ecdh_es_wrong_key();
@@ -15720,35 +15734,39 @@ int test_cose(void)
     test_cose_encrypt_kw_mutated_recipient_alg_pin();
     test_cose_encrypt_kw_wrong_keysize();
     test_cose_encrypt_kw_wrong_key_type();
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cose_encrypt_direct_wrong_key_type();
 #endif
 #endif
 
     /* Multi-recipient MAC tests */
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac_multi_recipient();
     test_cose_mac_multi_recipient_key_alg_mismatch();
     test_cose_mac_with_aad();
     test_cose_mac_detached();
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cose_mac_wrong_key_type();
 #endif
 #endif
 
     /* Phase 1: Algorithm Combination Tests */
     TEST_LOG("\n--- Algorithm Combination Tests ---\n");
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
+#ifdef WOLFCOSE_HAVE_ES384
     test_cose_sign1_es384();
+#endif
+#ifdef WOLFCOSE_HAVE_ES512
     test_cose_sign1_es512();
 #endif
-#ifdef HAVE_AESGCM
+#endif
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_cose_encrypt0_a192gcm();
 #endif
 
     /* Phase 3B: Negative Crypto Tests (Tamper Detection) */
     TEST_LOG("\n--- Negative Crypto Tests ---\n");
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cose_sign1_tampered_sig_byte();
     test_cose_sign1_tampered_protected_hdr();
     test_cose_sign1_tampered_payload_byte();
@@ -15756,19 +15774,19 @@ int test_cose(void)
     test_cose_sign1_trailing_bytes();
     test_cose_sign1_hdr_cleared_on_failure();
 #endif
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_cose_encrypt0_tampered_ct_byte();
     test_cose_encrypt0_tampered_tag();
     test_cose_encrypt0_wrong_key();
 #endif
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     test_cose_mac0_tampered_tag_byte();
     test_cose_mac0_truncated_tag();
 #endif
 
     /* Phase 3A: Boundary Condition Tests */
     TEST_LOG("\n--- Boundary Condition Tests ---\n");
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cose_empty_payload();
     test_cose_large_payload();
     test_cose_empty_aad();
@@ -15777,40 +15795,40 @@ int test_cose(void)
 
     /* Phase 3E: Buffer Overflow Prevention Tests */
     TEST_LOG("\n--- Buffer Overflow Prevention Tests ---\n");
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cose_sign_output_too_small();
     test_cose_sign_scratch_too_small();
 #endif
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_cose_encrypt_output_too_small();
 #endif
 
     /* Phase 3C: Malformed CBOR Input Tests */
     TEST_LOG("\n--- Malformed Input Tests ---\n");
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_decode_truncated_message();
     test_decode_wrong_tag();
 #endif
 
     /* Additional Coverage Tests */
     TEST_LOG("\n--- Additional Coverage Tests ---\n");
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cose_bad_algorithm();
 #endif
     test_cose_null_params();
     test_cose_invalid_algorithms();
     test_cose_error_paths();
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_cose_header_edge_cases();
 #endif
     test_cose_key_with_kid();
-#ifdef HAVE_ECC
+#if defined(WOLFCOSE_HAVE_ES384) || defined(WOLFCOSE_HAVE_ES512)
     test_cose_key_ecc_curves();
 #endif
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_cose_encrypt0_key_sizes();
 #endif
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     test_cose_mac0_key_sizes();
 #endif
     test_cbor_edge_cases();
@@ -15818,13 +15836,13 @@ int test_cose(void)
     test_cose_protected_hdr_trailing();
     test_cose_protected_hdr_kid();
     test_cose_oversized_int_narrowing();
-#ifdef HAVE_ECC
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
     test_cose_sign_dup_signer_unprot_hdr();
 #endif
-#ifndef NO_HMAC
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac_dup_recipient_unprot_hdr();
 #endif
-#ifdef HAVE_AESGCM
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_cose_encrypt_dup_recipient_unprot_hdr();
     test_cose_encrypt_direct_empty_protected();
     test_cose_encrypt_recipient_alg_checks();
@@ -15838,87 +15856,89 @@ int test_cose(void)
     test_cose_cross_bucket_dup();
     test_cose_crit_in_unprotected();
     test_cose_iv_partial_iv();
-#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN1_SIGN)
     test_cose_sign1_alg_curve_mismatch();
     test_cose_sign1_inconsistent_kid();
 #endif
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
     test_cose_sign_multi_public_only_key();
 #endif
     test_cose_alg_to_hash_constants();
     test_cose_build_sig_structure_context();
     test_cose_aead_tag_len();
+#ifdef WOLFCOSE_HAVE_HMAC256
     test_cose_hmac_type_constants();
-#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
+#endif
+#if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
     test_cose_encrypt0_nonce_length();
     test_cose_encrypt0_empty_payload_roundtrip();
 #endif
-#if defined(WC_RSA_PSS) && defined(WOLFCOSE_SIGN) && \
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFCOSE_SIGN) && \
     defined(WOLFSSL_KEY_GEN)
     test_cose_sign_multi_pss_roundtrip();
 #endif
-#if defined(WOLFSSL_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
+#if defined(WOLFCOSE_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
     test_cose_sign_multi_mldsa_roundtrip();
 #endif
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESCCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESCCM)
     test_cose_encrypt_multi_ccm_roundtrip();
 #endif
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_CHACHA20)
     test_cose_encrypt_multi_chacha_roundtrip();
 #endif
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
-    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(HAVE_AESCCM)
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(WOLFCOSE_HAVE_AESCCM)
     test_cose_encrypt0_detached_ccm();
 #endif
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
-    defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+    defined(WOLFCOSE_HAVE_CHACHA20)
     test_cose_encrypt0_detached_chacha();
 #endif
-#if defined(WOLFCOSE_MAC) && defined(HAVE_AES_CBC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_AESMAC)
     test_cose_mac_multi_aescbc_roundtrip();
 #endif
-#if defined(HAVE_ECC) && \
+#if defined(WOLFCOSE_HAVE_ES256) && \
     defined(WOLFCOSE_KEY_ENCODE) && defined(WOLFCOSE_KEY_DECODE)
     test_cose_key_kid_alg_roundtrip();
 #endif
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
-    defined(HAVE_HKDF) && defined(WOLFSSL_SHA512)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && \
+    defined(HAVE_HKDF) && defined(WOLFCOSE_HAVE_ES512)
     test_cose_encrypt_ecdh_es_hkdf512();
 #endif
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
     test_cose_sign_multi_alg_key_mismatch();
 #endif
-#if defined(WOLFCOSE_SIGN) && defined(WC_RSA_PSS) && \
-    defined(HAVE_ECC) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_RSAPSS) && \
+    defined(WOLFCOSE_HAVE_ES256) && defined(WOLFSSL_KEY_GEN)
     test_cose_sign_multi_wrong_kty_for_pss();
 #endif
     test_cose_decode_unprotected_tstr_label();
     test_cose_sigsize_known_algs();
     test_cose_decode_tstr_alg_values();
     test_cose_key_decode_tstr_alg_rejected();
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ED448)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ED448)
     test_cose_sign_multi_ed448_roundtrip();
 #endif
-#if defined(HAVE_ECC)
+#if defined(WOLFCOSE_HAVE_ES256)
     test_cose_setecc_invalid_curve();
 #endif
-#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE)
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE)
     test_cose_mac0_hmac_short_key_rejected();
     test_cose_mac0_create_key_alg_mismatch();
 #endif
-#if !defined(NO_HMAC) && defined(WOLFCOSE_MAC0_CREATE) && \
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE) && \
     defined(WOLFCOSE_MAC0_VERIFY)
     test_cose_mac0_verify_short_key_rejected();
 #endif
-#if defined(HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
+#if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
     test_cose_encrypt0_key_alg_mismatch();
 #endif
-#if defined(HAVE_ECC) && defined(WOLFCOSE_SIGN1_SIGN)
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN1_SIGN)
     test_cose_sign1_key_alg_mismatch();
     test_cose_sign1_verify_key_alg_mismatch();
     test_cose_sign1_both_payloads();
 #endif
-#if defined(WOLFCOSE_MAC0_CREATE) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC0_CREATE) && defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac0_both_payloads();
 #endif
 #if defined(WOLFCOSE_KEY_DECODE)
@@ -15926,46 +15946,46 @@ int test_cose(void)
     test_cose_key_decode_trailing_bytes();
     test_cose_key_decode_no_material_on_failure();
     test_cose_key_decode_symmetric_missing_k();
-#if defined(HAVE_ECC)
+#if defined(WOLFCOSE_HAVE_ES256)
     test_cose_key_decode_ec2_short_coord();
 #endif
 #endif
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
-    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(HAVE_AESCCM)
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) && defined(WOLFCOSE_HAVE_AESCCM)
     test_cose_encrypt0_detached_ccm_roundtrip();
 #endif
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && \
     defined(WOLFCOSE_ENCRYPT0_DECRYPT) && \
-    defined(HAVE_CHACHA) && defined(HAVE_POLY1305)
+    defined(WOLFCOSE_HAVE_CHACHA20)
     test_cose_encrypt0_detached_chacha_roundtrip();
 #endif
     test_internal_helpers();
 
     /* Hardened / error-path tests */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cose_sign1_buffer_too_small();
 #endif
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_cose_encrypt0_buffer_errors();
 #endif
-#if !defined(NO_HMAC)
+#if defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac0_buffer_errors();
 #endif
     test_cose_key_encode_errors();
     test_cose_key_decode_optional_labels();
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_key_set_mldsa_errors();
 #endif
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     test_cose_key_ed25519_public_only();
 #endif
-#ifdef HAVE_ED448
+#ifdef WOLFCOSE_HAVE_ED448
     test_cose_key_ed448_public_only();
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_key_mldsa_public_only();
 #endif
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cose_key_ecc_public_only();
 #endif
 
@@ -15973,153 +15993,155 @@ int test_cose(void)
     TEST_LOG("\n--- Negative Test Coverage (Phases 1-10) ---\n");
 
     /* Phase 1: Buffer Too Small Tests */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_buffer_too_small_key_encode();
 #endif
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_buffer_too_small_encrypt();
 #endif
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     test_buffer_too_small_mac();
 #endif
 
     /* Phase 2: Wrong Key Type Tests */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_wrong_key_type_sign();
+#ifdef WOLFCOSE_HAVE_RSAPSS
     test_wrong_key_type_ecc_for_rsa();
 #endif
-#ifdef HAVE_AESGCM
+#endif
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_wrong_key_type_decrypt();
 #endif
-#if !defined(NO_HMAC) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_HAVE_ES256)
     test_wrong_key_type_mac_verify();
 #endif
 
     /* Phase 3: Invalid Algorithm Tests */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_invalid_sign_algorithm();
 #endif
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_invalid_encrypt_algorithm();
 #endif
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     test_invalid_mac_algorithm();
 #endif
 
     /* Phase 4: NULL/Invalid Argument Tests */
     test_null_key_operations();
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
     test_multi_sign_null_signers();
 #endif
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_multi_encrypt_null_recipients();
 #endif
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_multi_mac_null_recipients();
 #endif
 
     /* Phase 5: CBOR Parsing Error Tests */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_cbor_truncated_sign1();
 #endif
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_cbor_malformed_encrypt0();
     test_cbor_missing_iv();
 #endif
 
     /* Phase 6: Wrong CBOR Tag Tests */
-#ifdef HAVE_ECC
+#ifdef WOLFCOSE_HAVE_ES256
     test_wrong_tag_sign1();
 #endif
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_wrong_tag_encrypt0();
 #endif
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     test_wrong_tag_mac0();
 #endif
 
     /* Phase 7: Signature/MAC Verification Failure Tests */
-#ifdef HAVE_ED25519
+#ifdef WOLFCOSE_HAVE_EDDSA
     test_corrupted_eddsa_signature();
 #endif
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     test_corrupted_mac_tag();
 #endif
 
     /* Phase 8: ECDH-ES Key Agreement Tests */
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
     test_ecdh_es_wrong_key_type_sender();
 #endif
 
     /* Phase 9: Multi-recipient KID Encoding Tests */
-#ifndef NO_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
     test_mac0_with_kid();
 #endif
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_multi_encrypt_with_kids();
 #endif
 
     /* Phase 10: Multi-recipient Decrypt Error Tests */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_multi_decrypt_wrong_key();
 #endif
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_multi_mac_verify_wrong_key();
 #endif
 
     /* Additional Key Type Tests */
-#if defined(HAVE_ECC) && (defined(HAVE_ED25519) || defined(HAVE_ED448))
+#if defined(WOLFCOSE_HAVE_ES256) && (defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448))
     test_key_type_eddsa_wrong_crv();
 #endif
-#if defined(HAVE_ED25519) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_HAVE_EDDSA) && defined(WOLFCOSE_HAVE_ES256)
     test_key_type_okp_for_ecdsa();
 #endif
 
     /* Additional Coverage Tests */
-#if defined(WC_RSA_PSS) && defined(WOLFSSL_KEY_GEN)
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     test_rsa_key_encode_buffer_small();
 #endif
-#ifdef WOLFSSL_HAVE_MLDSA
+#ifdef WOLFCOSE_HAVE_MLDSA
     test_mldsa_key_encode_buffer_small();
 #endif
     test_key_decode_bad_kty();
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
-    defined(HAVE_HKDF) && defined(WOLFSSL_SHA512)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && \
+    defined(HAVE_HKDF) && defined(WOLFCOSE_HAVE_ES512)
     test_ecdh_es_hkdf_512();
 #endif
-#if defined(WOLFCOSE_KEY_WRAP) && defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_KEY_WRAP) && defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_key_wrap_decrypt_wrong_cek_size();
 #endif
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
     test_multi_sign_verify_wrong_signer();
 #endif
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_multi_mac_with_kid();
 #endif
 
     /* Additional targeted coverage */
-#ifdef HAVE_AESGCM
+#ifdef WOLFCOSE_HAVE_AESGCM
     test_encrypt0_detached_buffer_small();
     test_encrypt0_decrypt_wrong_key_size();
 #endif
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
     test_multi_sign_verify_null_payload();
     test_multi_sign_wrong_tag();
 #endif
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_multi_encrypt_decrypt_null_recipient();
 #endif
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_multi_mac_verify_null_recipient();
 #endif
 
     /* Additional targeted coverage - Phase 2 */
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_multi_encrypt_with_detached();
     test_multi_decrypt_malformed_recipients();
     test_multi_encrypt_recipients_with_kids();
 #endif
-#if defined(WOLFCOSE_MAC) && !defined(NO_HMAC)
+#if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_multi_mac_create_errors();
     test_multi_mac_verify_malformed();
     test_mac0_verify_unknown_alg();
@@ -16127,16 +16149,16 @@ int test_cose(void)
 #endif
 
     /* wolfReview regression tests */
-#if defined(WOLFCOSE_SIGN) && defined(HAVE_ECC)
+#if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
     test_sign_multi_array_count();
     test_sign_verify_bad_array_count();
 #endif
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_encrypt_multi_detached_rejected();
     test_encrypt_multi_wrong_iv_len();
 #endif
-#if defined(WOLFCOSE_ENCRYPT) && defined(HAVE_AESGCM) && \
-    defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM) && \
+    defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
     test_ecdh_es_multi_recipient_rejected();
     test_ecdh_es_multi_recipient_decrypt_rejected();
     test_ecdh_es_recipient_protected_bound();
