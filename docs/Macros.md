@@ -150,6 +150,19 @@ Resolved internally as read-only `WOLFCOSE_KEY_WRAP`, `WOLFCOSE_ECDH`, and `WOLF
 | `WOLFCOSE_MAX_SCRATCH_SZ` | Scratch buffer size for Sig_structure/Enc_structure | 512 |
 | `WOLFCOSE_PROTECTED_HDR_MAX` | Max protected header size | 64 |
 | `WOLFCOSE_CBOR_MAX_DEPTH` | Max CBOR nesting depth | 8 |
+| `WOLFCOSE_MIN_BUFFERS` | Trim the working set to the minimum that fits the enabled algorithms | - |
+
+### `WOLFCOSE_MIN_BUFFERS`
+
+One define that trims the caller working set to the minimum that still fits the enabled algorithms. It tightens the CBOR parsing limits (`WOLFCOSE_CBOR_MAX_DEPTH` 8→6, `WOLFCOSE_MAX_MAP_ITEMS` 16→8) and keeps the algorithm-driven signature/scratch floors, which track the largest enabled signature algorithm:
+
+| Enabled signature algorithm | `WOLFCOSE_MAX_SIG_SZ` | `WOLFCOSE_MAX_SCRATCH_SZ` |
+|---|---|---|
+| ES256/384/512, EdDSA (Ed25519/Ed448) | 132 | 512 |
+| RSA-PSS (PS256/384/512) | 512 | 512 |
+| ML-DSA-44/65/87 | 4627 | 8192 |
+
+Because the floor follows the algorithm, `WOLFCOSE_MIN_BUFFERS` stays valid with any algorithm — ML-DSA and RSA-PSS simply use that algorithm's floor rather than the ECC floor (ML-DSA-87's 4627-byte signature is the largest wolfCOSE supports). It stays zero-heap and shrinks buffers, not stack frames. An explicit `-D` override of any individual limit takes precedence.
 
 ### Tuning for Constrained Targets
 
@@ -169,6 +182,18 @@ Resolved internally as read-only `WOLFCOSE_KEY_WRAP`, `WOLFCOSE_ECDH`, and `WOLF
 /* #define WOLFCOSE_MAX_SCRATCH_SZ  8192 */
 /* #define WOLFCOSE_MAX_SIG_SZ      4627 */
 ```
+
+#### Tuning the wolfCrypt backend
+
+The limits above are wolfCOSE's working set. Shrinking the wolfCrypt backend
+itself — big-number math, AES tables, flash and stack footprint — is a wolfSSL
+build concern, not a wolfCOSE one. See the
+[wolfSSL Tuning Guide](https://www.wolfssl.com/documentation/manuals/wolfssl-tuning-guide/index.html)
+and the [wolfSSL Manual](https://www.wolfssl.com/documentation/manuals/wolfssl/)
+for the relevant options (e.g. `--enable-sp-math-all`, `WOLFSSL_SP_SMALL`,
+`WOLFSSL_AES_SMALL_TABLES`). Build your application with
+`-ffunction-sections -fdata-sections -Wl,--gc-sections` so only the COSE
+functions you call are linked.
 
 ---
 

@@ -20,35 +20,35 @@ jobs:
       matrix:
         include:
           - name: ECC-only
-            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen"
-            cache_key: wolfssl-ecc-only-v4
+            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-sha384 --enable-sha512 --enable-lowresource --enable-sp-math-all --disable-dh --disable-rsa --disable-aescbc --disable-sha --disable-md5 --disable-chacha --disable-poly1305 --disable-errorstrings"
+            cache_key: wolfssl-ecc-only-v5
           - name: EdDSA-only
-            wolfssl_flags: "--enable-cryptonly --enable-ed25519 --enable-curve25519 --enable-sha512"
-            cache_key: wolfssl-eddsa-only-v5
+            wolfssl_flags: "--enable-cryptonly --enable-ed25519 --enable-curve25519 --enable-sha512 --enable-lowresource --disable-dh --disable-rsa --disable-errorstrings"
+            cache_key: wolfssl-eddsa-only-v6
           - name: Ed448-only
-            wolfssl_flags: "--enable-cryptonly --enable-ed448 --enable-sha512"
-            cache_key: wolfssl-ed448-only-v2
+            wolfssl_flags: "--enable-cryptonly --enable-ed448 --enable-sha512 --enable-lowresource --disable-dh --disable-rsa --disable-errorstrings"
+            cache_key: wolfssl-ed448-only-v3
           - name: AEAD-only (no signing)
-            wolfssl_flags: "--enable-cryptonly --enable-aesgcm --enable-aesccm --enable-chacha --enable-poly1305"
-            cache_key: wolfssl-aead-only-v5
+            wolfssl_flags: "--enable-cryptonly --enable-aesgcm --enable-aesccm --enable-chacha --enable-poly1305 --enable-lowresource --disable-dh --disable-rsa --disable-errorstrings"
+            cache_key: wolfssl-aead-only-v6
           - name: RSA-PSS-only
-            wolfssl_flags: "--enable-cryptonly --enable-rsapss --enable-keygen --enable-sha384 --enable-sha512"
-            cache_key: wolfssl-rsa-only-v5
+            wolfssl_flags: "--enable-cryptonly --enable-rsapss --enable-keygen --enable-sha384 --enable-sha512 --enable-lowresource --disable-dh --disable-errorstrings"
+            cache_key: wolfssl-rsa-only-v6
           - name: PQ (ML-DSA) only
-            wolfssl_flags: "--enable-cryptonly --enable-mldsa"
+            wolfssl_flags: "--enable-cryptonly --enable-mldsa --disable-dh --disable-rsa --disable-errorstrings"
             cache_key: wolfssl-pq-only-v4
           - name: ECDH-ES (key agreement)
-            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-hkdf"
-            cache_key: wolfssl-ecdh-es-v1
+            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-hkdf --enable-lowresource --disable-dh --disable-rsa --disable-errorstrings"
+            cache_key: wolfssl-ecdh-es-v2
           - name: AES Key Wrap
-            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-aeskeywrap"
-            cache_key: wolfssl-keywrap-v1
+            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-aeskeywrap --enable-lowresource --disable-dh --disable-rsa --disable-errorstrings"
+            cache_key: wolfssl-keywrap-v2
           - name: MAC-only (HMAC + AES-MAC)
-            wolfssl_flags: "--enable-cryptonly --enable-sha256 --enable-sha384 --enable-sha512 --enable-aescbc"
-            cache_key: wolfssl-mac-only-v1
+            wolfssl_flags: "--enable-cryptonly --enable-sha256 --enable-sha384 --enable-sha512 --enable-aescbc --enable-lowresource --disable-dh --disable-rsa --disable-errorstrings"
+            cache_key: wolfssl-mac-only-v2
           - name: Lean core (WOLFCOSE_LEAN, minimal wolfSSL)
-            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen"
-            cache_key: wolfssl-ecc-only-v4
+            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-sha384 --enable-sha512 --enable-lowresource --enable-sp-math-all --disable-dh --disable-rsa --disable-aescbc --disable-sha --disable-md5 --disable-chacha --disable-poly1305 --disable-errorstrings"
+            cache_key: wolfssl-ecc-only-v5
             cose_flags: "-DWOLFCOSE_LEAN"
 
     steps:

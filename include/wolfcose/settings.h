@@ -376,22 +376,14 @@ extern "C" {
     #error "WOLFCOSE_NO_CBOR_DECODE conflicts with an enabled decode operation"
 #endif
 
-/* === Configurable limits === */
+/* === Configurable limits (precedence: -D > WOLFCOSE_MIN_BUFFERS > default) ===
+ * Floors track the largest enabled signature algorithm. See docs/Macros.md. */
 #ifndef WOLFCOSE_MAX_SCRATCH_SZ
     #if defined(WOLFCOSE_HAVE_MLDSA)
         #define WOLFCOSE_MAX_SCRATCH_SZ      8192u
     #else
         #define WOLFCOSE_MAX_SCRATCH_SZ      512u
     #endif
-#endif
-#ifndef WOLFCOSE_PROTECTED_HDR_MAX
-    #define WOLFCOSE_PROTECTED_HDR_MAX    64u
-#endif
-#ifndef WOLFCOSE_CBOR_MAX_DEPTH
-    #define WOLFCOSE_CBOR_MAX_DEPTH        8u
-#endif
-#ifndef WOLFCOSE_MAX_MAP_ITEMS
-    #define WOLFCOSE_MAX_MAP_ITEMS        16u
 #endif
 #ifndef WOLFCOSE_MAX_SIG_SZ
     #if defined(WOLFCOSE_HAVE_MLDSA)
@@ -401,6 +393,37 @@ extern "C" {
     #else
         #define WOLFCOSE_MAX_SIG_SZ  132u
     #endif
+#endif
+#ifndef WOLFCOSE_PROTECTED_HDR_MAX
+    #define WOLFCOSE_PROTECTED_HDR_MAX    64u
+#endif
+#ifndef WOLFCOSE_CBOR_MAX_DEPTH
+    #if defined(WOLFCOSE_MIN_BUFFERS)
+        #define WOLFCOSE_CBOR_MAX_DEPTH    6u
+    #else
+        #define WOLFCOSE_CBOR_MAX_DEPTH    8u
+    #endif
+#endif
+#ifndef WOLFCOSE_MAX_MAP_ITEMS
+    #if defined(WOLFCOSE_MIN_BUFFERS)
+        #define WOLFCOSE_MAX_MAP_ITEMS    8u
+    #else
+        #define WOLFCOSE_MAX_MAP_ITEMS    16u
+    #endif
+#endif
+
+/* Floor checks: an override below the structural minimum is a build error. */
+#if WOLFCOSE_MAX_SIG_SZ < 132u
+    #error "WOLFCOSE_MAX_SIG_SZ below 132 cannot hold an ES256/EdDSA signature"
+#endif
+#if WOLFCOSE_MAX_SCRATCH_SZ < 256u
+    #error "WOLFCOSE_MAX_SCRATCH_SZ below 256 is too small for COSE structures"
+#endif
+#if WOLFCOSE_CBOR_MAX_DEPTH < 4u
+    #error "WOLFCOSE_CBOR_MAX_DEPTH below 4 cannot parse nested COSE messages"
+#endif
+#if WOLFCOSE_MAX_MAP_ITEMS < 4u
+    #error "WOLFCOSE_MAX_MAP_ITEMS below 4 is too small for COSE headers"
 #endif
 
 #if defined(WOLFCOSE_HAVE_MLDSA) && (WOLFCOSE_MAX_SCRATCH_SZ < 4096u)

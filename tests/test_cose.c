@@ -80,7 +80,7 @@ static int g_failures = 0;
 
 #define TEST_ASSERT(cond, name) do {                           \
     if (!(cond)) {                                             \
-        TEST_LOG("  FAIL: %s (line %d)\n", (name), __LINE__); \
+        (void)printf("  FAIL: %s (line %d)\n", (name), __LINE__); \
         g_failures++;                                          \
     } else {                                                   \
         TEST_LOG("  PASS: %s\n", (name));                      \
@@ -4287,8 +4287,7 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
 {
     int ret = -1;
     WOLFCOSE_CBOR_CTX ctx;
-    size_t count = 0;
-    uint64_t tag = 0;
+    uint64_t count = 0;
     const uint8_t* protectedData = NULL;
     size_t protectedLen = 0;
     size_t protectedOffset;
@@ -4299,7 +4298,7 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
 
     if ((ctx.idx < ctx.bufSz) &&
         (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
-        ret = wc_CBOR_DecodeTag(&ctx, &tag);
+        ret = wc_CBOR_DecodeTag(&ctx, &count);
     }
     else {
         ret = 0;
