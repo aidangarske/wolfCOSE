@@ -59,7 +59,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test coverage tool tool-test cmdline-test demo demos comprehensive scenarios c99-check clean
+.PHONY: all shared test coverage tool tool-test cmdline-test demo demos comprehensive scenarios interop-tcose c99-check clean
 
 # --- Core library ---
 all: $(LIB_A)
@@ -164,6 +164,27 @@ scenarios: $(LIB_A)
 	./$(SCEN_BROADCAST) || exit 1
 	@echo "=== All scenario examples passed ==="
 
+# --- t_cose wire-interop (t_cose on OpenSSL; t_cose + QCBOR fetched at pinned SHAs) ---
+# The harness TU never includes OpenSSL headers (they collide with wolfSSL on
+# SHA256 etc.); the t_cose-side key loader is a separate TU. CI overrides
+# TCOSE_CRYPTO_INC / TCOSE_CRYPTO_LIB per platform (system libssl on Linux).
+TCOSE_DIR        ?= $(HOME)/interop-deps/t_cose
+QCBOR_DIR        ?= $(HOME)/interop-deps/QCBOR
+TCOSE_CRYPTO_INC ?=
+TCOSE_CRYPTO_LIB ?= -lcrypto
+INTEROP_DIR       = tests/interop/t_cose
+INTEROP_BIN       = $(INTEROP_DIR)/interop_tcose
+INTEROP_CFLAGS    = $(CFLAGS) -std=c99 -I$(TCOSE_DIR)/inc -I$(QCBOR_DIR)/inc
+
+interop-tcose: $(LIB_A)
+	$(CC) $(INTEROP_CFLAGS) -DT_COSE_USE_OPENSSL_CRYPTO -c $(INTEROP_DIR)/interop_tcose.c -o $(INTEROP_DIR)/interop_tcose.o
+	$(CC) -std=c99 -Wall -Wextra -I$(TCOSE_DIR)/inc -I$(QCBOR_DIR)/inc $(TCOSE_CRYPTO_INC) \
+	      -c $(INTEROP_DIR)/interop_key_ossl.c -o $(INTEROP_DIR)/interop_key.o
+	$(CC) -o $(INTEROP_BIN) $(INTEROP_DIR)/interop_tcose.o $(INTEROP_DIR)/interop_key.o \
+	      $(LIB_A) $(TCOSE_DIR)/libt_cose.a $(QCBOR_DIR)/libqcbor.a \
+	      $(TCOSE_CRYPTO_LIB) $(LDFLAGS) -lm
+	./$(INTEROP_BIN)
+
 # --- C99 conformance gate ---
 # Compiles every translation unit (core, tests, tool, examples) under strict
 # ISO C99 with -pedantic-errors -Werror so any non-C99 construct fails the
@@ -195,5 +216,6 @@ clean:
 	rm -f $(OBJ) $(TEST_BIN) $(TOOL_BIN) $(DEMO_BIN) $(ENC_DEMO) $(MAC_DEMO) \
 	    $(SIGN1_DEMO) $(COMP_SIGN) $(COMP_ENCRYPT) $(COMP_MAC) $(COMP_ERRORS) \
 	    $(SCEN_FIRMWARE) $(SCEN_MULTIPARTY) $(SCEN_IOTFLEET) $(SCEN_SENSOR) $(SCEN_BROADCAST) \
+	    $(INTEROP_DIR)/*.o $(INTEROP_DIR)/*.su $(INTEROP_BIN) \
 	    $(LIB_A) $(LIB_SO) src/*.su tests/*.su examples/comprehensive/*.su examples/scenarios/*.su \
 	    src/*.gcno src/*.gcda tests/*.gcno tests/*.gcda *.gcov

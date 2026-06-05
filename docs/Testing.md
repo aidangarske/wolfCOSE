@@ -50,6 +50,26 @@ Runs real-world scenario examples:
 - Sensor attestation
 - Group broadcast MAC
 
+### Interoperability (t_cose)
+
+```bash
+make interop-tcose \
+  TCOSE_DIR=/path/to/t_cose QCBOR_DIR=/path/to/QCBOR \
+  TCOSE_CRYPTO_LIB="-lcrypto"
+```
+
+Proves RFC 9052 wire interoperability between wolfCOSE (on wolfCrypt) and
+[t_cose](https://github.com/laurencelundblade/t_cose) (on OpenSSL): each library
+produces COSE messages the other consumes, both directions, across every
+algorithm both implement — ES256/384/512, PS256/384/512, EdDSA (Ed25519, Ed448),
+HMAC 256/384/512, and AES-GCM 128/192/256. The bytes on the wire are the only
+interface; the two APIs are never reconciled. Each primitive class also exercises
+a tamper case that wolfCOSE must reject.
+
+t_cose and QCBOR are BSD-3-Clause and are not vendored; the
+[Interop CI job](../.github/workflows/interop.yml) fetches them at pinned
+SHAs. See `tests/interop/t_cose/README.md` for the fixed test-key provenance.
+
 ---
 
 ## Code Coverage
