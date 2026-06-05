@@ -2,8 +2,8 @@ name: Nightly CI
 
 on:
   schedule:
-    # 2:00 AM UTC daily (offset from Coverity's 0:00 UTC)
-    - cron: '0 2 * * *'
+    # 09:00 UTC — overnight in Pacific (02:00 PDT / 01:00 PST), low push activity on main
+    - cron: '0 9 * * *'
   workflow_dispatch:
 
 permissions:
