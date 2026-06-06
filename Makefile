@@ -17,6 +17,8 @@
 CC       ?= gcc
 AR       ?= ar
 CFLAGS    = -std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion
+CFLAGS   += -Wvla -Werror=vla
+CFLAGS   += -ffunction-sections -fdata-sections
 CFLAGS   += -fstack-usage
 # Match wolfSSL's default (gnu11) struct ABI; -std=c99 alone disables
 # HAVE_ANONYMOUS_INLINE_AGGREGATES and shrinks WC_RNG, corrupting the RNG.

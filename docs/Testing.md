@@ -120,6 +120,15 @@ wolfCOSE runs the following CI checks on every push and pull request:
 4. **Scenario Examples**: Real-world workflow tests
 5. **Tool Tests**: CLI round-trip tests (17 algorithms)
 
+### Memory and Stack Bounds
+
+wolfCOSE is zero-heap (no `malloc`/`XMALLOC` on any path) and bounded-stack, both enforced in CI:
+
+- **Bounded stack**: built with `-fstack-usage`, then `scripts/check_stack_usage.sh` fails the build if any wolfCOSE frame exceeds 6144 bytes or is `dynamic` (unbounded); `-Werror=vla` bans VLAs/`alloca`.
+- **Zero heap**: sources, tests, tools, and examples are grepped for allocator calls.
+- **`WOLFCOSE_MIN_BUFFERS`**: constrained-target profile that shrinks the caller working buffers (not the library frames) — see [[Macros]].
+- **Minimal Build matrix**: builds and tests against single-purpose minimal wolfCrypt configs (ECC-only, EdDSA-only, AEAD-only, MAC-only, …) plus a `WOLFCOSE_LEAN` core build.
+
 ### Static Analysis
 
 | Tool | Purpose |

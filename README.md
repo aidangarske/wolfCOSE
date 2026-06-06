@@ -57,6 +57,21 @@ sudo ldconfig
 
 **Algorithms enabled:** ES256, ES384, ES512, AES-GCM-128/192/256
 
+For a smaller wolfCrypt footprint, add `--enable-cryptonly` to drop the TLS
+stack and disable the algorithms a Sign1 + Encrypt0 build never uses:
+
+```bash
+./configure --enable-cryptonly --enable-ecc --enable-aesgcm \
+            --enable-sha384 --enable-sha512 --enable-keygen \
+            --enable-lowresource \
+            --disable-dh --disable-rsa --disable-aescbc \
+            --disable-sha --disable-md5 --disable-chacha --disable-poly1305 \
+            --disable-errorstrings
+```
+
+See [Tuning for Constrained Targets](docs/Macros.md#tuning-for-constrained-targets)
+for squeezing wolfCrypt further on MCUs.
+
 ### Minimal Build (Post-Quantum / ML-DSA only)
 
 For pure post-quantum signing with ML-DSA-44/65/87:

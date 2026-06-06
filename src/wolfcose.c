@@ -5776,6 +5776,7 @@ static int wolfCose_IsHmacAlg(int32_t alg)
     ) ? 1 : 0;
 }
 
+#ifdef HAVE_AES_CBC
 /**
  * Check if algorithm is AES-CBC-MAC based.
  */
@@ -5786,6 +5787,7 @@ static int wolfCose_IsAesCbcMacAlg(int32_t alg)
             (alg == WOLFCOSE_ALG_AES_MAC_128_128) ||
             (alg == WOLFCOSE_ALG_AES_MAC_256_128)) ? 1 : 0;
 }
+#endif /* HAVE_AES_CBC */
 
 #if defined(WOLFCOSE_MAC0_CREATE)
 int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
