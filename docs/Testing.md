@@ -149,6 +149,17 @@ wolfCOSE is zero-heap (no `malloc`/`XMALLOC` on any path) and bounded-stack, bot
 - **`WOLFCOSE_MIN_BUFFERS`**: constrained-target profile that shrinks the caller working buffers (not the library frames) — see [[Macros]].
 - **Minimal Build matrix**: builds and tests against single-purpose minimal wolfCrypt configs (ECC-only, EdDSA-only, AEAD-only, MAC-only, …) plus a `WOLFCOSE_LEAN` core build.
 
+### Lean and Post-Quantum Builds
+
+The Lean Build workflow (`.github/workflows/lean-build.yml`) exercises the minimal
+on-device build profiles:
+
+| Job | What it checks |
+|-----|----------------|
+| Lean verify-only | Builds + runs `examples/sign1_verify_lean.c` with `WOLFCOSE_LEAN_VERIFY` against a minimal ECC-only wolfSSL; asserts the signing API is not linked. |
+| Lean configs compile clean | Strict `-Werror` compile of the full, `WOLFCOSE_LEAN_VERIFY`, sign-only, `WOLFCOSE_LEAN_MLDSA`, and `WOLFCOSE_LEAN_VERIFY_MLDSA` configurations. |
+| Post-quantum ML-DSA | Builds wolfSSL with ML-DSA and runs `make mldsa-demo` (sign+verify) and `make mldsa-verify` (verify-only); asserts the verify-only build links no signing API. |
+
 ### Static Analysis
 
 | Tool | Purpose |

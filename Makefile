@@ -47,6 +47,9 @@ DEMO_BIN  = examples/lifecycle_demo
 ENC_DEMO  = examples/encrypt0_demo
 MAC_DEMO  = examples/mac0_demo
 SIGN1_DEMO = examples/sign1_demo
+LEANV_DEMO = examples/sign1_verify_lean
+MLDSA_DEMO  = examples/sign1_mldsa
+MLDSAV_DEMO = examples/sign1_verify_mldsa
 
 # Comprehensive tests (CI)
 COMP_SIGN     = examples/comprehensive/sign_all
@@ -61,7 +64,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test coverage tool tool-test cmdline-test demo demos comprehensive scenarios interop-tcose c99-check clean
+.PHONY: all shared test coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check clean
 
 # --- Core library ---
 all: $(LIB_A)
@@ -135,6 +138,30 @@ demos: $(LIB_A)
 	./$(ENC_DEMO)
 	./$(MAC_DEMO)
 	./$(SIGN1_DEMO)
+
+# --- Lean verify-only example (WOLFCOSE_LEAN_VERIFY) ---
+# Compiles the wolfCOSE sources directly with the lean macro instead of the full
+# prebuilt library, so the example exercises the minimal verify-only profile.
+lean-verify:
+	$(CC) $(CFLAGS) -DWOLFCOSE_LEAN_VERIFY -o $(LEANV_DEMO) \
+		$(LEANV_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS)
+	@echo "=== Running lean verify-only example ==="
+	./$(LEANV_DEMO)
+
+# --- Post-quantum ML-DSA lean sign + verify (WOLFCOSE_LEAN_MLDSA) ---
+# Requires wolfSSL built with ML-DSA (./configure --enable-dilithium).
+mldsa-demo:
+	$(CC) $(CFLAGS) -DWOLFCOSE_LEAN_MLDSA -o $(MLDSA_DEMO) \
+		$(MLDSA_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS)
+	@echo "=== Running ML-DSA sign + verify example ==="
+	./$(MLDSA_DEMO)
+
+# --- Smallest post-quantum verify-only (WOLFCOSE_LEAN_VERIFY_MLDSA) ---
+mldsa-verify:
+	$(CC) $(CFLAGS) -DWOLFCOSE_LEAN_VERIFY_MLDSA -o $(MLDSAV_DEMO) \
+		$(MLDSAV_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS)
+	@echo "=== Running lean ML-DSA verify-only example ==="
+	./$(MLDSAV_DEMO)
 
 # --- Comprehensive algorithm tests (CI) ---
 comprehensive: $(LIB_A)

@@ -154,15 +154,23 @@ Every `Sign*`, `Encrypt*`, and `Mac*` API accepts a detached payload — the COS
 
 ## Compile-time stripping
 
-You only pay for the message types you use. Define the appropriate `WOLFCOSE_NO_*` macros to strip unused code paths:
+You only pay for the message types you use. Strip whole message types with the matching `WOLFCOSE_NO_*` macros — each is independent:
 
 ```c
--DWOLFCOSE_NO_SIGN     -DWOLFCOSE_NO_ENCRYPT  -DWOLFCOSE_NO_MAC   /* multi-actor only */
--DWOLFCOSE_NO_ENCRYPT0 -DWOLFCOSE_NO_MAC0                          /* sign-only build */
--DWOLFCOSE_NO_SIGN1_SIGN -DWOLFCOSE_NO_CBOR_ENCODE                 /* verify-only build */
+-DWOLFCOSE_NO_SIGN -DWOLFCOSE_NO_ENCRYPT -DWOLFCOSE_NO_MAC   /* drop all multi-actor types */
+-DWOLFCOSE_NO_MAC0 -DWOLFCOSE_NO_MAC                         /* drop all MAC */
 ```
 
-A minimal Sign1-verify-only build is around **7.5 KB of `.text`**, including the built-in CBOR engine.
+For common minimal builds, use a build profile instead of hand-listing macros — these are the supported, CI-tested configurations (see [[Macros]] → Build Profiles):
+
+| Profile | Result |
+|---------|--------|
+| `WOLFCOSE_LEAN` | single-actor only: `COSE_Sign1` / `Encrypt0` / `Mac0` |
+| `WOLFCOSE_LEAN_VERIFY` | `COSE_Sign1` verify-only (no signing, no RNG) |
+| `WOLFCOSE_LEAN_MLDSA` | ML-DSA `COSE_Sign1` sign + verify |
+| `WOLFCOSE_LEAN_VERIFY_MLDSA` | ML-DSA `COSE_Sign1` verify-only |
+
+A minimal Sign1-verify-only build (`WOLFCOSE_LEAN_VERIFY`) is about **5.1 KB** of wolfCOSE library code (3.5 KB COSE engine + the built-in CBOR engine), or **26.2 KB** total flash with a minimal wolfCrypt ES256 backend — rising to **6.8 KB** / **34.6 KB** for sign + verify.
 
 ## See also
 

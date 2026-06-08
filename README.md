@@ -4,13 +4,19 @@ wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.r
 
 ## Main Features
 
-- **Complete RFC 9052 message set**: all six COSE message types, including multi-signer `COSE_Sign` and multi-recipient `COSE_Encrypt` / `COSE_Mac`
+- **Complete RFC 9052 message set**: all six COSE message types, including multi-signer 
+  `COSE_Sign` and multi-recipient `COSE_Encrypt` / `COSE_Mac`
 - **Post-quantum signing**: ML-DSA (FIPS 204) at all three security levels
 - **40 algorithms** across signing, encryption, MAC, and key distribution
-- **Zero dynamic allocation**: all operations use caller-provided buffers
-- **Tiny footprint**: 7.5 KB `.text` minimal build (Sign1+ECC), 25.6 KB full (40 algorithms), zero `.data`/`.bss`
-- **Full COSE lifecycle in ~<1KB RAM** (excluding wolfCrypt internals)
-- **Path to FIPS 140-3** via wolfCrypt FIPS Certificate #4718 (sole crypto dependency)
+- **Zero dynamic allocation**: heap-allocation-free and non-recursive. Every operation runs on caller-provided buffers 
+   within a bounded, target-customizable stack ceiling (nothing on the heap, zero `.data`/`.bss`)
+- **Tiny footprint**: ES256 `COSE_Sign1` wolfCOSE (COSE + CBOR engine) **~5.1 KB** verify-only and **~6.8 KB** sign + verify.
+   Total flash including wolfCrypt is **~26.2 KB** verify-only (`WOLFCOSE_LEAN_VERIFY`) and **~34.6 KB** sign + verify
+- **Fast**: (ES256 `COSE_Sign1`, x86_64, wolfCrypt `sp_256` asm): **66,538** sign/s, **26,437** verify/s
+- **Post-quantum at the same cost**: ML-DSA-44 `COSE_Sign1` total flash including wolfCrypt is **~20.8 KB** verify-only
+  (`WOLFCOSE_LEAN_VERIFY_MLDSA`) and **~35.8 KB** sign + verify, within about 1 KB of classical ES256. The wolfCOSE portion
+  alone is **4.6 KB** and **~6.6 KB** respectively. See [Footprint](https://github.com/wolfSSL/wolfCOSE/wiki/Footprint)
+- **Path to FIPS 140-3**: via wolfCrypt **FIPS Certificate #4718** (sole crypto dependency)
 
 ## Supported Algorithms
 
@@ -69,8 +75,8 @@ stack and disable the algorithms a Sign1 + Encrypt0 build never uses:
             --disable-errorstrings
 ```
 
-See [Tuning for Constrained Targets](docs/Macros.md#tuning-for-constrained-targets)
-for squeezing wolfCrypt further on MCUs.
+See [Tuning for Size](docs/Macros.md#tuning-for-size) and [Tuning for Speed](docs/Macros.md#tuning-for-speed)
+for squeezing wolfCOSE and wolfCrypt further on MCUs.
 
 ### Minimal Build (Post-Quantum / ML-DSA only)
 
@@ -159,10 +165,6 @@ make coverage                  # Run tests with gcov
 make coverage-force-failure    # Include crypto failure path testing
 ```
 
-<a href="https://scan.coverity.com/projects/wolfcose">
-  <img alt="Coverity Scan Build Status"
-       src="https://scan.coverity.com/projects/32918/badge.svg"/>
-</a>
 <a href="https://github.com/wolfSSL/wolfCOSE/actions">
   <img alt="CI Status"
        src="https://img.shields.io/github/actions/workflow/status/wolfSSL/wolfCOSE/build-test.yml?label=CI&logo=github"/>
@@ -183,13 +185,14 @@ Full documentation is available in the [Wiki](https://github.com/wolfSSL/wolfCOS
 - [Algorithms](https://github.com/wolfSSL/wolfCOSE/wiki/Algorithms): Complete list of 40 supported algorithms with COSE IDs
 - [API Reference](https://github.com/wolfSSL/wolfCOSE/wiki/API-Reference): Function signatures, data structures, error codes
 - [Macros](https://github.com/wolfSSL/wolfCOSE/wiki/Macros): Compile-time configuration options
+- [Footprint](https://github.com/wolfSSL/wolfCOSE/wiki/Footprint): Size and speed numbers, desktop and on-device
 - [Testing](https://github.com/wolfSSL/wolfCOSE/wiki/Testing): Test infrastructure, coverage, and failure injection
 - [MISRA Compliance](https://github.com/wolfSSL/wolfCOSE/wiki/MISRA-Compliance): MISRA C:2012 and C:2023 compliance status and deviation rationale
 - [Project Structure](https://github.com/wolfSSL/wolfCOSE/wiki/Project-Structure): Source file layout
 
 ## License
 
-wolfCOSE is free software licensed under the [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html).
+wolfCOSE is free software licensed under [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html); see [LICENSE](LICENSE) for the full text.
 
 Copyright (C) 2026 wolfSSL Inc.
 
