@@ -8,6 +8,9 @@
 tests/test_wolfcose
 tools/wolfcose_tool
 examples/lifecycle_demo
+tests/interop/t_cose/interop_tcose
+tests/interop/t_cose/QCBOR/
+tests/interop/t_cose/t_cose/
 
 # Editor / OS
 *.swp
