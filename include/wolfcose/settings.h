@@ -130,6 +130,13 @@ extern "C" {
     defined(WOLFCOSE_HAVE_PS512)
     #define WOLFCOSE_HAVE_RSAPSS
 #endif
+/* Private RSA round-trip needs wc_export_int + RsaKey.u; else public-only. */
+#if defined(WOLFCOSE_HAVE_RSAPSS) && !defined(WOLFCOSE_RSA_PUBLIC_ONLY) && \
+    !defined(WOLFSSL_RSA_PUBLIC_ONLY) && \
+    (defined(HAVE_ECC) || defined(WOLFSSL_EXPORT_INT)) && \
+    (defined(WOLFSSL_KEY_GEN) || defined(OPENSSL_EXTRA) || !defined(RSA_LOW_MEM))
+    #define WOLFCOSE_HAVE_RSA_PRIVATE_KEY
+#endif
 #if defined(WOLFCOSE_HAVE_ECDSA) || defined(WOLFCOSE_HAVE_EDDSA) || \
     defined(WOLFCOSE_HAVE_ED448) || defined(WOLFCOSE_HAVE_RSAPSS) || \
     defined(WOLFCOSE_HAVE_MLDSA)
@@ -406,7 +413,12 @@ extern "C" {
 #endif
 #ifndef WOLFCOSE_MAX_MAP_ITEMS
     #if defined(WOLFCOSE_MIN_BUFFERS)
-        #define WOLFCOSE_MAX_MAP_ITEMS    8u
+        /* Full private RSA key = 9 entries (kty,n,e,d,p,q,qInv,kid,alg). */
+        #if defined(WOLFCOSE_HAVE_RSAPSS)
+            #define WOLFCOSE_MAX_MAP_ITEMS    9u
+        #else
+            #define WOLFCOSE_MAX_MAP_ITEMS    8u
+        #endif
     #else
         #define WOLFCOSE_MAX_MAP_ITEMS    16u
     #endif

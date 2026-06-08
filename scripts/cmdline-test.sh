@@ -68,15 +68,29 @@ for A in $SIGN_ALGS; do
     fi
 done
 
-# RSA-PSS keygen works, but COSE_Key currently stores only the public part
-# (n,e,d) — full private round-trip (p,q,qInv) is pending issue #34 — so we
-# only smoke-test keygen here, not sign/verify.
-echo "== RSA-PSS: keygen only (round-trip pending #34) =="
+# Public-only RSA builds can't sign a decoded key, so skip; the self-test
+# still covers RSA signing.
+echo "== RSA-PSS: keygen -> sign -> verify -> self-test =="
 for A in PS256 PS384 PS512; do
-    K="$WORK/rsa.key"
+    K="$WORK/rsa.key"; C="$WORK/rsa.cose"
     if ! keygen_or "$A" "$K" 0; then continue; fi
-    skip "$A sign/verify" "round-trip pending #34"
-    ok "$A keygen"
+    if "$TOOL" sign -k "$K" -a "$A" -i "$IN" -o "$C" >/dev/null 2>&1; then
+        if "$TOOL" verify -k "$K" -i "$C" >/dev/null 2>&1; then
+            ok "$A sign/verify"
+        else
+            bad "$A verify"
+        fi
+    elif [ "$(wc -c < "$K")" -lt 500 ]; then
+        # Public-only key (n,e only) is ~271B; a full private key is ~924B.
+        skip "$A sign/verify" "public-only RSA COSE_Key build"
+    else
+        bad "$A sign"
+    fi
+    if "$TOOL" test -a "$A" >/dev/null 2>&1; then
+        ok "$A self-test"
+    else
+        bad "$A self-test"
+    fi
 done
 
 echo "== Tamper detection: corrupted COSE_Sign1 must NOT verify =="
