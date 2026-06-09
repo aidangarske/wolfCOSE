@@ -10131,8 +10131,8 @@ static void test_cose_aead_tag_len(void)
 
 static void test_cose_alg_to_hash_constants(void)
 {
-    int ret;
-    enum wc_HashType ht;
+    int ret = 0;
+    enum wc_HashType ht = WC_HASH_TYPE_NONE;
 
     TEST_LOG("  [Algorithm-to-hash constants]\n");
 
@@ -10166,6 +10166,8 @@ static void test_cose_alg_to_hash_constants(void)
                 "AlgToHashType PS512 -> SHA-512");
 #endif
 #endif /* WOLFCOSE_HAVE_RSAPSS */
+    (void)ret;
+    (void)ht;
 }
 
 static void test_cose_build_sig_structure_context(void)
@@ -10898,7 +10900,7 @@ static void test_cose_sigsize_known_algs(void)
 {
     /* Cover the wolfCose_SigSize switch cases that the actual signing
      * paths route around. */
-    int ret;
+    int ret = 0;
     size_t sz = 0;
 
     TEST_LOG("  [SigSize known algorithms]\n");
@@ -10918,6 +10920,8 @@ static void test_cose_sigsize_known_algs(void)
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && ((sz == 64u) || (sz == 114u)),
                 "SigSize EDDSA returns curve max");
 #endif
+    (void)ret;
+    (void)sz;
 }
 
 static void test_cose_decode_tstr_alg_values(void)
@@ -13028,9 +13032,9 @@ static void test_wrong_key_type_decrypt(void)
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t coseMsg[512];
     size_t coseMsgLen = 0;
-    uint8_t plaintext[256];
+    uint8_t plaintext[256] = {0};
     size_t plaintextLen = 0;
-    WOLFCOSE_HDR hdr;
+    WOLFCOSE_HDR hdr = {0};
     int ret;
 #ifdef WOLFCOSE_HAVE_ES256
     ecc_key eccKey;
