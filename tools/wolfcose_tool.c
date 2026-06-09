@@ -73,7 +73,7 @@
         /* ML-DSA-87: pub=2592 + priv=4896 + CBOR overhead */
         #define WOLFCOSE_TOOL_MAX_KEY  8192
     #else
-        /* RSA-2048 private COSE_Key: n+d plus e2/n2/p/q export scratch */
+        /* RSA-2048 private COSE_Key: n,e,d,p,q,qInv plus export scratch */
         #define WOLFCOSE_TOOL_MAX_KEY  4096
     #endif
 #endif

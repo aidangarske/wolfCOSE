@@ -1681,6 +1681,16 @@ static void test_cose_key_rsa(void)
         size_t cLen = 0;
         WOLFCOSE_KEY key2;
         RsaKey rsaKey2;
+        WOLFCOSE_KEY* signKey;
+        WOLFCOSE_KEY* verifyKey;
+        int expectPriv;
+
+        /* Capable builds sign with the decoded key; public-only the original. */
+#ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
+        signKey = &key2; verifyKey = &key; expectPriv = 1;
+#else
+        signKey = &key; verifyKey = &key2; expectPriv = 0;
+#endif
 
         ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
         TEST_ASSERT(ret == 0 && cLen > 0, "key rsa encode");
@@ -1691,11 +1701,12 @@ static void test_cose_key_rsa(void)
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_RSA &&
                     key2.alg == WOLFCOSE_ALG_PS256 &&
+                    key2.hasPrivate == expectPriv &&
                     key2.kidLen == (sizeof(kid) - 1u) &&
                     memcmp(key2.kid, kid, sizeof(kid) - 1u) == 0,
                     "key rsa decode");
 
-        /* Verify decoded key can sign/verify */
+        /* #34: a private round-trip signs with the decoded key. */
         /* empty-brace-scan: allow - test-local temporary scope */
         {
             uint8_t payload[] = "RSA key round-trip";
@@ -1706,8 +1717,7 @@ static void test_cose_key_rsa(void)
             size_t decPayloadLen = 0;
             WOLFCOSE_HDR hdr;
 
-            /* Sign with original key */
-            ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_PS256,
+            ret = wc_CoseSign1_Sign(signKey, WOLFCOSE_ALG_PS256,
                 NULL, 0, payload, sizeof(payload) - 1,
                 NULL, 0, /* detachedPayload, detachedLen */
                 NULL, 0, /* extAad, extAadLen */
@@ -1715,8 +1725,7 @@ static void test_cose_key_rsa(void)
                 out, sizeof(out), &outLen, &rng);
             TEST_ASSERT(ret == 0, "key rsa rt sign");
 
-            /* Verify with decoded key (public only) */
-            ret = wc_CoseSign1_Verify(&key2, out, outLen,
+            ret = wc_CoseSign1_Verify(verifyKey, out, outLen,
                 NULL, 0, /* detachedPayload, detachedLen */
                 NULL, 0, /* extAad, extAadLen */
                 scratch, sizeof(scratch),

@@ -240,6 +240,9 @@ extern "C" {
 #define WOLFCOSE_KEY_LABEL_Y     (-3)
 #define WOLFCOSE_KEY_LABEL_D     (-4)
 #define WOLFCOSE_KEY_LABEL_K     (-1)  /* Symmetric key value */
+#define WOLFCOSE_KEY_LABEL_RSA_P    (-4)  /* RFC 8230: first prime */
+#define WOLFCOSE_KEY_LABEL_RSA_Q    (-5)  /* RFC 8230: second prime */
+#define WOLFCOSE_KEY_LABEL_RSA_QINV (-8)  /* RFC 8230: CRT coefficient */
 
 /* AES-GCM constants */
 #define WOLFCOSE_AES_GCM_TAG_SZ  16
