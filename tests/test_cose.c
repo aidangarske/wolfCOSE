@@ -831,6 +831,46 @@ static void test_cose_encrypt0_a128gcm(void)
     }
 }
 
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+static void test_cose_encrypt0_word32_overflow_guard(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t keyData[16] = {
+        0x84, 0x9B, 0x57, 0x21, 0x9D, 0xAE, 0x48, 0xDE,
+        0x64, 0x6D, 0x07, 0xDB, 0xB5, 0x33, 0x56, 0x6E
+    };
+    uint8_t iv[12] = {
+        0x02, 0xD1, 0xF7, 0xE6, 0xF2, 0x6C, 0x43, 0xD4,
+        0x86, 0x8D, 0x87, 0xCE
+    };
+    uint8_t payload[16] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    size_t hugeLen = (size_t)0xFFFFFFFFUL + 1u;
+    int ret;
+
+    TEST_LOG("  [Encrypt0 word32 length guard]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    /* payloadLen above word32 range must be rejected before any (word32) cast,
+     * not truncated. The payload buffer stays tiny; the guard must fire before
+     * the data is read. */
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, hugeLen,
+        NULL, 0, NULL,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "enc0 oversized payloadLen rejected");
+    TEST_ASSERT(outLen == 0, "enc0 oversized payloadLen no output");
+}
+#endif /* SIZE_MAX > 0xFFFFFFFF */
+
 static void test_cose_encrypt0_a256gcm(void)
 {
     WOLFCOSE_KEY key;
@@ -15769,6 +15809,9 @@ int test_cose(void)
     test_cose_encrypt0_a256gcm();
     test_cose_encrypt0_with_aad();
     test_cose_encrypt0_detached();
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+    test_cose_encrypt0_word32_overflow_guard();
+#endif
 #endif
 
     /* ChaCha20-Poly1305 encryption tests */
