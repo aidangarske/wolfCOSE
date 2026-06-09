@@ -831,6 +831,56 @@ static void test_cose_encrypt0_a128gcm(void)
     }
 }
 
+#if defined(WOLFCOSE_HAVE_ES256) && defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+static void test_cose_sign1_word32_overflow_guard(void)
+{
+    WOLFCOSE_KEY signKey;
+    ecc_key eccKey;
+    WC_RNG rng;
+    uint8_t payload[16] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    size_t hugeLen = (size_t)0xFFFFFFFFUL + 1u;
+    int ret;
+
+    TEST_LOG("  [Sign1 word32 length guard]\n");
+
+    if (wc_InitRng(&rng) != 0) {
+        TEST_ASSERT(0, "sign1 guard rng init");
+        return;
+    }
+    if (wc_ecc_init(&eccKey) != 0) {
+        TEST_ASSERT(0, "sign1 guard ecc init");
+        (void)wc_FreeRng(&rng);
+        return;
+    }
+    if (wc_ecc_make_key(&rng, 32, &eccKey) != 0) {
+        TEST_ASSERT(0, "sign1 guard keygen");
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
+        return;
+    }
+    (void)wc_CoseKey_Init(&signKey);
+    (void)wc_CoseKey_SetEcc(&signKey, WOLFCOSE_CRV_P256, &eccKey);
+
+    /* payloadLen above word32 range must be rejected before the Sig_structure
+     * length is cast to word32 for hashing, not truncated. */
+    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ES256,
+        NULL, 0,
+        payload, hugeLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "sign1 oversized payloadLen rejected");
+    TEST_ASSERT(outLen == 0, "sign1 oversized payloadLen no output");
+
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
+}
+#endif /* WOLFCOSE_HAVE_ES256 && SIZE_MAX > 0xFFFFFFFF */
+
 #if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
 static void test_cose_encrypt0_word32_overflow_guard(void)
 {
@@ -15789,6 +15839,9 @@ int test_cose(void)
     test_cose_sign1_ecc("ES256", WOLFCOSE_ALG_ES256, WOLFCOSE_CRV_P256, 32);
     test_cose_sign1_with_aad();
     test_cose_sign1_detached();
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+    test_cose_sign1_word32_overflow_guard();
+#endif
 #ifdef WOLFCOSE_HAVE_ES384
     test_cose_sign1_ecc("ES384", WOLFCOSE_ALG_ES384, WOLFCOSE_CRV_P384, 48);
 #endif

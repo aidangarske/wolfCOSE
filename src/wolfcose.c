@@ -3305,6 +3305,26 @@ static int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
 
 #endif /* WOLFCOSE_ECDH_ES_DIRECT && HAVE_ECC && HAVE_HKDF */
 
+#if defined(WOLFCOSE_SIGN1) || defined(WOLFCOSE_SIGN) || \
+    defined(WOLFCOSE_MAC0) || defined(WOLFCOSE_MAC) || \
+    defined(WOLFCOSE_ENCRYPT0) || defined(WOLFCOSE_ENCRYPT)
+/* Reject a size_t length that cannot be represented as word32, so a structure,
+ * payload, or key length fails cleanly instead of truncating when cast for
+ * wolfCrypt. */
+static int wolfCose_LenFitsWord32(size_t n)
+{
+    int ret = 1;
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+    if (n > (size_t)0xFFFFFFFFUL) {
+        ret = 0;
+    }
+#else
+    (void)n;
+#endif
+    return ret;
+}
+#endif
+
 /* ----- COSE_Sign1 API ----- */
 
 #if defined(WOLFCOSE_SIGN1)
@@ -3394,6 +3414,14 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
 
     if ((key == NULL) || (sigPayload == NULL) || (scratch == NULL) ||
         (out == NULL) || (outLen == NULL) || (rng == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsWord32(payloadLen) == 0) ||
+         (wolfCose_LenFitsWord32(detachedLen) == 0) ||
+         (wolfCose_LenFitsWord32(extAadLen) == 0) ||
+         (wolfCose_LenFitsWord32(scratchSz) == 0) ||
+         (wolfCose_LenFitsWord32(outSz) == 0))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     /* Reject inconsistent (kid, kidLen) pairs to surface caller mistakes
@@ -3754,6 +3782,13 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
 
     if ((key == NULL) || (in == NULL) || (scratch == NULL) || (hdr == NULL) ||
         (payload == NULL) || (payloadLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsWord32(inSz) == 0) ||
+         (wolfCose_LenFitsWord32(detachedLen) == 0) ||
+         (wolfCose_LenFitsWord32(extAadLen) == 0) ||
+         (wolfCose_LenFitsWord32(scratchSz) == 0))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
@@ -4162,6 +4197,14 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
 
     if ((signers == NULL) || (signerCount == 0u) || (sigPayload == NULL) ||
         (scratch == NULL) || (out == NULL) || (outLen == NULL) || (rng == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsWord32(payloadLen) == 0) ||
+         (wolfCose_LenFitsWord32(detachedLen) == 0) ||
+         (wolfCose_LenFitsWord32(extAadLen) == 0) ||
+         (wolfCose_LenFitsWord32(scratchSz) == 0) ||
+         (wolfCose_LenFitsWord32(outSz) == 0))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
@@ -4607,6 +4650,13 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         (payload == NULL) || (payloadLen == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsWord32(inSz) == 0) ||
+         (wolfCose_LenFitsWord32(detachedLen) == 0) ||
+         (wolfCose_LenFitsWord32(extAadLen) == 0) ||
+         (wolfCose_LenFitsWord32(scratchSz) == 0))) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
 
     if (ret == WOLFCOSE_SUCCESS) {
         (void)XMEMSET(hdr, 0, sizeof(WOLFCOSE_HDR));
@@ -4997,24 +5047,6 @@ static int wolfCose_BuildEncStructure0(const uint8_t* protectedHdr,
         extAad, extAadLen,
         scratch, scratchSz, structLen);
 }
-
-#if defined(WOLFCOSE_ENCRYPT0_ENCRYPT) || defined(WOLFCOSE_ENCRYPT0_DECRYPT) || \
-    defined(WOLFCOSE_ENCRYPT_ENCRYPT) || defined(WOLFCOSE_ENCRYPT_DECRYPT)
-/* Reject a size_t length that cannot be represented as word32, so AEAD
- * lengths fail cleanly instead of truncating when cast for wolfCrypt. */
-static int wolfCose_LenFitsWord32(size_t n)
-{
-    int ret = 1;
-#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
-    if (n > (size_t)0xFFFFFFFFUL) {
-        ret = 0;
-    }
-#else
-    (void)n;
-#endif
-    return ret;
-}
-#endif
 
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
 int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
@@ -5955,6 +5987,14 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
         (out == NULL) || (outLen == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsWord32(payloadLen) == 0) ||
+         (wolfCose_LenFitsWord32(detachedLen) == 0) ||
+         (wolfCose_LenFitsWord32(extAadLen) == 0) ||
+         (wolfCose_LenFitsWord32(scratchSz) == 0) ||
+         (wolfCose_LenFitsWord32(outSz) == 0))) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
     /* Reject ambiguous inline+detached input. */
     if ((ret == WOLFCOSE_SUCCESS) &&
         (payload != NULL) && (detachedPayload != NULL)) {
@@ -6173,6 +6213,13 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
 
     if ((key == NULL) || (in == NULL) || (scratch == NULL) || (hdr == NULL) ||
         (payload == NULL) || (payloadLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsWord32(inSz) == 0) ||
+         (wolfCose_LenFitsWord32(detachedLen) == 0) ||
+         (wolfCose_LenFitsWord32(extAadLen) == 0) ||
+         (wolfCose_LenFitsWord32(scratchSz) == 0))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
@@ -7587,6 +7634,14 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
         (out == NULL) || (outLen == NULL) || (scratch == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsWord32(payloadLen) == 0) ||
+         (wolfCose_LenFitsWord32(detachedLen) == 0) ||
+         (wolfCose_LenFitsWord32(extAadLen) == 0) ||
+         (wolfCose_LenFitsWord32(scratchSz) == 0) ||
+         (wolfCose_LenFitsWord32(outSz) == 0))) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
 
     /* Reject inconsistent (kid, kidLen) per recipient. */
     if (ret == WOLFCOSE_SUCCESS) {
@@ -7878,6 +7933,13 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     if ((recipient == NULL) || (in == NULL) || (inSz == 0u) ||
         (hdr == NULL) || (payload == NULL) || (payloadLen == NULL) ||
         (scratch == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_LenFitsWord32(inSz) == 0) ||
+         (wolfCose_LenFitsWord32(detachedLen) == 0) ||
+         (wolfCose_LenFitsWord32(extAadLen) == 0) ||
+         (wolfCose_LenFitsWord32(scratchSz) == 0))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
