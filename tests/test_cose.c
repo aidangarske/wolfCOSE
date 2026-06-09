@@ -2814,6 +2814,139 @@ static void test_cose_key_ed448_public_only(void)
 }
 #endif /* WOLFCOSE_HAVE_ED448 */
 
+#if defined(WOLFCOSE_HAVE_ES256) || defined(WOLFCOSE_HAVE_EDDSA)
+static void test_cose_key_decode_private_only(void)
+{
+    TEST_LOG("  [Key decode private-only (crv+d, no public)]\n");
+
+#ifdef WOLFCOSE_HAVE_ES256
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY key2;
+        ecc_key eccKey, eccKey2;
+        WC_RNG rng;
+        uint8_t dBuf[32];
+        word32 dSz = sizeof(dBuf);
+        uint8_t keyBuf[128];
+        WOLFCOSE_CBOR_CTX enc;
+        uint8_t hash[32];
+        uint8_t sig[80];
+        word32 sigLen = sizeof(sig);
+        int verifyStatus = 0;
+        int ret;
+        size_t i;
+
+        for (i = 0; i < sizeof(hash); i++) {
+            hash[i] = (uint8_t)i;
+        }
+
+        ret = wc_InitRng(&rng);
+        TEST_ASSERT(ret == 0, "ec priv-only rng init");
+        ret = wc_ecc_init(&eccKey);
+        TEST_ASSERT(ret == 0, "ec priv-only key init");
+        ret = wc_ecc_init(&eccKey2);
+        TEST_ASSERT(ret == 0, "ec priv-only key2 init");
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        TEST_ASSERT(ret == 0, "ec priv-only keygen");
+        ret = wc_ecc_export_private_only(&eccKey, dBuf, &dSz);
+        TEST_ASSERT(ret == 0 && dSz == sizeof(dBuf), "ec priv-only export d");
+
+        /* Build {kty: EC2, crv: P-256, d: <32>} with no x/y. */
+        enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
+        wc_CBOR_EncodeMapStart(&enc, 3);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_P256);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_D);
+        wc_CBOR_EncodeBstr(&enc, dBuf, dSz);
+
+        (void)wc_CoseKey_Init(&key2);
+        key2.key.ecc = &eccKey2;
+        ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "ec2 private-only {kty,crv,d} accepted");
+        TEST_ASSERT(key2.hasPrivate == 1, "ec2 private-only has private");
+
+        /* Imported scalar must sign; original full key must verify it. */
+        ret = wc_ecc_sign_hash(hash, sizeof(hash), sig, &sigLen, &rng,
+                               &eccKey2);
+        TEST_ASSERT(ret == 0, "ec2 private-only sign");
+        ret = wc_ecc_verify_hash(sig, sigLen, hash, sizeof(hash),
+                                 &verifyStatus, &eccKey);
+        TEST_ASSERT(ret == 0 && verifyStatus == 1,
+                    "ec2 private-only signature verifies");
+
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey2);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_ES256 */
+
+#ifdef WOLFCOSE_HAVE_EDDSA
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY key2;
+        ed25519_key edKey, edKey2;
+        WC_RNG rng;
+        uint8_t dBuf[ED25519_KEY_SIZE];
+        word32 dSz = sizeof(dBuf);
+        uint8_t keyBuf[128];
+        WOLFCOSE_CBOR_CTX enc;
+        uint8_t msg[16];
+        uint8_t sig[ED25519_SIG_SIZE];
+        word32 sigLen = sizeof(sig);
+        int verifyStatus = 0;
+        int ret;
+        size_t i;
+
+        for (i = 0; i < sizeof(msg); i++) {
+            msg[i] = (uint8_t)i;
+        }
+
+        ret = wc_InitRng(&rng);
+        TEST_ASSERT(ret == 0, "ed priv-only rng init");
+        ret = wc_ed25519_init(&edKey);
+        TEST_ASSERT(ret == 0, "ed priv-only key init");
+        ret = wc_ed25519_init(&edKey2);
+        TEST_ASSERT(ret == 0, "ed priv-only key2 init");
+        ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
+        TEST_ASSERT(ret == 0, "ed priv-only keygen");
+        ret = wc_ed25519_export_private_only(&edKey, dBuf, &dSz);
+        TEST_ASSERT(ret == 0 && dSz == sizeof(dBuf), "ed priv-only export d");
+
+        /* Build {kty: OKP, crv: Ed25519, d: <32>} with no x. */
+        enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
+        wc_CBOR_EncodeMapStart(&enc, 3);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_ED25519);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_D);
+        wc_CBOR_EncodeBstr(&enc, dBuf, dSz);
+
+        (void)wc_CoseKey_Init(&key2);
+        key2.key.ed25519 = &edKey2;
+        ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "okp ed25519 private-only {kty,crv,d} accepted");
+        TEST_ASSERT(key2.hasPrivate == 1, "ed25519 private-only has private");
+
+        ret = wc_ed25519_sign_msg(msg, sizeof(msg), sig, &sigLen, &edKey2);
+        TEST_ASSERT(ret == 0, "ed25519 private-only sign");
+        ret = wc_ed25519_verify_msg(sig, sigLen, msg, sizeof(msg),
+                                    &verifyStatus, &edKey2);
+        TEST_ASSERT(ret == 0 && verifyStatus == 1,
+                    "ed25519 private-only signature verifies");
+
+        (void)wc_ed25519_free(&edKey);
+        (void)wc_ed25519_free(&edKey2);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_EDDSA */
+}
+#endif /* WOLFCOSE_HAVE_ES256 || WOLFCOSE_HAVE_EDDSA */
+
 #ifdef WOLFCOSE_HAVE_MLDSA
 static void test_cose_key_mldsa_public_only(void)
 {
@@ -15992,6 +16125,9 @@ int test_cose(void)
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_key_mldsa_public_only();
+#endif
+#if defined(WOLFCOSE_HAVE_ES256) || defined(WOLFCOSE_HAVE_EDDSA)
+    test_cose_key_decode_private_only();
 #endif
 #ifdef WOLFCOSE_HAVE_ES256
     test_cose_key_ecc_public_only();

@@ -2090,7 +2090,26 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 #ifdef HAVE_ECC
             if ((key->kty == WOLFCOSE_KTY_EC2) && (key->key.ecc != NULL)) {
                 if ((xData == NULL) || (yData == NULL)) {
-                    ret = WOLFCOSE_E_COSE_BAD_HDR;
+                    /* RFC 9052: x/y are recommended, not required, for a
+                     * private EC2 key, so accept {kty, crv, d} alone. */
+                    if (dData != NULL) {
+                        int wcCrv = 0;
+                        ret = wolfCose_CrvToWcCurve(key->crv, &wcCrv);
+                        if (ret == WOLFCOSE_SUCCESS) {
+                            INJECT_FAILURE(WOLF_FAIL_ECC_IMPORT_X963, -1,
+                                ret = wc_ecc_import_private_key_ex(dData,
+                                    (word32)dLen, NULL, 0, key->key.ecc, wcCrv));
+                            if (ret == 0) {
+                                key->hasPrivate = 1;
+                            }
+                            else {
+                                ret = WOLFCOSE_E_CRYPTO;
+                            }
+                        }
+                    }
+                    else {
+                        ret = WOLFCOSE_E_COSE_BAD_HDR;
+                    }
                 }
                 else {
                     int wcCrv;
@@ -2226,16 +2245,30 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 #endif /* WOLFCOSE_HAVE_MLDSA */
 #if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448)
             if (key->kty == WOLFCOSE_KTY_OKP) {
-                if (xData == NULL) {
+                /* RFC 9052: x is recommended, not required, for a private OKP
+                 * key, so accept {kty, crv, d} and recompute the public key. */
+                if ((xData == NULL) && (dData == NULL)) {
                     ret = WOLFCOSE_E_COSE_BAD_HDR;
                 }
 #ifdef WOLFCOSE_HAVE_EDDSA
                 else if ((key->crv == WOLFCOSE_CRV_ED25519) &&
                          (key->key.ed25519 != NULL)) {
                     if (dData != NULL) {
-                        INJECT_FAILURE(WOLF_FAIL_ED25519_IMPORT_PRIV, -1,
-                            ret = wc_ed25519_import_private_key(dData, (word32)dLen,
-                                xData, (word32)xLen, key->key.ed25519));
+                        if (xData != NULL) {
+                            INJECT_FAILURE(WOLF_FAIL_ED25519_IMPORT_PRIV, -1,
+                                ret = wc_ed25519_import_private_key(dData,
+                                    (word32)dLen, xData, (word32)xLen,
+                                    key->key.ed25519));
+                        }
+                        else {
+                            INJECT_FAILURE(WOLF_FAIL_ED25519_IMPORT_PRIV, -1,
+                                ret = wc_ed25519_import_private_only(dData,
+                                    (word32)dLen, key->key.ed25519));
+                            if (ret == 0) {
+                                ret = wc_ed25519_make_public(key->key.ed25519,
+                                    key->key.ed25519->p, ED25519_PUB_KEY_SIZE);
+                            }
+                        }
                         if (ret == 0) { key->hasPrivate = 1; }
                         else { ret = WOLFCOSE_E_CRYPTO; }
                     }
@@ -2251,9 +2284,21 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 else if ((key->crv == WOLFCOSE_CRV_ED448) &&
                          (key->key.ed448 != NULL)) {
                     if (dData != NULL) {
-                        INJECT_FAILURE(WOLF_FAIL_ED448_IMPORT_PRIV, -1,
-                            ret = wc_ed448_import_private_key(dData, (word32)dLen,
-                                xData, (word32)xLen, key->key.ed448));
+                        if (xData != NULL) {
+                            INJECT_FAILURE(WOLF_FAIL_ED448_IMPORT_PRIV, -1,
+                                ret = wc_ed448_import_private_key(dData,
+                                    (word32)dLen, xData, (word32)xLen,
+                                    key->key.ed448));
+                        }
+                        else {
+                            INJECT_FAILURE(WOLF_FAIL_ED448_IMPORT_PRIV, -1,
+                                ret = wc_ed448_import_private_only(dData,
+                                    (word32)dLen, key->key.ed448));
+                            if (ret == 0) {
+                                ret = wc_ed448_make_public(key->key.ed448,
+                                    key->key.ed448->p, ED448_PUB_KEY_SIZE);
+                            }
+                        }
                         if (ret == 0) { key->hasPrivate = 1; }
                         else { ret = WOLFCOSE_E_CRYPTO; }
                     }
