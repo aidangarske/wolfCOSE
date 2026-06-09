@@ -74,6 +74,12 @@
  * of wc_ForceZero so wolfCOSE links against the full wolfSSL 5.x range
  * (wc_ForceZero only became a public WOLFSSL_API symbol in v5.8.4).
  */
+#ifdef WOLFCOSE_TEST_ZEROIZE_HOOK
+/* Test build records every scrub (pointer, length) so unit tests can assert a
+ * given call site ran. Defined by the test translation unit. */
+extern void wolfCose_TestZeroizeRecord(const void* mem, size_t len);
+#endif
+
 WOLFCOSE_LOCAL void wolfCose_ForceZero(void* mem, size_t len)
 {
     if ((mem != NULL) && (len > 0u)) {
@@ -83,6 +89,9 @@ WOLFCOSE_LOCAL void wolfCose_ForceZero(void* mem, size_t len)
             p[i] = 0u;
         }
     }
+#ifdef WOLFCOSE_TEST_ZEROIZE_HOOK
+    wolfCose_TestZeroizeRecord(mem, len);
+#endif
 }
 
 /* On a failed verify/decrypt, clear the header so unauthenticated metadata is

@@ -5010,6 +5010,140 @@ static void test_cose_encrypt_direct_multi_key_alg_mismatch(void)
     wc_CoseKey_Free(&key2);
 }
 
+#ifdef WOLFCOSE_TEST_ZEROIZE_HOOK
+static size_t g_zeroizeLens[256];
+static size_t g_zeroizeCount = 0;
+
+/* Called from wolfCose_ForceZero in the zeroize-hook build; records the length
+ * of every scrub so a test can assert a specific call site ran. */
+void wolfCose_TestZeroizeRecord(const void* mem, size_t len)
+{
+    (void)mem;
+    if (g_zeroizeCount < (sizeof(g_zeroizeLens) / sizeof(g_zeroizeLens[0]))) {
+        g_zeroizeLens[g_zeroizeCount] = len;
+        g_zeroizeCount++;
+    }
+}
+
+static void wolfCose_TestZeroizeReset(void)
+{
+    g_zeroizeCount = 0;
+}
+
+static int wolfCose_TestZeroizeSawLen(size_t len)
+{
+    size_t i;
+    int found = 0;
+    for (i = 0; i < g_zeroizeCount; i++) {
+        if (g_zeroizeLens[i] == len) {
+            found = 1;
+        }
+    }
+    return found;
+}
+#endif /* WOLFCOSE_TEST_ZEROIZE_HOOK */
+
+#if defined(WOLFCOSE_TEST_ZEROIZE_HOOK) && defined(WOLFCOSE_ECDH_ES_DIRECT) && \
+    defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
+/* F5298 regression guard: the ECDH-ES send and receive paths must scrub their
+ * stack shared-secret buffer. Deleting either wolfCose_ForceZero(sharedSecret)
+ * call drops the 66-byte scrub and fails this test. */
+static void test_cose_ecdh_es_zeroize(void)
+{
+    WOLFCOSE_KEY recipientKey;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    ecc_key recipientEcc;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[1024];
+    size_t outLen = 0;
+    uint8_t scratch[1024];
+    uint8_t plaintext[128];
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "ECDH-ES zeroize payload";
+    uint8_t iv[12];
+    const size_t secretLen = 66; /* sizeof(sharedSecret), max for P-521 */
+
+    TEST_LOG("  [ECDH-ES shared-secret zeroize]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "zeroize rng init");
+    ret = wc_ecc_init(&recipientEcc);
+    TEST_ASSERT(ret == 0, "zeroize ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
+    TEST_ASSERT(ret == 0, "zeroize keygen");
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    TEST_ASSERT(ret == 0, "zeroize iv");
+
+    (void)wc_CoseKey_Init(&recipientKey);
+    ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
+    TEST_ASSERT(ret == 0, "zeroize set key");
+    recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+    recipient.key = &recipientKey;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    /* Send side: encrypt must scrub its shared secret on success. */
+    recipientKey.hasPrivate = 0;
+    wolfCose_TestZeroizeReset();
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv), payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == 0, "zeroize encrypt");
+    TEST_ASSERT(wolfCose_TestZeroizeSawLen(secretLen) == 1,
+                "ecdh-es send scrubs shared secret on success");
+
+    /* Receive side: decrypt must scrub its shared secret on success. */
+    recipientKey.hasPrivate = 1;
+    (void)memset(&hdr, 0, sizeof(hdr));
+    wolfCose_TestZeroizeReset();
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0, out, outLen, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr, plaintext, sizeof(plaintext),
+        &plaintextLen);
+    TEST_ASSERT(ret == 0, "zeroize decrypt");
+    TEST_ASSERT(wolfCose_TestZeroizeSawLen(secretLen) == 1,
+                "ecdh-es recv scrubs shared secret on success");
+
+    /* Receive side, failure path: decrypting with the wrong recipient key runs
+     * the full ECDH derivation (deriving a wrong CEK) and must still scrub the
+     * shared secret before the AEAD failure returns. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        ecc_key wrongEcc;
+        WOLFCOSE_KEY wrongKey;
+        WOLFCOSE_RECIPIENT wrongRecipient;
+
+        ret = wc_ecc_init(&wrongEcc);
+        TEST_ASSERT(ret == 0, "zeroize wrong ecc init");
+        ret = wc_ecc_make_key(&rng, 32, &wrongEcc);
+        TEST_ASSERT(ret == 0, "zeroize wrong keygen");
+        (void)wc_CoseKey_Init(&wrongKey);
+        (void)wc_CoseKey_SetEcc(&wrongKey, WOLFCOSE_CRV_P256, &wrongEcc);
+        wrongRecipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+        wrongRecipient.key = &wrongKey;
+        wrongRecipient.kid = NULL;
+        wrongRecipient.kidLen = 0;
+
+        (void)memset(&hdr, 0, sizeof(hdr));
+        wolfCose_TestZeroizeReset();
+        ret = wc_CoseEncrypt_Decrypt(&wrongRecipient, 0, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret != 0, "zeroize wrong-key decrypt fails");
+        TEST_ASSERT(wolfCose_TestZeroizeSawLen(secretLen) == 1,
+                    "ecdh-es recv scrubs shared secret on failure");
+
+        wc_CoseKey_Free(&wrongKey);
+        (void)wc_ecc_free(&wrongEcc);
+    }
+
+    wc_CoseKey_Free(&recipientKey);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
+}
+#endif /* ZEROIZE_HOOK && ECDH_ES_DIRECT && ES256 && HKDF */
+
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
 /**
  * Test ECDH-ES (Ephemeral-Static) encryption and decryption.
@@ -15963,6 +16097,9 @@ int test_cose(void)
     test_cose_encrypt_ecdh_es_wrong_key();
     test_cose_encrypt_ecdh_es_p384();
     test_cose_encrypt_ecdh_es_wrong_key_type();
+#if defined(WOLFCOSE_TEST_ZEROIZE_HOOK)
+    test_cose_ecdh_es_zeroize();
+#endif
 #endif
     test_cose_encrypt_a128kw();
     test_cose_encrypt_a128kw_multi_recipient();
