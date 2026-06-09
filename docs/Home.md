@@ -17,8 +17,8 @@ It uses [wolfSSL](https://www.wolfssl.com/) as the cryptographic backend and is 
 | Complete RFC 9052 | All six COSE message types — Sign1, Sign, Encrypt0, Encrypt, Mac0, Mac |
 | Multi-signer / multi-recipient | Full `COSE_Sign`, `COSE_Encrypt`, and `COSE_Mac` support |
 | Post-quantum signing | ML-DSA (FIPS 204) at all three security levels — first COSE library to ship native PQC |
-| Zero allocation | All operations use caller-provided buffers, no malloc |
-| Tiny footprint | 7.5 KB minimal `.text` (Sign1+ECC), 25.6 KB full (40 algorithms), zero `.data`/`.bss` |
+| Zero dynamic allocation | Heap-allocation-free, non-recursive; caller-provided buffers within a bounded, target-customizable stack ceiling — zero `.data`/`.bss` |
+| Tiny footprint | 3.5–5.1 KB COSE engine, 5.1–6.8 KB with the built-in CBOR engine (verify-only → sign + verify); 26.2 KB → 34.6 KB total with wolfCrypt — ES256 `COSE_Sign1`, dead-code-eliminated |
 | 40 algorithms | Signing, encryption, MAC, and key distribution — classical and post-quantum |
 | FIPS 140-3 path | Sole crypto dependency is wolfCrypt FIPS Certificate #4718 |
 | CNSA 2.0 ready | ML-DSA-44/65/87 for quantum-resistant signatures |
@@ -33,6 +33,7 @@ It uses [wolfSSL](https://www.wolfssl.com/) as the cryptographic backend and is 
 | [[Algorithms]] | Complete list of supported algorithms with COSE IDs |
 | [[API Reference]] | Full API documentation for all functions |
 | [[Macros]] | Configuration macros and compile-time options |
+| [[Footprint]] | Size and speed numbers, desktop and on-device |
 | [[Testing]] | Unit tests, coverage, and failure injection |
 | [[Project Structure]] | Source code layout and file descriptions |
 

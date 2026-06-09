@@ -9,12 +9,11 @@ Defining `WOLFCOSE_LEAN` keeps only the core — `COSE_Sign1`/`Encrypt0`/`Mac0` 
 | Define | Description |
 |--------|-------------|
 | `WOLFCOSE_LEAN` | Core-only base; all extensions become opt-in |
-| `WOLFCOSE_ENABLE_ALL` | Re-enable every extension on top of `WOLFCOSE_LEAN` |
 | `WOLFCOSE_ENABLE_<X>` | Opt in a single extension (see list below) |
 
 Extension names for `WOLFCOSE_ENABLE_<X>`: `ES384`, `ES512`, `EDDSA`, `ED448`, `RSAPSS`, `MLDSA`, `HMAC384`, `HMAC512`, `AESCCM`, `CHACHA20`, `AESMAC`, `AESWRAP`, `ECDH_ES`, `SIGN` (multi-signer), `ENCRYPT` (multi-recipient), `MAC` (multi-recipient).
 
-An extension is compiled in when it is explicitly enabled (`WOLFCOSE_ENABLE_<X>` or `WOLFCOSE_ENABLE_ALL`), or — in a non-lean build — when wolfSSL provides the primitive and it is not opted out with `WOLFCOSE_NO_<X>`. Enabling an extension wolfSSL cannot provide is a compile error. The resolved state is exposed internally as read-only `WOLFCOSE_HAVE_<X>` gates (e.g. `WOLFCOSE_HAVE_MLDSA`); sources, tests, and examples compile against those, so you set `WOLFCOSE_ENABLE_*`/`WOLFCOSE_NO_*`, not `WOLFCOSE_HAVE_*`.
+An extension is compiled in when it is explicitly enabled (`WOLFCOSE_ENABLE_<X>`), or — in a non-lean build — when wolfSSL provides the primitive and it is not opted out with `WOLFCOSE_NO_<X>`. Enabling an extension wolfSSL cannot provide is a compile error. The resolved state is exposed internally as read-only `WOLFCOSE_HAVE_<X>` gates (e.g. `WOLFCOSE_HAVE_MLDSA`); sources, tests, and examples compile against those, so you set `WOLFCOSE_ENABLE_*`/`WOLFCOSE_NO_*`, not `WOLFCOSE_HAVE_*`.
 
 ## Algorithm Gates
 
@@ -164,38 +163,81 @@ One define that trims the caller working set to the minimum that still fits the 
 
 Because the floor follows the algorithm, `WOLFCOSE_MIN_BUFFERS` stays valid with any algorithm — ML-DSA and RSA-PSS simply use that algorithm's floor rather than the ECC floor (ML-DSA-87's 4627-byte signature is the largest wolfCOSE supports). It stays zero-heap and shrinks buffers, not stack frames. An explicit `-D` override of any individual limit takes precedence.
 
-### Tuning for Constrained Targets
+---
+
+## Tuning for Size
+
+Four levers, smallest impact last. See the [[Footprint]] page for the resulting numbers.
+
+1. **Pick a build profile.** `WOLFCOSE_LEAN` is the lean ES256 core (6.8 KB glue); `WOLFCOSE_LEAN_VERIFY` is verify-only (5.1 KB); the ML-DSA profiles are post-quantum (see [Build Profiles](#build-profiles)). One define selects a curated gate set.
+2. **Drop individual features** with `WOLFCOSE_NO_<X>` (e.g. `WOLFCOSE_NO_ENCRYPT0`, `WOLFCOSE_NO_SIGN`, `WOLFCOSE_NO_RECIPIENTS`), or in a lean build add only what you need with `WOLFCOSE_ENABLE_<X>`.
+3. **`WOLFCOSE_MIN_BUFFERS`** trims the caller working set to the floor for the enabled algorithms (see above).
+4. **Override individual limits** if you know your payload bounds:
 
 ```c
 /* In your user_settings.h or build flags: */
-
-/* Reduce scratch buffer (default 512, minimum depends on payload size) */
-#define WOLFCOSE_MAX_SCRATCH_SZ   256
-
-/* Reduce protected header buffer */
-#define WOLFCOSE_PROTECTED_HDR_MAX  32
-
-/* Reduce CBOR nesting depth (default 8) */
-#define WOLFCOSE_CBOR_MAX_DEPTH     4
-
-/* For PQC (ML-DSA), increase scratch and signature buffers */
-/* #define WOLFCOSE_MAX_SCRATCH_SZ  8192 */
-/* #define WOLFCOSE_MAX_SIG_SZ      4627 */
+#define WOLFCOSE_MAX_SCRATCH_SZ     256   /* default 512 */
+#define WOLFCOSE_PROTECTED_HDR_MAX  32    /* default 64  */
+#define WOLFCOSE_CBOR_MAX_DEPTH     4     /* default 8   */
 ```
 
-#### Tuning the wolfCrypt backend
+**Post-quantum sizing.** ML-DSA is the largest signature wolfCOSE supports; the floors auto-scale (ML-DSA-87: `WOLFCOSE_MAX_SIG_SZ` 4627, `WOLFCOSE_MAX_SCRATCH_SZ` 8192). `WOLFCOSE_LEAN_VERIFY_MLDSA` is the smallest secure PQ build at 20.8 KB total, smaller than classical ES256 verify-only. Always build the application with `-ffunction-sections -fdata-sections -Wl,--gc-sections` so only the COSE functions you call are linked.
 
-The limits above are wolfCOSE's working set. Shrinking the wolfCrypt backend
-itself — big-number math, AES tables, flash and stack footprint — is a wolfSSL
-build concern, not a wolfCOSE one. See the
+## Tuning for Speed
+
+The wolfCOSE layer is thin and allocation-free; end-to-end `COSE_Sign1` time is dominated by the wolfCrypt backend. Tuning speed (and the backend's own size) is a wolfSSL build concern; see the
 [wolfSSL Tuning Guide](https://www.wolfssl.com/documentation/manuals/wolfssl-tuning-guide/index.html)
 and the [wolfSSL Manual](https://www.wolfssl.com/documentation/manuals/wolfssl/)
-for the relevant options (e.g. `--enable-sp-math-all`, `WOLFSSL_SP_SMALL`,
-`WOLFSSL_AES_SMALL_TABLES`). Build your application with
-`-ffunction-sections -fdata-sections -Wl,--gc-sections` so only the COSE
-functions you call are linked.
+for the assembly and math options that drive throughput (e.g. `--enable-sp-asm` / `WOLFSSL_SP_ARM_CORTEX_M_ASM` for P-256, `--enable-aesni`) and for size (`WOLFSSL_SP_SMALL`, `WOLFSSL_AES_SMALL_TABLES`).
 
 ---
+
+## Build Profiles
+
+Convenience macros that select a curated set of feature gates for a common deployment, so you do not list each `WOLFCOSE_NO_*` by hand. Each builds on `WOLFCOSE_LEAN` (core-only base) and sets each gate only if you have not already chosen it.
+
+### Footprint
+
+What each profile costs (code + rodata, ES256/ML-DSA-44 `COSE_Sign1`, built from source with dead-code elimination). *Glue* is the wolfCOSE COSE + CBOR engine alone; *total* adds the minimal wolfCrypt backend. Full cross-library and on-device numbers are on the [[Footprint]] page.
+
+| Profile | Algorithm | wolfCOSE glue | Total + wolfCrypt |
+|---------|-----------|---------------|-------------------|
+| `WOLFCOSE_LEAN` | ES256 sign + verify | 6.8 KB | 34.6 KB |
+| `WOLFCOSE_LEAN_VERIFY` | ES256 verify-only | 5.1 KB | 26.2 KB |
+| `WOLFCOSE_LEAN_MLDSA` | ML-DSA-44 sign + verify | 6.6 KB | 35.8 KB |
+| `WOLFCOSE_LEAN_VERIFY_MLDSA` | ML-DSA-44 verify-only | 4.6 KB | 20.8 KB |
+
+Post-quantum sign + verify is within ~1 KB of classical ES256 (35.8 vs 34.6 KB), and PQ verify-only is actually *smaller* than classical ES256 verify-only (20.8 vs 26.2 KB): ML-DSA skips the DER signature conversion ECDSA needs. Full numbers (desktop, on-device, and speed) are on the [[Footprint]] page.
+
+### `WOLFCOSE_LEAN_VERIFY` — minimal verify-only
+
+The smallest secure on-device profile: COSE_Sign1 verification only, the common case where a device verifies signed firmware or attestation while signing happens off-device on a server or HSM. It implies `WOLFCOSE_LEAN` plus `WOLFCOSE_NO_SIGN1_SIGN` (removing signing and, transitively, the RNG), `WOLFCOSE_NO_ENCRYPT0`, `WOLFCOSE_NO_MAC0`, `WOLFCOSE_NO_KEY_ENCODE`, and `WOLFCOSE_NO_KEY_DECODE`. Full RFC 9052 verification stays: header decode, crit enforcement, duplicate-label detection, and the Sig_structure rebuild. Sign1 verify must stay enabled; the build errors out if it is also disabled.
+
+```bash
+make lean-verify     # builds + runs examples/sign1_verify_lean.c with the profile
+# or directly:
+cc -DWOLFCOSE_LEAN_VERIFY ... src/wolfcose.c src/wolfcose_cbor.c
+```
+
+### `WOLFCOSE_LEAN_MLDSA` — lean post-quantum sign + verify
+
+A lean ML-DSA-only (FIPS 204) COSE_Sign1 **sign and verify** profile. It implies `WOLFCOSE_LEAN` plus `WOLFCOSE_ENABLE_MLDSA` (ML-DSA is an extension, off under `WOLFCOSE_LEAN`), `WOLFCOSE_NO_ES256` (PQ-only, so the ECDSA path compiles out), `WOLFCOSE_NO_ENCRYPT0`, `WOLFCOSE_NO_MAC0`, `WOLFCOSE_NO_KEY_ENCODE`, and `WOLFCOSE_NO_KEY_DECODE`, keeping **both** Sign1 sign and verify. Pair it with a wolfCrypt backend built with ML-DSA (`--enable-dilithium`).
+
+```bash
+make mldsa-demo      # builds + runs examples/sign1_mldsa.c (sign + verify)
+# or directly:
+cc -DWOLFCOSE_LEAN_MLDSA ... src/wolfcose.c src/wolfcose_cbor.c
+```
+
+### `WOLFCOSE_LEAN_VERIFY_MLDSA` — minimal post-quantum verify-only
+
+The smallest secure on-device PQ build: ML-DSA COSE_Sign1 **verify only**. It implies `WOLFCOSE_LEAN_MLDSA` plus `WOLFCOSE_NO_SIGN1_SIGN`, so signing and the RNG it needs are not compiled in, while full RFC 9052 verification stays intact. Pair with a wolfCrypt build that enables ML-DSA **verify** only (e.g. `WOLFSSL_DILITHIUM_VERIFY_ONLY`).
+
+```bash
+make mldsa-verify    # builds + runs examples/sign1_verify_mldsa.c with the profile
+# or directly:
+cc -DWOLFCOSE_LEAN_VERIFY_MLDSA ... src/wolfcose.c src/wolfcose_cbor.c
+```
 
 ## Example Build Configurations
 

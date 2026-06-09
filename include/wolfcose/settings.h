@@ -25,12 +25,11 @@
  *
  * WOLFCOSE_LEAN: lean build. Only the core stays on — COSE_Sign1/Encrypt0/Mac0
  * with ES256, AES-GCM, HMAC-SHA256 — and everything else becomes opt-in via
- * WOLFCOSE_ENABLE_<X>. WOLFCOSE_ENABLE_ALL turns every extension back on.
+ * WOLFCOSE_ENABLE_<X>.
  *
- * An extension is on when: explicitly enabled (WOLFCOSE_ENABLE_<X> or
- * WOLFCOSE_ENABLE_ALL), or it is a full (non-LEAN) build and wolfSSL provides
- * the primitive and it is not opted out. Explicitly enabling something wolfSSL
- * cannot provide is a hard error.
+ * An extension is on when: explicitly enabled (WOLFCOSE_ENABLE_<X>), or it is a
+ * full (non-LEAN) build and wolfSSL provides the primitive and it is not opted
+ * out. Explicitly enabling something wolfSSL cannot provide is a hard error.
  *
  * Configure via -D flags or the wolfSSL user_settings.h (included before this).
  */
@@ -44,7 +43,68 @@
 extern "C" {
 #endif
 
-/* === Signature algorithms === */
+/* ----- Convenience profiles -----
+ * One define each; footprint numbers and rationale live in docs/Macros.md.
+ * Each switch is set only if the user has not already chosen it. */
+
+/* Smallest verify-only COSE_Sign1 (ES256). */
+#ifdef WOLFCOSE_LEAN_VERIFY
+    #ifndef WOLFCOSE_LEAN
+        #define WOLFCOSE_LEAN
+    #endif
+    #ifndef WOLFCOSE_NO_SIGN1_SIGN
+        #define WOLFCOSE_NO_SIGN1_SIGN
+    #endif
+    #ifndef WOLFCOSE_NO_ENCRYPT0
+        #define WOLFCOSE_NO_ENCRYPT0
+    #endif
+    #ifndef WOLFCOSE_NO_MAC0
+        #define WOLFCOSE_NO_MAC0
+    #endif
+    #ifndef WOLFCOSE_NO_KEY_ENCODE
+        #define WOLFCOSE_NO_KEY_ENCODE
+    #endif
+    #ifndef WOLFCOSE_NO_KEY_DECODE
+        #define WOLFCOSE_NO_KEY_DECODE
+    #endif
+#endif /* WOLFCOSE_LEAN_VERIFY */
+
+/* Verify-only COSE_Sign1 with ML-DSA (implies WOLFCOSE_LEAN_MLDSA, no signing). */
+#ifdef WOLFCOSE_LEAN_VERIFY_MLDSA
+    #ifndef WOLFCOSE_LEAN_MLDSA
+        #define WOLFCOSE_LEAN_MLDSA
+    #endif
+    #ifndef WOLFCOSE_NO_SIGN1_SIGN
+        #define WOLFCOSE_NO_SIGN1_SIGN
+    #endif
+#endif /* WOLFCOSE_LEAN_VERIFY_MLDSA */
+
+/* Lean ML-DSA-only COSE_Sign1 sign+verify (no ES256, Sign1 only). */
+#ifdef WOLFCOSE_LEAN_MLDSA
+    #ifndef WOLFCOSE_LEAN
+        #define WOLFCOSE_LEAN
+    #endif
+    #ifndef WOLFCOSE_ENABLE_MLDSA
+        #define WOLFCOSE_ENABLE_MLDSA
+    #endif
+    #ifndef WOLFCOSE_NO_ES256
+        #define WOLFCOSE_NO_ES256
+    #endif
+    #ifndef WOLFCOSE_NO_ENCRYPT0
+        #define WOLFCOSE_NO_ENCRYPT0
+    #endif
+    #ifndef WOLFCOSE_NO_MAC0
+        #define WOLFCOSE_NO_MAC0
+    #endif
+    #ifndef WOLFCOSE_NO_KEY_ENCODE
+        #define WOLFCOSE_NO_KEY_ENCODE
+    #endif
+    #ifndef WOLFCOSE_NO_KEY_DECODE
+        #define WOLFCOSE_NO_KEY_DECODE
+    #endif
+#endif /* WOLFCOSE_LEAN_MLDSA */
+
+/* ----- Signature algorithms ----- */
 
 /* ES256 — core (on whenever wolfSSL has ECC) */
 #if defined(HAVE_ECC) && !defined(WOLFCOSE_NO_ES256)
@@ -52,7 +112,7 @@ extern "C" {
 #endif
 
 /* ES384 — extension */
-#if defined(WOLFCOSE_ENABLE_ES384) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_ES384)
     #if !defined(HAVE_ECC) || !defined(WOLFSSL_SHA384)
         #error "WOLFCOSE_ENABLE_ES384 requires wolfSSL HAVE_ECC + WOLFSSL_SHA384"
     #endif
@@ -63,7 +123,7 @@ extern "C" {
 #endif
 
 /* ES512 — extension */
-#if defined(WOLFCOSE_ENABLE_ES512) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_ES512)
     #if !defined(HAVE_ECC) || !defined(WOLFSSL_SHA512)
         #error "WOLFCOSE_ENABLE_ES512 requires wolfSSL HAVE_ECC + WOLFSSL_SHA512"
     #endif
@@ -74,7 +134,7 @@ extern "C" {
 #endif
 
 /* EdDSA (Ed25519) — extension */
-#if defined(WOLFCOSE_ENABLE_EDDSA) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_EDDSA)
     #ifndef HAVE_ED25519
         #error "WOLFCOSE_ENABLE_EDDSA requires wolfSSL HAVE_ED25519"
     #endif
@@ -84,7 +144,7 @@ extern "C" {
 #endif
 
 /* Ed448 — extension */
-#if defined(WOLFCOSE_ENABLE_ED448) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_ED448)
     #ifndef HAVE_ED448
         #error "WOLFCOSE_ENABLE_ED448 requires wolfSSL HAVE_ED448"
     #endif
@@ -94,7 +154,7 @@ extern "C" {
 #endif
 
 /* ML-DSA (44/65/87) — extension */
-#if defined(WOLFCOSE_ENABLE_MLDSA) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_MLDSA)
     #ifndef WOLFSSL_HAVE_MLDSA
         #error "WOLFCOSE_ENABLE_MLDSA requires wolfSSL WOLFSSL_HAVE_MLDSA"
     #endif
@@ -104,7 +164,7 @@ extern "C" {
 #endif
 
 /* RSA-PSS (PS256/384/512) — extension */
-#if defined(WOLFCOSE_ENABLE_RSAPSS) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_RSAPSS)
     #ifndef WC_RSA_PSS
         #error "WOLFCOSE_ENABLE_RSAPSS requires wolfSSL WC_RSA_PSS"
     #endif
@@ -136,7 +196,7 @@ extern "C" {
     #define WOLFCOSE_HAVE_SIG
 #endif
 
-/* === AEAD algorithms === */
+/* ----- AEAD algorithms ----- */
 
 /* AES-GCM — core */
 #if defined(HAVE_AESGCM) && !defined(WOLFCOSE_NO_AESGCM)
@@ -144,7 +204,7 @@ extern "C" {
 #endif
 
 /* ChaCha20-Poly1305 — extension */
-#if defined(WOLFCOSE_ENABLE_CHACHA20) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_CHACHA20)
     #if !defined(HAVE_CHACHA) || !defined(HAVE_POLY1305)
         #error "WOLFCOSE_ENABLE_CHACHA20 requires wolfSSL HAVE_CHACHA + HAVE_POLY1305"
     #endif
@@ -155,7 +215,7 @@ extern "C" {
 #endif
 
 /* AES-CCM — extension */
-#if defined(WOLFCOSE_ENABLE_AESCCM) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_AESCCM)
     #ifndef HAVE_AESCCM
         #error "WOLFCOSE_ENABLE_AESCCM requires wolfSSL HAVE_AESCCM"
     #endif
@@ -169,7 +229,7 @@ extern "C" {
     #define WOLFCOSE_HAVE_AEAD
 #endif
 
-/* === MAC algorithms === */
+/* ----- MAC algorithms ----- */
 
 /* HMAC-SHA256 — core */
 #if !defined(NO_HMAC) && !defined(WOLFCOSE_NO_HMAC256)
@@ -177,7 +237,7 @@ extern "C" {
 #endif
 
 /* HMAC-SHA384 — extension */
-#if defined(WOLFCOSE_ENABLE_HMAC384) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_HMAC384)
     #if defined(NO_HMAC) || !defined(WOLFSSL_SHA384)
         #error "WOLFCOSE_ENABLE_HMAC384 requires wolfSSL HMAC + WOLFSSL_SHA384"
     #endif
@@ -188,7 +248,7 @@ extern "C" {
 #endif
 
 /* HMAC-SHA512 — extension */
-#if defined(WOLFCOSE_ENABLE_HMAC512) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_HMAC512)
     #if defined(NO_HMAC) || !defined(WOLFSSL_SHA512)
         #error "WOLFCOSE_ENABLE_HMAC512 requires wolfSSL HMAC + WOLFSSL_SHA512"
     #endif
@@ -199,7 +259,7 @@ extern "C" {
 #endif
 
 /* AES-CBC-MAC — extension */
-#if defined(WOLFCOSE_ENABLE_AESMAC) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_AESMAC)
     #ifndef HAVE_AES_CBC
         #error "WOLFCOSE_ENABLE_AESMAC requires wolfSSL HAVE_AES_CBC"
     #endif
@@ -217,7 +277,7 @@ extern "C" {
     #define WOLFCOSE_HAVE_MAC
 #endif
 
-/* === Message types === */
+/* ----- Message types ----- */
 
 /* COSE_Sign1 — core (auto-off if no signature algorithm) */
 #if !defined(WOLFCOSE_NO_SIGN1) && defined(WOLFCOSE_HAVE_SIG)
@@ -259,7 +319,7 @@ extern "C" {
 #endif
 
 /* COSE_Sign multi-signer — extension */
-#if defined(WOLFCOSE_ENABLE_SIGN) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_SIGN)
     #define WOLFCOSE_SIGN_WANT
 #elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_SIGN)
     #define WOLFCOSE_SIGN_WANT
@@ -275,7 +335,7 @@ extern "C" {
 #endif
 
 /* COSE_Encrypt multi-recipient — extension */
-#if defined(WOLFCOSE_ENABLE_ENCRYPT) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_ENCRYPT)
     #define WOLFCOSE_ENCRYPT_WANT
 #elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_ENCRYPT)
     #define WOLFCOSE_ENCRYPT_WANT
@@ -291,7 +351,7 @@ extern "C" {
 #endif
 
 /* COSE_Mac multi-recipient — extension */
-#if defined(WOLFCOSE_ENABLE_MAC) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_MAC)
     #define WOLFCOSE_MAC_WANT
 #elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_MAC)
     #define WOLFCOSE_MAC_WANT
@@ -306,10 +366,10 @@ extern "C" {
     #endif
 #endif
 
-/* === Recipient key distribution (COSE_Encrypt / COSE_Mac only) === */
+/* ----- Recipient key distribution (COSE_Encrypt / COSE_Mac only) ----- */
 
 /* AES key wrap — extension */
-#if defined(WOLFCOSE_ENABLE_AESWRAP) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_AESWRAP)
     #ifndef HAVE_AES_KEYWRAP
         #error "WOLFCOSE_ENABLE_AESWRAP requires wolfSSL HAVE_AES_KEYWRAP"
     #endif
@@ -320,7 +380,7 @@ extern "C" {
 #endif
 
 /* ECDH-ES — extension */
-#if defined(WOLFCOSE_ENABLE_ECDH_ES) || defined(WOLFCOSE_ENABLE_ALL)
+#if defined(WOLFCOSE_ENABLE_ECDH_ES)
     #if !defined(HAVE_ECC) || !defined(HAVE_HKDF)
         #error "WOLFCOSE_ENABLE_ECDH_ES requires wolfSSL HAVE_ECC + HAVE_HKDF"
     #endif
@@ -347,7 +407,7 @@ extern "C" {
     #endif
 #endif
 
-/* === COSE_Key serialization — core === */
+/* ----- COSE_Key serialization — core ----- */
 #ifndef WOLFCOSE_NO_KEY_ENCODE
     #define WOLFCOSE_KEY_ENCODE
 #endif
@@ -355,7 +415,7 @@ extern "C" {
     #define WOLFCOSE_KEY_DECODE
 #endif
 
-/* === CBOR layer ===
+/* ----- CBOR layer -----
  * Encode is required by any sign/encrypt/MAC-create op and by COSE_Key encode;
  * decode by any verify/decrypt/MAC-verify op and COSE_Key decode. On by
  * default; fail loud if explicitly disabled while still required. */
@@ -376,7 +436,7 @@ extern "C" {
     #error "WOLFCOSE_NO_CBOR_DECODE conflicts with an enabled decode operation"
 #endif
 
-/* === Configurable limits (precedence: -D > WOLFCOSE_MIN_BUFFERS > default) ===
+/* ----- Configurable limits (precedence: -D > WOLFCOSE_MIN_BUFFERS > default) -----
  * Floors track the largest enabled signature algorithm. See docs/Macros.md. */
 #ifndef WOLFCOSE_MAX_SCRATCH_SZ
     #if defined(WOLFCOSE_HAVE_MLDSA)

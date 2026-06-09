@@ -60,6 +60,15 @@ extern "C" {
  * WOLFCOSE_HAVE_* flags, and tunable limits all resolve here. */
 #include <wolfcose/settings.h>
 
+/* A lean verify build must actually verify. Fail loudly if it was reduced to a
+ * library that can do nothing. */
+#if defined(WOLFCOSE_LEAN_VERIFY) && !defined(WOLFCOSE_SIGN1_VERIFY)
+    #error "WOLFCOSE_LEAN_VERIFY requires Sign1 verify; do not also disable it"
+#endif
+#if defined(WOLFCOSE_LEAN_VERIFY_MLDSA) && !defined(WOLFCOSE_SIGN1_VERIFY)
+    #error "WOLFCOSE_LEAN_VERIFY_MLDSA requires Sign1 verify; do not also disable it"
+#endif
+
 /* ----- Error codes (-9000 to -9099) ----- */
 #define WOLFCOSE_SUCCESS             0
 #define WOLFCOSE_E_INVALID_ARG      (-9000)
@@ -149,8 +158,7 @@ extern "C" {
  * - Strict decode: decoders require preferred (shortest-form) CBOR
  *   (RFC 8949 Section 4.2.1) across all entry points, and verify/decrypt
  *   APIs require inSz to be exactly the encoded object length (trailing bytes
- *   are rejected). EC2 coordinates must be exactly the curve size. See
- *   docs/cose-encoding-notes.md.
+ *   are rejected). EC2 coordinates must be exactly the curve size.
  */
 
 /* Algorithms */

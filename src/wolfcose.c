@@ -79,15 +79,23 @@ WOLFCOSE_LOCAL void wolfCose_ForceZero(void* mem, size_t len)
 
 /* On a failed verify/decrypt, clear the header so unauthenticated metadata is
  * not exposed to callers that inspect hdr without gating on the return code. */
+#if defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_SIGN_VERIFY) || \
+    defined(WOLFCOSE_ENCRYPT0_DECRYPT) || defined(WOLFCOSE_MAC0_VERIFY) || \
+    defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY)
 static void wolfCose_HdrClearOnFail(int ret, WOLFCOSE_HDR* hdr)
 {
     if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
         (void)XMEMSET(hdr, 0, sizeof(*hdr));
     }
 }
+#endif /* any verify/decrypt path */
 
 /* ----- Constant-time comparison (side-channel safe) ----- */
 
+/* Only the MAC verify paths compare secret tags, so this helper is compiled
+ * only when one of them is enabled. This keeps sign-only and verify-only
+ * builds free of an unused-function warning. */
+#if defined(WOLFCOSE_MAC0_VERIFY) || defined(WOLFCOSE_MAC_VERIFY)
 /**
  * Constant-time memory comparison (matches wolfSSL ConstantCompare pattern).
  * Returns 0 if equal, non-zero otherwise.
@@ -106,6 +114,7 @@ static int wolfCose_ConstantCompare(const byte* a, const byte* b,
     }
     return (int)result;
 }
+#endif /* WOLFCOSE_MAC0_VERIFY || WOLFCOSE_MAC_VERIFY */
 
 /* ----- RFC 9052 context strings ----- */
 WOLFCOSE_LOCAL const uint8_t WOLFCOSE_CTX_SIGNATURE1[10] = {
@@ -468,6 +477,8 @@ int wolfCose_HmacType(int32_t alg, int* hmacType)
     return ret;
 }
 
+#if defined(WOLFCOSE_MAC0_CREATE) || defined(WOLFCOSE_MAC0_VERIFY) || \
+    defined(WOLFCOSE_MAC_CREATE) || defined(WOLFCOSE_MAC_VERIFY)
 /* RFC 9053 Section 3.1: an HMAC key should be at least the hash output size.
  * Reject shorter keys unless the caller explicitly opts in. */
 static int wolfCose_HmacCheckKeyLen(int32_t alg, size_t keyLen)
@@ -505,6 +516,7 @@ static int wolfCose_HmacCheckKeyLen(int32_t alg, size_t keyLen)
 #endif
     return ret;
 }
+#endif /* MAC0/MAC create or verify */
 #endif /* WOLFCOSE_HAVE_HMAC */
 
 /* ----- Internal: ECC DER <-> raw r||s conversion ----- */
@@ -2307,6 +2319,9 @@ int wolfCose_BuildToBeSignedMaced(
     return ret;
 }
 
+#if (defined(WOLFCOSE_ENCRYPT0) || defined(WOLFCOSE_ENCRYPT)) && \
+    (defined(WOLFCOSE_HAVE_AESGCM) || defined(WOLFCOSE_HAVE_AESCCM) || \
+     defined(WOLFCOSE_HAVE_CHACHA20))
 /**
  * Build an Enc_structure for AEAD operations (RFC 9052 Section 5.3).
  *
@@ -2348,6 +2363,7 @@ static int wolfCose_BuildEncStructure(
     }
     return ret;
 }
+#endif /* (ENCRYPT0 || ENCRYPT) && AEAD */
 
 /* -----
  * Key Distribution Algorithms (RFC 9053 Section 6)
@@ -5776,7 +5792,7 @@ static int wolfCose_IsHmacAlg(int32_t alg)
     ) ? 1 : 0;
 }
 
-#ifdef HAVE_AES_CBC
+#ifdef WOLFCOSE_HAVE_AESMAC
 /**
  * Check if algorithm is AES-CBC-MAC based.
  */
@@ -5787,7 +5803,7 @@ static int wolfCose_IsAesCbcMacAlg(int32_t alg)
             (alg == WOLFCOSE_ALG_AES_MAC_128_128) ||
             (alg == WOLFCOSE_ALG_AES_MAC_256_128)) ? 1 : 0;
 }
-#endif /* HAVE_AES_CBC */
+#endif /* WOLFCOSE_HAVE_AESMAC */
 
 #if defined(WOLFCOSE_MAC0_CREATE)
 int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
