@@ -5160,9 +5160,10 @@ static int wolfCose_TestZeroizeSawLen(size_t len)
 #if defined(WOLFCOSE_TEST_ZEROIZE_HOOK) && defined(WOLFCOSE_ECDH_ES_DIRECT) && \
     defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
 /* F5298 regression guard: the ECDH-ES send and receive paths must scrub their
- * stack shared-secret buffer. Deleting either wolfCose_ForceZero(sharedSecret)
- * call drops the 66-byte scrub and fails this test. */
-static void test_cose_ecdh_es_zeroize(void)
+ * derived secret material (the shared secret and the content key) on success
+ * and on failure. Deleting any wolfCose_ForceZero of those buffers drops the
+ * expected scrub and fails this test. */
+static void test_cose_secret_zeroize(void)
 {
     WOLFCOSE_KEY recipientKey;
     WOLFCOSE_RECIPIENT recipient;
@@ -5178,8 +5179,9 @@ static void test_cose_ecdh_es_zeroize(void)
     const uint8_t payload[] = "ECDH-ES zeroize payload";
     uint8_t iv[12];
     const size_t secretLen = 66; /* sizeof(sharedSecret), max for P-521 */
+    const size_t cekLen = 32;    /* sizeof(cek), the derived content key */
 
-    TEST_LOG("  [ECDH-ES shared-secret zeroize]\n");
+    TEST_LOG("  [ECDH-ES secret zeroize (shared secret + CEK)]\n");
 
     ret = wc_InitRng(&rng);
     TEST_ASSERT(ret == 0, "zeroize rng init");
@@ -5207,6 +5209,8 @@ static void test_cose_ecdh_es_zeroize(void)
     TEST_ASSERT(ret == 0, "zeroize encrypt");
     TEST_ASSERT(wolfCose_TestZeroizeSawLen(secretLen) == 1,
                 "ecdh-es send scrubs shared secret on success");
+    TEST_ASSERT(wolfCose_TestZeroizeSawLen(cekLen) == 1,
+                "ecdh-es send scrubs CEK on success");
 
     /* Receive side: decrypt must scrub its shared secret on success. */
     recipientKey.hasPrivate = 1;
@@ -5218,6 +5222,8 @@ static void test_cose_ecdh_es_zeroize(void)
     TEST_ASSERT(ret == 0, "zeroize decrypt");
     TEST_ASSERT(wolfCose_TestZeroizeSawLen(secretLen) == 1,
                 "ecdh-es recv scrubs shared secret on success");
+    TEST_ASSERT(wolfCose_TestZeroizeSawLen(cekLen) == 1,
+                "ecdh-es recv scrubs CEK on success");
 
     /* Receive side, failure path: decrypting with the wrong recipient key runs
      * the full ECDH derivation (deriving a wrong CEK) and must still scrub the
@@ -16213,7 +16219,7 @@ int test_cose(void)
     test_cose_encrypt_ecdh_es_p384();
     test_cose_encrypt_ecdh_es_wrong_key_type();
 #if defined(WOLFCOSE_TEST_ZEROIZE_HOOK)
-    test_cose_ecdh_es_zeroize();
+    test_cose_secret_zeroize();
 #endif
 #endif
     test_cose_encrypt_a128kw();
