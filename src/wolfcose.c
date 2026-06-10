@@ -1194,8 +1194,9 @@ int wc_CoseKey_SetEd448(WOLFCOSE_KEY* key, ed448_key* edKey)
 #endif /* WOLFCOSE_HAVE_ED448 */
 
 #ifdef WOLFCOSE_HAVE_MLDSA
-int wc_CoseKey_SetMlDsa(WOLFCOSE_KEY* key, int32_t alg,
-                          wc_MlDsaKey* mlDsaKey)
+int wc_CoseKey_SetMlDsa_ex(WOLFCOSE_KEY* key, int32_t alg,
+                          wc_MlDsaKey* mlDsaKey,
+                          const uint8_t* seed, size_t seedLen)
 {
     int ret;
 
@@ -1207,23 +1208,28 @@ int wc_CoseKey_SetMlDsa(WOLFCOSE_KEY* key, int32_t alg,
              (alg != WOLFCOSE_ALG_ML_DSA_87)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
+    else if ((seed != NULL) && (seedLen != WOLFCOSE_MLDSA_SEED_SZ)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
     else {
-        key->kty = WOLFCOSE_KTY_OKP; /* PQC uses OKP kty per COSE WG */
+        /* RFC 9964: ML-DSA uses the AKP key type, carries the level in alg, and
+         * has no crv. crv is left unset (internal mapping only). */
+        key->kty = WOLFCOSE_KTY_AKP;
         key->alg = alg;
-        if (alg == WOLFCOSE_ALG_ML_DSA_44) {
-            key->crv = WOLFCOSE_CRV_ML_DSA_44;
-        }
-        else if (alg == WOLFCOSE_ALG_ML_DSA_65) {
-            key->crv = WOLFCOSE_CRV_ML_DSA_65;
-        }
-        else {
-            key->crv = WOLFCOSE_CRV_ML_DSA_87;
-        }
+        key->crv = 0;
         key->key.mldsa = mlDsaKey;
+        key->mldsaSeed = seed;
+        key->mldsaSeedLen = (seed != NULL) ? seedLen : (size_t)0;
         key->hasPrivate = (mlDsaKey->prvKeySet != 0u) ? 1u : 0u;
         ret = WOLFCOSE_SUCCESS;
     }
     return ret;
+}
+
+int wc_CoseKey_SetMlDsa(WOLFCOSE_KEY* key, int32_t alg,
+                          wc_MlDsaKey* mlDsaKey)
+{
+    return wc_CoseKey_SetMlDsa_ex(key, alg, mlDsaKey, NULL, 0);
 }
 #endif /* WOLFCOSE_HAVE_MLDSA */
 
@@ -1644,23 +1650,33 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
         else
 #endif /* WOLFCOSE_HAVE_RSAPSS */
 #ifdef WOLFCOSE_HAVE_MLDSA
-        if ((key->kty == WOLFCOSE_KTY_OKP) &&
-            ((key->crv == WOLFCOSE_CRV_ML_DSA_44) ||
-             (key->crv == WOLFCOSE_CRV_ML_DSA_65) ||
-             (key->crv == WOLFCOSE_CRV_ML_DSA_87))) {
-            /* ML-DSA COSE_Key: OKP with PQC curve.
-             * Keys are large (pub up to 2592B, priv up to 4896B),
-             * so we export directly into the output buffer to
-             * avoid large stack allocations. */
-            size_t dlMapEntries;
-            word32 dlKeyLen;
-            size_t hdrPos;
+        if (key->kty == WOLFCOSE_KTY_AKP) {
+            /* RFC 9964 AKP COSE_Key: kty=AKP(7), required alg, public key at
+             * pub(-1), 32-byte private seed at priv(-2). The public key is
+             * large (1312-2592B) so it is exported directly into the output
+             * buffer to avoid a large stack copy; the seed is small. */
+            int emitPriv = 0;
 
-            dlMapEntries = (key->hasPrivate != 0u) ? (size_t)4 : (size_t)3;
-            dlMapEntries += wolfCose_KeyOptionalEntries(key);
-            ret = wc_CBOR_EncodeMapStart(&ctx, dlMapEntries);
+            /* Emit priv only when a valid 32-byte seed is attached; wolfCrypt
+             * does not retain the seed, so a keypair without one (e.g. from
+             * wc_MlDsaKey_MakeKey) is exported as a public-only AKP key. */
+            if ((key->hasPrivate != 0u) && (key->mldsaSeed != NULL) &&
+                (key->mldsaSeedLen == WOLFCOSE_MLDSA_SEED_SZ)) {
+                emitPriv = 1;
+            }
 
-            /* 1: kty = OKP (1) */
+            if (key->alg == WOLFCOSE_ALG_UNSET) {
+                /* RFC 9964: alg is REQUIRED for AKP keys (it carries the
+                 * ML-DSA level). Never emit a key without it. */
+                ret = WOLFCOSE_E_COSE_BAD_ALG;
+            }
+            else {
+                size_t dlMapEntries = (emitPriv != 0) ? (size_t)3 : (size_t)2;
+                dlMapEntries += wolfCose_KeyOptionalEntries(key);
+                ret = wc_CBOR_EncodeMapStart(&ctx, dlMapEntries);
+            }
+
+            /* 1: kty = AKP (7) */
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wc_CBOR_EncodeUint(&ctx,
                                           (uint64_t)WOLFCOSE_KEY_LABEL_KTY);
@@ -1668,26 +1684,20 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wc_CBOR_EncodeUint(&ctx, (uint64_t)key->kty);
             }
+            /* optional kid and the RFC 9964 required alg */
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wolfCose_EncodeKeyOptionalFields(&ctx, key);
             }
-            /* -1: crv (negative for ML-DSA) */
+            /* -1: pub (public key bstr) - direct export into output */
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wc_CBOR_EncodeInt(&ctx,
-                                         (int64_t)WOLFCOSE_KEY_LABEL_CRV);
-            }
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeInt(&ctx, (int64_t)key->crv);
-            }
-            /* -2: x (public key bstr) - direct export into output */
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeInt(&ctx,
-                                         (int64_t)WOLFCOSE_KEY_LABEL_X);
+                                         (int64_t)WOLFCOSE_KEY_LABEL_PUB);
             }
             if (ret == WOLFCOSE_SUCCESS) {
                 /* Reserve 3 bytes for CBOR bstr header (2-byte length).
                  * All ML-DSA pub sizes (1312-2592) need this form. */
-                hdrPos = ctx.idx;
+                size_t hdrPos = ctx.idx;
+                word32 dlKeyLen;
                 if ((ctx.idx + 3u) > ctx.bufSz) {
                     ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
                 }
@@ -1716,37 +1726,15 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                     }
                 }
             }
-            /* -4: d (private key, optional) - direct export */
-            if ((ret == WOLFCOSE_SUCCESS) && (key->hasPrivate != 0u)) {
+            /* -2: priv (32-byte seed, only when a seed is attached) */
+            if ((ret == WOLFCOSE_SUCCESS) && (emitPriv != 0)) {
                 ret = wc_CBOR_EncodeInt(&ctx,
-                                         (int64_t)WOLFCOSE_KEY_LABEL_D);
+                                         (int64_t)WOLFCOSE_KEY_LABEL_PRIV);
                 if (ret == WOLFCOSE_SUCCESS) {
-                    hdrPos = ctx.idx;
-                    if ((ctx.idx + 3u) > ctx.bufSz) {
-                        ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
-                    }
-                    else {
-                        ctx.idx += 3u;
-                        dlKeyLen = (word32)(ctx.bufSz - ctx.idx);
-                        INJECT_FAILURE(WOLF_FAIL_MLDSA_EXPORT_PRIV, -1,
-                            ret = wc_MlDsaKey_ExportPrivRaw(
-                                key->key.mldsa,
-                                &ctx.buf[ctx.idx], &dlKeyLen));
-                        if (ret != 0) {
-                            ret = WOLFCOSE_E_CRYPTO;
-                        }
-                        else if ((dlKeyLen < 256u) || (dlKeyLen > 65535u)) {
-                            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
-                        }
-                        else {
-                            ctx.buf[hdrPos] = 0x59u;
-                            ctx.buf[hdrPos + 1u] =
-                                (uint8_t)((uint32_t)dlKeyLen >> 8u);
-                            ctx.buf[hdrPos + 2u] =
-                                (uint8_t)((uint32_t)dlKeyLen & 0xFFu);
-                            ctx.idx += (size_t)dlKeyLen;
-                        }
-                    }
+                    INJECT_FAILURE(WOLF_FAIL_MLDSA_EXPORT_PRIV,
+                        WOLFCOSE_E_CRYPTO,
+                        ret = wc_CBOR_EncodeBstr(&ctx, key->mldsaSeed,
+                            key->mldsaSeedLen));
                 }
             }
 
@@ -1949,6 +1937,10 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
         key->kid = NULL;
         key->kidLen = 0;
         key->hasPrivate = 0;
+#ifdef WOLFSSL_HAVE_MLDSA
+        key->mldsaSeed = NULL;
+        key->mldsaSeedLen = 0;
+#endif
 
         ret = wc_CBOR_DecodeMapStart(&ctx, &mapCount);
 
@@ -2207,45 +2199,74 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             else
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
-            if ((key->kty == WOLFCOSE_KTY_OKP) &&
-                (key->key.mldsa != NULL) &&
-                ((key->crv == WOLFCOSE_CRV_ML_DSA_44) ||
-                 (key->crv == WOLFCOSE_CRV_ML_DSA_65) ||
-                 (key->crv == WOLFCOSE_CRV_ML_DSA_87))) {
+            if ((key->kty == WOLFCOSE_KTY_AKP) &&
+                (key->key.mldsa != NULL)) {
+                /* RFC 9964 AKP: pub(-1) bstr was stashed in nData, the priv(-2)
+                 * 32-byte seed in xData. The ML-DSA level comes from alg. */
+                const uint8_t* akpPub = nData;
+                size_t akpPubLen = nLen;
+                const uint8_t* akpSeed = xData;
+                size_t akpSeedLen = xLen;
                 byte dlLevel;
-                if (key->crv == WOLFCOSE_CRV_ML_DSA_44) {
+
+                if (key->alg == WOLFCOSE_ALG_ML_DSA_44) {
                     dlLevel = 2;
                 }
-                else if (key->crv == WOLFCOSE_CRV_ML_DSA_65) {
+                else if (key->alg == WOLFCOSE_ALG_ML_DSA_65) {
                     dlLevel = 3;
                 }
-                else {
+                else if (key->alg == WOLFCOSE_ALG_ML_DSA_87) {
                     dlLevel = 5;
                 }
+                else {
+                    dlLevel = 0;
+                }
 
-                if (xData == NULL) {
+                if (dlLevel == 0u) {
+                    ret = WOLFCOSE_E_COSE_BAD_ALG;
+                }
+                else if (key->crv != 0) {
+                    /* RFC 9964 AKP keys carry no crv. */
+                    ret = WOLFCOSE_E_COSE_BAD_HDR;
+                }
+                else if (akpPub == NULL) {
+                    /* RFC 9964: pub is REQUIRED for AKP keys, public or
+                     * private. Reject a seed-only key with no public part. */
                     ret = WOLFCOSE_E_COSE_BAD_HDR;
                 }
                 else {
-                    /* Set level before import */
-                    ret = wc_MlDsaKey_SetParams(key->key.mldsa,
-                                                  dlLevel);
+                    ret = wc_MlDsaKey_SetParams(key->key.mldsa, dlLevel);
                     if (ret != 0) {
                         ret = WOLFCOSE_E_CRYPTO;
                     }
-                    else if (dData != NULL) {
-                        INJECT_FAILURE(WOLF_FAIL_MLDSA_IMPORT_PRIV, -1,
-                            ret = wc_MlDsaKey_ImportKey(
-                                key->key.mldsa,
-                                dData, (word32)dLen,
-                                xData, (word32)xLen));
-                        if (ret == 0) { key->hasPrivate = 1; }
-                        else { ret = WOLFCOSE_E_CRYPTO; }
+                    else if (akpSeed != NULL) {
+                        /* Private key: the seed is authoritative and fully
+                         * determines the keypair, so the (RFC-required, already
+                         * present) pub is not cross-checked against it -- doing
+                         * so would need a multi-KB stack copy of the derived
+                         * public key, which the bounded-stack design avoids. */
+                        if (akpSeedLen != WOLFCOSE_MLDSA_SEED_SZ) {
+                            ret = WOLFCOSE_E_COSE_BAD_HDR;
+                        }
+                        else {
+                            INJECT_FAILURE(WOLF_FAIL_MLDSA_IMPORT_PRIV, -1,
+                                ret = wc_MlDsaKey_MakeKeyFromSeed(
+                                    key->key.mldsa, akpSeed));
+                            if (ret == 0) {
+                                key->hasPrivate = 1;
+                                /* Retain the seed (zero-copy into the input,
+                                 * like kid) so a decode->encode round-trip can
+                                 * re-emit the private key. */
+                                key->mldsaSeed = akpSeed;
+                                key->mldsaSeedLen = akpSeedLen;
+                            }
+                            else { ret = WOLFCOSE_E_CRYPTO; }
+                        }
                     }
                     else {
                         INJECT_FAILURE(WOLF_FAIL_MLDSA_IMPORT_PUB, -1,
                             ret = wc_MlDsaKey_ImportPubRaw(
-                                key->key.mldsa, xData, (word32)xLen));
+                                key->key.mldsa, akpPub, (word32)akpPubLen));
                         if (ret != 0) { ret = WOLFCOSE_E_CRYPTO; }
                     }
                 }
@@ -3362,25 +3383,46 @@ static int wolfCose_BuildSigStructure(const uint8_t* protectedHdr,
 }
 
 #ifdef WOLFCOSE_HAVE_MLDSA
-/* Map an ML-DSA COSE algorithm to the curve identifier its key must carry, so
- * a key of the wrong security level cannot satisfy a higher-level alg label. */
-static int wolfCose_MlDsaAlgCrv(int32_t alg, int32_t* crv)
+/* Map an ML-DSA COSE algorithm to the FIPS 204 security level its key must
+ * report, so a key of the wrong level cannot satisfy a higher-level alg. */
+static int wolfCose_MlDsaAlgLevel(int32_t alg, byte* level)
 {
     int ret = WOLFCOSE_SUCCESS;
 
     switch (alg) {
         case WOLFCOSE_ALG_ML_DSA_44:
-            *crv = WOLFCOSE_CRV_ML_DSA_44;
+            *level = 2;
             break;
         case WOLFCOSE_ALG_ML_DSA_65:
-            *crv = WOLFCOSE_CRV_ML_DSA_65;
+            *level = 3;
             break;
         case WOLFCOSE_ALG_ML_DSA_87:
-            *crv = WOLFCOSE_CRV_ML_DSA_87;
+            *level = 5;
             break;
         default:
             ret = WOLFCOSE_E_COSE_BAD_ALG;
             break;
+    }
+    return ret;
+}
+
+/* RFC 9964: validate that an ML-DSA key is AKP-typed and reports the level
+ * required by alg. Replaces the old OKP+crv level binding. */
+static int wolfCose_MlDsaCheckKey(const WOLFCOSE_KEY* key, int32_t alg)
+{
+    int ret;
+    byte reqLevel = 0;
+
+    if ((key == NULL) || (key->kty != WOLFCOSE_KTY_AKP) ||
+        (key->key.mldsa == NULL)) {
+        ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
+    else {
+        ret = wolfCose_MlDsaAlgLevel(alg, &reqLevel);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((byte)key->key.mldsa->level != reqLevel)) {
+        ret = WOLFCOSE_E_COSE_KEY_TYPE;
     }
     return ret;
 }
@@ -3652,18 +3694,10 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
     if ((ret == WOLFCOSE_SUCCESS) && ((alg == WOLFCOSE_ALG_ML_DSA_44) ||
         (alg == WOLFCOSE_ALG_ML_DSA_65) || (alg == WOLFCOSE_ALG_ML_DSA_87))) {
         size_t expectedSigSz = 0;
-        int32_t reqCrv = 0;
 
-        if ((key->kty != WOLFCOSE_KTY_OKP) || (key->key.mldsa == NULL)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
-        }
-
-        /* Key level must match the algorithm level. */
+        /* RFC 9964: AKP key whose level matches the algorithm. */
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wolfCose_MlDsaAlgCrv(alg, &reqCrv);
-        }
-        if ((ret == WOLFCOSE_SUCCESS) && (key->crv != reqCrv)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            ret = wolfCose_MlDsaCheckKey(key, alg);
         }
 
         if (ret == WOLFCOSE_SUCCESS) {
@@ -4076,17 +4110,10 @@ int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
         ((alg == WOLFCOSE_ALG_ML_DSA_44) || (alg == WOLFCOSE_ALG_ML_DSA_65) ||
          (alg == WOLFCOSE_ALG_ML_DSA_87))) {
         int verified = 0;
-        int32_t reqCrv = 0;
 
-        if ((key->kty != WOLFCOSE_KTY_OKP) || (key->key.mldsa == NULL)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
-        }
-        /* Key level must match the algorithm level. */
+        /* RFC 9964: AKP key whose level matches the algorithm. */
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wolfCose_MlDsaAlgCrv(alg, &reqCrv);
-        }
-        if ((ret == WOLFCOSE_SUCCESS) && (key->crv != reqCrv)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            ret = wolfCose_MlDsaCheckKey(key, alg);
         }
         if (ret == WOLFCOSE_SUCCESS) {
             INJECT_FAILURE(WOLF_FAIL_MLDSA_VERIFY, -1,
@@ -4283,24 +4310,13 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         }
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
+        /* RFC 9964: ML-DSA signer must be an AKP key at the algId's level. */
         else if (((signers[i].algId == WOLFCOSE_ALG_ML_DSA_44) ||
                   (signers[i].algId == WOLFCOSE_ALG_ML_DSA_65) ||
                   (signers[i].algId == WOLFCOSE_ALG_ML_DSA_87)) &&
-                 (signers[i].key->kty != WOLFCOSE_KTY_OKP)) {
+                 (wolfCose_MlDsaCheckKey(signers[i].key, signers[i].algId)
+                      != WOLFCOSE_SUCCESS)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
-        }
-        /* ML-DSA level must match algId. */
-        else if ((signers[i].algId == WOLFCOSE_ALG_ML_DSA_44) &&
-                 (signers[i].key->crv != WOLFCOSE_CRV_ML_DSA_44)) {
-            ret = WOLFCOSE_E_COSE_BAD_ALG;
-        }
-        else if ((signers[i].algId == WOLFCOSE_ALG_ML_DSA_65) &&
-                 (signers[i].key->crv != WOLFCOSE_CRV_ML_DSA_65)) {
-            ret = WOLFCOSE_E_COSE_BAD_ALG;
-        }
-        else if ((signers[i].algId == WOLFCOSE_ALG_ML_DSA_87) &&
-                 (signers[i].key->crv != WOLFCOSE_CRV_ML_DSA_87)) {
-            ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
 #endif
         else {
@@ -4514,16 +4530,9 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
              (signer->algId == WOLFCOSE_ALG_ML_DSA_65) ||
              (signer->algId == WOLFCOSE_ALG_ML_DSA_87))) {
             size_t expectedSigSz = 0;
-            int32_t reqCrv = 0;
-            if (signer->key->key.mldsa == NULL) {
-                ret = WOLFCOSE_E_COSE_KEY_TYPE;
-            }
-            /* Key level must match the algorithm level. */
+            /* RFC 9964: AKP key whose level matches the algorithm. */
             if (ret == WOLFCOSE_SUCCESS) {
-                ret = wolfCose_MlDsaAlgCrv(signer->algId, &reqCrv);
-            }
-            if ((ret == WOLFCOSE_SUCCESS) && (signer->key->crv != reqCrv)) {
-                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+                ret = wolfCose_MlDsaCheckKey(signer->key, signer->algId);
             }
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wolfCose_SigSize(signer->algId, &expectedSigSz);
@@ -4976,17 +4985,9 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         ((alg == WOLFCOSE_ALG_ML_DSA_44) || (alg == WOLFCOSE_ALG_ML_DSA_65) ||
          (alg == WOLFCOSE_ALG_ML_DSA_87))) {
         int verified = 0;
-        int32_t reqCrv = 0;
-        if ((verifyKey->kty != WOLFCOSE_KTY_OKP) ||
-            (verifyKey->key.mldsa == NULL)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
-        }
-        /* Key level must match the algorithm level. */
+        /* RFC 9964: AKP key whose level matches the algorithm. */
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wolfCose_MlDsaAlgCrv(alg, &reqCrv);
-        }
-        if ((ret == WOLFCOSE_SUCCESS) && (verifyKey->crv != reqCrv)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            ret = wolfCose_MlDsaCheckKey(verifyKey, alg);
         }
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wc_MlDsaKey_VerifyCtx(

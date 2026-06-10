@@ -82,6 +82,18 @@
 #define EXIT_CRYPTO  2
 #define EXIT_IO      3
 
+/* Portable secure-zero for sensitive key material; volatile writes are not
+ * optimized away. wc_ForceZero is only public in wolfSSL >= 5.8.4, so the tool
+ * carries its own to match the library's supported range. */
+static void tool_force_zero(void* mem, size_t len)
+{
+    volatile unsigned char* p = (volatile unsigned char*)mem;
+    size_t i;
+    for (i = 0u; i < len; i++) {
+        p[i] = 0u;
+    }
+}
+
 static void usage(void)
 {
     fprintf(stderr,
@@ -312,6 +324,7 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
         alg == WOLFCOSE_ALG_ML_DSA_87) {
         wc_MlDsaKey dl;
         byte level;
+        uint8_t seed[WOLFCOSE_MLDSA_SEED_SZ];
         if (alg == WOLFCOSE_ALG_ML_DSA_44)       level = WC_ML_DSA_44;
         else if (alg == WOLFCOSE_ALG_ML_DSA_65)  level = WC_ML_DSA_65;
         else                                      level = WC_ML_DSA_87;
@@ -320,16 +333,23 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
             ret = wc_MlDsaKey_SetParams(&dl, level);
         }
         if (ret == 0) {
-            ret = wc_MlDsaKey_MakeKey(&dl, &rng);
+            /* RFC 9964: derive from a seed so the conformant private key
+             * (the 32-byte seed) can be written to the COSE_Key. */
+            ret = wc_RNG_GenerateBlock(&rng, seed, (word32)sizeof(seed));
+        }
+        if (ret == 0) {
+            ret = wc_MlDsaKey_MakeKeyFromSeed(&dl, seed);
         }
         if (ret != 0) {
             fprintf(stderr, "ML-DSA keygen failed: %d\n", ret);
+            tool_force_zero(seed, sizeof(seed));
             wc_MlDsaKey_Free(&dl);
             wc_FreeRng(&rng);
             return EXIT_CRYPTO;
         }
-        wc_CoseKey_SetMlDsa(&coseKey, alg, &dl);
+        wc_CoseKey_SetMlDsa_ex(&coseKey, alg, &dl, seed, sizeof(seed));
         ret = wc_CoseKey_Encode(&coseKey, keyBuf, sizeof(keyBuf), &keyLen);
+        tool_force_zero(seed, sizeof(seed));
         wc_MlDsaKey_Free(&dl);
     }
     else
@@ -693,10 +713,7 @@ static int tool_verify(const char* keyPath, const char* inPath)
     else
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
-    if (ret == 0 && kty == WOLFCOSE_KTY_OKP &&
-        (crv == WOLFCOSE_CRV_ML_DSA_44 ||
-         crv == WOLFCOSE_CRV_ML_DSA_65 ||
-         crv == WOLFCOSE_CRV_ML_DSA_87)) {
+    if (ret == 0 && kty == WOLFCOSE_KTY_AKP) {
         wc_MlDsaKey dl;
         keyMatched = 1;
         wc_CoseKey_Init(&coseKey);

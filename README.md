@@ -1,12 +1,12 @@
 # wolfCOSE
 
-wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.rfc-editor.org/rfc/rfc8949) and [COSE (RFC 9052/9053)](https://www.rfc-editor.org/rfc/rfc9052) using [wolfSSL](https://www.wolfssl.com/) as the crypto backend.
+wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.rfc-editor.org/rfc/rfc8949), [COSE (RFC 9052/9053)](https://www.rfc-editor.org/rfc/rfc9052), and post-quantum [ML-DSA for COSE (RFC 9964)](https://www.rfc-editor.org/rfc/rfc9964) using [wolfSSL](https://www.wolfssl.com/) as the crypto backend.
 
 ## Main Features
 
 - **Complete RFC 9052 message set**: all six COSE message types, including multi-signer 
   `COSE_Sign` and multi-recipient `COSE_Encrypt` / `COSE_Mac`
-- **Post-quantum signing**: ML-DSA (FIPS 204) at all three security levels
+- **Post-quantum signing**: ML-DSA (FIPS 204) at all three security levels, with RFC 9964 `COSE_Key` (AKP key type, seed-based private keys)
 - **40 algorithms** across signing, encryption, MAC, and key distribution
 - **Zero dynamic allocation**: heap-allocation-free and non-recursive. Every operation runs on caller-provided buffers 
    within a bounded, target-customizable stack ceiling (nothing on the heap, zero `.data`/`.bss`)
