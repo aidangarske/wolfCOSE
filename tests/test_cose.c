@@ -831,6 +831,96 @@ static void test_cose_encrypt0_a128gcm(void)
     }
 }
 
+#if defined(WOLFCOSE_HAVE_ES256) && defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+static void test_cose_sign1_word32_overflow_guard(void)
+{
+    WOLFCOSE_KEY signKey;
+    ecc_key eccKey;
+    WC_RNG rng;
+    uint8_t payload[16] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    size_t hugeLen = (size_t)0xFFFFFFFFUL + 1u;
+    int ret;
+
+    TEST_LOG("  [Sign1 word32 length guard]\n");
+
+    if (wc_InitRng(&rng) != 0) {
+        TEST_ASSERT(0, "sign1 guard rng init");
+        return;
+    }
+    if (wc_ecc_init(&eccKey) != 0) {
+        TEST_ASSERT(0, "sign1 guard ecc init");
+        (void)wc_FreeRng(&rng);
+        return;
+    }
+    if (wc_ecc_make_key(&rng, 32, &eccKey) != 0) {
+        TEST_ASSERT(0, "sign1 guard keygen");
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
+        return;
+    }
+    (void)wc_CoseKey_Init(&signKey);
+    (void)wc_CoseKey_SetEcc(&signKey, WOLFCOSE_CRV_P256, &eccKey);
+
+    /* payloadLen above word32 range must be rejected before the Sig_structure
+     * length is cast to word32 for hashing, not truncated. */
+    ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ES256,
+        NULL, 0,
+        payload, hugeLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "sign1 oversized payloadLen rejected");
+    TEST_ASSERT(outLen == 0, "sign1 oversized payloadLen no output");
+
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
+}
+#endif /* WOLFCOSE_HAVE_ES256 && SIZE_MAX > 0xFFFFFFFF */
+
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+static void test_cose_encrypt0_word32_overflow_guard(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t keyData[16] = {
+        0x84, 0x9B, 0x57, 0x21, 0x9D, 0xAE, 0x48, 0xDE,
+        0x64, 0x6D, 0x07, 0xDB, 0xB5, 0x33, 0x56, 0x6E
+    };
+    uint8_t iv[12] = {
+        0x02, 0xD1, 0xF7, 0xE6, 0xF2, 0x6C, 0x43, 0xD4,
+        0x86, 0x8D, 0x87, 0xCE
+    };
+    uint8_t payload[16] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    size_t hugeLen = (size_t)0xFFFFFFFFUL + 1u;
+    int ret;
+
+    TEST_LOG("  [Encrypt0 word32 length guard]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    /* payloadLen above word32 range must be rejected before any (word32) cast,
+     * not truncated. The payload buffer stays tiny; the guard must fire before
+     * the data is read. */
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, hugeLen,
+        NULL, 0, NULL,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "enc0 oversized payloadLen rejected");
+    TEST_ASSERT(outLen == 0, "enc0 oversized payloadLen no output");
+}
+#endif /* SIZE_MAX > 0xFFFFFFFF */
+
 static void test_cose_encrypt0_a256gcm(void)
 {
     WOLFCOSE_KEY key;
@@ -2814,6 +2904,253 @@ static void test_cose_key_ed448_public_only(void)
 }
 #endif /* WOLFCOSE_HAVE_ED448 */
 
+#if defined(WOLFCOSE_HAVE_ES256) || defined(WOLFCOSE_HAVE_EDDSA)
+static void test_cose_key_decode_private_only(void)
+{
+    TEST_LOG("  [Key decode private-only (crv+d, no public)]\n");
+
+#ifdef WOLFCOSE_HAVE_ES256
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY key2;
+        ecc_key eccKey, eccKey2;
+        WC_RNG rng;
+        uint8_t dBuf[32];
+        word32 dSz = sizeof(dBuf);
+        uint8_t keyBuf[128];
+        WOLFCOSE_CBOR_CTX enc;
+        uint8_t hash[32];
+        uint8_t sig[80];
+        word32 sigLen = sizeof(sig);
+        int verifyStatus = 0;
+        int ret;
+        size_t i;
+
+        for (i = 0; i < sizeof(hash); i++) {
+            hash[i] = (uint8_t)i;
+        }
+
+        ret = wc_InitRng(&rng);
+        TEST_ASSERT(ret == 0, "ec priv-only rng init");
+        ret = wc_ecc_init(&eccKey);
+        TEST_ASSERT(ret == 0, "ec priv-only key init");
+        ret = wc_ecc_init(&eccKey2);
+        TEST_ASSERT(ret == 0, "ec priv-only key2 init");
+        ret = wc_ecc_make_key(&rng, 32, &eccKey);
+        TEST_ASSERT(ret == 0, "ec priv-only keygen");
+        ret = wc_ecc_export_private_only(&eccKey, dBuf, &dSz);
+        TEST_ASSERT(ret == 0 && dSz == sizeof(dBuf), "ec priv-only export d");
+
+        /* Build {kty: EC2, crv: P-256, d: <32>} with no x/y. */
+        enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
+        wc_CBOR_EncodeMapStart(&enc, 3);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_P256);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_D);
+        wc_CBOR_EncodeBstr(&enc, dBuf, dSz);
+
+        (void)wc_CoseKey_Init(&key2);
+        key2.key.ecc = &eccKey2;
+        ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "ec2 private-only {kty,crv,d} accepted");
+        TEST_ASSERT(key2.hasPrivate == 1, "ec2 private-only has private");
+
+        /* Imported scalar must sign; original full key must verify it. */
+        ret = wc_ecc_sign_hash(hash, sizeof(hash), sig, &sigLen, &rng,
+                               &eccKey2);
+        TEST_ASSERT(ret == 0, "ec2 private-only sign");
+        ret = wc_ecc_verify_hash(sig, sigLen, hash, sizeof(hash),
+                                 &verifyStatus, &eccKey);
+        TEST_ASSERT(ret == 0 && verifyStatus == 1,
+                    "ec2 private-only signature verifies");
+
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_ecc_free(&eccKey2);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_ES256 */
+
+#ifdef WOLFCOSE_HAVE_EDDSA
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY key2;
+        ed25519_key edKey, edKey2;
+        WC_RNG rng;
+        uint8_t dBuf[ED25519_KEY_SIZE];
+        word32 dSz = sizeof(dBuf);
+        uint8_t keyBuf[128];
+        WOLFCOSE_CBOR_CTX enc;
+        uint8_t msg[16];
+        uint8_t sig[ED25519_SIG_SIZE];
+        word32 sigLen = sizeof(sig);
+        int verifyStatus = 0;
+        int ret;
+        size_t i;
+
+        for (i = 0; i < sizeof(msg); i++) {
+            msg[i] = (uint8_t)i;
+        }
+
+        ret = wc_InitRng(&rng);
+        TEST_ASSERT(ret == 0, "ed priv-only rng init");
+        ret = wc_ed25519_init(&edKey);
+        TEST_ASSERT(ret == 0, "ed priv-only key init");
+        ret = wc_ed25519_init(&edKey2);
+        TEST_ASSERT(ret == 0, "ed priv-only key2 init");
+        ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
+        TEST_ASSERT(ret == 0, "ed priv-only keygen");
+        ret = wc_ed25519_export_private_only(&edKey, dBuf, &dSz);
+        TEST_ASSERT(ret == 0 && dSz == sizeof(dBuf), "ed priv-only export d");
+
+        /* Build {kty: OKP, crv: Ed25519, d: <32>} with no x. */
+        enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
+        wc_CBOR_EncodeMapStart(&enc, 3);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_ED25519);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_D);
+        wc_CBOR_EncodeBstr(&enc, dBuf, dSz);
+
+        (void)wc_CoseKey_Init(&key2);
+        key2.key.ed25519 = &edKey2;
+        ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "okp ed25519 private-only {kty,crv,d} accepted");
+        TEST_ASSERT(key2.hasPrivate == 1, "ed25519 private-only has private");
+
+        ret = wc_ed25519_sign_msg(msg, sizeof(msg), sig, &sigLen, &edKey2);
+        TEST_ASSERT(ret == 0, "ed25519 private-only sign");
+        ret = wc_ed25519_verify_msg(sig, sigLen, msg, sizeof(msg),
+                                    &verifyStatus, &edKey2);
+        TEST_ASSERT(ret == 0 && verifyStatus == 1,
+                    "ed25519 private-only signature verifies");
+
+        (void)wc_ed25519_free(&edKey);
+        (void)wc_ed25519_free(&edKey2);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_EDDSA */
+
+#ifdef WOLFCOSE_HAVE_ED448
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY key2;
+        ed448_key edKey, edKey2;
+        WC_RNG rng;
+        uint8_t dBuf[ED448_KEY_SIZE];
+        word32 dSz = sizeof(dBuf);
+        uint8_t keyBuf[160];
+        WOLFCOSE_CBOR_CTX enc;
+        uint8_t msg[16];
+        uint8_t sig[ED448_SIG_SIZE];
+        word32 sigLen = sizeof(sig);
+        int verifyStatus = 0;
+        int ret;
+        size_t i;
+
+        for (i = 0; i < sizeof(msg); i++) {
+            msg[i] = (uint8_t)i;
+        }
+
+        ret = wc_InitRng(&rng);
+        TEST_ASSERT(ret == 0, "ed448 priv-only rng init");
+        ret = wc_ed448_init(&edKey);
+        TEST_ASSERT(ret == 0, "ed448 priv-only key init");
+        ret = wc_ed448_init(&edKey2);
+        TEST_ASSERT(ret == 0, "ed448 priv-only key2 init");
+        ret = wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edKey);
+        TEST_ASSERT(ret == 0, "ed448 priv-only keygen");
+        ret = wc_ed448_export_private_only(&edKey, dBuf, &dSz);
+        TEST_ASSERT(ret == 0 && dSz == sizeof(dBuf), "ed448 priv-only export d");
+
+        /* Build {kty: OKP, crv: Ed448, d: <57>} with no x. */
+        enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
+        wc_CBOR_EncodeMapStart(&enc, 3);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+        wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_ED448);
+        wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_D);
+        wc_CBOR_EncodeBstr(&enc, dBuf, dSz);
+
+        (void)wc_CoseKey_Init(&key2);
+        key2.key.ed448 = &edKey2;
+        ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "okp ed448 private-only {kty,crv,d} accepted");
+        TEST_ASSERT(key2.hasPrivate == 1, "ed448 private-only has private");
+
+        ret = wc_ed448_sign_msg(msg, sizeof(msg), sig, &sigLen, &edKey2,
+                                NULL, 0);
+        TEST_ASSERT(ret == 0, "ed448 private-only sign");
+        ret = wc_ed448_verify_msg(sig, sigLen, msg, sizeof(msg),
+                                  &verifyStatus, &edKey2, NULL, 0);
+        TEST_ASSERT(ret == 0 && verifyStatus == 1,
+                    "ed448 private-only signature verifies");
+
+        (void)wc_ed448_free(&edKey);
+        (void)wc_ed448_free(&edKey2);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_ED448 */
+}
+#endif /* WOLFCOSE_HAVE_ES256 || WOLFCOSE_HAVE_EDDSA */
+
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
+/* Public-only RSA COSE_Key {kty, n, e} decodes via the public-key path. */
+static void test_cose_key_rsa_public_decode(void)
+{
+    RsaKey rsaKey, rsaKey2;
+    WC_RNG rng;
+    WOLFCOSE_KEY key2;
+    uint8_t nBuf[300];
+    uint8_t eBuf[16];
+    word32 nSz = sizeof(nBuf);
+    word32 eSz = sizeof(eBuf);
+    uint8_t keyBuf[400];
+    WOLFCOSE_CBOR_CTX enc;
+    int ret;
+
+    TEST_LOG("  [Key RSA public-only decode]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "rsa pub rng");
+    ret = wc_InitRsaKey(&rsaKey, NULL);
+    TEST_ASSERT(ret == 0, "rsa pub key init");
+    ret = wc_InitRsaKey(&rsaKey2, NULL);
+    TEST_ASSERT(ret == 0, "rsa pub key2 init");
+    ret = wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng);
+    TEST_ASSERT(ret == 0, "rsa pub keygen");
+    ret = wc_RsaFlattenPublicKey(&rsaKey, eBuf, &eSz, nBuf, &nSz);
+    TEST_ASSERT(ret == 0, "rsa pub flatten");
+
+    /* Build {kty: RSA, -1: n, -2: e} with no private components. */
+    enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 3);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_RSA);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+    wc_CBOR_EncodeBstr(&enc, nBuf, nSz);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_X);
+    wc_CBOR_EncodeBstr(&enc, eBuf, eSz);
+
+    (void)wc_CoseKey_Init(&key2);
+    key2.key.rsa = &rsaKey2;
+    ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "rsa public-only decode accepted");
+    TEST_ASSERT(key2.kty == WOLFCOSE_KTY_RSA, "rsa public-only kty");
+    TEST_ASSERT(key2.hasPrivate == 0, "rsa public-only no private");
+
+    (void)wc_FreeRsaKey(&rsaKey);
+    (void)wc_FreeRsaKey(&rsaKey2);
+    (void)wc_FreeRng(&rng);
+}
+#endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
+
 #ifdef WOLFCOSE_HAVE_MLDSA
 static void test_cose_key_mldsa_public_only(void)
 {
@@ -4786,6 +5123,146 @@ static void test_cose_encrypt_direct_multi_key_alg_mismatch(void)
     wc_CoseKey_Free(&key1);
     wc_CoseKey_Free(&key2);
 }
+
+#ifdef WOLFCOSE_TEST_ZEROIZE_HOOK
+static size_t g_zeroizeLens[256];
+static size_t g_zeroizeCount = 0;
+
+/* Called from wolfCose_ForceZero in the zeroize-hook build; records the length
+ * of every scrub so a test can assert a specific call site ran. */
+void wolfCose_TestZeroizeRecord(const void* mem, size_t len)
+{
+    (void)mem;
+    if (g_zeroizeCount < (sizeof(g_zeroizeLens) / sizeof(g_zeroizeLens[0]))) {
+        g_zeroizeLens[g_zeroizeCount] = len;
+        g_zeroizeCount++;
+    }
+}
+
+static void wolfCose_TestZeroizeReset(void)
+{
+    g_zeroizeCount = 0;
+}
+
+static int wolfCose_TestZeroizeSawLen(size_t len)
+{
+    size_t i;
+    int found = 0;
+    for (i = 0; i < g_zeroizeCount; i++) {
+        if (g_zeroizeLens[i] == len) {
+            found = 1;
+        }
+    }
+    return found;
+}
+#endif /* WOLFCOSE_TEST_ZEROIZE_HOOK */
+
+#if defined(WOLFCOSE_TEST_ZEROIZE_HOOK) && defined(WOLFCOSE_ECDH_ES_DIRECT) && \
+    defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
+/* F5298 regression guard: the ECDH-ES send and receive paths must scrub their
+ * derived secret material (the shared secret and the content key) on success
+ * and on failure. Deleting any wolfCose_ForceZero of those buffers drops the
+ * expected scrub and fails this test. */
+static void test_cose_secret_zeroize(void)
+{
+    WOLFCOSE_KEY recipientKey;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    ecc_key recipientEcc;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[1024];
+    size_t outLen = 0;
+    uint8_t scratch[1024];
+    uint8_t plaintext[128];
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "ECDH-ES zeroize payload";
+    uint8_t iv[12];
+    const size_t secretLen = 66; /* sizeof(sharedSecret), max for P-521 */
+    const size_t cekLen = 32;    /* sizeof(cek), the derived content key */
+
+    TEST_LOG("  [ECDH-ES secret zeroize (shared secret + CEK)]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "zeroize rng init");
+    ret = wc_ecc_init(&recipientEcc);
+    TEST_ASSERT(ret == 0, "zeroize ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
+    TEST_ASSERT(ret == 0, "zeroize keygen");
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    TEST_ASSERT(ret == 0, "zeroize iv");
+
+    (void)wc_CoseKey_Init(&recipientKey);
+    ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
+    TEST_ASSERT(ret == 0, "zeroize set key");
+    recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+    recipient.key = &recipientKey;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    /* Send side: encrypt must scrub its shared secret on success. */
+    recipientKey.hasPrivate = 0;
+    wolfCose_TestZeroizeReset();
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv), payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == 0, "zeroize encrypt");
+    TEST_ASSERT(wolfCose_TestZeroizeSawLen(secretLen) == 1,
+                "ecdh-es send scrubs shared secret on success");
+    TEST_ASSERT(wolfCose_TestZeroizeSawLen(cekLen) == 1,
+                "ecdh-es send scrubs CEK on success");
+
+    /* Receive side: decrypt must scrub its shared secret on success. */
+    recipientKey.hasPrivate = 1;
+    (void)memset(&hdr, 0, sizeof(hdr));
+    wolfCose_TestZeroizeReset();
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0, out, outLen, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr, plaintext, sizeof(plaintext),
+        &plaintextLen);
+    TEST_ASSERT(ret == 0, "zeroize decrypt");
+    TEST_ASSERT(wolfCose_TestZeroizeSawLen(secretLen) == 1,
+                "ecdh-es recv scrubs shared secret on success");
+    TEST_ASSERT(wolfCose_TestZeroizeSawLen(cekLen) == 1,
+                "ecdh-es recv scrubs CEK on success");
+
+    /* Receive side, failure path: decrypting with the wrong recipient key runs
+     * the full ECDH derivation (deriving a wrong CEK) and must still scrub the
+     * shared secret before the AEAD failure returns. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        ecc_key wrongEcc;
+        WOLFCOSE_KEY wrongKey;
+        WOLFCOSE_RECIPIENT wrongRecipient;
+
+        ret = wc_ecc_init(&wrongEcc);
+        TEST_ASSERT(ret == 0, "zeroize wrong ecc init");
+        ret = wc_ecc_make_key(&rng, 32, &wrongEcc);
+        TEST_ASSERT(ret == 0, "zeroize wrong keygen");
+        (void)wc_CoseKey_Init(&wrongKey);
+        (void)wc_CoseKey_SetEcc(&wrongKey, WOLFCOSE_CRV_P256, &wrongEcc);
+        wrongRecipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+        wrongRecipient.key = &wrongKey;
+        wrongRecipient.kid = NULL;
+        wrongRecipient.kidLen = 0;
+
+        (void)memset(&hdr, 0, sizeof(hdr));
+        wolfCose_TestZeroizeReset();
+        ret = wc_CoseEncrypt_Decrypt(&wrongRecipient, 0, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret != 0, "zeroize wrong-key decrypt fails");
+        TEST_ASSERT(wolfCose_TestZeroizeSawLen(secretLen) == 1,
+                    "ecdh-es recv scrubs shared secret on failure");
+
+        wc_CoseKey_Free(&wrongKey);
+        (void)wc_ecc_free(&wrongEcc);
+    }
+
+    wc_CoseKey_Free(&recipientKey);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
+}
+#endif /* ZEROIZE_HOOK && ECDH_ES_DIRECT && ES256 && HKDF */
 
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
 /**
@@ -15608,6 +16085,7 @@ int test_cose(void)
 #if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     test_cose_key_rsa();
     test_cose_key_rsa_scratch_scrubbed();
+    test_cose_key_rsa_public_decode();
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_key_mldsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, WC_ML_DSA_44);
@@ -15620,6 +16098,9 @@ int test_cose(void)
     test_cose_sign1_ecc("ES256", WOLFCOSE_ALG_ES256, WOLFCOSE_CRV_P256, 32);
     test_cose_sign1_with_aad();
     test_cose_sign1_detached();
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+    test_cose_sign1_word32_overflow_guard();
+#endif
 #ifdef WOLFCOSE_HAVE_ES384
     test_cose_sign1_ecc("ES384", WOLFCOSE_ALG_ES384, WOLFCOSE_CRV_P384, 48);
 #endif
@@ -15640,6 +16121,9 @@ int test_cose(void)
     test_cose_encrypt0_a256gcm();
     test_cose_encrypt0_with_aad();
     test_cose_encrypt0_detached();
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+    test_cose_encrypt0_word32_overflow_guard();
+#endif
 #endif
 
     /* ChaCha20-Poly1305 encryption tests */
@@ -15738,6 +16222,9 @@ int test_cose(void)
     test_cose_encrypt_ecdh_es_wrong_key();
     test_cose_encrypt_ecdh_es_p384();
     test_cose_encrypt_ecdh_es_wrong_key_type();
+#if defined(WOLFCOSE_TEST_ZEROIZE_HOOK)
+    test_cose_secret_zeroize();
+#endif
 #endif
     test_cose_encrypt_a128kw();
     test_cose_encrypt_a128kw_multi_recipient();
@@ -15996,6 +16483,9 @@ int test_cose(void)
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_key_mldsa_public_only();
+#endif
+#if defined(WOLFCOSE_HAVE_ES256) || defined(WOLFCOSE_HAVE_EDDSA)
+    test_cose_key_decode_private_only();
 #endif
 #ifdef WOLFCOSE_HAVE_ES256
     test_cose_key_ecc_public_only();

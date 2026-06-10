@@ -64,7 +64,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check clean
+.PHONY: all shared test zeroize-test coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check clean
 
 # --- Core library ---
 all: $(LIB_A)
@@ -82,6 +82,12 @@ src/%.o: src/%.c src/wolfcose_internal.h include/wolfcose/wolfcose.h
 # --- Tests ---
 test: $(LIB_A)
 	$(CC) $(CFLAGS) -o $(TEST_BIN) $(TEST_SRC) $(LIB_A) $(LDFLAGS)
+	./$(TEST_BIN)
+
+# --- Zeroize-hook test: asserts secret-scrubbing call sites actually run ---
+zeroize-test:
+	$(CC) $(CFLAGS) -DWOLFCOSE_TEST_ZEROIZE_HOOK -DWOLFCOSE_TEST_LOG_ENABLE \
+	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(LDFLAGS)
 	./$(TEST_BIN)
 
 # --- Coverage ---
