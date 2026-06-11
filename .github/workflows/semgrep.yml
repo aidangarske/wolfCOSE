@@ -1,0 +1,34 @@
+name: Semgrep
+
+on:
+  push:
+    branches: [ 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep (wolfCOSE security rules)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Semgrep
+        run: pip install --quiet semgrep
+
+      # --error makes the job fail on any finding. The rules self-scope via
+      # their `paths:` blocks, so scanning the whole tree is fine.
+      - name: Run wolfCOSE security rules
+        run: semgrep scan --config .github/semgrep-rules.yml --error --quiet .

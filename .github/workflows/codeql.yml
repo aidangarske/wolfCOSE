@@ -1,0 +1,71 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [ 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+  schedule:
+    - cron: '0 7 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Required so CodeQL can upload findings to the Security tab.
+  security-events: write
+
+jobs:
+  analyze:
+    name: CodeQL (C, security)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool
+
+      # Full-feature wolfSSL so every wolfCOSE code path is compiled and
+      # therefore visible to CodeQL.
+      - name: Build wolfSSL
+        run: |
+          cd ~
+          git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+          cd wolfssl
+          ./autogen.sh
+          ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
+                      --enable-curve25519 --enable-curve448 \
+                      --enable-aesgcm --enable-aesccm --enable-aescbc \
+                      --enable-sha384 --enable-sha512 \
+                      --enable-keygen --enable-hkdf --enable-aeskeywrap \
+                      --enable-chacha --enable-poly1305 \
+                      --enable-mldsa --enable-rsapss \
+                      --prefix=$HOME/wolfssl-install
+          make -j$(nproc)
+          make install
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: manual
+          # security-extended runs only the security query suites. The default
+          # "security-and-quality" pack also flags maintainability nits (long
+          # functions, comment density), which we intentionally exclude here.
+          queries: security-extended
+
+      - name: Build wolfCOSE
+        run: |
+          export WOLFSSL_DIR=$HOME/wolfssl-install
+          make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
+               LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:c-cpp"
