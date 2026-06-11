@@ -43,9 +43,9 @@ findings is far more useful than a long list of nits.
   non-constant-time `memcmp`, and unchecked crypto return codes (CWE-327,
   CWE-208, CWE-347).
 - Zeroization: sensitive data (keys, seeds, shared secrets, plaintext, crypto
-  intermediates) must be cleared with `ForceZero`/`wolfCose_ForceZero` on every
-  exit path, including error and early-return paths. Flag missing or wrong-size
-  scrubs and untracked temporary copies.
+  intermediates) must be cleared with `wolfCose_ForceZero` (wolfCOSE's secure
+  scrub helper) on every exit path, including error and early-return paths. Flag
+  missing or wrong-size scrubs and untracked temporary copies.
 - Logic and contracts: inverted conditions, wrong enum or label, copy-paste
   errors, missing error checks, error paths that skip cleanup, and API misuse
   (wrong call order, use after a failed call).
@@ -69,8 +69,9 @@ noise rather than safety.
   storage, never the heap.
 - C++ idioms or constructs outside C89/C99. The library targets C99 and its
   public headers must also compile as C++.
-- `ForceZero` replaced by `memset` (the project deliberately uses `ForceZero`
-  so the scrub is not optimized away); do not suggest the reverse.
+- `wolfCose_ForceZero` replaced by `memset` or a plain loop (the project
+  deliberately uses `wolfCose_ForceZero` so the scrub is not optimized away);
+  do not suggest the reverse.
 
 Keep comments few, concrete, and security or correctness focused. If you are
 not confident a finding is real, leave it out.

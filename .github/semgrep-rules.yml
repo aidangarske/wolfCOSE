@@ -1,0 +1,66 @@
+# wolfCOSE deterministic security rules (Semgrep).
+#
+# These encode wolfCOSE invariants that are decidable by pattern and currently
+# have zero hits, so they pass today and fail the build on any future
+# violation. Run with: semgrep scan --config .github/semgrep-rules.yml --error
+#
+# Style/maintainability is intentionally out of scope (owned by cppcheck,
+# clang-tidy, and MISRA checks). These rules only enforce security invariants.
+
+rules:
+  - id: wolfcose-no-dynamic-allocation
+    languages: [c]
+    severity: ERROR
+    message: >-
+      wolfCOSE is strictly zero-allocation. Dynamic memory
+      (malloc/calloc/realloc/free, alloca, strdup, or the XMALLOC/XFREE/XREALLOC
+      wrappers) must never appear in the core library. Use a caller-provided
+      buffer or scoped/static storage instead.
+    paths:
+      include:
+        - src/
+        - include/wolfcose/
+    pattern-either:
+      - pattern: malloc(...)
+      - pattern: calloc(...)
+      - pattern: realloc(...)
+      - pattern: free(...)
+      - pattern: aligned_alloc(...)
+      - pattern: alloca(...)
+      - pattern: strdup(...)
+      - pattern: XMALLOC(...)
+      - pattern: XFREE(...)
+      - pattern: XREALLOC(...)
+
+  - id: wolfcose-unsafe-libc
+    languages: [c]
+    severity: ERROR
+    message: >-
+      Unbounded C library function. Use a length-bounded alternative
+      (XMEMCPY/XMEMMOVE with an explicit size, snprintf) so a length cannot run
+      past the destination buffer.
+    paths:
+      include:
+        - src/
+        - include/wolfcose/
+    pattern-either:
+      - pattern: gets(...)
+      - pattern: strcpy(...)
+      - pattern: strcat(...)
+      - pattern: sprintf(...)
+      - pattern: vsprintf(...)
+
+  - id: wolfcose-non-constant-time-compare
+    languages: [c]
+    severity: ERROR
+    message: >-
+      memcmp/XMEMCMP is not constant-time. In the core library, comparing a
+      MAC tag, key, or shared secret with a variable-time compare leaks timing
+      information (CWE-208). Use ConstantCompare for secret-dependent
+      comparisons.
+    paths:
+      include:
+        - src/
+    pattern-either:
+      - pattern: memcmp(...)
+      - pattern: XMEMCMP(...)

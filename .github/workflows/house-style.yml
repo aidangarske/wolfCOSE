@@ -1,0 +1,24 @@
+name: House Style
+
+on:
+  push:
+    branches: [ 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  house-style:
+    name: wolfCOSE house-style conventions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check conventions (no goto, C-style comments, banner style, no tabs/trailing space)
+        run: sh scripts/check_house_style.sh

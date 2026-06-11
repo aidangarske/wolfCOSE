@@ -13289,10 +13289,8 @@ static void test_force_failure_crypto(void)
 }
 #endif /* WOLFCOSE_FORCE_FAILURE */
 
-/* ========================================================
- * Negative Test Coverage - Phases 1-10
- * Tests for validation/error handling code paths
- * ======================================================== */
+/* ----- Negative Test Coverage - Phases 1-10
+ * Tests for validation/error handling code paths ----- */
 
 /* ----- Phase 1: Buffer Too Small Tests ----- */
 #ifdef WOLFCOSE_HAVE_ES256
@@ -16491,7 +16489,7 @@ int test_cose(void)
     test_cose_key_ecc_public_only();
 #endif
 
-    /* ======== Negative Test Coverage - Phases 1-10 ======== */
+    /* ----- Negative Test Coverage - Phases 1-10 ----- */
     TEST_LOG("\n--- Negative Test Coverage (Phases 1-10) ---\n");
 
     /* Phase 1: Buffer Too Small Tests */
