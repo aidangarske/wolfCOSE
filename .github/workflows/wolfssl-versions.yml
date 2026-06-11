@@ -19,7 +19,9 @@ jobs:
   # bump this workflow every release. Floor (v5.8.0) and master are fixed:
   # v5.8.0 is the first release with the public wc_ForceZero symbol and the
   # current set of FIPS-204 final ML-DSA APIs wolfCOSE depends on; master
-  # surfaces upstream drift on the nightly run.
+  # surfaces upstream drift on the nightly run. Master is tested both classic
+  # and with ML-DSA/PQC; latest-stable gains an explicit PQC row automatically
+  # once it is newer than v5.9.1-stable (i.e. when 5.9.2 ships).
   discover-versions:
     name: Resolve wolfSSL version matrix
     runs-on: ubuntu-latest
@@ -52,17 +54,24 @@ jobs:
             LATEST_PQC=false
           fi
           echo "latest-stable PQC eligible: $LATEST_PQC"
+          # PQC-able versions (master always; latest-stable once >v5.9.1-stable)
+          # get an explicit, separately-named ML-DSA row in addition to a
+          # classic (no-PQC) row, so PQC build+test is always visible and the
+          # non-PQC build is still exercised on the same wolfSSL.
           MATRIX=$(jq -nc --arg latest "$LATEST" --argjson latest_pqc "$LATEST_PQC" '{
-            include: [
+            include: ([
               {"wolfssl-version":"v5.8.0-stable","wolfssl-ref":"v5.8.0-stable","cache-key":"wolfssl-nopqc-v5.8.0-v1","pqc":false},
-              {"wolfssl-version":$latest,"wolfssl-ref":$latest,"cache-key":("wolfssl-" + (if $latest_pqc then "pqc" else "nopqc" end) + "-" + $latest + "-v1"),"pqc":$latest_pqc},
+              {"wolfssl-version":$latest,"wolfssl-ref":$latest,"cache-key":("wolfssl-nopqc-" + $latest + "-v1"),"pqc":false},
+              {"wolfssl-version":"master","wolfssl-ref":"master","cache-key":"","pqc":false},
               {"wolfssl-version":"master","wolfssl-ref":"master","cache-key":"","pqc":true}
-            ]
+            ] + (if $latest_pqc then [
+              {"wolfssl-version":$latest,"wolfssl-ref":$latest,"cache-key":("wolfssl-pqc-" + $latest + "-v1"),"pqc":true}
+            ] else [] end))
           }')
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   wolfssl-version-test:
-    name: wolfSSL ${{ matrix.wolfssl-version }}
+    name: wolfSSL ${{ matrix.wolfssl-version }} ${{ matrix.pqc && '(+ML-DSA/PQC)' || '(classic)' }}
     needs: discover-versions
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -132,6 +141,26 @@ jobs:
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         make tool-test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    # ML-DSA / PQC-specific coverage: CLI keygen->sign->verify for all three
+    # ML-DSA levels and the ML-DSA sign+verify demo. Runs on the explicit pqc
+    # rows only, so the row is a clean PQC signal (no classic-alg coupling).
+    - name: Run ML-DSA PQC tests (CLI round-trip + demo)
+      if: matrix.pqc
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        CF="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include"
+        LF="-L$WOLFSSL_DIR/lib -lwolfssl"
+        make tool CFLAGS="$CF" LDFLAGS="$LF"
+        echo "wolfCOSE ML-DSA CLI round-trip" > /tmp/pqc-msg.txt
+        for alg in ML-DSA-44 ML-DSA-65 ML-DSA-87; do
+          echo "=== $alg CLI keygen -> sign -> verify ==="
+          ./tools/wolfcose_tool keygen -a "$alg" -o /tmp/pqc.key
+          ./tools/wolfcose_tool sign -k /tmp/pqc.key -a "$alg" -i /tmp/pqc-msg.txt -o /tmp/pqc.cose
+          ./tools/wolfcose_tool verify -k /tmp/pqc.key -i /tmp/pqc.cose
+        done
+        make mldsa-demo CFLAGS="$CF" LDFLAGS="$LF"
 
     - name: wolfSSL version info
       if: always()

@@ -84,10 +84,15 @@ Used with COSE_Encrypt and COSE_Mac for multi-recipient messages:
 
 | COSE kty | Value | Guard | Algorithms |
 |----------|-------|-------|------------|
-| OKP | 1 | `HAVE_ED25519` / `HAVE_ED448` / `WOLFSSL_HAVE_MLDSA` | EdDSA, ML-DSA |
+| OKP | 1 | `HAVE_ED25519` / `HAVE_ED448` | EdDSA |
 | EC2 | 2 | `HAVE_ECC` | ES256, ES384, ES512 |
 | RSA | 3 | `WC_RSA_PSS` | PS256, PS384, PS512 |
 | Symmetric | 4 | always | AES-GCM, AES-CCM, ChaCha20, HMAC |
+| AKP | 7 | `WOLFSSL_HAVE_MLDSA` | ML-DSA (RFC 9964) |
+
+ML-DSA keys use the RFC 9964 **AKP** (Algorithm Key Pair) key type: the `alg`
+parameter is REQUIRED, the public key is in `pub` (-1), and the private key is
+the 32-byte seed in `priv` (-2). There is no `crv` parameter.
 
 ## Curves
 

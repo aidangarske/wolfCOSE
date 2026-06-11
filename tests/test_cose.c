@@ -1594,11 +1594,14 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
 static void test_cose_sign1_ml_dsa_level_mismatch(void)
 {
     WOLFCOSE_KEY signKey;
+    WOLFCOSE_KEY verKey;
     wc_MlDsaKey dlKey;
+    wc_MlDsaKey dlKey5;
     WC_RNG rng;
     int ret = 0;
     int rngInited = 0;
     int dlInited = 0;
+    int dl5Inited = 0;
     uint8_t payload[] = "ML-DSA level payload";
     uint8_t scratch[8192];
     uint8_t out[8192];
@@ -1634,12 +1637,22 @@ static void test_cose_sign1_ml_dsa_level_mismatch(void)
             scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
         TEST_ASSERT(ret == 0 && outLen > 0, "ml-dsa level sign");
     }
+    /* RFC 9964: the key level is intrinsic to the key. Verifying a level-2
+     * (ML-DSA-44) message with an actual level-5 key must be rejected on the
+     * mismatch, before any crypto. */
     if (ret == 0) {
-        /* Key declares level 5 with no alg pin while the message is level 2;
-         * verify must reject on the level mismatch, not attempt the crypto. */
-        signKey.crv = WOLFCOSE_CRV_ML_DSA_87;
-        signKey.alg = WOLFCOSE_ALG_UNSET;
-        ret = wc_CoseSign1_Verify(&signKey, out, outLen,
+        ret = wc_MlDsaKey_Init(&dlKey5, NULL, INVALID_DEVID);
+        if (ret == 0) { dl5Inited = 1; }
+        if (ret == 0) { ret = wc_MlDsaKey_SetParams(&dlKey5, WC_ML_DSA_87); }
+        if (ret == 0) { ret = wc_MlDsaKey_MakeKey(&dlKey5, &rng); }
+        TEST_ASSERT(ret == 0, "dl5 keygen");
+    }
+    if (ret == 0) {
+        (void)wc_CoseKey_Init(&verKey);
+        (void)wc_CoseKey_SetMlDsa(&verKey, WOLFCOSE_ALG_ML_DSA_87, &dlKey5);
+        /* Clear the alg pin so verify reaches the intrinsic level check. */
+        verKey.alg = WOLFCOSE_ALG_UNSET;
+        ret = wc_CoseSign1_Verify(&verKey, out, outLen,
             NULL, 0, NULL, 0,
             scratch, sizeof(scratch),
             &hdr, &decPayload, &decPayloadLen);
@@ -1648,6 +1661,7 @@ static void test_cose_sign1_ml_dsa_level_mismatch(void)
     }
 
     if (dlInited != 0) { (void)wc_MlDsaKey_Free(&dlKey); }
+    if (dl5Inited != 0) { (void)wc_MlDsaKey_Free(&dlKey5); }
     if (rngInited != 0) { (void)wc_FreeRng(&rng); }
 }
 #endif /* WOLFCOSE_HAVE_MLDSA */
@@ -1886,6 +1900,7 @@ static void test_cose_key_mldsa(const char* label, int32_t alg,
     wc_MlDsaKey dlKey;
     WC_RNG rng;
     static const uint8_t kid[] = "ml-dsa-key-1";
+    uint8_t seed[WOLFCOSE_MLDSA_SEED_SZ];
     int ret;
 
     (void)label;
@@ -1903,13 +1918,18 @@ static void test_cose_key_mldsa(const char* label, int32_t alg,
         (void)wc_MlDsaKey_Free(&dlKey); wc_FreeRng(&rng); return;
     }
 
-    ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
+    /* RFC 9964: derive the key from a seed so the conformant 32-byte private
+     * key (the seed) is available to encode. */
+    ret = wc_RNG_GenerateBlock(&rng, seed, (word32)sizeof(seed));
+    if (ret == 0) {
+        ret = wc_MlDsaKey_MakeKeyFromSeed(&dlKey, seed);
+    }
     TEST_ASSERT(ret == 0, "dl keygen");
     if (ret != 0) { wc_MlDsaKey_Free(&dlKey); wc_FreeRng(&rng); return; }
 
     (void)wc_CoseKey_Init(&key);
-    ret = wc_CoseKey_SetMlDsa(&key, alg, &dlKey);
-    TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_OKP, "key set dl");
+    ret = wc_CoseKey_SetMlDsa_ex(&key, alg, &dlKey, seed, sizeof(seed));
+    TEST_ASSERT(ret == 0 && key.kty == WOLFCOSE_KTY_AKP, "key set dl");
     key.kid = kid;
     key.kidLen = sizeof(kid) - 1u;
 
@@ -1917,7 +1937,9 @@ static void test_cose_key_mldsa(const char* label, int32_t alg,
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t cbuf[8192];
+        uint8_t rebuf[8192];
         size_t cLen = 0;
+        size_t reLen = 0;
         WOLFCOSE_KEY key2;
         wc_MlDsaKey dlKey2;
 
@@ -1928,12 +1950,19 @@ static void test_cose_key_mldsa(const char* label, int32_t alg,
         (void)wc_CoseKey_Init(&key2);
         key2.key.mldsa = &dlKey2;
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
-        TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_OKP &&
-                    key2.crv == key.crv && key2.hasPrivate == 1 &&
+        TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_AKP &&
+                    key2.hasPrivate == 1 &&
                     key2.alg == alg &&
                     key2.kidLen == (sizeof(kid) - 1u) &&
                     memcmp(key2.kid, kid, sizeof(kid) - 1u) == 0,
                     "key dl decode");
+
+        /* Seed retained on decode, so re-encoding reproduces the same key. */
+        reLen = sizeof(rebuf);
+        ret = wc_CoseKey_Encode(&key2, rebuf, sizeof(rebuf), &reLen);
+        TEST_ASSERT(ret == 0 && reLen == cLen &&
+                    memcmp(rebuf, cbuf, cLen) == 0,
+                    "key dl decode->encode round-trip");
 
         /* Verify decoded key can sign/verify */
         /* empty-brace-scan: allow - test-local temporary scope */
@@ -3172,18 +3201,18 @@ static void test_cose_key_mldsa_public_only(void)
     wc_MlDsaKey_MakeKey(&dlKey, &rng);
     wc_MlDsaKey_ExportPubRaw(&dlKey, xBuf, &xSz);
 
-    /* Build a public-only OKP key (no d label) */
+    /* Build a public-only AKP key (RFC 9964): kty=AKP, required alg, pub(-1) */
     enc.buf = pubBuf; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
     wc_CBOR_EncodeMapStart(&enc, 3);
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
-    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
-    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
-    wc_CBOR_EncodeInt(&enc, WOLFCOSE_CRV_ML_DSA_44);
-    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_X);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ML_DSA_44);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PUB);
     wc_CBOR_EncodeBstr(&enc, xBuf, (size_t)xSz);
 
     (void)wc_CoseKey_Init(&key);
-    key.kty = WOLFCOSE_KTY_OKP;
+    key.kty = WOLFCOSE_KTY_AKP;
     key.key.mldsa = &dlKey2;
     ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
     TEST_ASSERT(ret == 0, "dl pub-only decode");
@@ -3219,6 +3248,116 @@ static void test_cose_key_mldsa_public_only(void)
 
         wc_CoseKey_Free(&signKey);
     }
+
+    wc_CoseKey_Free(&key);
+    (void)wc_MlDsaKey_Free(&dlKey);
+    (void)wc_MlDsaKey_Free(&dlKey2);
+    (void)wc_FreeRng(&rng);
+}
+
+/* RFC 9964 AKP conformance: reject malformed ML-DSA COSE_Key encode/decode. */
+static void test_cose_key_mldsa_negative(void)
+{
+    WOLFCOSE_KEY key;
+    wc_MlDsaKey dlKey, dlKey2;
+    WC_RNG rng;
+    uint8_t seed[WOLFCOSE_MLDSA_SEED_SZ];
+    uint8_t pubBuf[2048];
+    word32 pubSz = sizeof(pubBuf);
+    uint8_t buf[2048];
+    uint8_t outBuf[8192];
+    size_t outLen;
+    WOLFCOSE_CBOR_CTX enc;
+    int ret;
+
+    TEST_LOG("  [Key ML-DSA negative]\n");
+
+    wc_InitRng(&rng);
+    wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
+    wc_MlDsaKey_Init(&dlKey2, NULL, INVALID_DEVID);
+    wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
+    wc_RNG_GenerateBlock(&rng, seed, (word32)sizeof(seed));
+    wc_MlDsaKey_MakeKeyFromSeed(&dlKey, seed);
+    wc_MlDsaKey_ExportPubRaw(&dlKey, pubBuf, &pubSz);
+
+    /* Encode: AKP key with no alg is rejected (RFC 9964 requires alg). */
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetMlDsa_ex(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey,
+                                  seed, sizeof(seed));
+    key.alg = WOLFCOSE_ALG_UNSET;
+    outLen = sizeof(outBuf);
+    ret = wc_CoseKey_Encode(&key, outBuf, sizeof(outBuf), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "dl encode rejects missing alg");
+
+    /* Encode: a private keypair with no seed attached falls back to a
+     * public-only AKP key (the RFC 9964 private value is the seed). */
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    outLen = sizeof(outBuf);
+    ret = wc_CoseKey_Encode(&key, outBuf, sizeof(outBuf), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "dl encode public-only without seed");
+    (void)wc_CoseKey_Init(&key);
+    key.key.mldsa = &dlKey2;
+    ret = wc_CoseKey_Decode(&key, outBuf, outLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS && key.hasPrivate == 0,
+                "dl public-only decode has no private");
+
+    /* Decode: AKP private key with no pub is rejected. */
+    enc.buf = buf; enc.bufSz = sizeof(buf); enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 3);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ML_DSA_44);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PRIV);
+    wc_CBOR_EncodeBstr(&enc, seed, sizeof(seed));
+    (void)wc_CoseKey_Init(&key);
+    key.key.mldsa = &dlKey2;
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "dl decode rejects missing pub");
+
+    /* Decode: AKP key with no alg is rejected. */
+    enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 2);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PUB);
+    wc_CBOR_EncodeBstr(&enc, pubBuf, (size_t)pubSz);
+    (void)wc_CoseKey_Init(&key);
+    key.key.mldsa = &dlKey2;
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "dl decode rejects missing alg");
+
+    /* Decode: AKP private key with a wrong-length seed is rejected. */
+    enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 4);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ML_DSA_44);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PUB);
+    wc_CBOR_EncodeBstr(&enc, pubBuf, (size_t)pubSz);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PRIV);
+    wc_CBOR_EncodeBstr(&enc, seed, (size_t)16);
+    (void)wc_CoseKey_Init(&key);
+    key.key.mldsa = &dlKey2;
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "dl decode rejects wrong seed length");
+
+    /* Decode: AKP key carrying a crv is rejected (AKP has no crv). */
+    enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 3);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ML_DSA_44);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+    wc_CBOR_EncodeInt(&enc, 5);
+    (void)wc_CoseKey_Init(&key);
+    key.key.mldsa = &dlKey2;
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "dl decode rejects crv on AKP");
 
     wc_CoseKey_Free(&key);
     (void)wc_MlDsaKey_Free(&dlKey);
@@ -12714,6 +12853,7 @@ static void test_force_failure_crypto(void)
         uint8_t keyBuf[8192];
         uint8_t dlScratch[4096];  /* Larger scratch for ML-DSA sig */
         uint8_t dlCoseMsg[4096];
+        uint8_t dlSeed[WOLFCOSE_MLDSA_SEED_SZ];
         size_t dlCoseMsgLen;
         size_t keyLen;
 
@@ -12721,10 +12861,14 @@ static void test_force_failure_crypto(void)
         wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
         ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
         if (ret == 0) {
-            ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
+            ret = wc_RNG_GenerateBlock(&rng, dlSeed, (word32)sizeof(dlSeed));
         }
         if (ret == 0) {
-            (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+            ret = wc_MlDsaKey_MakeKeyFromSeed(&dlKey, dlSeed);
+        }
+        if (ret == 0) {
+            (void)wc_CoseKey_SetMlDsa_ex(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey,
+                                          dlSeed, sizeof(dlSeed));
 
             /* Test ML-DSA export public failure */
             keyLen = sizeof(keyBuf);
@@ -13074,6 +13218,7 @@ static void test_force_failure_crypto(void)
         WOLFCOSE_KEY key;
         wc_MlDsaKey dlKey;
         uint8_t keyBuf[8192];
+        uint8_t impSeed[WOLFCOSE_MLDSA_SEED_SZ];
         size_t keyLen;
         WOLFCOSE_KEY decodedKey;
         wc_MlDsaKey decodedDlKey;
@@ -13082,10 +13227,15 @@ static void test_force_failure_crypto(void)
         wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
         ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
         if (ret == 0) {
-            ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
+            ret = wc_RNG_GenerateBlock(&rng, impSeed, (word32)sizeof(impSeed));
         }
         if (ret == 0) {
-            (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+            ret = wc_MlDsaKey_MakeKeyFromSeed(&dlKey, impSeed);
+        }
+        if (ret == 0) {
+            /* Encode a private key (seed) so decode reaches the priv path. */
+            (void)wc_CoseKey_SetMlDsa_ex(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey,
+                                          impSeed, sizeof(impSeed));
 
             /* Encode the key */
             keyLen = sizeof(keyBuf);
@@ -16483,6 +16633,7 @@ int test_cose(void)
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_key_mldsa_public_only();
+    test_cose_key_mldsa_negative();
 #endif
 #if defined(WOLFCOSE_HAVE_ES256) || defined(WOLFCOSE_HAVE_EDDSA)
     test_cose_key_decode_private_only();

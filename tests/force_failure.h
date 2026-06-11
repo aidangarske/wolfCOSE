@@ -75,9 +75,9 @@ typedef enum {
     WOLF_FAIL_MLDSA_SIGN,        /* wc_MlDsaKey_SignCtx */
     WOLF_FAIL_MLDSA_VERIFY,      /* wc_MlDsaKey_VerifyCtx */
     WOLF_FAIL_MLDSA_EXPORT_PUB,  /* wc_MlDsaKey_ExportPubRaw */
-    WOLF_FAIL_MLDSA_EXPORT_PRIV, /* wc_MlDsaKey_ExportPrivRaw */
+    WOLF_FAIL_MLDSA_EXPORT_PRIV, /* RFC 9964 priv seed emit (CBOR bstr) */
     WOLF_FAIL_MLDSA_IMPORT_PUB,  /* wc_MlDsaKey_ImportPubRaw */
-    WOLF_FAIL_MLDSA_IMPORT_PRIV, /* wc_MlDsaKey_ImportKey */
+    WOLF_FAIL_MLDSA_IMPORT_PRIV, /* wc_MlDsaKey_MakeKeyFromSeed */
 
     /* HMAC failures */
     WOLF_FAIL_HMAC_SET_KEY,          /* wc_HmacSetKey */

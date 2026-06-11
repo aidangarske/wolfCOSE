@@ -228,7 +228,10 @@ int main(void)
     wc_MlDsaKey_SetParams(&mlDsaKey, WC_ML_DSA_44);
     wc_MlDsaKey_MakeKey(&mlDsaKey, &rng);
 
-    /* Wrap in COSE key */
+    /* Wrap in COSE key. ML-DSA uses the RFC 9964 AKP key type; this is all
+     * that is needed for sign/verify. To export a *private* COSE_Key, create
+     * the key with wc_MlDsaKey_MakeKeyFromSeed and pass the 32-byte seed via
+     * wc_CoseKey_SetMlDsa_ex (RFC 9964 private keys are the seed). */
     wc_CoseKey_Init(&coseKey);
     wc_CoseKey_SetMlDsa(&coseKey, WOLFCOSE_ALG_ML_DSA_44, &mlDsaKey);
 

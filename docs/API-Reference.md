@@ -203,6 +203,10 @@ int wc_CoseKey_SetMlDsa(WOLFCOSE_KEY* key, int32_t alg, wc_MlDsaKey* mlDsaKey);
 ```
 
 Associate an ML-DSA (FIPS 204) post-quantum key with a COSE key structure.
+The key is encoded as an RFC 9964 **AKP** COSE_Key (`kty` = 7, REQUIRED `alg`,
+public key in `pub` (-1)). Use this for public-key, sign, and verify use. To
+encode a *private* COSE_Key (whose private value is the 32-byte seed), use
+`wc_CoseKey_SetMlDsa_ex` and supply the seed.
 
 **Parameters:**
 | Name | Description |
@@ -210,6 +214,34 @@ Associate an ML-DSA (FIPS 204) post-quantum key with a COSE key structure.
 | `key` | Pointer to initialized COSE key |
 | `alg` | Algorithm: `WOLFCOSE_ALG_ML_DSA_44`, `WOLFCOSE_ALG_ML_DSA_65`, or `WOLFCOSE_ALG_ML_DSA_87` |
 | `mlDsaKey` | Pointer to initialized wolfCrypt ML-DSA key (caller-owned) |
+
+**Returns:** `WOLFCOSE_SUCCESS` or error code
+
+**Requires:** `WOLFSSL_HAVE_MLDSA`
+
+---
+
+### wc_CoseKey_SetMlDsa_ex
+
+```c
+int wc_CoseKey_SetMlDsa_ex(WOLFCOSE_KEY* key, int32_t alg,
+                           wc_MlDsaKey* mlDsaKey,
+                           const uint8_t* seed, size_t seedLen);
+```
+
+Like `wc_CoseKey_SetMlDsa`, but also attaches the 32-byte ML-DSA seed used to
+create the key. RFC 9964 represents an ML-DSA private key as the seed, and
+wolfCrypt does not retain it, so the caller (who created the key via
+`wc_MlDsaKey_MakeKeyFromSeed`) must supply it here to encode a private COSE_Key.
+
+**Parameters:**
+| Name | Description |
+|------|-------------|
+| `key` | Pointer to initialized COSE key |
+| `alg` | Algorithm: `WOLFCOSE_ALG_ML_DSA_44`, `WOLFCOSE_ALG_ML_DSA_65`, or `WOLFCOSE_ALG_ML_DSA_87` |
+| `mlDsaKey` | Pointer to initialized wolfCrypt ML-DSA key (caller-owned) |
+| `seed` | 32-byte ML-DSA seed (caller-owned), or `NULL` for public/sign/verify use |
+| `seedLen` | Seed length; must be `WOLFCOSE_MLDSA_SEED_SZ` (32) when `seed` is non-NULL |
 
 **Returns:** `WOLFCOSE_SUCCESS` or error code
 

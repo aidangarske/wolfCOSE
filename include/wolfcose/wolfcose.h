@@ -214,11 +214,15 @@ extern "C" {
 #define WOLFCOSE_ALG_ML_DSA_65   (-49)   /* ML-DSA Level 3 */
 #define WOLFCOSE_ALG_ML_DSA_87   (-50)   /* ML-DSA Level 5 */
 
+/* RFC 9964: an ML-DSA private key is the 32-byte seed (FIPS 204). */
+#define WOLFCOSE_MLDSA_SEED_SZ   32u
+
 /* Key types */
 #define WOLFCOSE_KTY_OKP         1
 #define WOLFCOSE_KTY_EC2         2
 #define WOLFCOSE_KTY_RSA         3
 #define WOLFCOSE_KTY_SYMMETRIC   4
+#define WOLFCOSE_KTY_AKP         7   /* RFC 9964: Algorithm Key Pair (ML-DSA) */
 
 /* Curves */
 #define WOLFCOSE_CRV_P256        1
@@ -226,7 +230,8 @@ extern "C" {
 #define WOLFCOSE_CRV_P521        3
 #define WOLFCOSE_CRV_ED25519     6
 #define WOLFCOSE_CRV_ED448       7
-/* Provisional PQC curve IDs (not yet in IANA registry) */
+/* Internal ML-DSA level<->alg mapping only; RFC 9964 AKP keys carry the level
+ * in alg, not crv. These are never emitted in a COSE_Key. */
 #define WOLFCOSE_CRV_ML_DSA_44   (-48)
 #define WOLFCOSE_CRV_ML_DSA_65   (-49)
 #define WOLFCOSE_CRV_ML_DSA_87   (-50)
@@ -240,6 +245,8 @@ extern "C" {
 #define WOLFCOSE_KEY_LABEL_Y     (-3)
 #define WOLFCOSE_KEY_LABEL_D     (-4)
 #define WOLFCOSE_KEY_LABEL_K     (-1)  /* Symmetric key value */
+#define WOLFCOSE_KEY_LABEL_PUB   (-1)  /* RFC 9964: AKP public key */
+#define WOLFCOSE_KEY_LABEL_PRIV  (-2)  /* RFC 9964: AKP private key (seed) */
 #define WOLFCOSE_KEY_LABEL_RSA_P    (-4)  /* RFC 8230: first prime */
 #define WOLFCOSE_KEY_LABEL_RSA_Q    (-5)  /* RFC 8230: second prime */
 #define WOLFCOSE_KEY_LABEL_RSA_QINV (-8)  /* RFC 8230: CRT coefficient */
@@ -329,6 +336,10 @@ typedef struct WOLFCOSE_KEY {
             size_t         keyLen; /**< Key material length */
         } symm;
     } key;
+#ifdef WOLFSSL_HAVE_MLDSA
+    const uint8_t* mldsaSeed;    /**< RFC 9964 ML-DSA private seed (32B), caller-owned */
+    size_t         mldsaSeedLen; /**< ML-DSA private seed length */
+#endif
     uint8_t hasPrivate;  /**< 1 if private key material present */
 } WOLFCOSE_KEY;
 
@@ -592,6 +603,11 @@ WOLFCOSE_API int wc_CoseKey_SetEd448(WOLFCOSE_KEY* key, ed448_key* edKey);
 #ifdef WOLFCOSE_HAVE_MLDSA
 WOLFCOSE_API int wc_CoseKey_SetMlDsa(WOLFCOSE_KEY* key, int32_t alg,
                                        wc_MlDsaKey* mlDsaKey);
+/* RFC 9964 private-key export needs the 32-byte seed, which wolfCrypt does not
+ * retain; the caller supplies it here (seed may be NULL for public/sign use). */
+WOLFCOSE_API int wc_CoseKey_SetMlDsa_ex(WOLFCOSE_KEY* key, int32_t alg,
+                                       wc_MlDsaKey* mlDsaKey,
+                                       const uint8_t* seed, size_t seedLen);
 #endif
 
 #ifdef WOLFCOSE_HAVE_RSAPSS
