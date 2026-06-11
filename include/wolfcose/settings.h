@@ -473,9 +473,10 @@ extern "C" {
 #endif
 #ifndef WOLFCOSE_MAX_MAP_ITEMS
     #if defined(WOLFCOSE_MIN_BUFFERS)
-        /* Full private RSA key = 9 entries (kty,n,e,d,p,q,qInv,kid,alg). */
         #if defined(WOLFCOSE_HAVE_RSAPSS)
-            #define WOLFCOSE_MAX_MAP_ITEMS    9u
+            /* Full private RSA key = 11 entries
+             * (kty,n,e,d,p,q,dP,dQ,qInv,kid,alg) per RFC 8230. */
+            #define WOLFCOSE_MAX_MAP_ITEMS    11u
         #else
             #define WOLFCOSE_MAX_MAP_ITEMS    8u
         #endif
