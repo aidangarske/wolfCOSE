@@ -539,6 +539,7 @@ static int wolfCose_HmacCheckKeyLen(int32_t alg, size_t keyLen)
 /* ----- Internal: ECC DER <-> raw r||s conversion ----- */
 
 #ifdef WOLFCOSE_HAVE_ECDSA
+#if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN)
 int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
                          uint8_t* sigBuf, size_t* sigLen,
                          size_t coordSz, WC_RNG* rng, ecc_key* eccKey)
@@ -601,6 +602,7 @@ int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
     }
     return ret;
 }
+#endif /* WOLFCOSE_SIGN1_SIGN || WOLFCOSE_SIGN_SIGN */
 
 int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
                            const uint8_t* hash, size_t hashLen,
