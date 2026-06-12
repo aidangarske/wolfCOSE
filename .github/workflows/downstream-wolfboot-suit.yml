@@ -1,0 +1,67 @@
+# Downstream integration guard: build wolfBoot's SUIT support against THIS
+# wolfCOSE and run its tests. wolfBoot is wolfCOSE's flagship lean verify-only
+# consumer; the sim build links lean wolfCOSE against a verify-only (NO_ASN,
+# NO_ECC_SIGN) wolfCrypt, which is exactly the configuration that surfaces
+# verify-only regressions (e.g. a signing helper leaking into a verify build).
+# A change to wolfCOSE that breaks wolfBoot fails here instead of in the field.
+name: Downstream wolfBoot SUIT
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  wolfboot-suit:
+    name: wolfBoot SUIT lean sim + host test against this wolfCOSE
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout wolfCOSE (under test)
+        uses: actions/checkout@v4
+        with:
+          path: wolfcose-under-test
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake libtool \
+            python3 python3-pip
+
+      # wolfBoot carries the SUIT sources + tests. Track the branch until SUIT
+      # lands on wolfBoot master, then switch this to wolfSSL/wolfBoot.
+      - name: Checkout wolfBoot (SUIT branch) + wolfSSL submodule
+        run: |
+          git clone --depth 1 --branch suit-manifest \
+            https://github.com/aidangarske/wolfBoot.git
+          cd wolfBoot
+          git submodule update --init --depth 1 lib/wolfssl
+          rm -rf lib/wolfCOSE
+          cp -r "$GITHUB_WORKSPACE/wolfcose-under-test" lib/wolfCOSE
+
+      # The critical guard: lean wolfCOSE linked against wolfBoot's verify-only
+      # wolfCrypt. A verify-only regression in wolfCOSE fails this link.
+      - name: Build wolfBoot sim WOLFBOOT_SUIT=1 (lean verify-only)
+        run: |
+          cd wolfBoot
+          cp config/examples/sim.config .config
+          make WOLFBOOT_SUIT=1 SIGN=ECC256
+
+      - name: Build host wolfSSL (ECC) for the authoring-side host test
+        run: |
+          git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+          cd wolfssl
+          ./autogen.sh
+          ./configure --enable-cryptonly --enable-ecc \
+                      --prefix=$HOME/wolfssl-install
+          make -j"$(nproc)"
+          make install
+
+      - name: Host SUIT test (author + verify + install + tamper)
+        run: |
+          cd wolfBoot
+          WOLFSSL_DIR=$HOME/wolfssl-install ./tests/suit_host_test.sh
+
+      - name: Independent cross-check (cbor2 + cryptography)
+        run: |
+          pip3 install --quiet cbor2 cryptography
+          cd wolfBoot
+          python3 tests/suit_cross_check.py
