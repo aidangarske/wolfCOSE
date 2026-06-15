@@ -3981,6 +3981,75 @@ static void test_cose_mac0_aes_cbc_mac(void)
 }
 
 /**
+ * Multi-block AES-CBC-MAC must chain: flipping an early/middle byte of a
+ * payload spanning several AES blocks (length unchanged) must change the tag.
+ * Without IV chaining the MAC would depend only on the final block, so an
+ * early-byte tamper would verify successfully.
+ */
+static void test_cose_mac0_aes_cbc_mac_chaining(void)
+{
+    WOLFCOSE_KEY key128;
+    uint8_t keyData128[16] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
+    };
+    uint8_t payload[64];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    uint8_t tampered[512];
+    size_t outLen = 0;
+    size_t payloadOff;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+    int ret;
+    size_t i;
+
+    TEST_LOG("  [Mac0 AES-CBC-MAC chaining]\n");
+
+    for (i = 0; i < sizeof(payload); i++) {
+        payload[i] = (uint8_t)(i & 0xFF);
+    }
+
+    (void)wc_CoseKey_Init(&key128);
+    (void)wc_CoseKey_SetSymmetric(&key128, keyData128, sizeof(keyData128));
+
+    ret = wc_CoseMac0_Create(&key128, WOLFCOSE_ALG_AES_MAC_128_128,
+        NULL, 0,
+        payload, sizeof(payload),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0, "mac0 aes chaining create");
+
+    ret = wc_CoseMac0_Verify(&key128, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0 && decPayload != NULL, "mac0 aes chaining verify");
+
+    payloadOff = (size_t)(decPayload - out);
+
+    /* Flip the first payload byte (earliest block) - length unchanged. */
+    memcpy(tampered, out, outLen);
+    tampered[payloadOff] ^= 0xFF;
+    ret = wc_CoseMac0_Verify(&key128, tampered, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "mac0 aes early-byte tamper fails");
+
+    /* Flip a middle payload byte - length unchanged. */
+    memcpy(tampered, out, outLen);
+    tampered[payloadOff + (sizeof(payload) / 2u)] ^= 0xFF;
+    ret = wc_CoseMac0_Verify(&key128, tampered, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "mac0 aes mid-byte tamper fails");
+}
+
+/**
  * Test AES-CBC-MAC with external AAD
  */
 static void test_cose_mac0_aes_cbc_mac_with_aad(void)
@@ -16460,6 +16529,7 @@ int test_cose(void)
     /* AES-CBC-MAC tests */
 #ifdef WOLFCOSE_HAVE_AESMAC
     test_cose_mac0_aes_cbc_mac();
+    test_cose_mac0_aes_cbc_mac_chaining();
     test_cose_mac0_aes_cbc_mac_with_aad();
     test_cose_mac0_aes_cbc_mac_detached();
 #endif
