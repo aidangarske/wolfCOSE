@@ -1334,6 +1334,30 @@ static int wolfCose_EncodeKeyOptionalFields(WOLFCOSE_CBOR_CTX* ctx,
     return ret;
 }
 
+#ifdef WOLFCOSE_HAVE_RSAPSS
+/* Finalize a directly-exported RSA bstr (n or d). The caller reserved a 3-byte
+ * header at hdrPos and wrote the payload at hdrPos+3; emit the preferred CBOR
+ * length form (0x58 for <256, shifting the payload left over the unused byte;
+ * 0x59 otherwise) and advance ctx->idx past the value. */
+static void wolfCose_FinalizeRsaBstr(WOLFCOSE_CBOR_CTX* ctx, size_t hdrPos,
+                                      size_t payloadLen)
+{
+    if (payloadLen < 256u) {
+        (void)XMEMMOVE(&ctx->buf[hdrPos + 2u], &ctx->buf[hdrPos + 3u],
+                       payloadLen);
+        ctx->buf[hdrPos] = 0x58u;
+        ctx->buf[hdrPos + 1u] = (uint8_t)payloadLen;
+        ctx->idx = hdrPos + 2u + payloadLen;
+    }
+    else {
+        ctx->buf[hdrPos] = 0x59u;
+        ctx->buf[hdrPos + 1u] = (uint8_t)((uint32_t)payloadLen >> 8u);
+        ctx->buf[hdrPos + 2u] = (uint8_t)((uint32_t)payloadLen & 0xFFu);
+        ctx->idx = hdrPos + 3u + payloadLen;
+    }
+}
+#endif /* WOLFCOSE_HAVE_RSAPSS */
+
 #ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
 /* RFC 8230: write one RSA component (label + bstr) from its mp_int. */
 static int wolfCose_EncodeRsaMp(WOLFCOSE_CBOR_CTX* ctx, int64_t label,
@@ -1543,22 +1567,8 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                     else if ((nLen == 0u) || (nLen > 65535u)) {
                         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
                     }
-                    else if (nLen < 256u) {
-                        /* Preferred 1-byte length form; shift payload left
-                         * over the unused reserved header byte. */
-                        (void)XMEMMOVE(&ctx.buf[hdrPos + 2u],
-                            &ctx.buf[hdrPos + 3u], (size_t)nLen);
-                        ctx.buf[hdrPos] = 0x58u;
-                        ctx.buf[hdrPos + 1u] = (uint8_t)nLen;
-                        ctx.idx = hdrPos + 2u + (size_t)nLen;
-                    }
                     else {
-                        ctx.buf[hdrPos] = 0x59u;
-                        ctx.buf[hdrPos + 1u] =
-                            (uint8_t)((uint32_t)nLen >> 8u);
-                        ctx.buf[hdrPos + 2u] =
-                            (uint8_t)((uint32_t)nLen & 0xFFu);
-                        ctx.idx += (size_t)nLen;
+                        wolfCose_FinalizeRsaBstr(&ctx, hdrPos, (size_t)nLen);
                     }
                 }
             }
@@ -1642,23 +1652,8 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                                         (void)XMEMSET(&ctx.buf[dOff], 0, pad);
                                         dSz = (word32)rsaEncSz;
                                     }
-                                    if (dSz < 256u) {
-                                        /* Preferred 1-byte length form; shift
-                                         * d left over the unused header byte. */
-                                        (void)XMEMMOVE(&ctx.buf[hdrPos + 2u],
-                                            &ctx.buf[dOff], (size_t)dSz);
-                                        ctx.buf[hdrPos] = 0x58u;
-                                        ctx.buf[hdrPos + 1u] = (uint8_t)dSz;
-                                        ctx.idx = hdrPos + 2u + (size_t)dSz;
-                                    }
-                                    else {
-                                        ctx.buf[hdrPos] = 0x59u;
-                                        ctx.buf[hdrPos + 1u] =
-                                            (uint8_t)((uint32_t)dSz >> 8u);
-                                        ctx.buf[hdrPos + 2u] =
-                                            (uint8_t)((uint32_t)dSz & 0xFFu);
-                                        ctx.idx = dOff + (size_t)dSz;
-                                    }
+                                    wolfCose_FinalizeRsaBstr(&ctx, hdrPos,
+                                        (size_t)dSz);
                                 }
                                 /* Zero scratch (e2/n2/p/q) */
                                 (void)wolfCose_ForceZero(&ctx.buf[scrOff],
