@@ -979,6 +979,24 @@ static void test_cbor_boundary_roundtrip(void)
     }
 }
 
+static void test_cbor_peektype_bounds(void)
+{
+    WOLFCOSE_CBOR_CTX ctx;
+    uint8_t buf[1] = {0x40};
+
+    printf("  [PeekType bounds]\n");
+
+    ctx.cbuf = buf; ctx.bufSz = sizeof(buf); ctx.idx = 0;
+    TEST_ASSERT(wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_BSTR,
+                "peektype valid");
+
+    ctx.idx = sizeof(buf);
+    TEST_ASSERT(wc_CBOR_PeekType(&ctx) == 0xFFu,
+                "peektype exhausted sentinel");
+
+    TEST_ASSERT(wc_CBOR_PeekType(NULL) == 0xFFu, "peektype null sentinel");
+}
+
 int test_cbor(void)
 {
     g_failures = 0;
@@ -987,6 +1005,7 @@ int test_cbor(void)
     test_cbor_decode_vectors();
     test_cbor_roundtrip();
     test_cbor_boundary_roundtrip();
+    test_cbor_peektype_bounds();
     test_cbor_nested();
     test_cbor_skip();
     test_cbor_skip_depth();

@@ -549,11 +549,14 @@ WOLFCOSE_API int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx);
 
 /**
  * \brief Peek at the major type of the next item without consuming it.
- * \param ctx  Decoder context. Must have idx < bufSz.
- * \return Major type (0-7).
+ * \param ctx  Decoder context.
+ * \return Major type (0-7), or 0xFF if ctx is NULL or the buffer is exhausted.
  */
 static inline uint8_t wc_CBOR_PeekType(const WOLFCOSE_CBOR_CTX* ctx)
 {
+    if ((ctx == NULL) || (ctx->cbuf == NULL) || (ctx->idx >= ctx->bufSz)) {
+        return 0xFFu;
+    }
     return (uint8_t)(((uint32_t)ctx->cbuf[ctx->idx]) >> 5u);
 }
 
