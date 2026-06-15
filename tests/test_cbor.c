@@ -936,6 +936,49 @@ static void test_cbor_negative_map_keys(void)
 }
 
 /* ----- Entry point ----- */
+static void test_cbor_boundary_roundtrip(void)
+{
+    static const struct { uint64_t val; size_t len; } uvec[] = {
+        {0u, 1u}, {23u, 1u}, {24u, 2u}, {255u, 2u}, {256u, 3u},
+        {65535u, 3u}, {65536u, 5u}, {4294967295ULL, 5u},
+        {4294967296ULL, 9u}
+    };
+    static const struct { int64_t val; size_t len; } ivec[] = {
+        {-1, 1u}, {-24, 1u}, {-25, 2u}, {-256, 2u}, {-257, 3u},
+        {-65536, 3u}, {-65537, 5u}
+    };
+    uint8_t buf[16];
+    WOLFCOSE_CBOR_CTX ctx;
+    uint64_t uval;
+    int64_t ival;
+    int ret;
+    size_t i;
+
+    printf("  [Boundary Round-trip]\n");
+
+    for (i = 0; i < (sizeof(uvec) / sizeof(uvec[0])); i++) {
+        ctx.buf = buf; ctx.bufSz = sizeof(buf); ctx.idx = 0;
+        ret = wc_CBOR_EncodeUint(&ctx, uvec[i].val);
+        TEST_ASSERT(ret == 0 && ctx.idx == uvec[i].len,
+                    "uint boundary encode len");
+        ctx.cbuf = buf; ctx.bufSz = ctx.idx; ctx.idx = 0;
+        ret = wc_CBOR_DecodeUint(&ctx, &uval);
+        TEST_ASSERT(ret == 0 && uval == uvec[i].val,
+                    "uint boundary decode");
+    }
+
+    for (i = 0; i < (sizeof(ivec) / sizeof(ivec[0])); i++) {
+        ctx.buf = buf; ctx.bufSz = sizeof(buf); ctx.idx = 0;
+        ret = wc_CBOR_EncodeInt(&ctx, ivec[i].val);
+        TEST_ASSERT(ret == 0 && ctx.idx == ivec[i].len,
+                    "negint boundary encode len");
+        ctx.cbuf = buf; ctx.bufSz = ctx.idx; ctx.idx = 0;
+        ret = wc_CBOR_DecodeInt(&ctx, &ival);
+        TEST_ASSERT(ret == 0 && ival == ivec[i].val,
+                    "negint boundary decode");
+    }
+}
+
 int test_cbor(void)
 {
     g_failures = 0;
@@ -943,6 +986,7 @@ int test_cbor(void)
     test_cbor_encode_vectors();
     test_cbor_decode_vectors();
     test_cbor_roundtrip();
+    test_cbor_boundary_roundtrip();
     test_cbor_nested();
     test_cbor_skip();
     test_cbor_skip_depth();
