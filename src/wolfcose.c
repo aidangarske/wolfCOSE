@@ -5147,7 +5147,7 @@ static int wolfCose_BuildEncStructure0(const uint8_t* protectedHdr,
 }
 
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
-int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
+int wc_CoseEncrypt0_Encrypt(const WOLFCOSE_KEY* key, int32_t alg,
     const uint8_t* iv, size_t ivLen,
     const uint8_t* payload, size_t payloadLen,
     uint8_t* detachedPayload, size_t detachedSz, size_t* detachedLen,
@@ -5507,7 +5507,7 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
 #endif /* WOLFCOSE_ENCRYPT0_ENCRYPT */
 
 #if defined(WOLFCOSE_ENCRYPT0_DECRYPT)
-int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
+int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
     const uint8_t* in, size_t inSz,
     const uint8_t* detachedCt, size_t detachedCtLen,
     const uint8_t* extAad, size_t extAadLen,

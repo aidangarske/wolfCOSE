@@ -743,7 +743,7 @@ WOLFCOSE_API int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
  * \param outLen          Output: bytes written to out.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
-WOLFCOSE_API int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
+WOLFCOSE_API int wc_CoseEncrypt0_Encrypt(const WOLFCOSE_KEY* key, int32_t alg,
     const uint8_t* iv, size_t ivLen,
     const uint8_t* payload, size_t payloadLen,
     uint8_t* detachedPayload, size_t detachedSz, size_t* detachedLen,
@@ -773,7 +773,7 @@ WOLFCOSE_API int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
  * \return WOLFCOSE_SUCCESS or negative error code.
  *         WOLFCOSE_E_DETACHED_PAYLOAD if ciphertext is nil and detachedCt is NULL.
  */
-WOLFCOSE_API int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
+WOLFCOSE_API int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
     const uint8_t* in, size_t inSz,
     const uint8_t* detachedCt, size_t detachedCtLen,
     const uint8_t* extAad, size_t extAadLen,
