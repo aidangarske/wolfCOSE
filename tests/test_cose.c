@@ -10964,6 +10964,7 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
     WOLFCOSE_HDR hdr;
     const uint8_t keyBytes[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
     const uint8_t iv[12] = {0};
+    static const uint8_t empty[1] = {0};
 
     TEST_LOG("  [Encrypt0: empty payload roundtrip]\n");
 
@@ -10972,16 +10973,17 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
     (void)wc_CoseKey_SetSymmetric(&encKey, keyBytes, sizeof(keyBytes));
     (void)wc_CoseKey_SetSymmetric(&decKey, keyBytes, sizeof(keyBytes));
 
-    /* Encrypt empty payload */
+    /* Encrypt a genuine zero-length plaintext via a non-NULL buffer so the
+     * ciphertext is just the AEAD tag and decrypt recovers 0 bytes. */
     ret = wc_CoseEncrypt0_Encrypt(&encKey, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
-        NULL, 0,
+        empty, 0,
         NULL, 0, NULL,
         NULL, 0,
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
-    /* NULL payload + 0 length is accepted as zero-length plaintext path
-     * only when isDetached is unset; the encrypt API allows this. */
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 empty payload encrypt");
+
     if (ret == WOLFCOSE_SUCCESS) {
         memset(&hdr, 0, sizeof(hdr));
         ret = wc_CoseEncrypt0_Decrypt(&decKey, out, outLen,
@@ -10992,11 +10994,6 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
         TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                     "Encrypt0_Decrypt empty payload");
         TEST_ASSERT(ptLen == 0u, "Encrypt0 empty payload length");
-    }
-    else {
-        /* API rejects NULL payload outright; that is acceptable too. */
-        TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
-                    "Encrypt0 empty payload reject");
     }
 
     wc_CoseKey_Free(&encKey);
