@@ -1889,6 +1889,58 @@ static void test_cose_key_rsa_scratch_scrubbed(void)
     (void)wc_FreeRsaKey(&rsaKey);
     (void)wc_FreeRng(&rng);
 }
+
+static void test_cose_key_rsa_small_modulus_roundtrip(void)
+{
+    WOLFCOSE_KEY key, key2;
+    RsaKey rsaKey, rsaKey2;
+    int ret;
+    uint8_t cbuf[1024];
+    size_t cLen = 0;
+    uint8_t nBytes[200];
+    const uint8_t eBytes[3] = { 0x01, 0x00, 0x01 };
+    size_t i;
+
+    TEST_LOG("  [Key RSA sub-256 modulus roundtrip]\n");
+
+    nBytes[0] = 0xC0;
+    for (i = 1; i < sizeof(nBytes); i++) {
+        nBytes[i] = (uint8_t)(i & 0xFF);
+    }
+    nBytes[sizeof(nBytes) - 1u] |= 0x01u;
+
+    ret = wc_InitRsaKey(&rsaKey, NULL);
+    TEST_ASSERT(ret == 0, "rsa small init");
+    if (ret == 0) {
+        ret = wc_RsaPublicKeyDecodeRaw(nBytes, (word32)sizeof(nBytes),
+            eBytes, (word32)sizeof(eBytes), &rsaKey);
+        TEST_ASSERT(ret == 0, "rsa small import raw");
+    }
+    if (ret == 0) {
+        (void)wc_CoseKey_Init(&key);
+        ret = wc_CoseKey_SetRsa(&key, &rsaKey);
+        TEST_ASSERT(ret == 0, "rsa small set");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
+        TEST_ASSERT(ret == 0 && cLen > 0, "rsa small encode");
+    }
+    if (ret == 0) {
+        (void)wc_InitRsaKey(&rsaKey2, NULL);
+        (void)wc_CoseKey_Init(&key2);
+        key2.key.rsa = &rsaKey2;
+        ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
+        TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_RSA,
+                    "rsa small modulus decode");
+        wc_CoseKey_Free(&key);
+        (void)wc_FreeRsaKey(&rsaKey2);
+    }
+    else {
+        wc_CoseKey_Free(&key);
+    }
+
+    (void)wc_FreeRsaKey(&rsaKey);
+}
 #endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
 
 /* ----- COSE_Key ML-DSA encode/decode round-trip ----- */
@@ -16315,6 +16367,7 @@ int test_cose(void)
     test_cose_key_rsa();
     test_cose_key_rsa_scratch_scrubbed();
     test_cose_key_rsa_public_decode();
+    test_cose_key_rsa_small_modulus_roundtrip();
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_key_mldsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, WC_ML_DSA_44);
