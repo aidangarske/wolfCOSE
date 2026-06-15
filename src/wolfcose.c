@@ -7918,8 +7918,11 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
 
     /* Encode each recipient */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
-        /* Encode recipient protected header */
-        if (recipients[i].algId != WOLFCOSE_ALG_UNSET) {
+        /* Encode recipient protected header. RFC 9053 Section 6.1: the direct
+         * key algorithm uses a zero-length protected header, so treat an
+         * explicit WOLFCOSE_ALG_DIRECT the same as the unset direct case. */
+        if ((recipients[i].algId != WOLFCOSE_ALG_UNSET) &&
+            (recipients[i].algId != WOLFCOSE_ALG_DIRECT)) {
             ret = wolfCose_EncodeProtectedHdr(recipients[i].algId,
                 recipientProtectedBuf, sizeof(recipientProtectedBuf),
                 &recipientProtectedLen);

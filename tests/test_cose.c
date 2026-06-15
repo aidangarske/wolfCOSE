@@ -6546,6 +6546,87 @@ static void test_cose_mac_multi_recipient(void)
     wc_CoseKey_Free(&key2);
 }
 
+static void test_cose_mac_multi_recipient_direct_empty_protected(void)
+{
+    WOLFCOSE_KEY key1, key2;
+    WOLFCOSE_RECIPIENT recipients[2];
+    WOLFCOSE_CBOR_CTX ctx;
+    int ret;
+    uint8_t out[512];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "Direct MAC empty protected";
+    const uint8_t keyData[32] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
+    };
+    const uint8_t* prot;
+    size_t protLen;
+    size_t arrCount;
+    size_t recipCount;
+    uint64_t tag;
+    size_t i;
+
+    TEST_LOG("  [Mac Multi-Recipient direct empty protected]\n");
+
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_SetSymmetric(&key2, keyData, sizeof(keyData));
+
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
+    recipients[0].key = &key1;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+    recipients[1].algId = WOLFCOSE_ALG_DIRECT;
+    recipients[1].key = &key2;
+    recipients[1].kid = NULL;
+    recipients[1].kidLen = 0;
+
+    ret = wc_CoseMac_Create(recipients, 2, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "mac direct create");
+
+    ctx.cbuf = out;
+    ctx.bufSz = outLen;
+    ctx.idx = 0;
+    ret = wc_CBOR_DecodeTag(&ctx, &tag);
+    TEST_ASSERT(ret == 0 && tag == WOLFCOSE_TAG_MAC, "mac tag");
+    ret = wc_CBOR_DecodeArrayStart(&ctx, &arrCount);
+    TEST_ASSERT(ret == 0 && arrCount == 5, "mac outer array");
+    ret = wc_CBOR_DecodeBstr(&ctx, &prot, &protLen);
+    TEST_ASSERT(ret == 0, "mac body protected");
+    ret = wc_CBOR_Skip(&ctx);
+    TEST_ASSERT(ret == 0, "mac body unprotected");
+    ret = wc_CBOR_Skip(&ctx);
+    TEST_ASSERT(ret == 0, "mac payload");
+    ret = wc_CBOR_Skip(&ctx);
+    TEST_ASSERT(ret == 0, "mac tag bstr");
+    ret = wc_CBOR_DecodeArrayStart(&ctx, &recipCount);
+    TEST_ASSERT(ret == 0 && recipCount == 2, "mac recipients array");
+
+    for (i = 0; i < recipCount; i++) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &arrCount);
+        TEST_ASSERT(ret == 0 && arrCount == 3, "recipient array");
+        ret = wc_CBOR_DecodeBstr(&ctx, &prot, &protLen);
+        TEST_ASSERT(ret == 0, "recipient protected decode");
+        TEST_ASSERT(protLen == 0, "direct recipient protected empty");
+        ret = wc_CBOR_Skip(&ctx);
+        TEST_ASSERT(ret == 0, "recipient unprotected");
+        ret = wc_CBOR_Skip(&ctx);
+        TEST_ASSERT(ret == 0, "recipient cek");
+    }
+
+    wc_CoseKey_Free(&key1);
+    wc_CoseKey_Free(&key2);
+}
+
 static void test_cose_mac_multi_recipient_key_alg_mismatch(void)
 {
     WOLFCOSE_KEY key1, key2;
@@ -16389,6 +16470,7 @@ int test_cose(void)
     /* Multi-recipient MAC tests */
 #if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac_multi_recipient();
+    test_cose_mac_multi_recipient_direct_empty_protected();
     test_cose_mac_multi_recipient_key_alg_mismatch();
     test_cose_mac_with_aad();
     test_cose_mac_detached();
