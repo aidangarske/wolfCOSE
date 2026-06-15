@@ -6809,8 +6809,12 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
             encKey = recipients[0].key->key.symm.key;
         }
         for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
-            if ((recipients[i].algId != WOLFCOSE_ALG_UNSET) &&
-                (recipients[i].algId != WOLFCOSE_ALG_DIRECT)) {
+            /* Direct mode requires an explicit WOLFCOSE_ALG_DIRECT so a
+             * zero-initialized (WOLFCOSE_ALG_UNSET) algId cannot silently
+             * select the direct-CEK construction. The decrypt path still
+             * accepts an empty (UNSET) recipient header, which is the on-wire
+             * representation of a direct recipient. */
+            if (recipients[i].algId != WOLFCOSE_ALG_DIRECT) {
                 ret = WOLFCOSE_E_COSE_BAD_ALG;
             }
             else if ((recipients[i].key != NULL) &&

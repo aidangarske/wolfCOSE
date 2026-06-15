@@ -5147,12 +5147,12 @@ static void test_cose_encrypt_multi_recipient(void)
     TEST_ASSERT(ret == 0, "encrypt key2 set");
 
     /* Setup recipients */
-    recipients[0].algId = 0;  /* Direct key */
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;  /* Direct key */
     recipients[0].key = &key1;
     recipients[0].kid = kid1;
     recipients[0].kidLen = sizeof(kid1) - 1;
 
-    recipients[1].algId = 0;  /* Direct key */
+    recipients[1].algId = WOLFCOSE_ALG_DIRECT;  /* Direct key */
     recipients[1].key = &key2;
     recipients[1].kid = kid2;
     recipients[1].kidLen = sizeof(kid2) - 1;
@@ -5263,7 +5263,7 @@ static void test_cose_encrypt_with_aad(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "encrypt aad key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -5342,7 +5342,7 @@ static void test_cose_encrypt_a256gcm(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "encrypt a256 key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -5402,7 +5402,7 @@ static void test_cose_encrypt_direct_key_alg_pin_roundtrip(void)
     TEST_ASSERT(ret == 0, "direct alg pin key set");
     key.alg = WOLFCOSE_ALG_A128GCM;
 
-    recipient.algId = WOLFCOSE_ALG_UNSET;
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
     recipient.key = &key;
     recipient.kid = NULL;
     recipient.kidLen = 0;
@@ -5430,6 +5430,47 @@ static void test_cose_encrypt_direct_key_alg_pin_roundtrip(void)
     TEST_ASSERT(plaintextLen == sizeof(payload) - 1, "direct alg pin pt len");
     TEST_ASSERT(memcmp(plaintext, payload, plaintextLen) == 0,
                 "direct alg pin pt match");
+
+    wc_CoseKey_Free(&key);
+}
+
+static void test_cose_encrypt_unset_alg_rejected(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    int ret;
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "unset alg reject";
+    const uint8_t iv[12] = {0};
+    const uint8_t keyData[16] = {
+        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+        0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F
+    };
+
+    TEST_LOG("  [Encrypt UNSET alg rejected]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    /* A zero-initialized algId must not silently select direct mode. */
+    recipient.algId = WOLFCOSE_ALG_UNSET;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "encrypt UNSET recipient algId rejected");
 
     wc_CoseKey_Free(&key);
 }
@@ -6676,7 +6717,7 @@ static void test_cose_encrypt_direct_wrong_key_type(void)
     (void)wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
 
     /* Try direct encryption (algId=0) with ECC key - should fail */
-    recipient.algId = 0;  /* Direct key mode */
+    recipient.algId = WOLFCOSE_ALG_DIRECT;  /* Direct key mode */
     recipient.key = &eccKey;
     recipient.kid = NULL;
     recipient.kidLen = 0;
@@ -11436,7 +11477,7 @@ static void test_cose_encrypt_multi_ccm_roundtrip(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "ccm multi key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -11489,7 +11530,7 @@ static void test_cose_encrypt_multi_chacha_roundtrip(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "chacha multi key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -16299,7 +16340,7 @@ static void test_encrypt_multi_detached_rejected(void)
 
     (void)wc_CoseKey_Init(&key1);
     (void)wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key1;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -16334,7 +16375,7 @@ static void test_encrypt_multi_wrong_iv_len(void)
 
     (void)wc_CoseKey_Init(&key1);
     (void)wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key1;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -16779,6 +16820,7 @@ int test_cose(void)
     test_cose_encrypt_with_aad();
     test_cose_encrypt_a256gcm();
     test_cose_encrypt_direct_key_alg_pin_roundtrip();
+    test_cose_encrypt_unset_alg_rejected();
     test_cose_encrypt_direct_alg_id_key_alg_roundtrip();
     test_cose_encrypt_direct_multi_key_alg_mismatch();
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
