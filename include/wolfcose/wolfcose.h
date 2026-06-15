@@ -554,10 +554,11 @@ WOLFCOSE_API int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx);
  */
 static inline uint8_t wc_CBOR_PeekType(const WOLFCOSE_CBOR_CTX* ctx)
 {
-    if ((ctx == NULL) || (ctx->cbuf == NULL) || (ctx->idx >= ctx->bufSz)) {
-        return 0xFFu;
+    uint8_t majorType = 0xFFu;
+    if ((ctx != NULL) && (ctx->cbuf != NULL) && (ctx->idx < ctx->bufSz)) {
+        majorType = (uint8_t)(((uint32_t)ctx->cbuf[ctx->idx]) >> 5u);
     }
-    return (uint8_t)(((uint32_t)ctx->cbuf[ctx->idx]) >> 5u);
+    return majorType;
 }
 
 #endif /* WOLFCOSE_CBOR_DECODE */

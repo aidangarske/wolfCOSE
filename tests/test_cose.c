@@ -4298,7 +4298,7 @@ static void test_cose_mac0_large_payload(void)
     WOLFCOSE_KEY key;
     uint8_t keyData[32];
     uint8_t payload[4096];
-    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t scratch[4096 + 256];
     uint8_t out[4096 + 512];
     size_t outLen = 0;
     const uint8_t* decPayload = NULL;
@@ -11094,7 +11094,7 @@ static void test_cose_encrypt0_large_payload(void)
     int ret;
     uint8_t payload[4096];
     uint8_t pt[4096];
-    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t scratch[4096 + 256];
     uint8_t out[4096 + 512];
     size_t outLen = 0;
     size_t ptLen = 0;
