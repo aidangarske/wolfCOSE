@@ -1505,7 +1505,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             }
 #endif
             /* Get n directly into output buffer, e into small stack buf */
-            mapEntries = (rsaPriv != 0) ? (size_t)7 : (size_t)3;
+            mapEntries = (rsaPriv != 0) ? (size_t)9 : (size_t)3;
             mapEntries += wolfCose_KeyOptionalEntries(key);
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
@@ -1621,6 +1621,18 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                                     ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
                                 }
                                 else {
+                                    /* Left-pad d to the full modulus width: a
+                                     * leading-zero byte would otherwise yield a
+                                     * short bstr that stricter RSA decoders
+                                     * reject (RFC 8230 octet-string width). */
+                                    if (dSz < (word32)rsaEncSz) {
+                                        size_t pad = (size_t)rsaEncSz -
+                                                     (size_t)dSz;
+                                        (void)XMEMMOVE(&ctx.buf[dOff + pad],
+                                            &ctx.buf[dOff], (size_t)dSz);
+                                        (void)XMEMSET(&ctx.buf[dOff], 0, pad);
+                                        dSz = (word32)rsaEncSz;
+                                    }
                                     ctx.buf[hdrPos] = 0x59u;
                                     ctx.buf[hdrPos + 1u] =
                                         (uint8_t)((uint32_t)dSz >> 8u);
@@ -1654,6 +1666,17 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
                 ret = wolfCose_EncodeRsaMp(&ctx, WOLFCOSE_KEY_LABEL_RSA_Q,
                     &key->key.rsa->q, halfSz);
+            }
+            /* RFC 8230: dP and dQ are MUST-present for a two-prime private key.
+             * Emitting them also avoids wolfCrypt recomputing the CRT exponents
+             * on decode, which is fragile for some key values. */
+            if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
+                ret = wolfCose_EncodeRsaMp(&ctx, WOLFCOSE_KEY_LABEL_RSA_DP,
+                    &key->key.rsa->dP, halfSz);
+            }
+            if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
+                ret = wolfCose_EncodeRsaMp(&ctx, WOLFCOSE_KEY_LABEL_RSA_DQ,
+                    &key->key.rsa->dQ, halfSz);
             }
             if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
                 ret = wolfCose_EncodeRsaMp(&ctx, WOLFCOSE_KEY_LABEL_RSA_QINV,
@@ -1933,6 +1956,10 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 #ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
     const uint8_t* qData = NULL;  /* RSA: q (second prime) */
     size_t qLen = 0;
+    const uint8_t* dpData = NULL; /* RSA: dP = d mod (p-1) */
+    size_t dpLen = 0;
+    const uint8_t* dqData = NULL; /* RSA: dQ = d mod (q-1) */
+    size_t dqLen = 0;
     const uint8_t* qiData = NULL; /* RSA: qInv (CRT coefficient) */
     size_t qiLen = 0;
 #endif
@@ -2066,6 +2093,14 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 ret = wc_CBOR_DecodeBstr(&ctx, &qData, &qLen);
             }
             else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (label == WOLFCOSE_KEY_LABEL_RSA_DP)) {
+                ret = wc_CBOR_DecodeBstr(&ctx, &dpData, &dpLen);
+            }
+            else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (label == WOLFCOSE_KEY_LABEL_RSA_DQ)) {
+                ret = wc_CBOR_DecodeBstr(&ctx, &dqData, &dqLen);
+            }
+            else if ((ret == WOLFCOSE_SUCCESS) &&
                      (label == WOLFCOSE_KEY_LABEL_RSA_QINV)) {
                 ret = wc_CBOR_DecodeBstr(&ctx, &qiData, &qiLen);
             }
@@ -2189,11 +2224,16 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 #ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
                 else if ((yData != NULL) && (dData != NULL) &&
                          (qData != NULL) && (qiData != NULL)) {
+                    /* dP/dQ (when present) are forwarded as-is; an imported
+                     * private COSE_Key is trusted as much as its source, and
+                     * wolfCrypt's sign-then-verify CRT fault check guards
+                     * against a tampered CRT exponent producing a faulty sig. */
                     INJECT_FAILURE(WOLF_FAIL_RSA_PUBLIC_DECODE, -1,
                         ret = wc_RsaPrivateKeyDecodeRaw(nData, (word32)nLen,
                             xData, (word32)xLen, yData, (word32)yLen,
                             qiData, (word32)qiLen, dData, (word32)dLen,
-                            qData, (word32)qLen, NULL, 0, NULL, 0,
+                            qData, (word32)qLen,
+                            dpData, (word32)dpLen, dqData, (word32)dqLen,
                             key->key.rsa));
                     if (ret != 0) {
                         ret = WOLFCOSE_E_CRYPTO;

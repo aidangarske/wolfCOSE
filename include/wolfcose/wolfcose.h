@@ -249,6 +249,8 @@ extern "C" {
 #define WOLFCOSE_KEY_LABEL_PRIV  (-2)  /* RFC 9964: AKP private key (seed) */
 #define WOLFCOSE_KEY_LABEL_RSA_P    (-4)  /* RFC 8230: first prime */
 #define WOLFCOSE_KEY_LABEL_RSA_Q    (-5)  /* RFC 8230: second prime */
+#define WOLFCOSE_KEY_LABEL_RSA_DP   (-6)  /* RFC 8230: d mod (p-1) */
+#define WOLFCOSE_KEY_LABEL_RSA_DQ   (-7)  /* RFC 8230: d mod (q-1) */
 #define WOLFCOSE_KEY_LABEL_RSA_QINV (-8)  /* RFC 8230: CRT coefficient */
 
 /* AES-GCM constants */
