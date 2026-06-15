@@ -4292,6 +4292,53 @@ static void test_cose_mac0_tag_sizes(void)
 #endif /* WOLFCOSE_HAVE_AESMAC */
 }
 
+#ifdef WOLFCOSE_HAVE_HMAC256
+static void test_cose_mac0_large_payload(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t keyData[32];
+    uint8_t payload[4096];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[4096 + 512];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+    int ret;
+    size_t i;
+
+    TEST_LOG("  [Mac0 large payload roundtrip]\n");
+
+    memset(keyData, 0xAB, sizeof(keyData));
+    for (i = 0; i < sizeof(payload); i++) {
+        payload[i] = (uint8_t)(i & 0xFF);
+    }
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0,
+        payload, sizeof(payload),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0, "mac0 large payload create");
+
+    if (ret == 0) {
+        ret = wc_CoseMac0_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "mac0 large payload verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload),
+                    "mac0 large payload length");
+        TEST_ASSERT(memcmp(decPayload, payload, decPayloadLen) == 0,
+                    "mac0 large payload match");
+    }
+}
+#endif /* WOLFCOSE_HAVE_HMAC256 */
+
 /* ----- COSE_Sign Multi-Signer Tests (RFC 9052 Section 4.1) ----- */
 #if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_cose_sign_multi_signer(void)
@@ -10999,6 +11046,57 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
     wc_CoseKey_Free(&encKey);
     wc_CoseKey_Free(&decKey);
 }
+
+static void test_cose_encrypt0_large_payload(void)
+{
+    WOLFCOSE_KEY encKey, decKey;
+    int ret;
+    uint8_t payload[4096];
+    uint8_t pt[4096];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[4096 + 512];
+    size_t outLen = 0;
+    size_t ptLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t keyBytes[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
+    const uint8_t iv[12] = {0};
+    size_t i;
+
+    TEST_LOG("  [Encrypt0: large payload roundtrip]\n");
+
+    for (i = 0; i < sizeof(payload); i++) {
+        payload[i] = (uint8_t)(i & 0xFF);
+    }
+
+    (void)wc_CoseKey_Init(&encKey);
+    (void)wc_CoseKey_Init(&decKey);
+    (void)wc_CoseKey_SetSymmetric(&encKey, keyBytes, sizeof(keyBytes));
+    (void)wc_CoseKey_SetSymmetric(&decKey, keyBytes, sizeof(keyBytes));
+
+    ret = wc_CoseEncrypt0_Encrypt(&encKey, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload),
+        NULL, 0, NULL,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 large payload encrypt");
+
+    if (ret == WOLFCOSE_SUCCESS) {
+        memset(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt0_Decrypt(&decKey, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, pt, sizeof(pt), &ptLen);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 large payload decrypt");
+        TEST_ASSERT(ptLen == sizeof(payload), "Encrypt0 large payload length");
+        TEST_ASSERT(memcmp(pt, payload, ptLen) == 0,
+                    "Encrypt0 large payload match");
+    }
+
+    wc_CoseKey_Free(&encKey);
+    wc_CoseKey_Free(&decKey);
+}
 #endif /* WOLFCOSE_HAVE_AESGCM && encrypt0 */
 
 #ifdef WOLFCOSE_HAVE_HMAC256
@@ -16637,6 +16735,9 @@ int test_cose(void)
 #endif /* WOLFCOSE_HAVE_HMAC256 */
 
     test_cose_mac0_tag_sizes();
+#ifdef WOLFCOSE_HAVE_HMAC256
+    test_cose_mac0_large_payload();
+#endif
 
     /* AES-CBC-MAC tests */
 #ifdef WOLFCOSE_HAVE_AESMAC
@@ -16836,6 +16937,7 @@ int test_cose(void)
 #if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
     test_cose_encrypt0_nonce_length();
     test_cose_encrypt0_empty_payload_roundtrip();
+    test_cose_encrypt0_large_payload();
 #endif
 #if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFCOSE_SIGN) && \
     defined(WOLFSSL_KEY_GEN)
