@@ -539,6 +539,7 @@ static int wolfCose_HmacCheckKeyLen(int32_t alg, size_t keyLen)
 /* ----- Internal: ECC DER <-> raw r||s conversion ----- */
 
 #ifdef WOLFCOSE_HAVE_ECDSA
+#if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN)
 int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
                          uint8_t* sigBuf, size_t* sigLen,
                          size_t coordSz, WC_RNG* rng, ecc_key* eccKey)
@@ -601,16 +602,20 @@ int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
     }
     return ret;
 }
+#endif /* WOLFCOSE_SIGN1_SIGN || WOLFCOSE_SIGN_SIGN */
 
 int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
                            const uint8_t* hash, size_t hashLen,
                            size_t coordSz, ecc_key* eccKey, int* verified)
 {
     int ret;
+#ifndef NO_ASN
     uint8_t derSig[ECC_MAX_SIG_SIZE];
     word32 derSigLen = (word32)sizeof(derSig);
+#endif
 
-    if ((sigBuf == NULL) || (hash == NULL) || (eccKey == NULL) || (verified == NULL)) {
+    if ((sigBuf == NULL) || (hash == NULL) || (eccKey == NULL) ||
+        (verified == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else if (sigLen != (coordSz * 2u)) {
@@ -619,7 +624,20 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
     else {
         *verified = 0;
 
-        /* Convert raw r||s to DER */
+#ifdef NO_ASN
+        /* NO_ASN wolfCrypt (e.g. wolfBoot): wc_ecc_verify_hash consumes the raw
+         * r||s signature directly, so no DER conversion is needed and the
+         * sign-side helper wc_ecc_rs_raw_to_sig (gated on ASN) is not required.
+         * wolfCOSE holds no mp_int itself, keeping the verify path allocation
+         * free at this layer. */
+        INJECT_FAILURE(WOLF_FAIL_ECC_VERIFY, -1,
+            ret = wc_ecc_verify_hash(sigBuf, (word32)sigLen, hash,
+                                      (word32)hashLen, verified, eccKey));
+        if (ret != 0) {
+            ret = WOLFCOSE_E_CRYPTO;
+        }
+#else
+        /* Convert raw r||s to DER, then verify. */
         INJECT_FAILURE(WOLF_FAIL_ECC_RS_TO_SIG, -1,
             ret = wc_ecc_rs_raw_to_sig(sigBuf, (word32)coordSz,
                                          &sigBuf[coordSz], (word32)coordSz,
@@ -636,6 +654,7 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
             }
         }
         (void)wolfCose_ForceZero(derSig, sizeof(derSig));
+#endif
     }
     return ret;
 }

@@ -292,10 +292,12 @@ WOLFCOSE_LOCAL int wolfCose_HmacType(int32_t alg, int* hmacType);
  * \param eccKey   Caller-owned ECC key with private key.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
+#if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN)
 WOLFCOSE_LOCAL int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
                                         uint8_t* sigBuf, size_t* sigLen,
                                         size_t coordSz,
                                         WC_RNG* rng, ecc_key* eccKey);
+#endif /* WOLFCOSE_SIGN1_SIGN || WOLFCOSE_SIGN_SIGN */
 
 /**
  * \brief Verify a raw r||s ECC signature.

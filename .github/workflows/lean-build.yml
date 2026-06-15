@@ -33,10 +33,13 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-lean
-        key: wolfssl-lean-ecc-v1-${{ steps.wolfssl-rev.outputs.sha }}
+        key: wolfssl-lean-ecc-verifyonly-v2-${{ steps.wolfssl-rev.outputs.sha }}
 
-    # Minimal backend for ES256 verification: ECC + SHA-256 only.
-    # No keygen and no RNG are needed to verify a COSE_Sign1.
+    # Verify-only ECC backend: NO_ECC_SIGN compiles ECC signing out entirely,
+    # mirroring an embedded verify-only target (e.g. wolfBoot). This is the
+    # config that catches a lean wolfCOSE accidentally pulling in a signing
+    # helper such as wc_ecc_sign_hash (via wolfCose_EccSignRaw): it links here
+    # only if the verify path references no sign-side symbols.
     - name: Build minimal wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
       run: |
@@ -45,17 +48,23 @@ jobs:
         cd wolfssl-lean-src
         ./autogen.sh
         ./configure --enable-cryptonly --enable-ecc \
+                    CFLAGS="-DNO_ECC_SIGN" \
                     --prefix=$HOME/wolfssl-lean
         make -j$(nproc)
         make install
 
+    # No --gc-sections here on purpose. Against the NO_ECC_SIGN wolfSSL above, a
+    # verify path that leaks a signing helper (e.g. wc_ecc_sign_hash via
+    # wolfCose_EccSignRaw) must fail to link. With dead-code stripping the unused
+    # helper would be removed and the missing-symbol link error would never fire,
+    # so the regression would slip through unnoticed.
     - name: Build and run the lean verify-only example
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-lean
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         make lean-verify \
           CFLAGS="-std=c11 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -ffunction-sections -fdata-sections -I./include -isystem $WOLFSSL_DIR/include" \
-          LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl -Wl,--gc-sections"
+          LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Assert the signing API is absent from a verify-only build
       run: |
