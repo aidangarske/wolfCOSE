@@ -4179,6 +4179,119 @@ static void test_cose_mac0_aes_cbc_mac_detached(void)
 }
 #endif /* WOLFCOSE_HAVE_AESMAC */
 
+static int mac0_tag_len(const uint8_t* msg, size_t msgLen, size_t* tagLen)
+{
+    WOLFCOSE_CBOR_CTX ctx;
+    const uint8_t* p;
+    size_t n;
+    uint64_t t;
+    int ret;
+
+    ctx.cbuf = msg;
+    ctx.bufSz = msgLen;
+    ctx.idx = 0;
+    ret = wc_CBOR_DecodeTag(&ctx, &t);
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &n);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &p, &n);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &p, &n);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &p, tagLen);
+    }
+    return ret;
+}
+
+/**
+ * Pin the encoded tag length for every MAC algorithm so a tag-size constant
+ * mutation that stays in range can no longer round-trip undetected.
+ */
+static void test_cose_mac0_tag_sizes(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t kd[64];
+    const uint8_t payload[] = "tag size pin";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen;
+    size_t tagLen;
+    int ret;
+    size_t i;
+
+    TEST_LOG("  [Mac0 tag sizes]\n");
+
+    for (i = 0; i < sizeof(kd); i++) {
+        kd[i] = (uint8_t)(i + 1u);
+    }
+
+#ifdef WOLFCOSE_HAVE_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
+    outLen = 0;
+    tagLen = 0;
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, kd, 32u);
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256, NULL, 0,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "hmac256 tag create");
+    ret = mac0_tag_len(out, outLen, &tagLen);
+    TEST_ASSERT(ret == 0 && tagLen == 32u, "hmac256 tag len 32");
+#endif
+#ifdef WOLFCOSE_HAVE_HMAC384
+    outLen = 0;
+    tagLen = 0;
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, kd, 48u);
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_384_384, NULL, 0,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "hmac384 tag create");
+    ret = mac0_tag_len(out, outLen, &tagLen);
+    TEST_ASSERT(ret == 0 && tagLen == 48u, "hmac384 tag len 48");
+#endif
+#ifdef WOLFCOSE_HAVE_HMAC512
+    outLen = 0;
+    tagLen = 0;
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, kd, 64u);
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_512_512, NULL, 0,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "hmac512 tag create");
+    ret = mac0_tag_len(out, outLen, &tagLen);
+    TEST_ASSERT(ret == 0 && tagLen == 64u, "hmac512 tag len 64");
+#endif
+#endif /* WOLFCOSE_HAVE_HMAC */
+#ifdef WOLFCOSE_HAVE_AESMAC
+    outLen = 0;
+    tagLen = 0;
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, kd, 16u);
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_AES_MAC_128_64, NULL, 0,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "aes-mac 64 tag create");
+    ret = mac0_tag_len(out, outLen, &tagLen);
+    TEST_ASSERT(ret == 0 && tagLen == 8u, "aes-mac tag len 8");
+
+    outLen = 0;
+    tagLen = 0;
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_AES_MAC_128_128, NULL, 0,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "aes-mac 128 tag create");
+    ret = mac0_tag_len(out, outLen, &tagLen);
+    TEST_ASSERT(ret == 0 && tagLen == 16u, "aes-mac tag len 16");
+#endif /* WOLFCOSE_HAVE_AESMAC */
+}
+
 /* ----- COSE_Sign Multi-Signer Tests (RFC 9052 Section 4.1) ----- */
 #if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_cose_sign_multi_signer(void)
@@ -16525,6 +16638,8 @@ int test_cose(void)
     test_cose_mac0_hmac512();
 #endif
 #endif /* WOLFCOSE_HAVE_HMAC256 */
+
+    test_cose_mac0_tag_sizes();
 
     /* AES-CBC-MAC tests */
 #ifdef WOLFCOSE_HAVE_AESMAC
