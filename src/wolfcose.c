@@ -1334,6 +1334,30 @@ static int wolfCose_EncodeKeyOptionalFields(WOLFCOSE_CBOR_CTX* ctx,
     return ret;
 }
 
+#ifdef WOLFCOSE_HAVE_RSAPSS
+/* Finalize a directly-exported RSA bstr (n or d). The caller reserved a 3-byte
+ * header at hdrPos and wrote the payload at hdrPos+3; emit the preferred CBOR
+ * length form (0x58 for <256, shifting the payload left over the unused byte;
+ * 0x59 otherwise) and advance ctx->idx past the value. */
+static void wolfCose_FinalizeRsaBstr(WOLFCOSE_CBOR_CTX* ctx, size_t hdrPos,
+                                      size_t payloadLen)
+{
+    if (payloadLen < 256u) {
+        (void)XMEMMOVE(&ctx->buf[hdrPos + 2u], &ctx->buf[hdrPos + 3u],
+                       payloadLen);
+        ctx->buf[hdrPos] = 0x58u;
+        ctx->buf[hdrPos + 1u] = (uint8_t)payloadLen;
+        ctx->idx = hdrPos + 2u + payloadLen;
+    }
+    else {
+        ctx->buf[hdrPos] = 0x59u;
+        ctx->buf[hdrPos + 1u] = (uint8_t)((uint32_t)payloadLen >> 8u);
+        ctx->buf[hdrPos + 2u] = (uint8_t)((uint32_t)payloadLen & 0xFFu);
+        ctx->idx = hdrPos + 3u + payloadLen;
+    }
+}
+#endif /* WOLFCOSE_HAVE_RSAPSS */
+
 #ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
 /* RFC 8230: write one RSA component (label + bstr) from its mp_int. */
 static int wolfCose_EncodeRsaMp(WOLFCOSE_CBOR_CTX* ctx, int64_t label,
@@ -1544,12 +1568,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
                     }
                     else {
-                        ctx.buf[hdrPos] = 0x59u;
-                        ctx.buf[hdrPos + 1u] =
-                            (uint8_t)((uint32_t)nLen >> 8u);
-                        ctx.buf[hdrPos + 2u] =
-                            (uint8_t)((uint32_t)nLen & 0xFFu);
-                        ctx.idx += (size_t)nLen;
+                        wolfCose_FinalizeRsaBstr(&ctx, hdrPos, (size_t)nLen);
                     }
                 }
             }
@@ -1633,12 +1652,8 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                                         (void)XMEMSET(&ctx.buf[dOff], 0, pad);
                                         dSz = (word32)rsaEncSz;
                                     }
-                                    ctx.buf[hdrPos] = 0x59u;
-                                    ctx.buf[hdrPos + 1u] =
-                                        (uint8_t)((uint32_t)dSz >> 8u);
-                                    ctx.buf[hdrPos + 2u] =
-                                        (uint8_t)((uint32_t)dSz & 0xFFu);
-                                    ctx.idx = dOff + (size_t)dSz;
+                                    wolfCose_FinalizeRsaBstr(&ctx, hdrPos,
+                                        (size_t)dSz);
                                 }
                                 /* Zero scratch (e2/n2/p/q) */
                                 (void)wolfCose_ForceZero(&ctx.buf[scrOff],
@@ -5127,7 +5142,7 @@ static int wolfCose_BuildEncStructure0(const uint8_t* protectedHdr,
 }
 
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
-int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
+int wc_CoseEncrypt0_Encrypt(const WOLFCOSE_KEY* key, int32_t alg,
     const uint8_t* iv, size_t ivLen,
     const uint8_t* payload, size_t payloadLen,
     uint8_t* detachedPayload, size_t detachedSz, size_t* detachedLen,
@@ -5487,7 +5502,7 @@ int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
 #endif /* WOLFCOSE_ENCRYPT0_ENCRYPT */
 
 #if defined(WOLFCOSE_ENCRYPT0_DECRYPT)
-int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
+int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
     const uint8_t* in, size_t inSz,
     const uint8_t* detachedCt, size_t detachedCtLen,
     const uint8_t* extAad, size_t extAadLen,
@@ -6789,8 +6804,12 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
             encKey = recipients[0].key->key.symm.key;
         }
         for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
-            if ((recipients[i].algId != WOLFCOSE_ALG_UNSET) &&
-                (recipients[i].algId != WOLFCOSE_ALG_DIRECT)) {
+            /* Direct mode requires an explicit WOLFCOSE_ALG_DIRECT so a
+             * zero-initialized (WOLFCOSE_ALG_UNSET) algId cannot silently
+             * select the direct-CEK construction. The decrypt path still
+             * accepts an empty (UNSET) recipient header, which is the on-wire
+             * representation of a direct recipient. */
+            if (recipients[i].algId != WOLFCOSE_ALG_DIRECT) {
                 ret = WOLFCOSE_E_COSE_BAD_ALG;
             }
             else if ((recipients[i].key != NULL) &&
@@ -7918,8 +7937,11 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
 
     /* Encode each recipient */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
-        /* Encode recipient protected header */
-        if (recipients[i].algId != WOLFCOSE_ALG_UNSET) {
+        /* Encode recipient protected header. RFC 9053 Section 6.1: the direct
+         * key algorithm uses a zero-length protected header, so treat an
+         * explicit WOLFCOSE_ALG_DIRECT the same as the unset direct case. */
+        if ((recipients[i].algId != WOLFCOSE_ALG_UNSET) &&
+            (recipients[i].algId != WOLFCOSE_ALG_DIRECT)) {
             ret = wolfCose_EncodeProtectedHdr(recipients[i].algId,
                 recipientProtectedBuf, sizeof(recipientProtectedBuf),
                 &recipientProtectedLen);

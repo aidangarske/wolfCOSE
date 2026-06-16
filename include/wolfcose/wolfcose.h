@@ -352,7 +352,7 @@ typedef struct WOLFCOSE_KEY {
  * Used for key distribution (wrap, ECDH, direct).
  */
 typedef struct WOLFCOSE_RECIPIENT {
-    int32_t        algId;       /**< Key distribution algorithm (-3..-31, -6) */
+    int32_t        algId;       /**< Key distribution algorithm; direct mode requires explicit WOLFCOSE_ALG_DIRECT (-6) on encrypt (-3..-31, -6) */
     WOLFCOSE_KEY*  key;         /**< Caller-owned key (KEK for wrap, recipient pubkey for ECDH) */
     const uint8_t* kid;         /**< Key ID for recipient lookup */
     size_t         kidLen;      /**< Key ID length */
@@ -549,12 +549,16 @@ WOLFCOSE_API int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx);
 
 /**
  * \brief Peek at the major type of the next item without consuming it.
- * \param ctx  Decoder context. Must have idx < bufSz.
- * \return Major type (0-7).
+ * \param ctx  Decoder context.
+ * \return Major type (0-7), or 0xFF if ctx is NULL or the buffer is exhausted.
  */
 static inline uint8_t wc_CBOR_PeekType(const WOLFCOSE_CBOR_CTX* ctx)
 {
-    return (uint8_t)(((uint32_t)ctx->cbuf[ctx->idx]) >> 5u);
+    uint8_t majorType = 0xFFu;
+    if ((ctx != NULL) && (ctx->cbuf != NULL) && (ctx->idx < ctx->bufSz)) {
+        majorType = (uint8_t)(((uint32_t)ctx->cbuf[ctx->idx]) >> 5u);
+    }
+    return majorType;
 }
 
 #endif /* WOLFCOSE_CBOR_DECODE */
@@ -743,7 +747,7 @@ WOLFCOSE_API int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
  * \param outLen          Output: bytes written to out.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
-WOLFCOSE_API int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
+WOLFCOSE_API int wc_CoseEncrypt0_Encrypt(const WOLFCOSE_KEY* key, int32_t alg,
     const uint8_t* iv, size_t ivLen,
     const uint8_t* payload, size_t payloadLen,
     uint8_t* detachedPayload, size_t detachedSz, size_t* detachedLen,
@@ -773,7 +777,7 @@ WOLFCOSE_API int wc_CoseEncrypt0_Encrypt(WOLFCOSE_KEY* key, int32_t alg,
  * \return WOLFCOSE_SUCCESS or negative error code.
  *         WOLFCOSE_E_DETACHED_PAYLOAD if ciphertext is nil and detachedCt is NULL.
  */
-WOLFCOSE_API int wc_CoseEncrypt0_Decrypt(WOLFCOSE_KEY* key,
+WOLFCOSE_API int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
     const uint8_t* in, size_t inSz,
     const uint8_t* detachedCt, size_t detachedCtLen,
     const uint8_t* extAad, size_t extAadLen,

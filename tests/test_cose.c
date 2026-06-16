@@ -1889,6 +1889,58 @@ static void test_cose_key_rsa_scratch_scrubbed(void)
     (void)wc_FreeRsaKey(&rsaKey);
     (void)wc_FreeRng(&rng);
 }
+
+static void test_cose_key_rsa_small_modulus_roundtrip(void)
+{
+    WOLFCOSE_KEY key, key2;
+    RsaKey rsaKey, rsaKey2;
+    int ret;
+    uint8_t cbuf[1024];
+    size_t cLen = 0;
+    uint8_t nBytes[200];
+    const uint8_t eBytes[3] = { 0x01, 0x00, 0x01 };
+    size_t i;
+
+    TEST_LOG("  [Key RSA sub-256 modulus roundtrip]\n");
+
+    nBytes[0] = 0xC0;
+    for (i = 1; i < sizeof(nBytes); i++) {
+        nBytes[i] = (uint8_t)(i & 0xFF);
+    }
+    nBytes[sizeof(nBytes) - 1u] |= 0x01u;
+
+    ret = wc_InitRsaKey(&rsaKey, NULL);
+    TEST_ASSERT(ret == 0, "rsa small init");
+    if (ret == 0) {
+        ret = wc_RsaPublicKeyDecodeRaw(nBytes, (word32)sizeof(nBytes),
+            eBytes, (word32)sizeof(eBytes), &rsaKey);
+        TEST_ASSERT(ret == 0, "rsa small import raw");
+    }
+    if (ret == 0) {
+        (void)wc_CoseKey_Init(&key);
+        ret = wc_CoseKey_SetRsa(&key, &rsaKey);
+        TEST_ASSERT(ret == 0, "rsa small set");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Encode(&key, cbuf, sizeof(cbuf), &cLen);
+        TEST_ASSERT(ret == 0 && cLen > 0, "rsa small encode");
+    }
+    if (ret == 0) {
+        (void)wc_InitRsaKey(&rsaKey2, NULL);
+        (void)wc_CoseKey_Init(&key2);
+        key2.key.rsa = &rsaKey2;
+        ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
+        TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_RSA,
+                    "rsa small modulus decode");
+        wc_CoseKey_Free(&key);
+        (void)wc_FreeRsaKey(&rsaKey2);
+    }
+    else {
+        wc_CoseKey_Free(&key);
+    }
+
+    (void)wc_FreeRsaKey(&rsaKey);
+}
 #endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
 
 /* ----- COSE_Key ML-DSA encode/decode round-trip ----- */
@@ -3929,6 +3981,75 @@ static void test_cose_mac0_aes_cbc_mac(void)
 }
 
 /**
+ * Multi-block AES-CBC-MAC must chain: flipping an early/middle byte of a
+ * payload spanning several AES blocks (length unchanged) must change the tag.
+ * Without IV chaining the MAC would depend only on the final block, so an
+ * early-byte tamper would verify successfully.
+ */
+static void test_cose_mac0_aes_cbc_mac_chaining(void)
+{
+    WOLFCOSE_KEY key128;
+    uint8_t keyData128[16] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
+    };
+    uint8_t payload[64];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    uint8_t tampered[512];
+    size_t outLen = 0;
+    size_t payloadOff;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+    int ret;
+    size_t i;
+
+    TEST_LOG("  [Mac0 AES-CBC-MAC chaining]\n");
+
+    for (i = 0; i < sizeof(payload); i++) {
+        payload[i] = (uint8_t)(i & 0xFF);
+    }
+
+    (void)wc_CoseKey_Init(&key128);
+    (void)wc_CoseKey_SetSymmetric(&key128, keyData128, sizeof(keyData128));
+
+    ret = wc_CoseMac0_Create(&key128, WOLFCOSE_ALG_AES_MAC_128_128,
+        NULL, 0,
+        payload, sizeof(payload),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0, "mac0 aes chaining create");
+
+    ret = wc_CoseMac0_Verify(&key128, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0 && decPayload != NULL, "mac0 aes chaining verify");
+
+    payloadOff = (size_t)(decPayload - out);
+
+    /* Flip the first payload byte (earliest block) - length unchanged. */
+    memcpy(tampered, out, outLen);
+    tampered[payloadOff] ^= 0xFF;
+    ret = wc_CoseMac0_Verify(&key128, tampered, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "mac0 aes early-byte tamper fails");
+
+    /* Flip a middle payload byte - length unchanged. */
+    memcpy(tampered, out, outLen);
+    tampered[payloadOff + (sizeof(payload) / 2u)] ^= 0xFF;
+    ret = wc_CoseMac0_Verify(&key128, tampered, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL, "mac0 aes mid-byte tamper fails");
+}
+
+/**
  * Test AES-CBC-MAC with external AAD
  */
 static void test_cose_mac0_aes_cbc_mac_with_aad(void)
@@ -4057,6 +4178,166 @@ static void test_cose_mac0_aes_cbc_mac_detached(void)
     }
 }
 #endif /* WOLFCOSE_HAVE_AESMAC */
+
+static int mac0_tag_len(const uint8_t* msg, size_t msgLen, size_t* tagLen)
+{
+    WOLFCOSE_CBOR_CTX ctx;
+    const uint8_t* p;
+    size_t n;
+    uint64_t t;
+    int ret;
+
+    ctx.cbuf = msg;
+    ctx.bufSz = msgLen;
+    ctx.idx = 0;
+    ret = wc_CBOR_DecodeTag(&ctx, &t);
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &n);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &p, &n);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &p, &n);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &p, tagLen);
+    }
+    return ret;
+}
+
+/**
+ * Pin the encoded tag length for every MAC algorithm so a tag-size constant
+ * mutation that stays in range can no longer round-trip undetected.
+ */
+static void test_cose_mac0_tag_sizes(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t kd[64];
+    const uint8_t payload[] = "tag size pin";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen;
+    size_t tagLen;
+    int ret;
+    size_t i;
+
+    TEST_LOG("  [Mac0 tag sizes]\n");
+
+    for (i = 0; i < sizeof(kd); i++) {
+        kd[i] = (uint8_t)(i + 1u);
+    }
+
+#ifdef WOLFCOSE_HAVE_HMAC
+#ifdef WOLFCOSE_HAVE_HMAC256
+    outLen = 0;
+    tagLen = 0;
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, kd, 32u);
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256, NULL, 0,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "hmac256 tag create");
+    ret = mac0_tag_len(out, outLen, &tagLen);
+    TEST_ASSERT(ret == 0 && tagLen == 32u, "hmac256 tag len 32");
+#endif
+#ifdef WOLFCOSE_HAVE_HMAC384
+    outLen = 0;
+    tagLen = 0;
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, kd, 48u);
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_384_384, NULL, 0,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "hmac384 tag create");
+    ret = mac0_tag_len(out, outLen, &tagLen);
+    TEST_ASSERT(ret == 0 && tagLen == 48u, "hmac384 tag len 48");
+#endif
+#ifdef WOLFCOSE_HAVE_HMAC512
+    outLen = 0;
+    tagLen = 0;
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, kd, 64u);
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_512_512, NULL, 0,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "hmac512 tag create");
+    ret = mac0_tag_len(out, outLen, &tagLen);
+    TEST_ASSERT(ret == 0 && tagLen == 64u, "hmac512 tag len 64");
+#endif
+#endif /* WOLFCOSE_HAVE_HMAC */
+#ifdef WOLFCOSE_HAVE_AESMAC
+    outLen = 0;
+    tagLen = 0;
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, kd, 16u);
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_AES_MAC_128_64, NULL, 0,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "aes-mac 64 tag create");
+    ret = mac0_tag_len(out, outLen, &tagLen);
+    TEST_ASSERT(ret == 0 && tagLen == 8u, "aes-mac tag len 8");
+
+    outLen = 0;
+    tagLen = 0;
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_AES_MAC_128_128, NULL, 0,
+        payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "aes-mac 128 tag create");
+    ret = mac0_tag_len(out, outLen, &tagLen);
+    TEST_ASSERT(ret == 0 && tagLen == 16u, "aes-mac tag len 16");
+#endif /* WOLFCOSE_HAVE_AESMAC */
+}
+
+#ifdef WOLFCOSE_HAVE_HMAC256
+static void test_cose_mac0_large_payload(void)
+{
+    WOLFCOSE_KEY key;
+    uint8_t keyData[32];
+    uint8_t payload[4096];
+    uint8_t scratch[4096 + 256];
+    uint8_t out[4096 + 512];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+    int ret;
+    size_t i;
+
+    TEST_LOG("  [Mac0 large payload roundtrip]\n");
+
+    memset(keyData, 0xAB, sizeof(keyData));
+    for (i = 0; i < sizeof(payload); i++) {
+        payload[i] = (uint8_t)(i & 0xFF);
+    }
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0,
+        payload, sizeof(payload),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0, "mac0 large payload create");
+
+    if (ret == 0) {
+        ret = wc_CoseMac0_Verify(&key, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "mac0 large payload verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload),
+                    "mac0 large payload length");
+        TEST_ASSERT(memcmp(decPayload, payload, decPayloadLen) == 0,
+                    "mac0 large payload match");
+    }
+}
+#endif /* WOLFCOSE_HAVE_HMAC256 */
 
 /* ----- COSE_Sign Multi-Signer Tests (RFC 9052 Section 4.1) ----- */
 #if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
@@ -4866,12 +5147,12 @@ static void test_cose_encrypt_multi_recipient(void)
     TEST_ASSERT(ret == 0, "encrypt key2 set");
 
     /* Setup recipients */
-    recipients[0].algId = 0;  /* Direct key */
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;  /* Direct key */
     recipients[0].key = &key1;
     recipients[0].kid = kid1;
     recipients[0].kidLen = sizeof(kid1) - 1;
 
-    recipients[1].algId = 0;  /* Direct key */
+    recipients[1].algId = WOLFCOSE_ALG_DIRECT;  /* Direct key */
     recipients[1].key = &key2;
     recipients[1].kid = kid2;
     recipients[1].kidLen = sizeof(kid2) - 1;
@@ -4982,7 +5263,7 @@ static void test_cose_encrypt_with_aad(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "encrypt aad key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -5061,7 +5342,7 @@ static void test_cose_encrypt_a256gcm(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "encrypt a256 key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -5121,7 +5402,7 @@ static void test_cose_encrypt_direct_key_alg_pin_roundtrip(void)
     TEST_ASSERT(ret == 0, "direct alg pin key set");
     key.alg = WOLFCOSE_ALG_A128GCM;
 
-    recipient.algId = WOLFCOSE_ALG_UNSET;
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
     recipient.key = &key;
     recipient.kid = NULL;
     recipient.kidLen = 0;
@@ -5149,6 +5430,47 @@ static void test_cose_encrypt_direct_key_alg_pin_roundtrip(void)
     TEST_ASSERT(plaintextLen == sizeof(payload) - 1, "direct alg pin pt len");
     TEST_ASSERT(memcmp(plaintext, payload, plaintextLen) == 0,
                 "direct alg pin pt match");
+
+    wc_CoseKey_Free(&key);
+}
+
+static void test_cose_encrypt_unset_alg_rejected(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    int ret;
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "unset alg reject";
+    const uint8_t iv[12] = {0};
+    const uint8_t keyData[16] = {
+        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+        0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F
+    };
+
+    TEST_LOG("  [Encrypt UNSET alg rejected]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+
+    /* A zero-initialized algId must not silently select direct mode. */
+    recipient.algId = WOLFCOSE_ALG_UNSET;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "encrypt UNSET recipient algId rejected");
 
     wc_CoseKey_Free(&key);
 }
@@ -6395,7 +6717,7 @@ static void test_cose_encrypt_direct_wrong_key_type(void)
     (void)wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
 
     /* Try direct encryption (algId=0) with ECC key - should fail */
-    recipient.algId = 0;  /* Direct key mode */
+    recipient.algId = WOLFCOSE_ALG_DIRECT;  /* Direct key mode */
     recipient.key = &eccKey;
     recipient.kid = NULL;
     recipient.kidLen = 0;
@@ -6541,6 +6863,87 @@ static void test_cose_mac_multi_recipient(void)
         &hdr,
         &decPayload, &decPayloadLen);
     TEST_ASSERT(ret != 0, "mac invalid recipient index fails");
+
+    wc_CoseKey_Free(&key1);
+    wc_CoseKey_Free(&key2);
+}
+
+static void test_cose_mac_multi_recipient_direct_empty_protected(void)
+{
+    WOLFCOSE_KEY key1, key2;
+    WOLFCOSE_RECIPIENT recipients[2];
+    WOLFCOSE_CBOR_CTX ctx;
+    int ret;
+    uint8_t out[512];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    const uint8_t payload[] = "Direct MAC empty protected";
+    const uint8_t keyData[32] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
+    };
+    const uint8_t* prot;
+    size_t protLen;
+    size_t arrCount;
+    size_t recipCount;
+    uint64_t tag;
+    size_t i;
+
+    TEST_LOG("  [Mac Multi-Recipient direct empty protected]\n");
+
+    (void)wc_CoseKey_Init(&key1);
+    (void)wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
+    (void)wc_CoseKey_Init(&key2);
+    (void)wc_CoseKey_SetSymmetric(&key2, keyData, sizeof(keyData));
+
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
+    recipients[0].key = &key1;
+    recipients[0].kid = NULL;
+    recipients[0].kidLen = 0;
+    recipients[1].algId = WOLFCOSE_ALG_DIRECT;
+    recipients[1].key = &key2;
+    recipients[1].kid = NULL;
+    recipients[1].kidLen = 0;
+
+    ret = wc_CoseMac_Create(recipients, 2, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "mac direct create");
+
+    ctx.cbuf = out;
+    ctx.bufSz = outLen;
+    ctx.idx = 0;
+    ret = wc_CBOR_DecodeTag(&ctx, &tag);
+    TEST_ASSERT(ret == 0 && tag == WOLFCOSE_TAG_MAC, "mac tag");
+    ret = wc_CBOR_DecodeArrayStart(&ctx, &arrCount);
+    TEST_ASSERT(ret == 0 && arrCount == 5, "mac outer array");
+    ret = wc_CBOR_DecodeBstr(&ctx, &prot, &protLen);
+    TEST_ASSERT(ret == 0, "mac body protected");
+    ret = wc_CBOR_Skip(&ctx);
+    TEST_ASSERT(ret == 0, "mac body unprotected");
+    ret = wc_CBOR_Skip(&ctx);
+    TEST_ASSERT(ret == 0, "mac payload");
+    ret = wc_CBOR_Skip(&ctx);
+    TEST_ASSERT(ret == 0, "mac tag bstr");
+    ret = wc_CBOR_DecodeArrayStart(&ctx, &recipCount);
+    TEST_ASSERT(ret == 0 && recipCount == 2, "mac recipients array");
+
+    for (i = 0; i < recipCount; i++) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &arrCount);
+        TEST_ASSERT(ret == 0 && arrCount == 3, "recipient array");
+        ret = wc_CBOR_DecodeBstr(&ctx, &prot, &protLen);
+        TEST_ASSERT(ret == 0, "recipient protected decode");
+        TEST_ASSERT(protLen == 0, "direct recipient protected empty");
+        ret = wc_CBOR_Skip(&ctx);
+        TEST_ASSERT(ret == 0, "recipient unprotected");
+        ret = wc_CBOR_Skip(&ctx);
+        TEST_ASSERT(ret == 0, "recipient cek");
+    }
 
     wc_CoseKey_Free(&key1);
     wc_CoseKey_Free(&key2);
@@ -10649,6 +11052,7 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
     WOLFCOSE_HDR hdr;
     const uint8_t keyBytes[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
     const uint8_t iv[12] = {0};
+    static const uint8_t empty[1] = {0};
 
     TEST_LOG("  [Encrypt0: empty payload roundtrip]\n");
 
@@ -10657,16 +11061,17 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
     (void)wc_CoseKey_SetSymmetric(&encKey, keyBytes, sizeof(keyBytes));
     (void)wc_CoseKey_SetSymmetric(&decKey, keyBytes, sizeof(keyBytes));
 
-    /* Encrypt empty payload */
+    /* Encrypt a genuine zero-length plaintext via a non-NULL buffer so the
+     * ciphertext is just the AEAD tag and decrypt recovers 0 bytes. */
     ret = wc_CoseEncrypt0_Encrypt(&encKey, WOLFCOSE_ALG_A128GCM,
         iv, sizeof(iv),
-        NULL, 0,
+        empty, 0,
         NULL, 0, NULL,
         NULL, 0,
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
-    /* NULL payload + 0 length is accepted as zero-length plaintext path
-     * only when isDetached is unset; the encrypt API allows this. */
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 empty payload encrypt");
+
     if (ret == WOLFCOSE_SUCCESS) {
         memset(&hdr, 0, sizeof(hdr));
         ret = wc_CoseEncrypt0_Decrypt(&decKey, out, outLen,
@@ -10678,10 +11083,56 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
                     "Encrypt0_Decrypt empty payload");
         TEST_ASSERT(ptLen == 0u, "Encrypt0 empty payload length");
     }
-    else {
-        /* API rejects NULL payload outright; that is acceptable too. */
-        TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
-                    "Encrypt0 empty payload reject");
+
+    wc_CoseKey_Free(&encKey);
+    wc_CoseKey_Free(&decKey);
+}
+
+static void test_cose_encrypt0_large_payload(void)
+{
+    WOLFCOSE_KEY encKey, decKey;
+    int ret;
+    uint8_t payload[4096];
+    uint8_t pt[4096];
+    uint8_t scratch[4096 + 256];
+    uint8_t out[4096 + 512];
+    size_t outLen = 0;
+    size_t ptLen = 0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t keyBytes[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
+    const uint8_t iv[12] = {0};
+    size_t i;
+
+    TEST_LOG("  [Encrypt0: large payload roundtrip]\n");
+
+    for (i = 0; i < sizeof(payload); i++) {
+        payload[i] = (uint8_t)(i & 0xFF);
+    }
+
+    (void)wc_CoseKey_Init(&encKey);
+    (void)wc_CoseKey_Init(&decKey);
+    (void)wc_CoseKey_SetSymmetric(&encKey, keyBytes, sizeof(keyBytes));
+    (void)wc_CoseKey_SetSymmetric(&decKey, keyBytes, sizeof(keyBytes));
+
+    ret = wc_CoseEncrypt0_Encrypt(&encKey, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload),
+        NULL, 0, NULL,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 large payload encrypt");
+
+    if (ret == WOLFCOSE_SUCCESS) {
+        memset(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt0_Decrypt(&decKey, out, outLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr, pt, sizeof(pt), &ptLen);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 large payload decrypt");
+        TEST_ASSERT(ptLen == sizeof(payload), "Encrypt0 large payload length");
+        TEST_ASSERT(memcmp(pt, payload, ptLen) == 0,
+                    "Encrypt0 large payload match");
     }
 
     wc_CoseKey_Free(&encKey);
@@ -11026,7 +11477,7 @@ static void test_cose_encrypt_multi_ccm_roundtrip(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "ccm multi key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -11079,7 +11530,7 @@ static void test_cose_encrypt_multi_chacha_roundtrip(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "chacha multi key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -15889,7 +16340,7 @@ static void test_encrypt_multi_detached_rejected(void)
 
     (void)wc_CoseKey_Init(&key1);
     (void)wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key1;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -15924,7 +16375,7 @@ static void test_encrypt_multi_wrong_iv_len(void)
 
     (void)wc_CoseKey_Init(&key1);
     (void)wc_CoseKey_SetSymmetric(&key1, keyData, sizeof(keyData));
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key1;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -16234,6 +16685,7 @@ int test_cose(void)
     test_cose_key_rsa();
     test_cose_key_rsa_scratch_scrubbed();
     test_cose_key_rsa_public_decode();
+    test_cose_key_rsa_small_modulus_roundtrip();
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_key_mldsa("ML-DSA-44", WOLFCOSE_ALG_ML_DSA_44, WC_ML_DSA_44);
@@ -16323,9 +16775,15 @@ int test_cose(void)
 #endif
 #endif /* WOLFCOSE_HAVE_HMAC256 */
 
+    test_cose_mac0_tag_sizes();
+#ifdef WOLFCOSE_HAVE_HMAC256
+    test_cose_mac0_large_payload();
+#endif
+
     /* AES-CBC-MAC tests */
 #ifdef WOLFCOSE_HAVE_AESMAC
     test_cose_mac0_aes_cbc_mac();
+    test_cose_mac0_aes_cbc_mac_chaining();
     test_cose_mac0_aes_cbc_mac_with_aad();
     test_cose_mac0_aes_cbc_mac_detached();
 #endif
@@ -16362,6 +16820,7 @@ int test_cose(void)
     test_cose_encrypt_with_aad();
     test_cose_encrypt_a256gcm();
     test_cose_encrypt_direct_key_alg_pin_roundtrip();
+    test_cose_encrypt_unset_alg_rejected();
     test_cose_encrypt_direct_alg_id_key_alg_roundtrip();
     test_cose_encrypt_direct_multi_key_alg_mismatch();
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
@@ -16389,6 +16848,7 @@ int test_cose(void)
     /* Multi-recipient MAC tests */
 #if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac_multi_recipient();
+    test_cose_mac_multi_recipient_direct_empty_protected();
     test_cose_mac_multi_recipient_key_alg_mismatch();
     test_cose_mac_with_aad();
     test_cose_mac_detached();
@@ -16519,6 +16979,7 @@ int test_cose(void)
 #if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
     test_cose_encrypt0_nonce_length();
     test_cose_encrypt0_empty_payload_roundtrip();
+    test_cose_encrypt0_large_payload();
 #endif
 #if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFCOSE_SIGN) && \
     defined(WOLFSSL_KEY_GEN)
