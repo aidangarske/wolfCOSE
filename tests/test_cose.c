@@ -12286,6 +12286,86 @@ static void test_cose_mac0_hmac_short_key_rejected(void)
 }
 #endif
 
+#if defined(WOLFCOSE_HAVE_HMAC384) && defined(WOLFCOSE_MAC0_CREATE)
+static void test_cose_mac0_hmac384_short_key_rejected(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t shortKey[47] = {0};
+    uint8_t boundaryKey[48] = {0};
+    uint8_t out[256];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    size_t outLen = 0;
+    const uint8_t payload[] = "hmac384 keylen";
+
+    TEST_LOG("  [Mac0 HMAC-384 short key rejected]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, shortKey, sizeof(shortKey));
+    TEST_ASSERT(ret == 0, "mac0 hmac384 short key set");
+
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_384_384,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac0_Create rejects 47B key for HMAC-384/384");
+
+    ret = wc_CoseKey_SetSymmetric(&key, boundaryKey, sizeof(boundaryKey));
+    TEST_ASSERT(ret == 0, "mac0 hmac384 boundary key set");
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_384_384,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0,
+                "Mac0_Create accepts 48B key for HMAC-384/384");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(WOLFCOSE_HAVE_HMAC512) && defined(WOLFCOSE_MAC0_CREATE)
+static void test_cose_mac0_hmac512_short_key_rejected(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t shortKey[63] = {0};
+    uint8_t boundaryKey[64] = {0};
+    uint8_t out[256];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    size_t outLen = 0;
+    const uint8_t payload[] = "hmac512 keylen";
+
+    TEST_LOG("  [Mac0 HMAC-512 short key rejected]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, shortKey, sizeof(shortKey));
+    TEST_ASSERT(ret == 0, "mac0 hmac512 short key set");
+
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_512_512,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac0_Create rejects 63B key for HMAC-512/512");
+
+    ret = wc_CoseKey_SetSymmetric(&key, boundaryKey, sizeof(boundaryKey));
+    TEST_ASSERT(ret == 0, "mac0 hmac512 boundary key set");
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_512_512,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0,
+                "Mac0_Create accepts 64B key for HMAC-512/512");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
 #if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE) && \
     defined(WOLFCOSE_MAC0_VERIFY)
 static void test_cose_mac0_verify_short_key_rejected(void)
@@ -17172,6 +17252,12 @@ int test_cose(void)
 #if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE)
     test_cose_mac0_hmac_short_key_rejected();
     test_cose_mac0_create_key_alg_mismatch();
+#endif
+#if defined(WOLFCOSE_HAVE_HMAC384) && defined(WOLFCOSE_MAC0_CREATE)
+    test_cose_mac0_hmac384_short_key_rejected();
+#endif
+#if defined(WOLFCOSE_HAVE_HMAC512) && defined(WOLFCOSE_MAC0_CREATE)
+    test_cose_mac0_hmac512_short_key_rejected();
 #endif
 #if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE) && \
     defined(WOLFCOSE_MAC0_VERIFY)
