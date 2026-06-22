@@ -11293,7 +11293,13 @@ static void test_cose_encrypt0_nonce_length(void)
     wc_CoseKey_Free(&key);
 }
 
-static void test_cose_encrypt0_empty_payload_roundtrip(void)
+/* Encrypt a genuine zero-length plaintext via a non-NULL buffer so the
+ * ciphertext is just the AEAD tag, then decrypt and require 0 recovered bytes.
+ * Returns WOLFCOSE_SUCCESS only when the full roundtrip recovers an empty
+ * plaintext. */
+static int encrypt0_empty_payload_roundtrip(int32_t alg,
+    const uint8_t* keyBytes, size_t keyLen,
+    const uint8_t* iv, size_t ivLen)
 {
     WOLFCOSE_KEY encKey, decKey;
     int ret;
@@ -11301,29 +11307,22 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
     uint8_t scratch[256];
     uint8_t pt[16];
     size_t outLen = 0;
-    size_t ptLen = 0;
+    size_t ptLen = 1;
     WOLFCOSE_HDR hdr;
-    const uint8_t keyBytes[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
-    const uint8_t iv[12] = {0};
     static const uint8_t empty[1] = {0};
-
-    TEST_LOG("  [Encrypt0: empty payload roundtrip]\n");
 
     (void)wc_CoseKey_Init(&encKey);
     (void)wc_CoseKey_Init(&decKey);
-    (void)wc_CoseKey_SetSymmetric(&encKey, keyBytes, sizeof(keyBytes));
-    (void)wc_CoseKey_SetSymmetric(&decKey, keyBytes, sizeof(keyBytes));
+    (void)wc_CoseKey_SetSymmetric(&encKey, keyBytes, keyLen);
+    (void)wc_CoseKey_SetSymmetric(&decKey, keyBytes, keyLen);
 
-    /* Encrypt a genuine zero-length plaintext via a non-NULL buffer so the
-     * ciphertext is just the AEAD tag and decrypt recovers 0 bytes. */
-    ret = wc_CoseEncrypt0_Encrypt(&encKey, WOLFCOSE_ALG_A128GCM,
-        iv, sizeof(iv),
+    ret = wc_CoseEncrypt0_Encrypt(&encKey, alg,
+        iv, ivLen,
         empty, 0,
         NULL, 0, NULL,
         NULL, 0,
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
-    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 empty payload encrypt");
 
     if (ret == WOLFCOSE_SUCCESS) {
         memset(&hdr, 0, sizeof(hdr));
@@ -11332,13 +11331,54 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
             NULL, 0,
             scratch, sizeof(scratch),
             &hdr, pt, sizeof(pt), &ptLen);
-        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
-                    "Encrypt0_Decrypt empty payload");
-        TEST_ASSERT(ptLen == 0u, "Encrypt0 empty payload length");
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (ptLen != 0u)) {
+        ret = WOLFCOSE_E_MAC_FAIL;
     }
 
     wc_CoseKey_Free(&encKey);
     wc_CoseKey_Free(&decKey);
+    return ret;
+}
+
+static void test_cose_encrypt0_empty_payload_roundtrip(void)
+{
+    int ret;
+    const uint8_t keyBytes[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
+    const uint8_t iv[12] = {0};
+
+    TEST_LOG("  [Encrypt0: empty payload roundtrip]\n");
+
+    ret = encrypt0_empty_payload_roundtrip(WOLFCOSE_ALG_A128GCM,
+        keyBytes, sizeof(keyBytes), iv, sizeof(iv));
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 A128GCM empty payload");
+
+#ifdef WOLFCOSE_HAVE_AESCCM
+    /* AES-CCM authenticates a zero-length message through its own B0/L-value
+     * formatting that AES-GCM does not exercise. CCM nonce is 13 bytes here. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        const uint8_t ccmNonce[13] = {0};
+        ret = encrypt0_empty_payload_roundtrip(WOLFCOSE_ALG_AES_CCM_16_128_128,
+            keyBytes, sizeof(keyBytes), ccmNonce, sizeof(ccmNonce));
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 AES-CCM empty payload");
+    }
+#endif
+
+#ifdef WOLFCOSE_HAVE_CHACHA20
+    /* ChaCha20-Poly1305 pads a zero-length message into its Poly1305 MAC
+     * differently again. 32-byte key, 12-byte nonce. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        const uint8_t chachaKey[32] = {
+            1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,
+            17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32
+        };
+        ret = encrypt0_empty_payload_roundtrip(WOLFCOSE_ALG_CHACHA20_POLY1305,
+            chachaKey, sizeof(chachaKey), iv, sizeof(iv));
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 ChaCha20 empty payload");
+    }
+#endif
 }
 
 static void test_cose_encrypt0_large_payload(void)
