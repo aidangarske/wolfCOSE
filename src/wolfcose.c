@@ -3875,7 +3875,7 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
 #endif /* WOLFCOSE_SIGN1_SIGN */
 
 #if defined(WOLFCOSE_SIGN1_VERIFY)
-int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
+int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     const uint8_t* in, size_t inSz,
     const uint8_t* detachedPayload, size_t detachedLen,
     const uint8_t* extAad, size_t extAadLen,

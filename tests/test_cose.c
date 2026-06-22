@@ -386,6 +386,7 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
                                  int keySz)
 {
     WOLFCOSE_KEY signKey;
+    const WOLFCOSE_KEY* constSignKey = &signKey;
     ecc_key eccKey;
     WC_RNG rng;
     int ret = 0;
@@ -440,8 +441,9 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
     }
 
     if (ret == 0) {
-        /* Verify with same key */
-        ret = wc_CoseSign1_Verify(&signKey, out, outLen,
+        /* Verify with same key (through a const pointer: the verify API only
+         * reads the key, so its parameter is const-qualified). */
+        ret = wc_CoseSign1_Verify(constSignKey, out, outLen,
             NULL, 0, /* detachedPayload, detachedLen */
             NULL, 0, /* extAad, extAadLen */
             scratch, sizeof(scratch),
