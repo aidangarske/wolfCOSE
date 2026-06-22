@@ -5961,6 +5961,110 @@ static void test_cose_encrypt_ecdh_es_kid_and_alg_pin(void)
     (void)wc_FreeRng(&rng);
 }
 
+/**
+ * An ECDH-ES sender ephemeral COSE_Key whose crv (label -1) is a CBOR integer
+ * outside int32 range must be rejected before the narrowing cast: 0x100000001
+ * narrows to 1 and would alias WOLFCOSE_CRV_P256, so without the range check the
+ * decoder accepts a non-canonical wide value as P-256. Decrypt must fail with
+ * WOLFCOSE_E_COSE_BAD_HDR.
+ */
+static void test_cose_encrypt_ecdh_es_ephemeral_crv_narrowing(void)
+{
+    WOLFCOSE_KEY recipientKey;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    ecc_key recipientEcc;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[1024];
+    size_t outLen = 0;
+    uint8_t tampered[1040];
+    size_t tamperedLen = 0;
+    uint8_t scratch[1024];
+    uint8_t plaintext[128];
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "ECDH-ES ephemeral crv";
+    uint8_t iv[12];
+    size_t i;
+    size_t crvPos = 0;
+    int found = 0;
+    /* Ephemeral COSE_Key prefix: map(4), 1:2 (kty EC2), -1:1 (crv), -2 (x). */
+    static const uint8_t anchor[] = {
+        0xA4u, 0x01u, 0x02u, 0x20u, 0x01u, 0x21u
+    };
+    /* crv re-encoded as 0x100000001 (narrows to P-256 id 1 on a 32-bit cast). */
+    static const uint8_t wideCrv[] = {
+        0x1Bu, 0x00u, 0x00u, 0x00u, 0x01u, 0x00u, 0x00u, 0x00u, 0x01u
+    };
+
+    TEST_LOG("  [Encrypt ECDH-ES ephemeral crv narrowing]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "ecdh-es-crv rng");
+    ret = wc_ecc_init(&recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-crv ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-crv keygen");
+
+    (void)wc_CoseKey_Init(&recipientKey);
+    ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-crv set key");
+    recipientKey.hasPrivate = 0;
+
+    recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+    recipient.key = &recipientKey;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    TEST_ASSERT(ret == 0, "ecdh-es-crv iv");
+
+    ret = wc_CoseEncrypt_Encrypt(
+        &recipient, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "ecdh-es-crv encrypt");
+
+    /* Locate the ephemeral key crv value byte and widen it out of int32 range. */
+    for (i = 0; (found == 0) && (outLen >= sizeof(anchor)) &&
+                (i <= outLen - sizeof(anchor)); i++) {
+        if (memcmp(&out[i], anchor, sizeof(anchor)) == 0) {
+            crvPos = i + 4u; /* the crv value (0x01) inside the anchor */
+            found = 1;
+        }
+    }
+    TEST_ASSERT(found == 1, "ecdh-es-crv anchor located");
+
+    if (found == 1) {
+        memcpy(tampered, out, crvPos);
+        memcpy(&tampered[crvPos], wideCrv, sizeof(wideCrv));
+        memcpy(&tampered[crvPos + sizeof(wideCrv)], &out[crvPos + 1u],
+               outLen - (crvPos + 1u));
+        tamperedLen = (outLen - 1u) + sizeof(wideCrv);
+
+        recipientKey.hasPrivate = 1;
+        memset(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt_Decrypt(
+            &recipient, 0,
+            tampered, tamperedLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                    "ecdh-es-crv oversized crv rejected");
+    }
+
+    wc_CoseKey_Free(&recipientKey);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
+}
+
 static void test_cose_encrypt_ecdh_es_hkdf_256(void)
 {
     WOLFCOSE_KEY recipientKey;
@@ -17200,6 +17304,7 @@ int test_cose(void)
     test_cose_encrypt_direct_multi_key_alg_mismatch();
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
     test_cose_encrypt_ecdh_es_kid_and_alg_pin();
+    test_cose_encrypt_ecdh_es_ephemeral_crv_narrowing();
     test_cose_encrypt_ecdh_es_hkdf_256();
     test_cose_encrypt_ecdh_es_wrong_key();
     test_cose_encrypt_ecdh_es_p384();

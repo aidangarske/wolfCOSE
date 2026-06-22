@@ -3345,6 +3345,10 @@ static int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
         else if ((ret == WOLFCOSE_SUCCESS) && (label == -1)) {
             /* crv */
             ret = wc_CBOR_DecodeInt(ctx, &intVal);
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (wolfCose_InInt32Range(intVal) == 0)) {
+                ret = WOLFCOSE_E_COSE_BAD_HDR;
+            }
             if (ret == WOLFCOSE_SUCCESS) {
                 *crv = (int)intVal;
                 haveCrv = 1;
@@ -7724,8 +7728,6 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
     WOLFCOSE_CBOR_CTX ctx;
     uint8_t protectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
     size_t protectedLen = 0;
-    uint8_t recipientProtectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
-    size_t recipientProtectedLen = 0;
     size_t macStructLen = 0;
     uint8_t macTag[WC_MAX_DIGEST_SIZE];
     size_t macTagLen = 0;
@@ -7946,19 +7948,15 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
 
     /* Encode each recipient */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
-        /* Every recipient was validated to WOLFCOSE_ALG_DIRECT above, which uses
-         * a zero-length protected header (RFC 9053 Section 6.1). */
-        recipientProtectedLen = 0;
+        /* Start recipient array [protected, unprotected, ciphertext]. The loop
+         * condition guarantees ret == WOLFCOSE_SUCCESS on entry. */
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 3u);
 
-        /* Start recipient array [protected, unprotected, ciphertext] */
+        /* [0] protected header bstr. Every recipient was validated to
+         * WOLFCOSE_ALG_DIRECT above, which uses a zero-length protected
+         * header (RFC 9053 Section 6.1). */
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_CBOR_EncodeArrayStart(&ctx, 3u);
-        }
-
-        /* [0] protected header bstr */
-        if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_CBOR_EncodeBstr(&ctx, recipientProtectedBuf,
-                                      recipientProtectedLen);
+            ret = wc_CBOR_EncodeBstr(&ctx, NULL, 0);
         }
 
         /* [1] unprotected header map (with kid if present) */
