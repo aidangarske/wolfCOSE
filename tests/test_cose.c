@@ -3981,6 +3981,94 @@ static void test_cose_mac0_aes_cbc_mac(void)
 }
 
 /**
+ * Known-answer test pinning the exact COSE_Mac0 bytes (including the
+ * AES-CBC-MAC tag) for fixed key/payload inputs. Both payload lengths are
+ * chosen so the MAC_structure is an exact multiple of the AES block size,
+ * exercising the FIPS-113 no-extra-padding boundary: any change to the
+ * partial-block padding guard, padding bytes, or tag truncation alters these
+ * bytes and fails the memcmp, which a create-then-verify roundtrip cannot
+ * catch because it applies the same computation on both sides.
+ */
+static void test_cose_mac0_aes_cbc_mac_kat(void)
+{
+    WOLFCOSE_KEY key128, key256;
+    uint8_t keyData128[16] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
+    };
+    uint8_t keyData256[32] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+        0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
+    };
+    uint8_t payload34[34];
+    uint8_t payload35[35];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen = 0;
+    int ret;
+    size_t i;
+
+    /* MAC_structure is exactly 48 bytes (3 AES blocks) for both cases, so the
+     * trailing block is full and gets no FIPS-113 zero-pad block. */
+    static const uint8_t expected128[] = {
+        0xD1, 0x84, 0x44, 0xA1, 0x01, 0x18, 0x19, 0xA0, 0x58, 0x22, 0x00, 0x01,
+        0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+        0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19,
+        0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x50, 0x96, 0xB0, 0x5F,
+        0x5F, 0xC3, 0x33, 0xEA, 0x62, 0x3F, 0xBC, 0x7D, 0xA6, 0x57, 0xD4, 0xEA,
+        0xC5
+    };
+    static const uint8_t expected256[] = {
+        0xD1, 0x84, 0x43, 0xA1, 0x01, 0x0F, 0xA0, 0x58, 0x23, 0x00, 0x01, 0x02,
+        0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+        0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A,
+        0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x48, 0xC9, 0x91, 0xCA,
+        0xBB, 0x44, 0x3B, 0x24, 0xFE
+    };
+
+    TEST_LOG("  [Mac0 AES-CBC-MAC KAT]\n");
+
+    for (i = 0; i < sizeof(payload34); i++) {
+        payload34[i] = (uint8_t)(i & 0xFF);
+    }
+    for (i = 0; i < sizeof(payload35); i++) {
+        payload35[i] = (uint8_t)(i & 0xFF);
+    }
+
+    (void)wc_CoseKey_Init(&key128);
+    (void)wc_CoseKey_SetSymmetric(&key128, keyData128, sizeof(keyData128));
+    (void)wc_CoseKey_Init(&key256);
+    (void)wc_CoseKey_SetSymmetric(&key256, keyData256, sizeof(keyData256));
+
+    ret = wc_CoseMac0_Create(&key128, WOLFCOSE_ALG_AES_MAC_128_128,
+        NULL, 0,
+        payload34, sizeof(payload34),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "mac0 aes-128/128 KAT create");
+    TEST_ASSERT(outLen == sizeof(expected128) &&
+                memcmp(out, expected128, sizeof(expected128)) == 0,
+                "mac0 aes-128/128 KAT bytes match");
+
+    ret = wc_CoseMac0_Create(&key256, WOLFCOSE_ALG_AES_MAC_256_64,
+        NULL, 0,
+        payload35, sizeof(payload35),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "mac0 aes-256/64 KAT create");
+    TEST_ASSERT(outLen == sizeof(expected256) &&
+                memcmp(out, expected256, sizeof(expected256)) == 0,
+                "mac0 aes-256/64 KAT bytes match");
+
+    wc_CoseKey_Free(&key128);
+    wc_CoseKey_Free(&key256);
+}
+
+/**
  * Multi-block AES-CBC-MAC must chain: flipping an early/middle byte of a
  * payload spanning several AES blocks (length unchanged) must change the tag.
  * Without IV chaining the MAC would depend only on the final block, so an
@@ -16783,6 +16871,7 @@ int test_cose(void)
     /* AES-CBC-MAC tests */
 #ifdef WOLFCOSE_HAVE_AESMAC
     test_cose_mac0_aes_cbc_mac();
+    test_cose_mac0_aes_cbc_mac_kat();
     test_cose_mac0_aes_cbc_mac_chaining();
     test_cose_mac0_aes_cbc_mac_with_aad();
     test_cose_mac0_aes_cbc_mac_detached();
