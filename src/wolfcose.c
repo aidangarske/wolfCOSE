@@ -7801,6 +7801,15 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
         }
     }
 
+    /* COSE_Mac here is direct-keyed only: require an explicit
+     * WOLFCOSE_ALG_DIRECT so a zero-initialized (WOLFCOSE_ALG_UNSET) or a
+     * key-distribution algId cannot silently select the direct construction. */
+    for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
+        if (recipients[i].algId != WOLFCOSE_ALG_DIRECT) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+    }
+
     /* Get tag size for algorithm */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_MacTagSize(macAlgId, &macTagLen);
@@ -7937,18 +7946,9 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
 
     /* Encode each recipient */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
-        /* Encode recipient protected header. RFC 9053 Section 6.1: the direct
-         * key algorithm uses a zero-length protected header, so treat an
-         * explicit WOLFCOSE_ALG_DIRECT the same as the unset direct case. */
-        if ((recipients[i].algId != WOLFCOSE_ALG_UNSET) &&
-            (recipients[i].algId != WOLFCOSE_ALG_DIRECT)) {
-            ret = wolfCose_EncodeProtectedHdr(recipients[i].algId,
-                recipientProtectedBuf, sizeof(recipientProtectedBuf),
-                &recipientProtectedLen);
-        }
-        else {
-            recipientProtectedLen = 0;
-        }
+        /* Every recipient was validated to WOLFCOSE_ALG_DIRECT above, which uses
+         * a zero-length protected header (RFC 9053 Section 6.1). */
+        recipientProtectedLen = 0;
 
         /* Start recipient array [protected, unprotected, ciphertext] */
         if (ret == WOLFCOSE_SUCCESS) {

@@ -352,7 +352,7 @@ typedef struct WOLFCOSE_KEY {
  * Used for key distribution (wrap, ECDH, direct).
  */
 typedef struct WOLFCOSE_RECIPIENT {
-    int32_t        algId;       /**< Key distribution algorithm; direct mode requires explicit WOLFCOSE_ALG_DIRECT (-6) on encrypt (-3..-31, -6) */
+    int32_t        algId;       /**< Key distribution algorithm; direct mode requires explicit WOLFCOSE_ALG_DIRECT (-6) on both encrypt and MAC create (-3..-31, -6) */
     WOLFCOSE_KEY*  key;         /**< Caller-owned key (KEK for wrap, recipient pubkey for ECDH) */
     const uint8_t* kid;         /**< Key ID for recipient lookup */
     size_t         kidLen;      /**< Key ID length */

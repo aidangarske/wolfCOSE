@@ -2201,7 +2201,7 @@ static void test_cose_mac_payload_validation(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "mac0 omitted payload rejected");
 
     /* 5303: Mac (multi) with both inline and detached payload is rejected. */
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -2272,7 +2272,7 @@ static void test_cose_mac_multi_per_recipient(void)
     (void)wc_CoseKey_Init(&key);
     (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     for (r = 0; r < 2u; r++) {
-        recipients[r].algId = 0;       /* direct: shared MAC key */
+        recipients[r].algId = WOLFCOSE_ALG_DIRECT; /* direct: shared MAC key */
         recipients[r].key = &key;
         recipients[r].kid = NULL;
         recipients[r].kidLen = 0;
@@ -2295,6 +2295,55 @@ static void test_cose_mac_multi_per_recipient(void)
         TEST_ASSERT(decPayloadLen == sizeof(payload) - 1,
                     "multi recipient mac payload len");
     }
+}
+
+/**
+ * wc_CoseMac_Create must require an explicit WOLFCOSE_ALG_DIRECT for the
+ * direct-keyed construction: a zero-initialized (WOLFCOSE_ALG_UNSET) or a
+ * key-distribution algId must not silently produce a direct-keyed message.
+ */
+static void test_cose_mac_create_requires_direct(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    uint8_t keyData[32] = {0};
+    uint8_t payload[] = "mac direct policy";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    int ret;
+
+    TEST_LOG("  [Mac create requires explicit direct]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    recipient.algId = WOLFCOSE_ALG_UNSET;
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "mac create unset algId rejected");
+
+    recipient.algId = WOLFCOSE_ALG_A128KW;
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "mac create non-direct algId rejected");
+
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0, "mac create explicit direct accepted");
+
+    wc_CoseKey_Free(&key);
 }
 #endif /* WOLFCOSE_MAC */
 
@@ -6870,12 +6919,12 @@ static void test_cose_mac_multi_recipient(void)
     TEST_ASSERT(ret == 0, "mac key2 set");
 
     /* Setup recipients */
-    recipients[0].algId = 0;  /* Direct key */
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;  /* Direct key */
     recipients[0].key = &key1;
     recipients[0].kid = kid1;
     recipients[0].kidLen = sizeof(kid1) - 1;
 
-    recipients[1].algId = 0;  /* Direct key */
+    recipients[1].algId = WOLFCOSE_ALG_DIRECT;  /* Direct key */
     recipients[1].key = &key2;
     recipients[1].kid = kid2;
     recipients[1].kidLen = sizeof(kid2) - 1;
@@ -7114,7 +7163,7 @@ static void test_cose_mac_with_aad(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "mac aad key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -7190,7 +7239,7 @@ static void test_cose_mac_detached(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "mac detached key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -7269,7 +7318,7 @@ static void test_cose_mac_wrong_key_type(void)
     (void)wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
 
     /* Try MAC with ECC key - should fail */
-    recipient.algId = 0;  /* Direct key */
+    recipient.algId = WOLFCOSE_ALG_DIRECT;  /* Direct key */
     recipient.key = &eccKey;
     recipient.kid = NULL;
     recipient.kidLen = 0;
@@ -11743,7 +11792,7 @@ static void test_cose_mac_multi_aescbc_roundtrip(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "aescbc multi key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -16851,6 +16900,7 @@ int test_cose(void)
     test_cose_mac0_empty_inline_payload();
 #ifdef WOLFCOSE_MAC
     test_cose_mac_multi_per_recipient();
+    test_cose_mac_create_requires_direct();
 #endif
     test_cose_mac0_with_aad();
     test_cose_mac0_detached();
