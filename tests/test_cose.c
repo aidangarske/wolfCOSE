@@ -7007,6 +7007,72 @@ static void test_cose_mac_multi_recipient(void)
     wc_CoseKey_Free(&key2);
 }
 
+/**
+ * wc_CoseMac_Verify must enforce the caller's recipient->algId policy against
+ * the on-wire recipient alg (direct-keyed messages have no recipient alg, so it
+ * normalizes to WOLFCOSE_ALG_DIRECT). A caller demanding a non-direct mode must
+ * not silently verify a direct-keyed message.
+ */
+static void test_cose_mac_verify_algid_policy(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    uint8_t keyData[32] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    const uint8_t payload[] = "mac verify algid policy";
+    int ret;
+
+    TEST_LOG("  [Mac verify algId policy]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0, "mac algid policy create");
+
+    /* Caller demands a key-wrap recipient mode: must be rejected. */
+    recipient.algId = WOLFCOSE_ALG_A128KW;
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac_Verify(&recipient, 0, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "mac verify rejects mismatched recipient algId");
+
+    /* Explicit direct policy matches the normalized message alg. */
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac_Verify(&recipient, 0, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "mac verify accepts explicit direct algId");
+
+    /* Unset policy imposes no recipient-alg requirement. */
+    recipient.algId = WOLFCOSE_ALG_UNSET;
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac_Verify(&recipient, 0, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "mac verify accepts unset algId");
+
+    wc_CoseKey_Free(&key);
+}
+
 static void test_cose_mac_multi_recipient_direct_empty_protected(void)
 {
     WOLFCOSE_KEY key1, key2;
@@ -10555,6 +10621,54 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
         &hdr, &payload, &payloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "dup recipient unprotected label rejected (mac)");
+}
+
+/**
+ * A COSE_Mac whose recipient header advertises a key-distribution algorithm
+ * (here A128KW, -3) must be rejected with WOLFCOSE_E_UNSUPPORTED: the MAC path
+ * is direct-keyed only and must not silently accept a wrapped/agreement
+ * recipient. recipient->algId is left UNSET so the rejection is attributable to
+ * the on-wire recipient-alg classification, not the caller-policy check.
+ */
+static void test_cose_mac_verify_rejects_keydist_recipient(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    uint8_t macKey[32] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    WOLFCOSE_HDR hdr;
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    int ret;
+    /* [ h'A10105', {}, 'x', h'<32>', [ [ h'A10122', {}, nil ] ] ]
+     * recipient protected header = {1: -3} (A128KW). */
+    uint8_t msg[] = {
+        0x85u, 0x43u, 0xA1u, 0x01u, 0x05u, 0xA0u, 0x41u, 0x78u,
+        0x58u, 0x20u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x81u, 0x83u, 0x43u, 0xA1u, 0x01u, 0x22u,
+        0xA0u,
+        0xF6u
+    };
+
+    TEST_LOG("  [Mac verify rejects key-distribution recipient]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, macKey, sizeof(macKey));
+    recipient.algId = WOLFCOSE_ALG_UNSET;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseMac_Verify(&recipient, 0, msg, sizeof(msg),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED,
+                "mac verify rejects key-distribution recipient alg");
+
+    wc_CoseKey_Free(&key);
 }
 #endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
@@ -17069,6 +17183,7 @@ int test_cose(void)
     /* Multi-recipient MAC tests */
 #if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac_multi_recipient();
+    test_cose_mac_verify_algid_policy();
     test_cose_mac_multi_recipient_direct_empty_protected();
     test_cose_mac_multi_recipient_key_alg_mismatch();
     test_cose_mac_with_aad();
@@ -17169,6 +17284,7 @@ int test_cose(void)
 #endif
 #if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac_dup_recipient_unprot_hdr();
+    test_cose_mac_verify_rejects_keydist_recipient();
 #endif
 #if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_cose_encrypt_dup_recipient_unprot_hdr();

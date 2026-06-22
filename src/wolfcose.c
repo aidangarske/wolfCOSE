@@ -8031,6 +8031,7 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     size_t recipientsCount = 0;
     size_t i;
     int32_t alg = 0;
+    int32_t recipientAlgId = WOLFCOSE_ALG_UNSET;
     size_t macStructLen = 0;
     size_t expectedTagLen = 0;
     uint8_t computedTag[WC_MAX_DIGEST_SIZE];
@@ -8181,6 +8182,9 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_DecodeUnprotectedHdr(&ctx, &recipHdr, &recipState);
         }
+        if (ret == WOLFCOSE_SUCCESS) {
+            recipientAlgId = recipHdr.alg;
+        }
         /* ciphertext: bstr (wrapped key) or nil (direct). */
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
@@ -8217,6 +8221,28 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     if ((ret == WOLFCOSE_SUCCESS) &&
         (recipient->key->alg != WOLFCOSE_ALG_UNSET) && (recipient->key->alg != alg)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+
+    /* COSE_Mac is direct-keyed here: the only supported recipient modes are an
+     * absent (UNSET) or explicit WOLFCOSE_ALG_DIRECT alg. A recipient that
+     * advertises a key-distribution mode is not silently accepted. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipientAlgId != WOLFCOSE_ALG_UNSET) &&
+        (recipientAlgId != WOLFCOSE_ALG_DIRECT)) {
+        ret = WOLFCOSE_E_UNSUPPORTED;
+    }
+
+    /* Enforce the caller's recipient->algId policy when set, normalizing an
+     * absent recipient alg to direct (matches wc_CoseEncrypt_Decrypt). */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipient->algId != WOLFCOSE_ALG_UNSET)) {
+        int32_t gotAlg = recipientAlgId;
+        if (gotAlg == WOLFCOSE_ALG_UNSET) {
+            gotAlg = WOLFCOSE_ALG_DIRECT;
+        }
+        if (recipient->algId != gotAlg) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
     }
 
     /* Get expected tag size */
