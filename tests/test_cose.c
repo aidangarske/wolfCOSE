@@ -386,6 +386,7 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
                                  int keySz)
 {
     WOLFCOSE_KEY signKey;
+    const WOLFCOSE_KEY* constSignKey = &signKey;
     ecc_key eccKey;
     WC_RNG rng;
     int ret = 0;
@@ -440,8 +441,9 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
     }
 
     if (ret == 0) {
-        /* Verify with same key */
-        ret = wc_CoseSign1_Verify(&signKey, out, outLen,
+        /* Verify with same key (through a const pointer: the verify API only
+         * reads the key, so its parameter is const-qualified). */
+        ret = wc_CoseSign1_Verify(constSignKey, out, outLen,
             NULL, 0, /* detachedPayload, detachedLen */
             NULL, 0, /* extAad, extAadLen */
             scratch, sizeof(scratch),
@@ -2201,7 +2203,7 @@ static void test_cose_mac_payload_validation(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "mac0 omitted payload rejected");
 
     /* 5303: Mac (multi) with both inline and detached payload is rejected. */
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -2272,7 +2274,7 @@ static void test_cose_mac_multi_per_recipient(void)
     (void)wc_CoseKey_Init(&key);
     (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     for (r = 0; r < 2u; r++) {
-        recipients[r].algId = 0;       /* direct: shared MAC key */
+        recipients[r].algId = WOLFCOSE_ALG_DIRECT; /* direct: shared MAC key */
         recipients[r].key = &key;
         recipients[r].kid = NULL;
         recipients[r].kidLen = 0;
@@ -2295,6 +2297,55 @@ static void test_cose_mac_multi_per_recipient(void)
         TEST_ASSERT(decPayloadLen == sizeof(payload) - 1,
                     "multi recipient mac payload len");
     }
+}
+
+/**
+ * wc_CoseMac_Create must require an explicit WOLFCOSE_ALG_DIRECT for the
+ * direct-keyed construction: a zero-initialized (WOLFCOSE_ALG_UNSET) or a
+ * key-distribution algId must not silently produce a direct-keyed message.
+ */
+static void test_cose_mac_create_requires_direct(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    uint8_t keyData[32] = {0};
+    uint8_t payload[] = "mac direct policy";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    int ret;
+
+    TEST_LOG("  [Mac create requires explicit direct]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    recipient.algId = WOLFCOSE_ALG_UNSET;
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "mac create unset algId rejected");
+
+    recipient.algId = WOLFCOSE_ALG_A128KW;
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "mac create non-direct algId rejected");
+
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0, "mac create explicit direct accepted");
+
+    wc_CoseKey_Free(&key);
 }
 #endif /* WOLFCOSE_MAC */
 
@@ -3978,6 +4029,94 @@ static void test_cose_mac0_aes_cbc_mac(void)
             out, sizeof(out), &outLen);
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "mac0 aes wrong keylen fails");
     }
+}
+
+/**
+ * Known-answer test pinning the exact COSE_Mac0 bytes (including the
+ * AES-CBC-MAC tag) for fixed key/payload inputs. Both payload lengths are
+ * chosen so the MAC_structure is an exact multiple of the AES block size,
+ * exercising the FIPS-113 no-extra-padding boundary: any change to the
+ * partial-block padding guard, padding bytes, or tag truncation alters these
+ * bytes and fails the memcmp, which a create-then-verify roundtrip cannot
+ * catch because it applies the same computation on both sides.
+ */
+static void test_cose_mac0_aes_cbc_mac_kat(void)
+{
+    WOLFCOSE_KEY key128, key256;
+    uint8_t keyData128[16] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
+    };
+    uint8_t keyData256[32] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+        0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20
+    };
+    uint8_t payload34[34];
+    uint8_t payload35[35];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen = 0;
+    int ret;
+    size_t i;
+
+    /* MAC_structure is exactly 48 bytes (3 AES blocks) for both cases, so the
+     * trailing block is full and gets no FIPS-113 zero-pad block. */
+    static const uint8_t expected128[] = {
+        0xD1, 0x84, 0x44, 0xA1, 0x01, 0x18, 0x19, 0xA0, 0x58, 0x22, 0x00, 0x01,
+        0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+        0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19,
+        0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x50, 0x96, 0xB0, 0x5F,
+        0x5F, 0xC3, 0x33, 0xEA, 0x62, 0x3F, 0xBC, 0x7D, 0xA6, 0x57, 0xD4, 0xEA,
+        0xC5
+    };
+    static const uint8_t expected256[] = {
+        0xD1, 0x84, 0x43, 0xA1, 0x01, 0x0F, 0xA0, 0x58, 0x23, 0x00, 0x01, 0x02,
+        0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+        0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A,
+        0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x48, 0xC9, 0x91, 0xCA,
+        0xBB, 0x44, 0x3B, 0x24, 0xFE
+    };
+
+    TEST_LOG("  [Mac0 AES-CBC-MAC KAT]\n");
+
+    for (i = 0; i < sizeof(payload34); i++) {
+        payload34[i] = (uint8_t)(i & 0xFF);
+    }
+    for (i = 0; i < sizeof(payload35); i++) {
+        payload35[i] = (uint8_t)(i & 0xFF);
+    }
+
+    (void)wc_CoseKey_Init(&key128);
+    (void)wc_CoseKey_SetSymmetric(&key128, keyData128, sizeof(keyData128));
+    (void)wc_CoseKey_Init(&key256);
+    (void)wc_CoseKey_SetSymmetric(&key256, keyData256, sizeof(keyData256));
+
+    ret = wc_CoseMac0_Create(&key128, WOLFCOSE_ALG_AES_MAC_128_128,
+        NULL, 0,
+        payload34, sizeof(payload34),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "mac0 aes-128/128 KAT create");
+    TEST_ASSERT(outLen == sizeof(expected128) &&
+                memcmp(out, expected128, sizeof(expected128)) == 0,
+                "mac0 aes-128/128 KAT bytes match");
+
+    ret = wc_CoseMac0_Create(&key256, WOLFCOSE_ALG_AES_MAC_256_64,
+        NULL, 0,
+        payload35, sizeof(payload35),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "mac0 aes-256/64 KAT create");
+    TEST_ASSERT(outLen == sizeof(expected256) &&
+                memcmp(out, expected256, sizeof(expected256)) == 0,
+                "mac0 aes-256/64 KAT bytes match");
+
+    wc_CoseKey_Free(&key128);
+    wc_CoseKey_Free(&key256);
 }
 
 /**
@@ -5822,6 +5961,110 @@ static void test_cose_encrypt_ecdh_es_kid_and_alg_pin(void)
     (void)wc_FreeRng(&rng);
 }
 
+/**
+ * An ECDH-ES sender ephemeral COSE_Key whose crv (label -1) is a CBOR integer
+ * outside int32 range must be rejected before the narrowing cast: 0x100000001
+ * narrows to 1 and would alias WOLFCOSE_CRV_P256, so without the range check the
+ * decoder accepts a non-canonical wide value as P-256. Decrypt must fail with
+ * WOLFCOSE_E_COSE_BAD_HDR.
+ */
+static void test_cose_encrypt_ecdh_es_ephemeral_crv_narrowing(void)
+{
+    WOLFCOSE_KEY recipientKey;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    ecc_key recipientEcc;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[1024];
+    size_t outLen = 0;
+    uint8_t tampered[1040];
+    size_t tamperedLen = 0;
+    uint8_t scratch[1024];
+    uint8_t plaintext[128];
+    size_t plaintextLen = 0;
+    const uint8_t payload[] = "ECDH-ES ephemeral crv";
+    uint8_t iv[12];
+    size_t i;
+    size_t crvPos = 0;
+    int found = 0;
+    /* Ephemeral COSE_Key prefix: map(4), 1:2 (kty EC2), -1:1 (crv), -2 (x). */
+    static const uint8_t anchor[] = {
+        0xA4u, 0x01u, 0x02u, 0x20u, 0x01u, 0x21u
+    };
+    /* crv re-encoded as 0x100000001 (narrows to P-256 id 1 on a 32-bit cast). */
+    static const uint8_t wideCrv[] = {
+        0x1Bu, 0x00u, 0x00u, 0x00u, 0x01u, 0x00u, 0x00u, 0x00u, 0x01u
+    };
+
+    TEST_LOG("  [Encrypt ECDH-ES ephemeral crv narrowing]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "ecdh-es-crv rng");
+    ret = wc_ecc_init(&recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-crv ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-crv keygen");
+
+    (void)wc_CoseKey_Init(&recipientKey);
+    ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-crv set key");
+    recipientKey.hasPrivate = 0;
+
+    recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+    recipient.key = &recipientKey;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    TEST_ASSERT(ret == 0, "ecdh-es-crv iv");
+
+    ret = wc_CoseEncrypt_Encrypt(
+        &recipient, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "ecdh-es-crv encrypt");
+
+    /* Locate the ephemeral key crv value byte and widen it out of int32 range. */
+    for (i = 0; (found == 0) && (outLen >= sizeof(anchor)) &&
+                (i <= outLen - sizeof(anchor)); i++) {
+        if (memcmp(&out[i], anchor, sizeof(anchor)) == 0) {
+            crvPos = i + 4u; /* the crv value (0x01) inside the anchor */
+            found = 1;
+        }
+    }
+    TEST_ASSERT(found == 1, "ecdh-es-crv anchor located");
+
+    if (found == 1) {
+        memcpy(tampered, out, crvPos);
+        memcpy(&tampered[crvPos], wideCrv, sizeof(wideCrv));
+        memcpy(&tampered[crvPos + sizeof(wideCrv)], &out[crvPos + 1u],
+               outLen - (crvPos + 1u));
+        tamperedLen = (outLen - 1u) + sizeof(wideCrv);
+
+        recipientKey.hasPrivate = 1;
+        memset(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt_Decrypt(
+            &recipient, 0,
+            tampered, tamperedLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                    "ecdh-es-crv oversized crv rejected");
+    }
+
+    wc_CoseKey_Free(&recipientKey);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
+}
+
 static void test_cose_encrypt_ecdh_es_hkdf_256(void)
 {
     WOLFCOSE_KEY recipientKey;
@@ -6782,12 +7025,12 @@ static void test_cose_mac_multi_recipient(void)
     TEST_ASSERT(ret == 0, "mac key2 set");
 
     /* Setup recipients */
-    recipients[0].algId = 0;  /* Direct key */
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;  /* Direct key */
     recipients[0].key = &key1;
     recipients[0].kid = kid1;
     recipients[0].kidLen = sizeof(kid1) - 1;
 
-    recipients[1].algId = 0;  /* Direct key */
+    recipients[1].algId = WOLFCOSE_ALG_DIRECT;  /* Direct key */
     recipients[1].key = &key2;
     recipients[1].kid = kid2;
     recipients[1].kidLen = sizeof(kid2) - 1;
@@ -6866,6 +7109,72 @@ static void test_cose_mac_multi_recipient(void)
 
     wc_CoseKey_Free(&key1);
     wc_CoseKey_Free(&key2);
+}
+
+/**
+ * wc_CoseMac_Verify must enforce the caller's recipient->algId policy against
+ * the on-wire recipient alg (direct-keyed messages have no recipient alg, so it
+ * normalizes to WOLFCOSE_ALG_DIRECT). A caller demanding a non-direct mode must
+ * not silently verify a direct-keyed message.
+ */
+static void test_cose_mac_verify_algid_policy(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    uint8_t keyData[32] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    const uint8_t payload[] = "mac verify algid policy";
+    int ret;
+
+    TEST_LOG("  [Mac verify algId policy]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0, "mac algid policy create");
+
+    /* Caller demands a key-wrap recipient mode: must be rejected. */
+    recipient.algId = WOLFCOSE_ALG_A128KW;
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac_Verify(&recipient, 0, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "mac verify rejects mismatched recipient algId");
+
+    /* Explicit direct policy matches the normalized message alg. */
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac_Verify(&recipient, 0, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "mac verify accepts explicit direct algId");
+
+    /* Unset policy imposes no recipient-alg requirement. */
+    recipient.algId = WOLFCOSE_ALG_UNSET;
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseMac_Verify(&recipient, 0, out, outLen,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &decPayload, &decPayloadLen);
+    TEST_ASSERT(ret == 0, "mac verify accepts unset algId");
+
+    wc_CoseKey_Free(&key);
 }
 
 static void test_cose_mac_multi_recipient_direct_empty_protected(void)
@@ -7026,7 +7335,7 @@ static void test_cose_mac_with_aad(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "mac aad key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -7102,7 +7411,7 @@ static void test_cose_mac_detached(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
     TEST_ASSERT(ret == 0, "mac detached key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -7181,7 +7490,7 @@ static void test_cose_mac_wrong_key_type(void)
     (void)wc_CoseKey_SetEcc(&eccKey, WOLFCOSE_CRV_P256, &key);
 
     /* Try MAC with ECC key - should fail */
-    recipient.algId = 0;  /* Direct key */
+    recipient.algId = WOLFCOSE_ALG_DIRECT;  /* Direct key */
     recipient.key = &eccKey;
     recipient.kid = NULL;
     recipient.kidLen = 0;
@@ -10417,6 +10726,54 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "dup recipient unprotected label rejected (mac)");
 }
+
+/**
+ * A COSE_Mac whose recipient header advertises a key-distribution algorithm
+ * (here A128KW, -3) must be rejected with WOLFCOSE_E_UNSUPPORTED: the MAC path
+ * is direct-keyed only and must not silently accept a wrapped/agreement
+ * recipient. recipient->algId is left UNSET so the rejection is attributable to
+ * the on-wire recipient-alg classification, not the caller-policy check.
+ */
+static void test_cose_mac_verify_rejects_keydist_recipient(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    uint8_t macKey[32] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    WOLFCOSE_HDR hdr;
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    int ret;
+    /* [ h'A10105', {}, 'x', h'<32>', [ [ h'A10122', {}, nil ] ] ]
+     * recipient protected header = {1: -3} (A128KW). */
+    uint8_t msg[] = {
+        0x85u, 0x43u, 0xA1u, 0x01u, 0x05u, 0xA0u, 0x41u, 0x78u,
+        0x58u, 0x20u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x81u, 0x83u, 0x43u, 0xA1u, 0x01u, 0x22u,
+        0xA0u,
+        0xF6u
+    };
+
+    TEST_LOG("  [Mac verify rejects key-distribution recipient]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, macKey, sizeof(macKey));
+    recipient.algId = WOLFCOSE_ALG_UNSET;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseMac_Verify(&recipient, 0, msg, sizeof(msg),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED,
+                "mac verify rejects key-distribution recipient alg");
+
+    wc_CoseKey_Free(&key);
+}
 #endif /* WOLFCOSE_MAC && WOLFCOSE_HAVE_HMAC256 */
 
 #if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
@@ -11040,7 +11397,13 @@ static void test_cose_encrypt0_nonce_length(void)
     wc_CoseKey_Free(&key);
 }
 
-static void test_cose_encrypt0_empty_payload_roundtrip(void)
+/* Encrypt a genuine zero-length plaintext via a non-NULL buffer so the
+ * ciphertext is just the AEAD tag, then decrypt and require 0 recovered bytes.
+ * Returns WOLFCOSE_SUCCESS only when the full roundtrip recovers an empty
+ * plaintext. */
+static int encrypt0_empty_payload_roundtrip(int32_t alg,
+    const uint8_t* keyBytes, size_t keyLen,
+    const uint8_t* iv, size_t ivLen)
 {
     WOLFCOSE_KEY encKey, decKey;
     int ret;
@@ -11048,29 +11411,22 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
     uint8_t scratch[256];
     uint8_t pt[16];
     size_t outLen = 0;
-    size_t ptLen = 0;
+    size_t ptLen = 1;
     WOLFCOSE_HDR hdr;
-    const uint8_t keyBytes[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
-    const uint8_t iv[12] = {0};
     static const uint8_t empty[1] = {0};
-
-    TEST_LOG("  [Encrypt0: empty payload roundtrip]\n");
 
     (void)wc_CoseKey_Init(&encKey);
     (void)wc_CoseKey_Init(&decKey);
-    (void)wc_CoseKey_SetSymmetric(&encKey, keyBytes, sizeof(keyBytes));
-    (void)wc_CoseKey_SetSymmetric(&decKey, keyBytes, sizeof(keyBytes));
+    (void)wc_CoseKey_SetSymmetric(&encKey, keyBytes, keyLen);
+    (void)wc_CoseKey_SetSymmetric(&decKey, keyBytes, keyLen);
 
-    /* Encrypt a genuine zero-length plaintext via a non-NULL buffer so the
-     * ciphertext is just the AEAD tag and decrypt recovers 0 bytes. */
-    ret = wc_CoseEncrypt0_Encrypt(&encKey, WOLFCOSE_ALG_A128GCM,
-        iv, sizeof(iv),
+    ret = wc_CoseEncrypt0_Encrypt(&encKey, alg,
+        iv, ivLen,
         empty, 0,
         NULL, 0, NULL,
         NULL, 0,
         scratch, sizeof(scratch),
         out, sizeof(out), &outLen);
-    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 empty payload encrypt");
 
     if (ret == WOLFCOSE_SUCCESS) {
         memset(&hdr, 0, sizeof(hdr));
@@ -11079,13 +11435,54 @@ static void test_cose_encrypt0_empty_payload_roundtrip(void)
             NULL, 0,
             scratch, sizeof(scratch),
             &hdr, pt, sizeof(pt), &ptLen);
-        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
-                    "Encrypt0_Decrypt empty payload");
-        TEST_ASSERT(ptLen == 0u, "Encrypt0 empty payload length");
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (ptLen != 0u)) {
+        ret = WOLFCOSE_E_MAC_FAIL;
     }
 
     wc_CoseKey_Free(&encKey);
     wc_CoseKey_Free(&decKey);
+    return ret;
+}
+
+static void test_cose_encrypt0_empty_payload_roundtrip(void)
+{
+    int ret;
+    const uint8_t keyBytes[16] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
+    const uint8_t iv[12] = {0};
+
+    TEST_LOG("  [Encrypt0: empty payload roundtrip]\n");
+
+    ret = encrypt0_empty_payload_roundtrip(WOLFCOSE_ALG_A128GCM,
+        keyBytes, sizeof(keyBytes), iv, sizeof(iv));
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 A128GCM empty payload");
+
+#ifdef WOLFCOSE_HAVE_AESCCM
+    /* AES-CCM authenticates a zero-length message through its own B0/L-value
+     * formatting that AES-GCM does not exercise. CCM nonce is 13 bytes here. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        const uint8_t ccmNonce[13] = {0};
+        ret = encrypt0_empty_payload_roundtrip(WOLFCOSE_ALG_AES_CCM_16_128_128,
+            keyBytes, sizeof(keyBytes), ccmNonce, sizeof(ccmNonce));
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 AES-CCM empty payload");
+    }
+#endif
+
+#ifdef WOLFCOSE_HAVE_CHACHA20
+    /* ChaCha20-Poly1305 pads a zero-length message into its Poly1305 MAC
+     * differently again. 32-byte key, 12-byte nonce. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        const uint8_t chachaKey[32] = {
+            1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,
+            17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32
+        };
+        ret = encrypt0_empty_payload_roundtrip(WOLFCOSE_ALG_CHACHA20_POLY1305,
+            chachaKey, sizeof(chachaKey), iv, sizeof(iv));
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "Encrypt0 ChaCha20 empty payload");
+    }
+#endif
 }
 
 static void test_cose_encrypt0_large_payload(void)
@@ -11655,7 +12052,7 @@ static void test_cose_mac_multi_aescbc_roundtrip(void)
     ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
     TEST_ASSERT(ret == 0, "aescbc multi key set");
 
-    recipients[0].algId = 0;
+    recipients[0].algId = WOLFCOSE_ALG_DIRECT;
     recipients[0].key = &key;
     recipients[0].kid = NULL;
     recipients[0].kidLen = 0;
@@ -12144,6 +12541,86 @@ static void test_cose_mac0_hmac_short_key_rejected(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
                 "Mac0_Create rejects 16B key for HMAC-256/256");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(WOLFCOSE_HAVE_HMAC384) && defined(WOLFCOSE_MAC0_CREATE)
+static void test_cose_mac0_hmac384_short_key_rejected(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t shortKey[47] = {0};
+    uint8_t boundaryKey[48] = {0};
+    uint8_t out[256];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    size_t outLen = 0;
+    const uint8_t payload[] = "hmac384 keylen";
+
+    TEST_LOG("  [Mac0 HMAC-384 short key rejected]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, shortKey, sizeof(shortKey));
+    TEST_ASSERT(ret == 0, "mac0 hmac384 short key set");
+
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_384_384,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac0_Create rejects 47B key for HMAC-384/384");
+
+    ret = wc_CoseKey_SetSymmetric(&key, boundaryKey, sizeof(boundaryKey));
+    TEST_ASSERT(ret == 0, "mac0 hmac384 boundary key set");
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_384_384,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0,
+                "Mac0_Create accepts 48B key for HMAC-384/384");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(WOLFCOSE_HAVE_HMAC512) && defined(WOLFCOSE_MAC0_CREATE)
+static void test_cose_mac0_hmac512_short_key_rejected(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    uint8_t shortKey[63] = {0};
+    uint8_t boundaryKey[64] = {0};
+    uint8_t out[256];
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    size_t outLen = 0;
+    const uint8_t payload[] = "hmac512 keylen";
+
+    TEST_LOG("  [Mac0 HMAC-512 short key rejected]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, shortKey, sizeof(shortKey));
+    TEST_ASSERT(ret == 0, "mac0 hmac512 short key set");
+
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_512_512,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac0_Create rejects 63B key for HMAC-512/512");
+
+    ret = wc_CoseKey_SetSymmetric(&key, boundaryKey, sizeof(boundaryKey));
+    TEST_ASSERT(ret == 0, "mac0 hmac512 boundary key set");
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_512_512,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0 && outLen > 0,
+                "Mac0_Create accepts 64B key for HMAC-512/512");
 
     wc_CoseKey_Free(&key);
 }
@@ -16763,6 +17240,7 @@ int test_cose(void)
     test_cose_mac0_empty_inline_payload();
 #ifdef WOLFCOSE_MAC
     test_cose_mac_multi_per_recipient();
+    test_cose_mac_create_requires_direct();
 #endif
     test_cose_mac0_with_aad();
     test_cose_mac0_detached();
@@ -16783,6 +17261,7 @@ int test_cose(void)
     /* AES-CBC-MAC tests */
 #ifdef WOLFCOSE_HAVE_AESMAC
     test_cose_mac0_aes_cbc_mac();
+    test_cose_mac0_aes_cbc_mac_kat();
     test_cose_mac0_aes_cbc_mac_chaining();
     test_cose_mac0_aes_cbc_mac_with_aad();
     test_cose_mac0_aes_cbc_mac_detached();
@@ -16825,6 +17304,7 @@ int test_cose(void)
     test_cose_encrypt_direct_multi_key_alg_mismatch();
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
     test_cose_encrypt_ecdh_es_kid_and_alg_pin();
+    test_cose_encrypt_ecdh_es_ephemeral_crv_narrowing();
     test_cose_encrypt_ecdh_es_hkdf_256();
     test_cose_encrypt_ecdh_es_wrong_key();
     test_cose_encrypt_ecdh_es_p384();
@@ -16848,6 +17328,7 @@ int test_cose(void)
     /* Multi-recipient MAC tests */
 #if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac_multi_recipient();
+    test_cose_mac_verify_algid_policy();
     test_cose_mac_multi_recipient_direct_empty_protected();
     test_cose_mac_multi_recipient_key_alg_mismatch();
     test_cose_mac_with_aad();
@@ -16948,6 +17429,7 @@ int test_cose(void)
 #endif
 #if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac_dup_recipient_unprot_hdr();
+    test_cose_mac_verify_rejects_keydist_recipient();
 #endif
 #if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_cose_encrypt_dup_recipient_unprot_hdr();
@@ -17033,6 +17515,12 @@ int test_cose(void)
 #if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE)
     test_cose_mac0_hmac_short_key_rejected();
     test_cose_mac0_create_key_alg_mismatch();
+#endif
+#if defined(WOLFCOSE_HAVE_HMAC384) && defined(WOLFCOSE_MAC0_CREATE)
+    test_cose_mac0_hmac384_short_key_rejected();
+#endif
+#if defined(WOLFCOSE_HAVE_HMAC512) && defined(WOLFCOSE_MAC0_CREATE)
+    test_cose_mac0_hmac512_short_key_rejected();
 #endif
 #if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE) && \
     defined(WOLFCOSE_MAC0_VERIFY)

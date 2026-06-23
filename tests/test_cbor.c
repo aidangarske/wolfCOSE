@@ -945,7 +945,8 @@ static void test_cbor_boundary_roundtrip(void)
     };
     static const struct { int64_t val; size_t len; } ivec[] = {
         {-1, 1u}, {-24, 1u}, {-25, 2u}, {-256, 2u}, {-257, 3u},
-        {-65536, 3u}, {-65537, 5u}
+        {-65536, 3u}, {-65537, 5u},
+        {-4294967296LL, 5u}, {-4294967297LL, 9u}, {INT64_MIN, 9u}
     };
     uint8_t buf[16];
     WOLFCOSE_CBOR_CTX ctx;

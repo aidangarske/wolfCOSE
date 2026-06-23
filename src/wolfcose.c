@@ -3345,6 +3345,10 @@ static int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
         else if ((ret == WOLFCOSE_SUCCESS) && (label == -1)) {
             /* crv */
             ret = wc_CBOR_DecodeInt(ctx, &intVal);
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (wolfCose_InInt32Range(intVal) == 0)) {
+                ret = WOLFCOSE_E_COSE_BAD_HDR;
+            }
             if (ret == WOLFCOSE_SUCCESS) {
                 *crv = (int)intVal;
                 haveCrv = 1;
@@ -3875,7 +3879,7 @@ int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
 #endif /* WOLFCOSE_SIGN1_SIGN */
 
 #if defined(WOLFCOSE_SIGN1_VERIFY)
-int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
+int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     const uint8_t* in, size_t inSz,
     const uint8_t* detachedPayload, size_t detachedLen,
     const uint8_t* extAad, size_t extAadLen,
@@ -7724,8 +7728,6 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
     WOLFCOSE_CBOR_CTX ctx;
     uint8_t protectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
     size_t protectedLen = 0;
-    uint8_t recipientProtectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
-    size_t recipientProtectedLen = 0;
     size_t macStructLen = 0;
     uint8_t macTag[WC_MAX_DIGEST_SIZE];
     size_t macTagLen = 0;
@@ -7797,6 +7799,15 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
         if ((recipients[i].key != NULL) &&
             (recipients[i].key->alg != WOLFCOSE_ALG_UNSET) &&
             (recipients[i].key->alg != macAlgId)) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+    }
+
+    /* COSE_Mac here is direct-keyed only: require an explicit
+     * WOLFCOSE_ALG_DIRECT so a zero-initialized (WOLFCOSE_ALG_UNSET) or a
+     * key-distribution algId cannot silently select the direct construction. */
+    for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
+        if (recipients[i].algId != WOLFCOSE_ALG_DIRECT) {
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
     }
@@ -7937,28 +7948,15 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
 
     /* Encode each recipient */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
-        /* Encode recipient protected header. RFC 9053 Section 6.1: the direct
-         * key algorithm uses a zero-length protected header, so treat an
-         * explicit WOLFCOSE_ALG_DIRECT the same as the unset direct case. */
-        if ((recipients[i].algId != WOLFCOSE_ALG_UNSET) &&
-            (recipients[i].algId != WOLFCOSE_ALG_DIRECT)) {
-            ret = wolfCose_EncodeProtectedHdr(recipients[i].algId,
-                recipientProtectedBuf, sizeof(recipientProtectedBuf),
-                &recipientProtectedLen);
-        }
-        else {
-            recipientProtectedLen = 0;
-        }
+        /* Start recipient array [protected, unprotected, ciphertext]. The loop
+         * condition guarantees ret == WOLFCOSE_SUCCESS on entry. */
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 3u);
 
-        /* Start recipient array [protected, unprotected, ciphertext] */
+        /* [0] protected header bstr. Every recipient was validated to
+         * WOLFCOSE_ALG_DIRECT above, which uses a zero-length protected
+         * header (RFC 9053 Section 6.1). */
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_CBOR_EncodeArrayStart(&ctx, 3u);
-        }
-
-        /* [0] protected header bstr */
-        if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_CBOR_EncodeBstr(&ctx, recipientProtectedBuf,
-                                      recipientProtectedLen);
+            ret = wc_CBOR_EncodeBstr(&ctx, NULL, 0);
         }
 
         /* [1] unprotected header map (with kid if present) */
@@ -8031,6 +8029,7 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     size_t recipientsCount = 0;
     size_t i;
     int32_t alg = 0;
+    int32_t recipientAlgId = WOLFCOSE_ALG_UNSET;
     size_t macStructLen = 0;
     size_t expectedTagLen = 0;
     uint8_t computedTag[WC_MAX_DIGEST_SIZE];
@@ -8181,6 +8180,9 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_DecodeUnprotectedHdr(&ctx, &recipHdr, &recipState);
         }
+        if (ret == WOLFCOSE_SUCCESS) {
+            recipientAlgId = recipHdr.alg;
+        }
         /* ciphertext: bstr (wrapped key) or nil (direct). */
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
@@ -8217,6 +8219,28 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     if ((ret == WOLFCOSE_SUCCESS) &&
         (recipient->key->alg != WOLFCOSE_ALG_UNSET) && (recipient->key->alg != alg)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+
+    /* COSE_Mac is direct-keyed here: the only supported recipient modes are an
+     * absent (UNSET) or explicit WOLFCOSE_ALG_DIRECT alg. A recipient that
+     * advertises a key-distribution mode is not silently accepted. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipientAlgId != WOLFCOSE_ALG_UNSET) &&
+        (recipientAlgId != WOLFCOSE_ALG_DIRECT)) {
+        ret = WOLFCOSE_E_UNSUPPORTED;
+    }
+
+    /* Enforce the caller's recipient->algId policy when set, normalizing an
+     * absent recipient alg to direct (matches wc_CoseEncrypt_Decrypt). */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipient->algId != WOLFCOSE_ALG_UNSET)) {
+        int32_t gotAlg = recipientAlgId;
+        if (gotAlg == WOLFCOSE_ALG_UNSET) {
+            gotAlg = WOLFCOSE_ALG_DIRECT;
+        }
+        if (recipient->algId != gotAlg) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
     }
 
     /* Get expected tag size */

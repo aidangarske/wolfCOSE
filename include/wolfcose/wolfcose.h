@@ -352,7 +352,7 @@ typedef struct WOLFCOSE_KEY {
  * Used for key distribution (wrap, ECDH, direct).
  */
 typedef struct WOLFCOSE_RECIPIENT {
-    int32_t        algId;       /**< Key distribution algorithm; direct mode requires explicit WOLFCOSE_ALG_DIRECT (-6) on encrypt (-3..-31, -6) */
+    int32_t        algId;       /**< Key distribution algorithm; direct mode requires explicit WOLFCOSE_ALG_DIRECT (-6) on both encrypt and MAC create (-3..-31, -6) */
     WOLFCOSE_KEY*  key;         /**< Caller-owned key (KEK for wrap, recipient pubkey for ECDH) */
     const uint8_t* kid;         /**< Key ID for recipient lookup */
     size_t         kidLen;      /**< Key ID length */
@@ -713,7 +713,7 @@ WOLFCOSE_API int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
  * \return WOLFCOSE_SUCCESS or negative error code.
  *         WOLFCOSE_E_DETACHED_PAYLOAD if payload is nil and detachedPayload is NULL.
  */
-WOLFCOSE_API int wc_CoseSign1_Verify(WOLFCOSE_KEY* key,
+WOLFCOSE_API int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     const uint8_t* in, size_t inSz,
     const uint8_t* detachedPayload, size_t detachedLen,
     const uint8_t* extAad, size_t extAadLen,
