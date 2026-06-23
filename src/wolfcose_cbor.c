@@ -233,14 +233,11 @@ int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_ITEM* item)
             }
         }
 
-        /* Advance past bstr/tstr bytes using overflow-safe bounds. */
+        /* Compare the 64-bit length against remaining bytes (no size_t cast). */
         if (ret == WOLFCOSE_SUCCESS) {
             if ((item->majorType == WOLFCOSE_CBOR_BSTR) ||
                 (item->majorType == WOLFCOSE_CBOR_TSTR)) {
-                if (item->val > (uint64_t)SIZE_MAX) {
-                    ret = WOLFCOSE_E_CBOR_OVERFLOW;
-                }
-                else if ((size_t)item->val > (ctx->bufSz - ctx->idx)) {
+                if (item->val > (uint64_t)(ctx->bufSz - ctx->idx)) {
                     ret = WOLFCOSE_E_CBOR_MALFORMED;
                 }
                 else {

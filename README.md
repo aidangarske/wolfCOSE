@@ -165,6 +165,10 @@ make coverage                  # Run tests with gcov
 make coverage-force-failure    # Include crypto failure path testing
 ```
 
+<a href="https://scan.coverity.com/projects/wolfcose">
+  <img alt="Coverity Scan Build Status"
+       src="https://scan.coverity.com/projects/32918/badge.svg"/>
+</a>
 <a href="https://github.com/wolfSSL/wolfCOSE/actions">
   <img alt="CI Status"
        src="https://img.shields.io/github/actions/workflow/status/wolfSSL/wolfCOSE/build-test.yml?label=CI&logo=github"/>

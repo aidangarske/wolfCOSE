@@ -6105,10 +6105,6 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
         (payload == NULL) && (detachedPayload == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
-    if ((ret == WOLFCOSE_SUCCESS) &&
-        (macPayload == NULL) && (macPayloadLen > 0u)) {
-        ret = WOLFCOSE_E_INVALID_ARG;
-    }
     /* Reject inconsistent (kid, kidLen) so the kid is never silently dropped. */
     if ((ret == WOLFCOSE_SUCCESS) &&
         (((kid != NULL) && (kidLen == 0u)) ||
@@ -7859,10 +7855,6 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
                 ret = WOLFCOSE_E_CRYPTO;
             }
         }
-        if (hmacInited != 0) {
-            (void)wc_HmacFree(&hmac);
-            hmacInited = 0;
-        }
     }
     else
 #endif /* WOLFCOSE_HAVE_HMAC */
@@ -8274,10 +8266,6 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
             if (hmacRet != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
-        }
-        if (hmacInited != 0) {
-            (void)wc_HmacFree(&hmac);
-            hmacInited = 0;
         }
     }
     else
