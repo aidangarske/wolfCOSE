@@ -8,6 +8,7 @@ on:
 
 permissions:
   actions: write
+  issues: write
 
 jobs:
   trigger:
@@ -16,10 +17,15 @@ jobs:
     if: github.repository == 'wolfSSL/wolfCOSE'
 
     steps:
-    - name: Dispatch all workflows
+    - name: Dispatch all workflows, wait, and report failures
       uses: actions/github-script@v7
       with:
         script: |
+          const FAILURE_LABEL = 'nightly-failure';
+          const POLL_INTERVAL_MS = 60 * 1000;
+          const POLL_TIMEOUT_MS = 120 * 60 * 1000;
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
           const workflows = [
             'build-test.yml',
             'codespell.yml',
@@ -37,7 +43,9 @@ jobs:
             'wolfssl-versions.yml',
           ];
 
-          const results = [];
+          // 1-minute margin so the dispatched runs are not filtered out by clock skew.
+          const since = new Date(Date.now() - 60 * 1000).toISOString();
+
           for (const workflow of workflows) {
             try {
               await github.rest.actions.createWorkflowDispatch({
@@ -46,17 +54,126 @@ jobs:
                 workflow_id: workflow,
                 ref: 'main',
               });
-              results.push(`  OK  ${workflow}`);
               core.info(`Triggered ${workflow}`);
             } catch (error) {
-              results.push(`  FAIL  ${workflow}: ${error.message}`);
               core.warning(`Failed to trigger ${workflow}: ${error.message}`);
             }
           }
 
-          // Job summary
-          let summary = '## Nightly CI Dispatch\n\n';
-          for (const r of results) {
-            summary += r + '\n';
+          const wanted = new Set(workflows);
+          const basename = (p) => (p || '').split('/').pop();
+
+          async function collectRuns() {
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRunsForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                event: 'workflow_dispatch',
+                created: `>=${since}`,
+                per_page: 100,
+              }
+            );
+            // Keep only our nightly workflows, newest run per workflow file.
+            const latest = new Map();
+            for (const run of runs) {
+              const file = basename(run.path);
+              if (!wanted.has(file)) {
+                continue;
+              }
+              const prev = latest.get(file);
+              if (prev === undefined || run.run_number > prev.run_number) {
+                latest.set(file, run);
+              }
+            }
+            return latest;
+          }
+
+          await sleep(30 * 1000);
+
+          const deadline = Date.now() + POLL_TIMEOUT_MS;
+          let latest = new Map();
+          while (true) {
+            latest = await collectRuns();
+            const pending = [...latest.values()].filter((r) => r.status !== 'completed');
+            core.info(`Tracking ${latest.size}/${workflows.length} runs, ${pending.length} still running`);
+            if (latest.size >= workflows.length && pending.length === 0) {
+              break;
+            }
+            if (Date.now() >= deadline) {
+              core.warning('Timed out waiting for nightly runs to complete');
+              break;
+            }
+            await sleep(POLL_INTERVAL_MS);
+          }
+
+          const bad = new Set(['failure', 'timed_out', 'startup_failure']);
+          const failures = [...latest.values()]
+            .filter((r) => r.status === 'completed' && bad.has(r.conclusion))
+            .sort((a, b) => basename(a.path).localeCompare(basename(b.path)));
+
+          const missing = workflows.filter((w) => !latest.has(w));
+
+          let summary = '## Nightly CI Results\n\n';
+          for (const w of workflows) {
+            const run = latest.get(w);
+            const state = run ? (run.conclusion || run.status) : 'not found';
+            summary += `- ${w}: ${state}\n`;
           }
           await core.summary.addRaw(summary).write();
+
+          if (failures.length === 0) {
+            core.info('All nightly workflows passed');
+            return;
+          }
+
+          const today = since.slice(0, 10);
+          let body = `Nightly CI run on ${today} reported failing workflows.\n\n`;
+          body += '| Workflow | Conclusion | Run |\n|---|---|---|\n';
+          for (const run of failures) {
+            body += `| ${basename(run.path)} | ${run.conclusion} | [run #${run.run_number}](${run.html_url}) |\n`;
+          }
+          if (missing.length > 0) {
+            body += `\nWorkflows not dispatched/found: ${missing.join(', ')}\n`;
+          }
+          body += `\nTriggered by nightly run [#${context.runNumber}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).\n`;
+
+          await github.rest.issues
+            .createLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: FAILURE_LABEL,
+              color: 'b60205',
+              description: 'Automated nightly CI failure report',
+            })
+            .catch(() => {});
+
+          const existing = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: FAILURE_LABEL,
+            per_page: 1,
+          });
+
+          if (existing.data.length > 0) {
+            const issue = existing.data[0];
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body,
+            });
+            core.info(`Updated existing issue #${issue.number}`);
+          } else {
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Nightly CI failures (${today})`,
+              body,
+              labels: [FAILURE_LABEL],
+            });
+            core.info(`Opened issue #${created.data.number}`);
+          }
+
+          core.setFailed(`${failures.length} nightly workflow(s) failed`);
