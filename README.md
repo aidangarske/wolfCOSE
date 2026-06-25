@@ -194,6 +194,12 @@ Full documentation is available in the [Wiki](https://github.com/wolfSSL/wolfCOS
 - [MISRA Compliance](https://github.com/wolfSSL/wolfCOSE/wiki/MISRA-Compliance): MISRA C:2012 and C:2023 compliance status and deviation rationale
 - [Project Structure](https://github.com/wolfSSL/wolfCOSE/wiki/Project-Structure): Source file layout
 
+## Release Notes
+
+The current release is **1.0.0**, the first stable release: the complete RFC 9052 COSE message set (all six message types, single- and multi-actor), 40 algorithms, and standardized post-quantum ML-DSA (RFC 9964), all with zero dynamic allocation. See [ChangeLog.md](ChangeLog.md) for the full release notes.
+
+wolfCOSE 1.0.0 has been developed according to wolfSSL's development and QA process (see https://www.wolfssl.com/about/wolfssl-software-development-process-quality-assurance) and successfully passed the quality criteria.
+
 ## License
 
 wolfCOSE is free software licensed under [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html); see [LICENSE](LICENSE) for the full text.

@@ -22,6 +22,7 @@
 #define WOLFCOSE_H
 
 #include <wolfcose/visibility.h>
+#include <wolfcose/version.h>
 
 #ifdef HAVE_CONFIG_H
     #include <config.h>
