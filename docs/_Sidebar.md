@@ -10,3 +10,4 @@
 - [[Testing]]
 - [[MISRA Compliance]]
 - [[Project Structure]]
+- [[Release Notes]]
