@@ -17,7 +17,7 @@ wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.r
   (`WOLFCOSE_LEAN_VERIFY_MLDSA`) and **~35.8 KB** sign + verify, within about 1 KB of classical ES256. The wolfCOSE portion
   alone is **4.6 KB** and **~6.6 KB** respectively. See [Footprint](https://github.com/wolfSSL/wolfCOSE/wiki/Footprint)
 - **Path to FIPS 140-3**: via wolfCrypt **FIPS Certificate #4718** (sole crypto dependency)
-- **STM32Cube ready**: available as a drop-in STM32Cube pack (`I-CUBE-wolfCOSE`) for STM32CubeMX and STM32CubeIDE, so STM32 devices get COSE and CBOR out of the box (see [STM32Cube Support](#stm32cube-support))
+- **STM32Cube ready**: available as a drop-in STM32Cube pack (`I-CUBE-wolfCOSE`) for STM32CubeMX and STM32CubeIDE, so STM32 devices get COSE and CBOR out of the box (see [STM32Cube](https://github.com/wolfSSL/wolfCOSE/wiki/STM32Cube))
 
 ## Supported Algorithms
 
@@ -148,23 +148,6 @@ See `examples/` for complete working code:
 - `comprehensive/`: algorithm matrix tests
 - `scenarios/`: firmware signing, attestation, fleet config
 
-## STM32Cube Support
-
-wolfCOSE ships as a ready to use STM32Cube pack, `I-CUBE-wolfCOSE`, so it drops
-into any STM32CubeMX or STM32CubeIDE project without manual source integration.
-
-1. Download the wolfCOSE pack (`wolfSSL.I-CUBE-wolfCOSE`) from
-   [wolfssl.com/files/ide](https://www.wolfssl.com/files/ide/).
-2. In STM32CubeMX, use `Help`, `Manage embedded software packages`,
-   `From Local...` to install it. Install the `I-CUBE-wolfSSL` pack first, since
-   wolfCOSE uses wolfCrypt for all cryptography.
-3. Under `Software Packs`, `Select Components`, enable `wolfCOSE` `Core` and
-   `wolfSSL` `wolfCrypt` `Core`, then generate code.
-
-The pack targets Cortex-M0 through Cortex-M55 and STM32MP1. COSE algorithm
-support is configured through the wolfSSL `user_settings.h`, the same way the
-standalone library is configured.
-
 ## CI / Testing
 
 Runs on every push and PR:
@@ -211,6 +194,7 @@ Full documentation is available in the [Wiki](https://github.com/wolfSSL/wolfCOS
 - [Testing](https://github.com/wolfSSL/wolfCOSE/wiki/Testing): Test infrastructure, coverage, and failure injection
 - [MISRA Compliance](https://github.com/wolfSSL/wolfCOSE/wiki/MISRA-Compliance): MISRA C:2012 and C:2023 compliance status and deviation rationale
 - [Project Structure](https://github.com/wolfSSL/wolfCOSE/wiki/Project-Structure): Source file layout
+- [STM32Cube](https://github.com/wolfSSL/wolfCOSE/wiki/STM32Cube): Install and run wolfCOSE as an STM32Cube pack on device
 
 ## Release Notes
 
