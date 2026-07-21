@@ -55,8 +55,17 @@ the clocks and console.
 
 A ready to run example for the NUCLEO-H563ZI board lives in
 [wolfssl-examples-stm32](https://github.com/wolfSSL/wolfssl-examples-stm32),
-mirroring the wolfIP example: open the `.ioc`, generate, build, flash, and watch
-the console for the wolfCOSE test output.
+with a pre-configured `.ioc`: install the packs, open the `.ioc`, generate,
+add the glue and software-crypto config from that example's README, build,
+flash, and watch the console.
+
+Verified on NUCLEO-H563ZI hardware, the console prints:
+
+```
+== wolfCOSE NUCLEO-H563ZI ==
+Running wolfCOSE test (COSE_Sign1 ES256)...
+wolfCOSE test: PASS (COSE_Sign1 99 bytes)
+```
 
 ## Notes
 
