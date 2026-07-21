@@ -84,7 +84,7 @@ int wolfCOSETest(void)
     }
 
     if (ret == 0) {
-        printf("wolfCOSE test: PASS (COSE_Sign1 %u bytes)\n", (unsigned)outLen);
+        printf("wolfCOSE test: PASS (COSE_Sign1 %lu bytes)\n", (unsigned long)outLen);
     }
     else {
         printf("wolfCOSE test: FAIL, ret %d\n", ret);
