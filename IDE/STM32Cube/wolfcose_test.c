@@ -25,7 +25,8 @@
 
 int wolfCOSETest(void)
 {
-#ifdef WOLFCOSE_HAVE_ES256
+#if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN1_SIGN) && \
+    defined(WOLFCOSE_SIGN1_VERIFY)
     WOLFCOSE_KEY key;
     ecc_key eccKey;
     WC_RNG rng;
@@ -53,7 +54,9 @@ int wolfCOSETest(void)
         ret = wc_ecc_make_key(&rng, 32, &eccKey);
     }
     if (ret == 0) {
-        wc_CoseKey_Init(&key);
+        ret = wc_CoseKey_Init(&key);
+    }
+    if (ret == 0) {
         ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     }
     if (ret == 0) {
@@ -88,7 +91,7 @@ int wolfCOSETest(void)
     }
     return ret;
 #else
-    printf("wolfCOSE test: build with WOLFCOSE_HAVE_ES256 to run\n");
+    printf("wolfCOSE test: needs ES256 with COSE_Sign1 sign and verify\n");
     return 0;
 #endif
 }
