@@ -40,6 +40,7 @@ int wolfCOSETest(void)
     size_t decPayloadLen = 0;
     int rngInited = 0;
     int eccInited = 0;
+    int keyInited = 0;
     int ret;
 
     printf("Running wolfCOSE test (COSE_Sign1 ES256)...\n");
@@ -57,6 +58,7 @@ int wolfCOSETest(void)
         ret = wc_CoseKey_Init(&key);
     }
     if (ret == 0) {
+        keyInited = 1;
         ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     }
     if (ret == 0) {
@@ -76,6 +78,9 @@ int wolfCOSETest(void)
         }
     }
 
+    if (keyInited != 0) {
+        wc_CoseKey_Free(&key);
+    }
     if (eccInited != 0) {
         (void)wc_ecc_free(&eccKey);
     }

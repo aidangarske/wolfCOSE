@@ -25,6 +25,14 @@
 #include <wolfssl/wolfcrypt/ecc.h>
 #include <wolfssl/wolfcrypt/random.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int wolfCOSETest(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WOLFCOSE_TEST_H_ */
