@@ -91,7 +91,8 @@ int wolfCOSETest(void)
     }
     return ret;
 #else
+    /* ES256 COSE_Sign1 not compiled in; report not run so it is not read as pass */
     printf("wolfCOSE test: needs ES256 with COSE_Sign1 sign and verify\n");
-    return 0;
+    return -1;
 #endif
 }
