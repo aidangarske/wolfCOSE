@@ -15,9 +15,10 @@ Supported cores: Cortex-M0, M0+, M3, M4, M7, M23, M33, M55, and STM32MP1.
 
 ## Install the packs
 
-1. Download `wolfSSL.I-CUBE-wolfSSL.<version>.pack` and
-   `wolfSSL.I-CUBE-wolfCOSE.<version>.pack` from
-   [wolfssl.com/files/ide](https://www.wolfssl.com/files/ide/).
+1. Download the wolfSSL pack
+   ([I-CUBE-wolfSSL.pack](https://www.wolfssl.com/files/ide/I-CUBE-wolfSSL.pack))
+   and the wolfCOSE pack
+   ([I-CUBE-wolfCOSE.pack](https://www.wolfssl.com/files/ide/I-CUBE-wolfCOSE.pack)).
 2. In STM32CubeMX, open `Help`, `Manage embedded software packages`,
    `From Local...`, and install the wolfSSL pack first, then the wolfCOSE pack.
 
@@ -59,8 +60,8 @@ the console for the wolfCOSE test output.
 
 ## Notes
 
-- Only pack source is kept in the repository. The built `.pack` files are posted
-  at [wolfssl.com/files/ide](https://www.wolfssl.com/files/ide/).
+- Only pack source is kept in the repository. The built pack is posted at
+  [wolfssl.com/files/ide/I-CUBE-wolfCOSE.pack](https://www.wolfssl.com/files/ide/I-CUBE-wolfCOSE.pack).
 - On some STM32 families the wolfSSL pack enables hardware hash and RNG by
   default. If a build reports a missing HAL module or hash symbol, enable the
   RNG and HASH peripherals in the `.ioc`, or select software crypto with
