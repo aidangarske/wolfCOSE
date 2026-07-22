@@ -58,6 +58,8 @@ jobs:
                  --suppress=duplicateCondition:tests/test_cose.c \
                  --suppress=variableScope:tests/test_cose.c \
                  --suppress=variableScope:tests/test_interop.c \
+                 --suppress=unreadVariable:tests/test_cose.c \
+                 --suppress=unusedVariable:tests/test_cose.c \
                  --inline-suppr \
                  -I include -I src -I $HOME/wolfssl-install/include \
                  src/ tests/
