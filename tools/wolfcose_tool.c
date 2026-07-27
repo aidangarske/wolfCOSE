@@ -449,8 +449,11 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
         alg == WOLFCOSE_ALG_ES512) {
         ecc_key ecc;
         wc_ecc_init(&ecc);
-        coseKey.key.ecc = &ecc;
-        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        /* Attach curve is a placeholder; decode takes crv from the key file. */
+        ret = wc_CoseKey_SetEcc(&coseKey, WOLFCOSE_CRV_P256, &ecc);
+        if (ret == 0) {
+            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        }
         if (ret != 0) {
             fprintf(stderr, "Key decode failed: %d\n", ret);
             wc_ecc_free(&ecc);
@@ -477,8 +480,10 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
     if (alg == WOLFCOSE_ALG_EDDSA && strcmp(algStr, "Ed448") != 0) {
         ed25519_key ed;
         wc_ed25519_init(&ed);
-        coseKey.key.ed25519 = &ed;
-        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        ret = wc_CoseKey_SetEd25519(&coseKey, &ed);
+        if (ret == 0) {
+            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        }
         if (ret != 0) {
             fprintf(stderr, "Key decode failed: %d\n", ret);
             wc_ed25519_free(&ed);
@@ -505,8 +510,10 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
     if (alg == WOLFCOSE_ALG_EDDSA && strcmp(algStr, "Ed448") == 0) {
         ed448_key ed;
         wc_ed448_init(&ed);
-        coseKey.key.ed448 = &ed;
-        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        ret = wc_CoseKey_SetEd448(&coseKey, &ed);
+        if (ret == 0) {
+            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        }
         if (ret != 0) {
             fprintf(stderr, "Key decode failed: %d\n", ret);
             wc_ed448_free(&ed);
@@ -534,8 +541,10 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
         alg == WOLFCOSE_ALG_PS512) {
         RsaKey rsa;
         wc_InitRsaKey(&rsa, NULL);
-        coseKey.key.rsa = &rsa;
-        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        ret = wc_CoseKey_SetRsa(&coseKey, &rsa);
+        if (ret == 0) {
+            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        }
         if (ret != 0) {
             fprintf(stderr, "Key decode failed: %d\n", ret);
             wc_FreeRsaKey(&rsa);
@@ -567,8 +576,10 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
             fprintf(stderr, "ML-DSA init failed: %d\n", ret);
             return EXIT_CRYPTO;
         }
-        coseKey.key.mldsa = &dl;
-        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        ret = wc_CoseKey_SetMlDsa(&coseKey, alg, &dl);
+        if (ret == 0) {
+            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        }
         if (ret != 0) {
             fprintf(stderr, "Key decode failed: %d\n", ret);
             wc_MlDsaKey_Free(&dl);
@@ -625,21 +636,21 @@ static int tool_verify(const char* keyPath, const char* inPath)
     int keyMatched = 0;
     int32_t kty = 0;
     int32_t crv = 0;
+    int32_t keyAlg = 0;
 
     ret = read_file(keyPath, keyBuf, sizeof(keyBuf), &keyLen);
     if (ret == 0) {
         ret = read_file(inPath, msgBuf, sizeof(msgBuf), &msgLen);
     }
 
-    /* Peek the COSE_Key metadata with an empty key union so no wolfCrypt
-     * importer runs (each is gated on a non-NULL union member). This yields
-     * kty/crv without writing key material through a mismatched union member,
-     * then we dispatch to exactly one correctly-typed key. */
+    /* Peek kty/crv/alg with nothing attached so no importer runs, then
+     * dispatch to exactly one correctly-typed key. */
     if (ret == 0) {
         wc_CoseKey_Init(&coseKey);
         (void)wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
         kty = coseKey.kty;
         crv = coseKey.crv;
+        keyAlg = coseKey.alg;
     }
 
 #ifdef WOLFCOSE_HAVE_ECDSA
@@ -648,8 +659,10 @@ static int tool_verify(const char* keyPath, const char* inPath)
         keyMatched = 1;
         wc_CoseKey_Init(&coseKey);
         wc_ecc_init(&ecc);
-        coseKey.key.ecc = &ecc;
-        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        ret = wc_CoseKey_SetEcc(&coseKey, crv, &ecc);
+        if (ret == 0) {
+            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        }
         if (ret == 0) {
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
@@ -665,8 +678,10 @@ static int tool_verify(const char* keyPath, const char* inPath)
         keyMatched = 1;
         wc_CoseKey_Init(&coseKey);
         wc_InitRsaKey(&rsa, NULL);
-        coseKey.key.rsa = &rsa;
-        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        ret = wc_CoseKey_SetRsa(&coseKey, &rsa);
+        if (ret == 0) {
+            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        }
         if (ret == 0) {
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
@@ -683,8 +698,10 @@ static int tool_verify(const char* keyPath, const char* inPath)
         keyMatched = 1;
         wc_CoseKey_Init(&coseKey);
         wc_ed25519_init(&ed);
-        coseKey.key.ed25519 = &ed;
-        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        ret = wc_CoseKey_SetEd25519(&coseKey, &ed);
+        if (ret == 0) {
+            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        }
         if (ret == 0) {
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
@@ -701,8 +718,10 @@ static int tool_verify(const char* keyPath, const char* inPath)
         keyMatched = 1;
         wc_CoseKey_Init(&coseKey);
         wc_ed448_init(&ed);
-        coseKey.key.ed448 = &ed;
-        ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        ret = wc_CoseKey_SetEd448(&coseKey, &ed);
+        if (ret == 0) {
+            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+        }
         if (ret == 0) {
             ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
                 NULL, 0, NULL, 0, scratch, sizeof(scratch),
@@ -719,8 +738,10 @@ static int tool_verify(const char* keyPath, const char* inPath)
         wc_CoseKey_Init(&coseKey);
         ret = wc_MlDsaKey_Init(&dl, NULL, INVALID_DEVID);
         if (ret == 0) {
-            coseKey.key.mldsa = &dl;
-            ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+            ret = wc_CoseKey_SetMlDsa(&coseKey, keyAlg, &dl);
+            if (ret == 0) {
+                ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
+            }
             if (ret == 0) {
                 ret = wc_CoseSign1_Verify(&coseKey, msgBuf, msgLen,
                     NULL, 0, NULL, 0, scratch, sizeof(scratch),
@@ -733,6 +754,7 @@ static int tool_verify(const char* keyPath, const char* inPath)
 #endif
     {
         (void)crv;
+        (void)keyAlg;
         fprintf(stderr, "Unsupported key type\n");
         ret = EXIT_CRYPTO;
     }

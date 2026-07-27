@@ -228,7 +228,8 @@ static void test_cose_key_ecc(void)
         TEST_ASSERT(ret == 0, "ecc2 init");
         ret = wc_CoseKey_Init(&key2);
         TEST_ASSERT(ret == 0, "key2 init");
-        key2.key.ecc = &eccKey2;
+        ret = wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
+        TEST_ASSERT(ret == 0, "key2 set ecc");
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_EC2 &&
                     key2.crv == WOLFCOSE_CRV_P256 && key2.hasPrivate == 1,
@@ -299,7 +300,8 @@ static void test_cose_key_ed25519(void)
         TEST_ASSERT(ret == 0, "ed2 init");
         ret = wc_CoseKey_Init(&key2);
         TEST_ASSERT(ret == 0, "ed key2 init");
-        key2.key.ed25519 = &edKey2;
+        ret = wc_CoseKey_SetEd25519(&key2, &edKey2);
+        TEST_ASSERT(ret == 0, "ed key2 set");
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_OKP &&
                     key2.hasPrivate == 1 &&
@@ -714,7 +716,7 @@ static void test_cose_sign1_ed448(void)
         if (encRet == 0) {
             wc_ed448_init(&decEdKey);
             (void)wc_CoseKey_Init(&decKey);
-            decKey.key.ed448 = &decEdKey;
+            (void)wc_CoseKey_SetEd448(&decKey, &decEdKey);
             encRet = wc_CoseKey_Decode(&decKey, keyBuf, keyLen);
             TEST_ASSERT(encRet == 0 && decKey.kty == WOLFCOSE_KTY_OKP &&
                         decKey.crv == WOLFCOSE_CRV_ED448 &&
@@ -1803,7 +1805,7 @@ static void test_cose_key_rsa(void)
 
         wc_InitRsaKey(&rsaKey2, NULL);
         (void)wc_CoseKey_Init(&key2);
-        key2.key.rsa = &rsaKey2;
+        (void)wc_CoseKey_SetRsa(&key2, &rsaKey2);
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_RSA &&
                     key2.alg == WOLFCOSE_ALG_PS256 &&
@@ -1930,7 +1932,7 @@ static void test_cose_key_rsa_small_modulus_roundtrip(void)
     if (ret == 0) {
         (void)wc_InitRsaKey(&rsaKey2, NULL);
         (void)wc_CoseKey_Init(&key2);
-        key2.key.rsa = &rsaKey2;
+        (void)wc_CoseKey_SetRsa(&key2, &rsaKey2);
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_RSA,
                     "rsa small modulus decode");
@@ -2002,7 +2004,7 @@ static void test_cose_key_mldsa(const char* label, int32_t alg,
 
         wc_MlDsaKey_Init(&dlKey2, NULL, INVALID_DEVID);
         (void)wc_CoseKey_Init(&key2);
-        key2.key.mldsa = &dlKey2;
+        (void)wc_CoseKey_SetMlDsa(&key2, alg, &dlKey2);
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_AKP &&
                     key2.hasPrivate == 1 &&
@@ -2948,8 +2950,7 @@ static void test_cose_key_ed25519_public_only(void)
 
     /* Decode into fresh key — should have private */
     (void)wc_CoseKey_Init(&key2);
-    key2.kty = WOLFCOSE_KTY_OKP;
-    key2.key.ed25519 = &edKey2;
+    (void)wc_CoseKey_SetEd25519(&key2, &edKey2);
     ret = wc_CoseKey_Decode(&key2, buf, len);
     TEST_ASSERT(ret == 0, "ed pub decode");
     TEST_ASSERT(key2.hasPrivate == 1, "ed has priv");
@@ -2977,8 +2978,7 @@ static void test_cose_key_ed25519_public_only(void)
         wc_CBOR_EncodeBstr(&enc, xBuf, xSz);
 
         (void)wc_CoseKey_Init(&key2);
-        key2.kty = WOLFCOSE_KTY_OKP;
-        key2.key.ed25519 = &edKey3;
+        (void)wc_CoseKey_SetEd25519(&key2, &edKey3);
         ret = wc_CoseKey_Decode(&key2, pubBuf, enc.idx);
         TEST_ASSERT(ret == 0, "ed pub-only decode");
         TEST_ASSERT(key2.hasPrivate == 0, "ed pub-only no priv");
@@ -2992,6 +2992,260 @@ static void test_cose_key_ed25519_public_only(void)
     (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_HAVE_EDDSA */
+
+#if defined(WOLFCOSE_KEY_DECODE)
+#define TYPECONF_HAVE_TEST
+
+/* {kty, crv, x:bstr(partLen), d:bstr(partLen)} -- enough shape for every
+ * importer arm to engage if the type gate let it through. */
+static size_t typeconf_key_blob(uint8_t* out, size_t outSz, int64_t kty,
+                                int64_t crv, size_t partLen)
+{
+    WOLFCOSE_CBOR_CTX enc;
+    uint8_t part[64];
+
+    if (partLen > sizeof(part)) {
+        return 0;
+    }
+
+    (void)XMEMSET(part, 0x41, sizeof(part));
+    enc.buf = out;
+    enc.bufSz = outSz;
+    enc.idx = 0;
+
+    (void)wc_CBOR_EncodeMapStart(&enc, 4);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    (void)wc_CBOR_EncodeInt(&enc, kty);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+    (void)wc_CBOR_EncodeInt(&enc, crv);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_X);
+    (void)wc_CBOR_EncodeBstr(&enc, part, partLen);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_D);
+    (void)wc_CBOR_EncodeBstr(&enc, part, partLen);
+
+    return enc.idx;
+}
+
+static void test_cose_key_decode_type_confusion(void)
+{
+    WOLFCOSE_KEY key;
+#ifdef WOLFCOSE_HAVE_EDDSA
+    ed25519_key ed25519Key;
+#endif
+#ifdef WOLFCOSE_HAVE_ED448
+    ed448_key ed448Key;
+#endif
+#ifdef HAVE_ECC
+    ecc_key eccKey;
+#endif
+#ifdef WOLFCOSE_HAVE_RSAPSS
+    RsaKey rsaKey;
+#endif
+#ifdef WOLFCOSE_HAVE_MLDSA
+    wc_MlDsaKey dlKey;
+#endif
+    static const uint8_t symmData[32] = { 0x5au };
+    WOLFCOSE_CBOR_CTX symmEnc;
+    uint8_t blob[256];
+    size_t blobLen;
+    int ret;
+
+    TEST_LOG("  [Key Decode Type Confusion]\n");
+
+#ifdef WOLFCOSE_HAVE_EDDSA
+    ret = wc_ed25519_init(&ed25519Key);
+    TEST_ASSERT(ret == 0, "typeconf ed25519 init");
+
+    /* Ed25519 attached (112 B): every larger importer must be refused. */
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_EC2,
+                                WOLFCOSE_CRV_P256, 32);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd25519(&key, &ed25519Key);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "ed25519 attached rejects kty=EC2");
+    TEST_ASSERT(key.hasPrivate == 0, "ed25519/EC2 imported nothing");
+    TEST_ASSERT(key.attachedType == WOLFCOSE_ATT_ED25519,
+                "attachedType survives a rejected decode");
+
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_RSA, 0, 32);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd25519(&key, &ed25519Key);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "ed25519 attached rejects kty=RSA");
+
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_AKP, 0, 32);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd25519(&key, &ed25519Key);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "ed25519 attached rejects kty=AKP");
+
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_SYMMETRIC,
+                                0, 32);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd25519(&key, &ed25519Key);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "ed25519 attached rejects kty=Symmetric");
+
+    /* Unrecognized tag must fail closed rather than reach an importer. */
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd25519(&key, &ed25519Key);
+    key.attachedType = 99u;
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_OKP,
+                                WOLFCOSE_CRV_ED25519, 32);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "unknown attachedType fails closed");
+#endif /* WOLFCOSE_HAVE_EDDSA */
+
+#ifdef WOLFCOSE_HAVE_ED448
+    ret = wc_ed448_init(&ed448Key);
+    TEST_ASSERT(ret == 0, "typeconf ed448 init");
+
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_EC2,
+                                WOLFCOSE_CRV_P256, 32);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd448(&key, &ed448Key);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "ed448 attached rejects kty=EC2");
+#endif /* WOLFCOSE_HAVE_ED448 */
+
+#if defined(WOLFCOSE_HAVE_EDDSA) && defined(WOLFCOSE_HAVE_ED448)
+    /* The reported defect: same kty, larger struct named by the peer. */
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_OKP,
+                                WOLFCOSE_CRV_ED448, 57);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd25519(&key, &ed25519Key);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "ed25519 attached rejects crv=Ed448");
+    TEST_ASSERT(key.hasPrivate == 0, "ed25519/Ed448 imported nothing");
+
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_OKP,
+                                WOLFCOSE_CRV_ED25519, 32);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEd448(&key, &ed448Key);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "ed448 attached rejects crv=Ed25519");
+#endif
+
+#ifdef HAVE_ECC
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "typeconf ecc init");
+
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_OKP,
+                                WOLFCOSE_CRV_ED448, 57);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "ecc attached rejects kty=OKP");
+
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_SYMMETRIC,
+                                0, 32);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "ecc attached rejects kty=Symmetric");
+
+    /* A differing EC2 curve is not a struct mismatch: ecc_key holds any, so
+     * the gate must pass and only the import itself may object. */
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_EC2,
+                                WOLFCOSE_CRV_P384, 48);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) || (ret == WOLFCOSE_E_CRYPTO),
+                "ecc attached accepts a different EC2 curve");
+
+    (void)wc_ecc_free(&eccKey);
+#endif /* HAVE_ECC */
+
+#ifdef WOLFCOSE_HAVE_RSAPSS
+    ret = wc_InitRsaKey(&rsaKey, NULL);
+    TEST_ASSERT(ret == 0, "typeconf rsa init");
+
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_EC2,
+                                WOLFCOSE_CRV_P256, 32);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetRsa(&key, &rsaKey);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "rsa attached rejects kty=EC2");
+    TEST_ASSERT(key.hasPrivate == 0, "rsa/EC2 imported nothing");
+
+    (void)wc_FreeRsaKey(&rsaKey);
+#endif /* WOLFCOSE_HAVE_RSAPSS */
+
+#ifdef WOLFCOSE_HAVE_MLDSA
+    ret = wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
+    TEST_ASSERT(ret == 0, "typeconf mldsa init");
+
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_EC2,
+                                WOLFCOSE_CRV_P256, 32);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "mldsa attached rejects kty=EC2");
+    TEST_ASSERT(key.hasPrivate == 0, "mldsa/EC2 imported nothing");
+
+    (void)wc_MlDsaKey_Free(&dlKey);
+#endif /* WOLFCOSE_HAVE_MLDSA */
+
+    /* Symmetric attached, peer names an asymmetric type. */
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_EC2,
+                                WOLFCOSE_CRV_P256, 32);
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, symmData, sizeof(symmData));
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "symmetric attached rejects kty=EC2");
+
+    /* Matching symmetric decode through the setter still imports. RFC 9053
+     * carries the symmetric value in k (label -1), not in x/d. */
+    symmEnc.buf = blob;
+    symmEnc.bufSz = sizeof(blob);
+    symmEnc.idx = 0;
+    (void)wc_CBOR_EncodeMapStart(&symmEnc, 2);
+    (void)wc_CBOR_EncodeInt(&symmEnc, WOLFCOSE_KEY_LABEL_KTY);
+    (void)wc_CBOR_EncodeInt(&symmEnc, WOLFCOSE_KTY_SYMMETRIC);
+    (void)wc_CBOR_EncodeInt(&symmEnc, WOLFCOSE_KEY_LABEL_K);
+    (void)wc_CBOR_EncodeBstr(&symmEnc, symmData, sizeof(symmData));
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, symmData, sizeof(symmData));
+    ret = wc_CoseKey_Decode(&key, blob, symmEnc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "symmetric attached accepts kty=Symmetric");
+    TEST_ASSERT(key.hasPrivate == 1, "symmetric decode imported k");
+
+    /* Nothing attached: metadata decodes, no importer runs. This is the
+     * two-pass peek wolfcose_tool.c relies on. */
+    blobLen = typeconf_key_blob(blob, sizeof(blob), WOLFCOSE_KTY_EC2,
+                                WOLFCOSE_CRV_P256, 32);
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, blob, blobLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "peek decodes metadata");
+    TEST_ASSERT(key.kty == WOLFCOSE_KTY_EC2, "peek yields kty");
+    TEST_ASSERT(key.crv == WOLFCOSE_CRV_P256, "peek yields crv");
+    TEST_ASSERT(key.attachedType == WOLFCOSE_ATT_NONE, "peek attaches nothing");
+    TEST_ASSERT(key.hasPrivate == 0, "peek imports no private key");
+
+#ifdef WOLFCOSE_HAVE_EDDSA
+    (void)wc_ed25519_free(&ed25519Key);
+#endif
+#ifdef WOLFCOSE_HAVE_ED448
+    (void)wc_ed448_free(&ed448Key);
+#endif
+}
+#endif /* type confusion test available */
 
 #ifdef WOLFCOSE_HAVE_ED448
 static void test_cose_key_ed448_public_only(void)
@@ -3024,8 +3278,7 @@ static void test_cose_key_ed448_public_only(void)
     wc_CBOR_EncodeBstr(&enc, xBuf, xSz);
 
     (void)wc_CoseKey_Init(&key);
-    key.kty = WOLFCOSE_KTY_OKP;
-    key.key.ed448 = &edKey2;
+    (void)wc_CoseKey_SetEd448(&key, &edKey2);
     ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
     TEST_ASSERT(ret == 0, "ed448 pub-only decode");
     TEST_ASSERT(key.hasPrivate == 0, "ed448 pub-only no priv");
@@ -3084,7 +3337,7 @@ static void test_cose_key_decode_private_only(void)
         wc_CBOR_EncodeBstr(&enc, dBuf, dSz);
 
         (void)wc_CoseKey_Init(&key2);
-        key2.key.ecc = &eccKey2;
+        (void)wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
         ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
         TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                     "ec2 private-only {kty,crv,d} accepted");
@@ -3148,7 +3401,7 @@ static void test_cose_key_decode_private_only(void)
         wc_CBOR_EncodeBstr(&enc, dBuf, dSz);
 
         (void)wc_CoseKey_Init(&key2);
-        key2.key.ed25519 = &edKey2;
+        (void)wc_CoseKey_SetEd25519(&key2, &edKey2);
         ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
         TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                     "okp ed25519 private-only {kty,crv,d} accepted");
@@ -3210,7 +3463,7 @@ static void test_cose_key_decode_private_only(void)
         wc_CBOR_EncodeBstr(&enc, dBuf, dSz);
 
         (void)wc_CoseKey_Init(&key2);
-        key2.key.ed448 = &edKey2;
+        (void)wc_CoseKey_SetEd448(&key2, &edKey2);
         ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
         TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                     "okp ed448 private-only {kty,crv,d} accepted");
@@ -3271,7 +3524,7 @@ static void test_cose_key_rsa_public_decode(void)
     wc_CBOR_EncodeBstr(&enc, eBuf, eSz);
 
     (void)wc_CoseKey_Init(&key2);
-    key2.key.rsa = &rsaKey2;
+    (void)wc_CoseKey_SetRsa(&key2, &rsaKey2);
     ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "rsa public-only decode accepted");
     TEST_ASSERT(key2.kty == WOLFCOSE_KTY_RSA, "rsa public-only kty");
@@ -3315,8 +3568,7 @@ static void test_cose_key_mldsa_public_only(void)
     wc_CBOR_EncodeBstr(&enc, xBuf, (size_t)xSz);
 
     (void)wc_CoseKey_Init(&key);
-    key.kty = WOLFCOSE_KTY_AKP;
-    key.key.mldsa = &dlKey2;
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey2);
     ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
     TEST_ASSERT(ret == 0, "dl pub-only decode");
     TEST_ASSERT(key.hasPrivate == 0, "dl pub-only no priv");
@@ -3400,7 +3652,7 @@ static void test_cose_key_mldsa_negative(void)
     ret = wc_CoseKey_Encode(&key, outBuf, sizeof(outBuf), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "dl encode public-only without seed");
     (void)wc_CoseKey_Init(&key);
-    key.key.mldsa = &dlKey2;
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey2);
     ret = wc_CoseKey_Decode(&key, outBuf, outLen);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS && key.hasPrivate == 0,
                 "dl public-only decode has no private");
@@ -3415,7 +3667,7 @@ static void test_cose_key_mldsa_negative(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PRIV);
     wc_CBOR_EncodeBstr(&enc, seed, sizeof(seed));
     (void)wc_CoseKey_Init(&key);
-    key.key.mldsa = &dlKey2;
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey2);
     ret = wc_CoseKey_Decode(&key, buf, enc.idx);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "dl decode rejects missing pub");
 
@@ -3427,7 +3679,7 @@ static void test_cose_key_mldsa_negative(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PUB);
     wc_CBOR_EncodeBstr(&enc, pubBuf, (size_t)pubSz);
     (void)wc_CoseKey_Init(&key);
-    key.key.mldsa = &dlKey2;
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey2);
     ret = wc_CoseKey_Decode(&key, buf, enc.idx);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "dl decode rejects missing alg");
 
@@ -3443,7 +3695,7 @@ static void test_cose_key_mldsa_negative(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PRIV);
     wc_CBOR_EncodeBstr(&enc, seed, (size_t)16);
     (void)wc_CoseKey_Init(&key);
-    key.key.mldsa = &dlKey2;
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey2);
     ret = wc_CoseKey_Decode(&key, buf, enc.idx);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "dl decode rejects wrong seed length");
@@ -3458,7 +3710,7 @@ static void test_cose_key_mldsa_negative(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
     wc_CBOR_EncodeInt(&enc, 5);
     (void)wc_CoseKey_Init(&key);
-    key.key.mldsa = &dlKey2;
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey2);
     ret = wc_CoseKey_Decode(&key, buf, enc.idx);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "dl decode rejects crv on AKP");
 
@@ -3503,7 +3755,7 @@ static void test_cose_key_ecc_public_only(void)
     wc_CBOR_EncodeBstr(&enc, yBuf, (size_t)yLen);
 
     (void)wc_CoseKey_Init(&key);
-    key.key.ecc = &eccKey2;
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey2);
     ret = wc_CoseKey_Decode(&key, pubBuf, enc.idx);
     TEST_ASSERT(ret == 0, "ecc pub-only decode");
     TEST_ASSERT(key.hasPrivate == 0, "ecc pub-only no priv");
@@ -9685,7 +9937,7 @@ static void test_cose_error_paths(void)
 
         wc_ecc_init(&eccKey);
         (void)wc_CoseKey_Init(&decodedKey);
-        decodedKey.key.ecc = &eccKey;
+        (void)wc_CoseKey_SetEcc(&decodedKey, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseKey_Decode(&decodedKey, eccNoCoords, sizeof(eccNoCoords));
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "ecc key missing coords rejected");
@@ -9709,7 +9961,7 @@ static void test_cose_error_paths(void)
 
         wc_ed25519_init(&edKey);
         (void)wc_CoseKey_Init(&decodedKey);
-        decodedKey.key.ed25519 = &edKey;
+        (void)wc_CoseKey_SetEd25519(&decodedKey, &edKey);
 
         ret = wc_CoseKey_Decode(&decodedKey, edNoX, sizeof(edNoX));
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "ed key missing x rejected");
@@ -12117,7 +12369,7 @@ static void test_cose_key_kid_alg_roundtrip(void)
     ret = wc_ecc_init(&dstEcc);
     TEST_ASSERT(ret == 0, "key kidAlg ecc init dst");
     (void)wc_CoseKey_Init(&dstKey);
-    dstKey.key.ecc = &dstEcc;
+    (void)wc_CoseKey_SetEcc(&dstKey, WOLFCOSE_CRV_P256, &dstEcc);
     ret = wc_CoseKey_Decode(&dstKey, encoded, encodedLen);
     TEST_ASSERT(ret == 0, "key kidAlg decode");
     TEST_ASSERT(dstKey.alg == WOLFCOSE_ALG_ES256,
@@ -14055,7 +14307,8 @@ static void test_force_failure_crypto(void)
                 /* Test ECC import failure - must pre-allocate internal key */
                 wc_ecc_init(&decodedEccKey);
                 (void)wc_CoseKey_Init(&decodedKey);
-                decodedKey.key.ecc = &decodedEccKey;
+                (void)wc_CoseKey_SetEcc(&decodedKey, WOLFCOSE_CRV_P256,
+                                        &decodedEccKey);
                 wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_X963);
                 ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ECC import forced failure");
@@ -14091,7 +14344,7 @@ static void test_force_failure_crypto(void)
                 /* Test Ed25519 import failure - must pre-allocate internal key */
                 wc_ed25519_init(&decodedEdKey);
                 (void)wc_CoseKey_Init(&decodedKey);
-                decodedKey.key.ed25519 = &decodedEdKey;
+                (void)wc_CoseKey_SetEd25519(&decodedKey, &decodedEdKey);
                 wolfForceFailure_Set(WOLF_FAIL_ED25519_IMPORT_PRIV);
                 ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Ed25519 import priv forced failure");
@@ -14127,7 +14380,7 @@ static void test_force_failure_crypto(void)
                 /* Test Ed448 import failure - must pre-allocate internal key */
                 wc_ed448_init(&decodedEdKey);
                 (void)wc_CoseKey_Init(&decodedKey);
-                decodedKey.key.ed448 = &decodedEdKey;
+                (void)wc_CoseKey_SetEd448(&decodedKey, &decodedEdKey);
                 wolfForceFailure_Set(WOLF_FAIL_ED448_IMPORT_PRIV);
                 ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Ed448 import priv forced failure");
@@ -14173,8 +14426,8 @@ static void test_force_failure_crypto(void)
                 wc_MlDsaKey_Init(&decodedDlKey, NULL, INVALID_DEVID);
                 wc_MlDsaKey_SetParams(&decodedDlKey, WC_ML_DSA_44);
                 (void)wc_CoseKey_Init(&decodedKey);
-                decodedKey.key.mldsa = &decodedDlKey;
-                decodedKey.crv = WOLFCOSE_CRV_ML_DSA_44;
+                (void)wc_CoseKey_SetMlDsa(&decodedKey, WOLFCOSE_ALG_ML_DSA_44,
+                                          &decodedDlKey);
                 wolfForceFailure_Set(WOLF_FAIL_MLDSA_IMPORT_PRIV);
                 ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ML-DSA import priv forced failure");
@@ -14239,8 +14492,7 @@ static void test_force_failure_crypto(void)
                 /* Test RSA public key decode failure */
                 wc_InitRsaKey(&decodedRsaWolfKey, NULL);
                 (void)wc_CoseKey_Init(&rsaDecodedKey);
-                rsaDecodedKey.key.rsa = &decodedRsaWolfKey;
-                rsaDecodedKey.kty = WOLFCOSE_KTY_RSA;
+                (void)wc_CoseKey_SetRsa(&rsaDecodedKey, &decodedRsaWolfKey);
                 wolfForceFailure_Set(WOLF_FAIL_RSA_PUBLIC_DECODE);
                 ret = wc_CoseKey_Decode(&rsaDecodedKey, rsaKeyBuf, rsaKeyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "RSA public decode forced failure");
@@ -14275,7 +14527,7 @@ static void test_force_failure_crypto(void)
             if (ret == 0) {
                 wc_ed25519_init(&ed25DecWolfKey);
                 (void)wc_CoseKey_Init(&ed25DecKey);
-                ed25DecKey.key.ed25519 = &ed25DecWolfKey;
+                (void)wc_CoseKey_SetEd25519(&ed25DecKey, &ed25DecWolfKey);
                 wolfForceFailure_Set(WOLF_FAIL_ED25519_IMPORT_PUB);
                 ret = wc_CoseKey_Decode(&ed25DecKey, ed25KeyBuf, ed25KeyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Ed25519 import pub forced failure");
@@ -14309,7 +14561,7 @@ static void test_force_failure_crypto(void)
             if (ret == 0) {
                 wc_ed448_init(&ed448DecWolfKey);
                 (void)wc_CoseKey_Init(&ed448DecKey);
-                ed448DecKey.key.ed448 = &ed448DecWolfKey;
+                (void)wc_CoseKey_SetEd448(&ed448DecKey, &ed448DecWolfKey);
                 wolfForceFailure_Set(WOLF_FAIL_ED448_IMPORT_PUB);
                 ret = wc_CoseKey_Decode(&ed448DecKey, ed448KeyBuf, ed448KeyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "Ed448 import pub forced failure");
@@ -14347,8 +14599,8 @@ static void test_force_failure_crypto(void)
                 wc_MlDsaKey_Init(&dlDecWolfKey, NULL, INVALID_DEVID);
                 wc_MlDsaKey_SetParams(&dlDecWolfKey, WC_ML_DSA_44);
                 (void)wc_CoseKey_Init(&dlDecKey);
-                dlDecKey.key.mldsa = &dlDecWolfKey;
-                dlDecKey.crv = WOLFCOSE_CRV_ML_DSA_44;
+                (void)wc_CoseKey_SetMlDsa(&dlDecKey, WOLFCOSE_ALG_ML_DSA_44,
+                                          &dlDecWolfKey);
                 wolfForceFailure_Set(WOLF_FAIL_MLDSA_IMPORT_PUB);
                 ret = wc_CoseKey_Decode(&dlDecKey, dlKeyBuf, dlKeyLen);
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ML-DSA import pub forced failure");
@@ -17577,6 +17829,9 @@ int test_cose(void)
 #endif
 #ifdef WOLFCOSE_HAVE_ED448
     test_cose_key_ed448_public_only();
+#endif
+#ifdef TYPECONF_HAVE_TEST
+    test_cose_key_decode_type_confusion();
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
     test_cose_key_mldsa_public_only();

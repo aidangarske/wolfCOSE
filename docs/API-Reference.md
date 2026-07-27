@@ -325,6 +325,16 @@ Decode a COSE key from CBOR format.
 
 **Returns:** `WOLFCOSE_SUCCESS` or error code
 
+Attach the wolfCrypt key with `wc_CoseKey_SetEcc()`, `wc_CoseKey_SetEd25519()`,
+`wc_CoseKey_SetEd448()`, `wc_CoseKey_SetRsa()`, `wc_CoseKey_SetMlDsa()`, or
+`wc_CoseKey_SetSymmetric()`. These record which wolfCrypt object is attached;
+assigning the `key.*` union directly does not, and no key material is imported.
+
+The decoded `kty`/`crv` must name the attached key type or
+`WOLFCOSE_E_COSE_KEY_TYPE` is returned before any importer runs. Decoding into a
+key with nothing attached runs no importer and yields metadata only, which is
+how to inspect an untrusted `COSE_Key` before choosing a key object for it.
+
 ---
 
 ## COSE_Sign1 API

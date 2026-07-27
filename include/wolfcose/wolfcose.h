@@ -225,6 +225,16 @@ extern "C" {
 #define WOLFCOSE_KTY_SYMMETRIC   4
 #define WOLFCOSE_KTY_AKP         7   /* RFC 9964: Algorithm Key Pair (ML-DSA) */
 
+/* key.* union is untagged: every member aliases one pointer, so a non-NULL
+ * member is not a type check. Importers match on attachedType instead. */
+#define WOLFCOSE_ATT_NONE        0u
+#define WOLFCOSE_ATT_ECC         1u
+#define WOLFCOSE_ATT_ED25519     2u
+#define WOLFCOSE_ATT_ED448       3u
+#define WOLFCOSE_ATT_RSA         4u
+#define WOLFCOSE_ATT_MLDSA       5u
+#define WOLFCOSE_ATT_SYMMETRIC   6u
+
 /* Curves */
 #define WOLFCOSE_CRV_P256        1
 #define WOLFCOSE_CRV_P384        2
@@ -344,6 +354,7 @@ typedef struct WOLFCOSE_KEY {
     size_t         mldsaSeedLen; /**< ML-DSA private seed length */
 #endif
     uint8_t hasPrivate;  /**< 1 if private key material present */
+    uint8_t attachedType; /**< WOLFCOSE_ATT_*, set by wc_CoseKey_Set*() */
 } WOLFCOSE_KEY;
 
 /**
@@ -648,7 +659,11 @@ WOLFCOSE_API int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out,
 /**
  * \brief Decode a CBOR COSE_Key map into a WOLFCOSE_KEY structure.
  *        For symmetric keys, pointers reference the input buffer.
- *        For ECC/Ed25519, caller must pre-allocate and attach key struct.
+ *        For ECC/Ed25519, caller must attach a key struct via
+ *        wc_CoseKey_SetEcc()/SetEd25519()/SetEd448()/SetRsa()/SetMlDsa();
+ *        assigning key.* directly records no type and imports nothing.
+ *        A decoded kty/crv that does not match the attached type returns
+ *        WOLFCOSE_E_COSE_KEY_TYPE before any import runs.
  * \param key   Key structure (should be initialized, with wolfCrypt key
  *              attached for asymmetric types).
  * \param in    Input CBOR buffer.
