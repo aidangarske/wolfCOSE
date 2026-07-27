@@ -51,6 +51,7 @@ jobs:
         cppcheck --enable=warning,style,performance,portability \
                  --error-exitcode=1 \
                  --suppress=missingIncludeSystem \
+                 --suppress=*:$HOME/wolfssl-install/include/* \
                  --suppress=constParameterPointer \
                  --suppress=constParameter \
                  --suppress=knownConditionTrueFalse \
