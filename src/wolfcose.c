@@ -1163,6 +1163,7 @@ int wc_CoseKey_SetEcc(WOLFCOSE_KEY* key, int32_t crv, ecc_key* eccKey)
         key->crv = crv;
         key->alg = WOLFCOSE_ALG_UNSET;
         key->key.ecc = eccKey;
+        key->attachedType = WOLFCOSE_ATT_ECC;
         /* Check if private key is present */
         key->hasPrivate = ((wc_ecc_size(eccKey) > 0) &&
                            (eccKey->type == ECC_PRIVATEKEY)) ? 1u : 0u;
@@ -1185,6 +1186,7 @@ int wc_CoseKey_SetEd25519(WOLFCOSE_KEY* key, ed25519_key* edKey)
         key->crv = WOLFCOSE_CRV_ED25519;
         key->alg = WOLFCOSE_ALG_UNSET;
         key->key.ed25519 = edKey;
+        key->attachedType = WOLFCOSE_ATT_ED25519;
         key->hasPrivate = (edKey->privKeySet != 0u) ? 1u : 0u;
         ret = WOLFCOSE_SUCCESS;
     }
@@ -1205,6 +1207,7 @@ int wc_CoseKey_SetEd448(WOLFCOSE_KEY* key, ed448_key* edKey)
         key->crv = WOLFCOSE_CRV_ED448;
         key->alg = WOLFCOSE_ALG_UNSET;
         key->key.ed448 = edKey;
+        key->attachedType = WOLFCOSE_ATT_ED448;
         key->hasPrivate = (edKey->privKeySet != 0u) ? 1u : 0u;
         ret = WOLFCOSE_SUCCESS;
     }
@@ -1237,6 +1240,7 @@ int wc_CoseKey_SetMlDsa_ex(WOLFCOSE_KEY* key, int32_t alg,
         key->alg = alg;
         key->crv = 0;
         key->key.mldsa = mlDsaKey;
+        key->attachedType = WOLFCOSE_ATT_MLDSA;
         key->mldsaSeed = seed;
         key->mldsaSeedLen = (seed != NULL) ? seedLen : (size_t)0;
         key->hasPrivate = (mlDsaKey->prvKeySet != 0u) ? 1u : 0u;
@@ -1264,6 +1268,7 @@ int wc_CoseKey_SetRsa(WOLFCOSE_KEY* key, RsaKey* rsaKey)
         key->kty = WOLFCOSE_KTY_RSA;
         key->alg = WOLFCOSE_ALG_UNSET;
         key->key.rsa = rsaKey;
+        key->attachedType = WOLFCOSE_ATT_RSA;
         key->hasPrivate = ((wc_RsaEncryptSize(rsaKey) > 0) &&
                            (rsaKey->type == RSA_PRIVATE)) ? 1u : 0u;
         ret = WOLFCOSE_SUCCESS;
@@ -1285,6 +1290,7 @@ int wc_CoseKey_SetSymmetric(WOLFCOSE_KEY* key, const uint8_t* data,
         key->alg = WOLFCOSE_ALG_UNSET;
         key->key.symm.key = data;
         key->key.symm.keyLen = dataLen;
+        key->attachedType = WOLFCOSE_ATT_SYMMETRIC;
         key->hasPrivate = 1;
         ret = WOLFCOSE_SUCCESS;
     }
@@ -1950,6 +1956,55 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
 #endif /* WOLFCOSE_KEY_ENCODE */
 
 #if defined(WOLFCOSE_KEY_DECODE)
+/* Decoded kty/crv select the importer, so they must name the type the caller
+ * attached; a non-NULL key.* union member cannot tell them apart. */
+static int wolfCose_KeyAttachedTypeCheck(const WOLFCOSE_KEY* key)
+{
+    int ret = WOLFCOSE_SUCCESS;
+
+    switch (key->attachedType) {
+        case WOLFCOSE_ATT_NONE:
+            break;
+        case WOLFCOSE_ATT_ECC:
+            if (key->kty != WOLFCOSE_KTY_EC2) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            break;
+        case WOLFCOSE_ATT_ED25519:
+            if ((key->kty != WOLFCOSE_KTY_OKP) ||
+                (key->crv != WOLFCOSE_CRV_ED25519)) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            break;
+        case WOLFCOSE_ATT_ED448:
+            if ((key->kty != WOLFCOSE_KTY_OKP) ||
+                (key->crv != WOLFCOSE_CRV_ED448)) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            break;
+        case WOLFCOSE_ATT_RSA:
+            if (key->kty != WOLFCOSE_KTY_RSA) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            break;
+        case WOLFCOSE_ATT_MLDSA:
+            if (key->kty != WOLFCOSE_KTY_AKP) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            break;
+        case WOLFCOSE_ATT_SYMMETRIC:
+            if (key->kty != WOLFCOSE_KTY_SYMMETRIC) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            break;
+        default:
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            break;
+    }
+
+    return ret;
+}
+
 int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 {
     int ret;
@@ -2155,10 +2210,15 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
         }
 #endif
 
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_KeyAttachedTypeCheck(key);
+        }
+
         /* Import key data into wolfCrypt key structs */
         if (ret == WOLFCOSE_SUCCESS) {
 #ifdef HAVE_ECC
-            if ((key->kty == WOLFCOSE_KTY_EC2) && (key->key.ecc != NULL)) {
+            if ((key->kty == WOLFCOSE_KTY_EC2) &&
+                (key->attachedType == WOLFCOSE_ATT_ECC)) {
                 if ((xData == NULL) || (yData == NULL)) {
                     /* RFC 9052: x/y are recommended, not required, for a
                      * private EC2 key, so accept {kty, crv, d} alone. */
@@ -2231,7 +2291,8 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             else
 #endif
 #ifdef WOLFCOSE_HAVE_RSAPSS
-            if ((key->kty == WOLFCOSE_KTY_RSA) && (key->key.rsa != NULL)) {
+            if ((key->kty == WOLFCOSE_KTY_RSA) &&
+                (key->attachedType == WOLFCOSE_ATT_RSA)) {
                 /* RFC 8230: -1 n, -2 e, -3 d, -4 p, -5 q, -8 qInv. */
                 if ((nData == NULL) || (xData == NULL)) {
                     ret = WOLFCOSE_E_COSE_BAD_HDR;
@@ -2274,7 +2335,7 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 #endif
 #ifdef WOLFCOSE_HAVE_MLDSA
             if ((key->kty == WOLFCOSE_KTY_AKP) &&
-                (key->key.mldsa != NULL)) {
+                (key->attachedType == WOLFCOSE_ATT_MLDSA)) {
                 /* RFC 9964 AKP: pub(-1) bstr was stashed in nData, the priv(-2)
                  * 32-byte seed in xData. The ML-DSA level comes from alg. */
                 const uint8_t* akpPub = nData;
@@ -2356,7 +2417,7 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 }
 #ifdef WOLFCOSE_HAVE_EDDSA
                 else if ((key->crv == WOLFCOSE_CRV_ED25519) &&
-                         (key->key.ed25519 != NULL)) {
+                         (key->attachedType == WOLFCOSE_ATT_ED25519)) {
                     if (dData != NULL) {
                         if (xData != NULL) {
                             INJECT_FAILURE(WOLF_FAIL_ED25519_IMPORT_PRIV, -1,
@@ -2386,7 +2447,7 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 #endif
 #ifdef WOLFCOSE_HAVE_ED448
                 else if ((key->crv == WOLFCOSE_CRV_ED448) &&
-                         (key->key.ed448 != NULL)) {
+                         (key->attachedType == WOLFCOSE_ATT_ED448)) {
                     if (dData != NULL) {
                         if (xData != NULL) {
                             INJECT_FAILURE(WOLF_FAIL_ED448_IMPORT_PRIV, -1,
