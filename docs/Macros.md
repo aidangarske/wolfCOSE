@@ -120,6 +120,41 @@ Resolved internally as read-only `WOLFCOSE_KEY_WRAP`, `WOLFCOSE_ECDH`, and `WOLF
 
 ---
 
+## Delegated Signing
+
+| Define | Description | Default |
+|--------|-------------|---------|
+| `WOLFCOSE_ENABLE_EXT_SIGN` | Opt in `wc_CoseKey_SetExtSigner()`, which delegates signing to a caller-supplied callback | off |
+
+Off in every build unless explicitly enabled, lean or not. Resolved internally as the read-only `WOLFCOSE_EXT_SIGN` gate.
+
+Intended for keys held outside wolfCOSE — an HSM, a secure element, or a TrustZone secure partition.
+
+What the callback receives depends on the algorithm, and getting this wrong produces a well-formed message no verifier accepts:
+
+| Algorithm | `tbs` holds |
+|---|---|
+| ES256/384/512 | the **digest** of the `Sig_structure` — sign with a sign-hash primitive (`psa_sign_hash`, `CKM_ECDSA`) and return fixed-width `r \|\| s` (RFC 9053 sec. 2.1), **not** a DER `SEQUENCE` |
+| PS256/384/512 | the **digest** — sign with RSASSA-PSS, MGF1 over the same SHA-2 as the algorithm, salt length equal to the digest length (RFC 8230 sec. 2) |
+| EdDSA, Ed448, ML-DSA | the **`Sig_structure` itself** — sign it with a sign-message primitive |
+
+It returns the raw COSE signature; wolfCOSE checks the returned length against the algorithm but performs no key operation itself. No RNG is needed.
+
+A delegated key needs no local *private* key, but it must declare enough for wolfCOSE to know the expected signature length: ES* and ML-DSA need nothing beyond `alg`; EdDSA needs `kty`/`crv`; PS* needs `kty` plus a local `RsaKey` attached via `wc_CoseKey_SetRsa()` for its modulus size.
+
+Pass a NULL callback to detach. Attaching local key material with `wc_CoseKey_SetEcc()` and friends detaches implicitly, so always call `wc_CoseKey_SetExtSigner()` last. `wc_CoseKey_Decode()` is rejected on a key that has a signer attached, rather than silently importing private material and signing locally with it.
+
+For a key that has no local wolfCrypt object at all, set `kty` (and `crv` for EdDSA) on the `WOLFCOSE_KEY` directly before attaching the signer — there is no setter for declaring a key type without attaching one.
+
+Two limits worth knowing before designing around this:
+
+- It does not remove the local algorithm. `WOLFCOSE_ENABLE_EXT_SIGN` still requires a signing operation, which requires at least one signature algorithm compiled in, so a build with no local signature primitive is rejected at compile time and `WOLFCOSE_LEAN_VERIFY`/`WOLFCOSE_LEAN_VERIFY_MLDSA` cannot be combined with it. Delegating ML-DSA likewise needs local ML-DSA compiled in, which raises the `WOLFCOSE_MAX_SCRATCH_SZ` default to 8192 bytes and enforces a 4096-byte minimum.
+- Scratch must hold the `Sig_structure`, which embeds the payload, and delegated signing needs at least as much again for the signature:
+  - **ES\*, PS\*** pre-hash, so the signature reuses the `Sig_structure` space: `scratchSz >= max(Sig_structure, signature)`. Local ECDSA signs into a stack buffer and needs only the `Sig_structure`, so a small-payload ES256 case can need more scratch delegated than local.
+  - **EdDSA, Ed448, ML-DSA** sign the structure in place, so the signature goes after it: `scratchSz >= Sig_structure + signature`. Delegated Ed25519 needs 64 bytes more than the local path, Ed448 114.
+
+---
+
 ## CBOR Layer Gates
 
 | Define | Description | Default |
