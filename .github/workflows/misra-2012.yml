@@ -164,6 +164,7 @@ jobs:
                  -DWOLFCOSE_KEY_ENCODE \
                  -DWOLFCOSE_KEY_DECODE \
                  -DWOLFCOSE_FLOAT \
+                 -DWOLFCOSE_ENABLE_EXT_SIGN \
                  -I include -I src -I $HOME/wolfssl-install/include \
                  src/ include/ \
                  2>&1 | tee misra-report-raw.txt || true
