@@ -529,6 +529,1052 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
 }
 #endif /* WOLFCOSE_HAVE_ES256 */
 
+#if defined(WOLFCOSE_EXT_SIGN) && defined(WOLFCOSE_HAVE_ES256)
+typedef struct {
+    WC_RNG*  rng;
+    ecc_key* key;
+    size_t   coordSz;
+    int      called;
+} test_ext_ctx;
+
+/* External signer: produce fixed-width r||s, mirroring psa_sign_hash(). */
+static int test_ext_sign_cb(void* cbCtx, int32_t alg,
+                            const uint8_t* tbs, size_t tbsSz,
+                            uint8_t* sig, size_t sigSz, size_t* sigLen)
+{
+    test_ext_ctx* ctx = (test_ext_ctx*)cbCtx;
+    int ret;
+
+    (void)alg;
+    ctx->called++;
+    *sigLen = sigSz;
+    ret = wolfCose_EccSignRaw(tbs, tbsSz, sig, sigLen, ctx->coordSz,
+                              ctx->rng, ctx->key);
+    return (ret == 0) ? 0 : -1;
+}
+
+
+/* Reports the full signature length but writes only part of it, the natural
+ * result of omitting the r||s right-alignment fixup. */
+static int test_ext_sign_cb_short(void* cbCtx, int32_t alg,
+    const uint8_t* tbs, size_t tbsLen, uint8_t* sig, size_t sigSz,
+    size_t* sigLen)
+{
+    (void)cbCtx;
+    (void)alg;
+    (void)tbs;
+    (void)tbsLen;
+    if (sigSz < 64u) {
+        return -1;
+    }
+    memset(sig, 0x11, 8);
+    *sigLen = 64u;
+    return 0;
+}
+
+/* A signer that simply fails; wolfCOSE must surface that as an error. */
+static int test_ext_sign_cb_fail(void* cbCtx, int32_t alg,
+    const uint8_t* tbs, size_t tbsLen, uint8_t* sig, size_t sigSz,
+    size_t* sigLen)
+{
+    (void)cbCtx;
+    (void)alg;
+    (void)tbs;
+    (void)tbsLen;
+    (void)sig;
+    (void)sigSz;
+    (void)sigLen;
+    return -1;
+}
+
+/* Emit a wrong-length ECDSA signature; wolfCOSE must reject it by algorithm. */
+static int test_ext_sign_cb_badlen(void* cbCtx, int32_t alg,
+                                   const uint8_t* tbs, size_t tbsSz,
+                                   uint8_t* sig, size_t sigSz, size_t* sigLen)
+{
+    (void)cbCtx;
+    (void)alg;
+    (void)tbs;
+    (void)tbsSz;
+    if (sigSz < 32u) {
+        return -1;
+    }
+    memset(sig, 0xAB, 32);
+    *sigLen = 32u;
+    return 0;
+}
+
+
+
+/* Delegated signing: no private key on the COSE key; verify locally. */
+static void test_cose_sign1_ext_sign(void)
+{
+    WOLFCOSE_KEY signKey;
+    WOLFCOSE_KEY verifyKey;
+    ecc_key eccKey;
+    WC_RNG rng;
+    test_ext_ctx ctx;
+    int ret = 0;
+    int rngInited = 0;
+    int eccInited = 0;
+    uint8_t payload[] = "Hello wolfCOSE!";
+    uint8_t kid[] = "key-1";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+
+    TEST_LOG("  [Sign1 ext-sign]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret == 0) {
+        rngInited = 1;
+    }
+    else {
+        TEST_ASSERT(0, "rng init");
+    }
+
+    if (ret == 0) {
+        ret = wc_ecc_init(&eccKey);
+        if (ret == 0) {
+            eccInited = 1;
+        }
+        ret = (ret == 0) ? wc_ecc_make_key(&rng, 32, &eccKey) : ret;
+        if (ret != 0) {
+            TEST_ASSERT(0, "ecc keygen");
+        }
+    }
+
+    ctx.rng = &rng;
+    ctx.key = &eccKey;
+    ctx.coordSz = 32u;
+    ctx.called = 0;
+
+    /* rng is NULL to the API: the external signer owns its randomness. */
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&signKey);
+        if (ret == 0) {
+            signKey.kty = WOLFCOSE_KTY_EC2;
+            signKey.crv = WOLFCOSE_CRV_P256;
+            ret = wc_CoseKey_SetExtSigner(&signKey, test_ext_sign_cb, &ctx);
+        }
+        TEST_ASSERT(ret == 0, "ext-sign set signer");
+        TEST_ASSERT(signKey.key.ecc == NULL, "ext-sign no local ecc key");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ES256,
+            kid, sizeof(kid) - 1,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch),
+            out, sizeof(out), &outLen, NULL);
+        TEST_ASSERT(ret == 0 && outLen > 0, "ext-sign delegated sign");
+    }
+
+    /* Verify the delegated signature locally with the public key. */
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&verifyKey);
+        if (ret == 0) {
+            ret = wc_CoseKey_SetEcc(&verifyKey, WOLFCOSE_CRV_P256, &eccKey);
+        }
+        TEST_ASSERT(ret == 0, "verify key set ecc");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&verifyKey, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "ext-sign verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+                    (decPayload != NULL) &&
+                    memcmp(decPayload, payload, decPayloadLen) == 0,
+                    "ext-sign payload match");
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256, "ext-sign hdr alg");
+    }
+
+    /* Wrong-length ECDSA sig is rejected by alg size, even with kty unset. */
+    if (ret == 0) {
+        WOLFCOSE_KEY badKey;
+        uint8_t badOut[512];
+        size_t badOutLen = 0;
+        int badRet;
+        (void)wc_CoseKey_Init(&badKey);
+        (void)wc_CoseKey_SetExtSigner(&badKey, test_ext_sign_cb_badlen, NULL);
+        badRet = wc_CoseSign1_Sign(&badKey, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            badOut, sizeof(badOut), &badOutLen, NULL);
+        TEST_ASSERT(badRet == WOLFCOSE_E_CRYPTO,
+                    "ext-sign wrong length rejected by alg");
+    }
+
+    /* Forced-failure path: reachable only when both WOLFCOSE_FORCE_FAILURE
+     * and WOLFCOSE_ENABLE_EXT_SIGN are set (make ext-sign-force-failure). */
+#ifdef WOLFCOSE_FORCE_FAILURE
+    if (ret == 0) {
+        WOLFCOSE_KEY injKey;
+        uint8_t injOut[256];
+        size_t injOutLen = 1u;
+        int injRet;
+
+        (void)wc_CoseKey_Init(&injKey);
+        injKey.kty = WOLFCOSE_KTY_EC2;
+        injKey.crv = WOLFCOSE_CRV_P256;
+        (void)wc_CoseKey_SetExtSigner(&injKey, test_ext_sign_cb, &ctx);
+        wolfForceFailure_Set(WOLF_FAIL_EXT_SIGN);
+        injRet = wc_CoseSign1_Sign(&injKey, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            injOut, sizeof(injOut), &injOutLen, NULL);
+        TEST_ASSERT(injRet == WOLFCOSE_E_CRYPTO,
+                    "ext-sign forced failure surfaces");
+        TEST_ASSERT(injOutLen == 0u,
+                    "ext-sign forced failure zeroes output length");
+        wolfForceFailure_Clear();
+    }
+#endif
+
+    /* A short-writing callback must not publish leftover Sig_structure
+     * bytes, which for a detached payload is the plaintext itself. */
+    if (ret == 0) {
+        WOLFCOSE_KEY shortKey;
+        uint8_t shortOut[512];
+        size_t shortOutLen = 0;
+        int shortRet;
+        size_t si;
+        int leaked = 0;
+
+        (void)wc_CoseKey_Init(&shortKey);
+        shortKey.kty = WOLFCOSE_KTY_EC2;
+        shortKey.crv = WOLFCOSE_CRV_P256;
+        (void)wc_CoseKey_SetExtSigner(&shortKey, test_ext_sign_cb_short, NULL);
+        shortRet = wc_CoseSign1_Sign(&shortKey, WOLFCOSE_ALG_ES256, NULL, 0,
+            NULL, 0, payload, sizeof(payload) - 1, NULL, 0,
+            scratch, sizeof(scratch), shortOut, sizeof(shortOut),
+            &shortOutLen, NULL);
+        TEST_ASSERT(shortRet == WOLFCOSE_SUCCESS, "ext-sign short write signs");
+        for (si = 0; (si + sizeof(payload) - 1) <= shortOutLen; si++) {
+            if (memcmp(&shortOut[si], payload, sizeof(payload) - 1) == 0) {
+                leaked = 1;
+            }
+        }
+        TEST_ASSERT(leaked == 0,
+                    "ext-sign short write leaks no detached payload");
+    }
+
+    /* A callback that fails must surface as an error, not a bogus message. */
+    if (ret == 0) {
+        WOLFCOSE_KEY failKey;
+        uint8_t failOut[256];
+        size_t failOutLen = 1u;
+        int failRet;
+
+        (void)wc_CoseKey_Init(&failKey);
+        (void)wc_CoseKey_SetExtSigner(&failKey, test_ext_sign_cb_fail, NULL);
+        failRet = wc_CoseSign1_Sign(&failKey, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            failOut, sizeof(failOut), &failOutLen, NULL);
+        TEST_ASSERT(failRet == WOLFCOSE_E_CRYPTO,
+                    "ext-sign callback failure surfaces as crypto error");
+        TEST_ASSERT(failOutLen == 0u,
+                    "ext-sign callback failure zeroes output length");
+    }
+
+    /* A NULL callback detaches, and the detached key can no longer sign. */
+    if (ret == 0) {
+        WOLFCOSE_KEY tmp;
+        uint8_t tmpOut[256];
+        size_t tmpOutLen = 0;
+        int tmpRet;
+
+        (void)wc_CoseKey_Init(&tmp);
+        TEST_ASSERT(wc_CoseKey_SetExtSigner(&tmp, test_ext_sign_cb, &ctx) ==
+                    WOLFCOSE_SUCCESS, "ext-sign attach");
+        TEST_ASSERT(wc_CoseKey_SetExtSigner(&tmp, NULL, NULL) ==
+                    WOLFCOSE_SUCCESS, "ext-sign detach accepted");
+        /* rng is supplied so the NULL-rng precheck cannot mask the result:
+         * the detach itself must be what refuses the signature. */
+        tmpRet = wc_CoseSign1_Sign(&tmp, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            tmpOut, sizeof(tmpOut), &tmpOutLen, &rng);
+        TEST_ASSERT(tmpRet == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "ext-sign detached key cannot sign");
+    }
+
+    /* Attaching a local key drops a previously installed delegated signer.
+     * The callback signs with the same ecc_key, so a successful sign proves
+     * nothing; only the invocation count distinguishes the two paths. */
+    if (ret == 0) {
+        WOLFCOSE_KEY reKey;
+        uint8_t reOut[256];
+        size_t reOutLen = 0;
+        int reRet;
+        int calledBefore;
+
+        (void)wc_CoseKey_Init(&reKey);
+        TEST_ASSERT(wc_CoseKey_SetExtSigner(&reKey, test_ext_sign_cb, &ctx) ==
+                    WOLFCOSE_SUCCESS, "ext-sign attach before SetEcc");
+        reRet = wc_CoseKey_SetEcc(&reKey, WOLFCOSE_CRV_P256, &eccKey);
+        TEST_ASSERT(reRet == WOLFCOSE_SUCCESS, "ext-sign SetEcc over signer");
+        calledBefore = ctx.called;
+        reRet = wc_CoseSign1_Sign(&reKey, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            reOut, sizeof(reOut), &reOutLen, &rng);
+        TEST_ASSERT(reRet == WOLFCOSE_SUCCESS, "ext-sign local key signs");
+        TEST_ASSERT(reOutLen > 0u, "ext-sign local key produced output");
+        TEST_ASSERT(ctx.called == calledBefore,
+                    "ext-sign SetEcc detached the delegated signer");
+        wc_CoseKey_Free(&reKey);
+    }
+
+    /* Attaching a signer over a local private key must stop the private
+     * scalar being serialised, since the doc says the key is not here. */
+#if defined(WOLFCOSE_KEY_ENCODE)
+    if (ret == 0) {
+        WOLFCOSE_KEY privKey;
+        uint8_t privBuf[256];
+        size_t privLen = 0;
+        int privRet;
+
+        (void)wc_CoseKey_Init(&privKey);
+        privRet = wc_CoseKey_SetEcc(&privKey, WOLFCOSE_CRV_P256, &eccKey);
+        TEST_ASSERT(privRet == WOLFCOSE_SUCCESS, "ext-sign SetEcc private");
+        TEST_ASSERT(privKey.hasPrivate == 1u, "ext-sign private key attached");
+        TEST_ASSERT(wc_CoseKey_SetExtSigner(&privKey, test_ext_sign_cb, &ctx)
+                    == WOLFCOSE_SUCCESS, "ext-sign attach over private key");
+        privRet = wc_CoseKey_Encode(&privKey, privBuf, sizeof(privBuf),
+                                     &privLen);
+        TEST_ASSERT(privRet == WOLFCOSE_SUCCESS, "ext-sign encode delegated");
+        /* An EC2 COSE_Key is a 4-entry map public (kty/crv/x/y) and a 5-entry
+         * map once the private d is emitted. Scanning for the label byte
+         * would false-positive on random coordinate bytes. */
+        TEST_ASSERT(privLen > 0u && privBuf[0] == 0xA4u,
+                    "ext-sign delegated encode omits private scalar");
+
+        /* Detach must be reversible: the local key was never destroyed, so
+         * both signing and private-key export come back. */
+        TEST_ASSERT(wc_CoseKey_SetExtSigner(&privKey, NULL, NULL) ==
+                    WOLFCOSE_SUCCESS, "ext-sign detach over private key");
+        privLen = 0;
+        privRet = wc_CoseKey_Encode(&privKey, privBuf, sizeof(privBuf),
+                                     &privLen);
+        TEST_ASSERT(privRet == WOLFCOSE_SUCCESS, "ext-sign encode after detach");
+        TEST_ASSERT(privLen > 0u && privBuf[0] == 0xA5u,
+                    "ext-sign detach restores private scalar export");
+        privLen = 0;
+        privRet = wc_CoseSign1_Sign(&privKey, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            privBuf, sizeof(privBuf), &privLen, &rng);
+        TEST_ASSERT(privRet == WOLFCOSE_SUCCESS && privLen > 0u,
+                    "ext-sign local signing works after detach");
+        wc_CoseKey_Free(&privKey);
+    }
+#endif
+
+    /* Decoding into a signer-set key must fail closed rather than import
+     * private material and silently sign locally with it. */
+#if defined(WOLFCOSE_KEY_ENCODE) && defined(WOLFCOSE_KEY_DECODE)
+    if (ret == 0) {
+        WOLFCOSE_KEY encKey;
+        WOLFCOSE_KEY decKey;
+        uint8_t keyBuf[128];
+        size_t keyLen = 0;
+        int encRet;
+        int decRet;
+
+        (void)wc_CoseKey_Init(&encKey);
+        encRet = wc_CoseKey_SetEcc(&encKey, WOLFCOSE_CRV_P256, &eccKey);
+        if (encRet == 0) {
+            encRet = wc_CoseKey_Encode(&encKey, keyBuf, sizeof(keyBuf),
+                                       &keyLen);
+        }
+        TEST_ASSERT(encRet == 0, "encode key for decode test");
+        if (encRet == 0) {
+            (void)wc_CoseKey_Init(&decKey);
+            encRet = wc_CoseKey_SetEcc(&decKey, WOLFCOSE_CRV_P256, &eccKey);
+            TEST_ASSERT(encRet == 0, "decode test key attach");
+            encRet = wc_CoseKey_SetExtSigner(&decKey, test_ext_sign_cb, &ctx);
+            TEST_ASSERT(encRet == 0, "decode test signer attach");
+            decRet = wc_CoseKey_Decode(&decKey, keyBuf, keyLen);
+            TEST_ASSERT(decRet == WOLFCOSE_E_COSE_KEY_TYPE,
+                        "decode into delegated key rejected");
+            TEST_ASSERT(decKey.signCb != NULL,
+                        "rejected decode leaves signer attached");
+        }
+    }
+#endif
+
+    /* An undersized signature buffer is rejected before the callback runs, so a
+     * fixed-output signer cannot overrun it. 56 bytes holds the Sig_structure
+     * but is smaller than the 64-byte ES256 signature. */
+    if (ret == 0) {
+        WOLFCOSE_KEY smallKey;
+        uint8_t smallScratch[56];
+        uint8_t smallOut[512];
+        size_t smallOutLen = 0;
+        int smallRet;
+
+        ctx.called = 0;
+        (void)wc_CoseKey_Init(&smallKey);
+        smallKey.kty = WOLFCOSE_KTY_EC2;
+        smallKey.crv = WOLFCOSE_CRV_P256;
+        (void)wc_CoseKey_SetExtSigner(&smallKey, test_ext_sign_cb, &ctx);
+        smallRet = wc_CoseSign1_Sign(&smallKey, WOLFCOSE_ALG_ES256,
+            NULL, 0, payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0, smallScratch, sizeof(smallScratch),
+            smallOut, sizeof(smallOut), &smallOutLen, NULL);
+        TEST_ASSERT(smallRet == WOLFCOSE_E_BUFFER_TOO_SMALL,
+                    "ext-sign undersized buffer rejected");
+        TEST_ASSERT(ctx.called == 0,
+                    "ext-sign callback not called on undersized buffer");
+    }
+
+    if (eccInited != 0) {
+        (void)wc_ecc_free(&eccKey);
+    }
+    if (rngInited != 0) {
+        (void)wc_FreeRng(&rng);
+    }
+}
+#endif /* WOLFCOSE_EXT_SIGN && WOLFCOSE_HAVE_ES256 */
+
+/* EdDSA-only, so guarded without ES256 to match its call site. */
+#if defined(WOLFCOSE_EXT_SIGN) && defined(WOLFCOSE_HAVE_EDDSA)
+/* Records the capacity it was offered. The pre-fix guard skipped EdDSA and
+ * RSA-PSS entirely, so a fixed-output signer could be handed less room than
+ * its signature needs and overrun the caller's scratch. */
+static int g_ext_cap_called;
+
+static int test_ext_sign_cb_capture(void* cbCtx, int32_t alg,
+                                    const uint8_t* tbs, size_t tbsSz,
+                                    uint8_t* sig, size_t sigSz, size_t* sigLen)
+{
+    (void)cbCtx;
+    (void)alg;
+    (void)tbs;
+    (void)tbsSz;
+    (void)sig;
+    (void)sigSz;
+    g_ext_cap_called++;
+    *sigLen = 0;
+    return -1;
+}
+/* An Ed25519 delegated signer must never be invoked with less than its fixed
+ * 64-byte output, or it overruns the scratch buffer it was handed. */
+static void test_cose_sign1_ext_sign_eddsa_capacity(void)
+{
+    WOLFCOSE_KEY signKey;
+    uint8_t payload[] = "Hello wolfCOSE!";
+    uint8_t scratch[80];
+    uint8_t out[512];
+    size_t outLen = 0;
+    int ret;
+
+    TEST_LOG("  [Sign1 ext-sign EdDSA capacity]\n");
+
+    g_ext_cap_called = 0;
+
+    ret = wc_CoseKey_Init(&signKey);
+    TEST_ASSERT(ret == 0, "eddsa capacity key init");
+    if (ret != 0) {
+        return;
+    }
+    signKey.kty = WOLFCOSE_KTY_OKP;
+    signKey.crv = WOLFCOSE_CRV_ED25519;
+    ret = wc_CoseKey_SetExtSigner(&signKey, test_ext_sign_cb_capture, NULL);
+    TEST_ASSERT(ret == 0, "eddsa capacity set signer");
+
+    if (ret == 0) {
+        /* scratch leaves well under 64 bytes once the Sig_structure is built */
+        ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, NULL);
+        TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL,
+                    "eddsa undersized scratch is rejected");
+        TEST_ASSERT(g_ext_cap_called == 0,
+                    "eddsa signer not invoked with undersized buffer");
+    }
+
+    wc_CoseKey_Free(&signKey);
+}
+#endif /* WOLFCOSE_EXT_SIGN && WOLFCOSE_HAVE_EDDSA */
+
+/* Delegated signing for the algorithm families beyond ES256. Each callback
+ * holds the key the way an HSM would and wolfCOSE never sees private
+ * material, mirroring wolfBoot's hal_dice_sign_hash() integration. */
+#if defined(WOLFCOSE_EXT_SIGN)
+
+#if defined(WOLFCOSE_HAVE_EDDSA)
+static int test_ext_cb_ed25519(void* cbCtx, int32_t alg,
+                               const uint8_t* tbs, size_t tbsSz,
+                               uint8_t* sig, size_t sigSz, size_t* sigLen)
+{
+    ed25519_key* k = (ed25519_key*)cbCtx;
+    word32 len = (word32)sigSz;
+    int ret;
+
+    (void)alg;
+    ret = wc_ed25519_sign_msg(tbs, (word32)tbsSz, sig, &len, k);
+    if (ret != 0) {
+        return -1;
+    }
+    *sigLen = (size_t)len;
+    return 0;
+}
+
+static void test_cose_sign1_ext_sign_ed25519(void)
+{
+    WOLFCOSE_KEY signKey;
+    WOLFCOSE_KEY verifyKey;
+    ed25519_key edKey;
+    WC_RNG rng;
+    int ret = 0;
+    int rngInited = 0;
+    int edInited = 0;
+    uint8_t payload[] = "delegated ed25519";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[512];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+
+    TEST_LOG("  [Sign1 ext-sign Ed25519]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "ed25519 ext rng init");
+    if (ret == 0) {
+        rngInited = 1;
+        ret = wc_ed25519_init(&edKey);
+        TEST_ASSERT(ret == 0, "ed25519 ext key init");
+    }
+    if (ret == 0) {
+        edInited = 1;
+        ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
+        TEST_ASSERT(ret == 0, "ed25519 ext keygen");
+    }
+
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&signKey);
+        signKey.kty = WOLFCOSE_KTY_OKP;
+        signKey.crv = WOLFCOSE_CRV_ED25519;
+        ret = (ret == 0) ?
+            wc_CoseKey_SetExtSigner(&signKey, test_ext_cb_ed25519, &edKey) : ret;
+        TEST_ASSERT(ret == 0, "ed25519 ext set signer");
+        TEST_ASSERT(signKey.key.ed25519 == NULL, "ed25519 ext no local key");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_EDDSA, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, NULL);
+        TEST_ASSERT(ret == 0 && outLen > 0, "ed25519 ext delegated sign");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&verifyKey);
+        ret = (ret == 0) ? wc_CoseKey_SetEd25519(&verifyKey, &edKey) : ret;
+        TEST_ASSERT(ret == 0, "ed25519 ext verify key");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&verifyKey, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "ed25519 ext verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+            (decPayload != NULL) &&
+            memcmp(decPayload, payload, decPayloadLen) == 0,
+            "ed25519 ext payload match");
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_EDDSA, "ed25519 ext hdr alg");
+    }
+
+    if (edInited != 0) {
+        (void)wc_ed25519_free(&edKey);
+    }
+    if (rngInited != 0) {
+        (void)wc_FreeRng(&rng);
+    }
+}
+#endif /* WOLFCOSE_HAVE_EDDSA */
+
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
+typedef struct {
+    RsaKey* key;
+    WC_RNG* rng;
+    int     called;
+} test_ext_rsa_ctx;
+
+static int test_ext_cb_rsapss(void* cbCtx, int32_t alg,
+                              const uint8_t* tbs, size_t tbsSz,
+                              uint8_t* sig, size_t sigSz, size_t* sigLen)
+{
+    test_ext_rsa_ctx* c = (test_ext_rsa_ctx*)cbCtx;
+    int ret;
+
+    (void)alg;
+    c->called++;
+    ret = wc_RsaPSS_Sign_ex(tbs, (word32)tbsSz, sig, (word32)sigSz,
+                             WC_HASH_TYPE_SHA256, WC_MGF1SHA256,
+                             (int)tbsSz, c->key, c->rng);
+    if (ret <= 0) {
+        return -1;
+    }
+    *sigLen = (size_t)ret;
+    return 0;
+}
+
+static void test_cose_sign1_ext_sign_rsapss(void)
+{
+    WOLFCOSE_KEY signKey;
+    WOLFCOSE_KEY verifyKey;
+    static RsaKey rsaKey;
+    WC_RNG rng;
+    test_ext_rsa_ctx cbCtx;
+    int ret = 0;
+    int rngInited = 0;
+    int rsaInited = 0;
+    uint8_t payload[] = "delegated rsa-pss";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[1024];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+
+    TEST_LOG("  [Sign1 ext-sign RSA-PSS]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "rsapss ext rng init");
+    if (ret == 0) {
+        rngInited = 1;
+        ret = wc_InitRsaKey(&rsaKey, NULL);
+        TEST_ASSERT(ret == 0, "rsapss ext key init");
+    }
+    if (ret == 0) {
+        rsaInited = 1;
+        ret = wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng);
+        TEST_ASSERT(ret == 0, "rsapss ext keygen");
+    }
+    if (ret == 0) {
+        ret = wc_RsaSetRNG(&rsaKey, &rng);
+        TEST_ASSERT(ret == 0, "rsapss ext set rng");
+    }
+
+    cbCtx.key = &rsaKey;
+    cbCtx.rng = &rng;
+    cbCtx.called = 0;
+
+    /* SetRsa first: the modulus size gives the expected signature length,
+     * and SetExtSigner must come last or it would be detached. */
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&signKey);
+        ret = (ret == 0) ? wc_CoseKey_SetRsa(&signKey, &rsaKey) : ret;
+        ret = (ret == 0) ?
+            wc_CoseKey_SetExtSigner(&signKey, test_ext_cb_rsapss, &cbCtx) : ret;
+        TEST_ASSERT(ret == 0, "rsapss ext set signer");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_PS256, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, NULL);
+        TEST_ASSERT(ret == 0 && outLen > 0, "rsapss ext delegated sign");
+        /* The local RSA key is attached for its modulus size, so success
+         * alone cannot tell the two paths apart. */
+        TEST_ASSERT(cbCtx.called == 1, "rsapss ext callback produced the sig");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&verifyKey);
+        ret = (ret == 0) ? wc_CoseKey_SetRsa(&verifyKey, &rsaKey) : ret;
+        TEST_ASSERT(ret == 0, "rsapss ext verify key");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&verifyKey, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "rsapss ext verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+            (decPayload != NULL) &&
+            memcmp(decPayload, payload, decPayloadLen) == 0,
+            "rsapss ext payload match");
+    }
+
+    /* The RSA arm derives the length from the attached key, so each way of
+     * failing to supply one must be rejected rather than fall through to the
+     * algorithm-only default. */
+    if (ret == 0) {
+        WOLFCOSE_KEY badKey;
+        uint8_t badOut[1024];
+        size_t badOutLen = 0;
+        int badRet;
+
+        /* attachedType says RSA and kty agrees, but no key object is
+         * attached, so only the NULL-union clause can reject this. */
+        (void)wc_CoseKey_Init(&badKey);
+        badKey.kty = WOLFCOSE_KTY_RSA;
+        badKey.attachedType = WOLFCOSE_ATT_RSA;
+        badKey.key.rsa = NULL;
+        (void)wc_CoseKey_SetExtSigner(&badKey, test_ext_cb_rsapss, &cbCtx);
+        cbCtx.called = 0;
+        badRet = wc_CoseSign1_Sign(&badKey, WOLFCOSE_ALG_PS256, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), badOut, sizeof(badOut), &badOutLen,
+            NULL);
+        TEST_ASSERT(badRet == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "rsapss ext NULL key object rejected");
+        TEST_ASSERT(cbCtx.called == 0,
+                    "rsapss ext callback not run without a key");
+
+        /* A real RsaKey is attached, but attachedType disagrees, which is
+         * the clause that stops the union being read as the wrong type. */
+        (void)wc_CoseKey_Init(&badKey);
+        badKey.kty = WOLFCOSE_KTY_RSA;
+        badKey.attachedType = WOLFCOSE_ATT_ECC;
+        badKey.key.rsa = (RsaKey*)&rsaKey;
+        (void)wc_CoseKey_SetExtSigner(&badKey, test_ext_cb_rsapss, &cbCtx);
+        cbCtx.called = 0;
+        badRet = wc_CoseSign1_Sign(&badKey, WOLFCOSE_ALG_PS256, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), badOut, sizeof(badOut), &badOutLen,
+            NULL);
+        TEST_ASSERT(badRet == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "rsapss ext attachedType mismatch rejected");
+        TEST_ASSERT(cbCtx.called == 0,
+                    "rsapss ext callback not run on type mismatch");
+
+        /* Consistent attachment, but the declared kty is not RSA. */
+        (void)wc_CoseKey_Init(&badKey);
+        (void)wc_CoseKey_SetRsa(&badKey, &rsaKey);
+        badKey.kty = WOLFCOSE_KTY_EC2;
+        (void)wc_CoseKey_SetExtSigner(&badKey, test_ext_cb_rsapss, &cbCtx);
+        cbCtx.called = 0;
+        badRet = wc_CoseSign1_Sign(&badKey, WOLFCOSE_ALG_PS256, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), badOut, sizeof(badOut), &badOutLen,
+            NULL);
+        TEST_ASSERT(badRet == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "rsapss ext wrong kty rejected");
+        TEST_ASSERT(cbCtx.called == 0,
+                    "rsapss ext callback not run on wrong kty");
+    }
+
+    if (rsaInited != 0) {
+        (void)wc_FreeRsaKey(&rsaKey);
+    }
+    if (rngInited != 0) {
+        (void)wc_FreeRng(&rng);
+    }
+}
+#endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
+#endif /* WOLFCOSE_EXT_SIGN */
+
+#if defined(WOLFCOSE_EXT_SIGN) && defined(WOLFCOSE_HAVE_MLDSA)
+typedef struct {
+    wc_MlDsaKey* key;
+    WC_RNG*      rng;
+} test_ext_mldsa_ctx;
+
+static int test_ext_cb_mldsa(void* cbCtx, int32_t alg,
+                             const uint8_t* tbs, size_t tbsSz,
+                             uint8_t* sig, size_t sigSz, size_t* sigLen)
+{
+    test_ext_mldsa_ctx* c = (test_ext_mldsa_ctx*)cbCtx;
+    word32 len = (word32)sigSz;
+    int ret;
+
+    (void)alg;
+    /* Empty context string, matching the local ML-DSA branch. */
+    ret = wc_MlDsaKey_SignCtx(c->key, NULL, 0, sig, &len,
+                               tbs, (word32)tbsSz, c->rng);
+    if (ret != 0) {
+        return -1;
+    }
+    *sigLen = (size_t)len;
+    return 0;
+}
+
+static void test_cose_sign1_ext_sign_mldsa(void)
+{
+    static wc_MlDsaKey dlKey;
+    WOLFCOSE_KEY signKey;
+    WOLFCOSE_KEY verifyKey;
+    WC_RNG rng;
+    test_ext_mldsa_ctx cbCtx;
+    int ret = 0;
+    int rngInited = 0;
+    int dlInited = 0;
+    uint8_t payload[] = "delegated ml-dsa";
+    static uint8_t scratch[8192];
+    static uint8_t out[8192];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+
+    TEST_LOG("  [Sign1 ext-sign ML-DSA]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "mldsa ext rng init");
+    if (ret == 0) {
+        rngInited = 1;
+        ret = wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
+        TEST_ASSERT(ret == 0, "mldsa ext key init");
+    }
+    if (ret == 0) {
+        dlInited = 1;
+        ret = wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
+        TEST_ASSERT(ret == 0, "mldsa ext set params");
+    }
+    if (ret == 0) {
+        ret = wc_MlDsaKey_MakeKey(&dlKey, &rng);
+        TEST_ASSERT(ret == 0, "mldsa ext keygen");
+    }
+
+    cbCtx.key = &dlKey;
+    cbCtx.rng = &rng;
+
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&signKey);
+        signKey.kty = WOLFCOSE_KTY_AKP;
+        ret = (ret == 0) ?
+            wc_CoseKey_SetExtSigner(&signKey, test_ext_cb_mldsa, &cbCtx) : ret;
+        TEST_ASSERT(ret == 0, "mldsa ext set signer");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Sign(&signKey, WOLFCOSE_ALG_ML_DSA_44, NULL, 0,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, NULL);
+        TEST_ASSERT(ret == 0 && outLen > 0, "mldsa ext delegated sign");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&verifyKey);
+        ret = (ret == 0) ?
+            wc_CoseKey_SetMlDsa(&verifyKey, WOLFCOSE_ALG_ML_DSA_44, &dlKey) : ret;
+        TEST_ASSERT(ret == 0, "mldsa ext verify key");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&verifyKey, out, outLen, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == 0, "mldsa ext verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+            (decPayload != NULL) &&
+            memcmp(decPayload, payload, decPayloadLen) == 0,
+            "mldsa ext payload match");
+    }
+
+    if (dlInited != 0) {
+        (void)wc_MlDsaKey_Free(&dlKey);
+    }
+    if (rngInited != 0) {
+        (void)wc_FreeRng(&rng);
+    }
+}
+#endif /* WOLFCOSE_EXT_SIGN && WOLFCOSE_HAVE_MLDSA */
+
+/* The delegated branch in wc_CoseSign_Sign had no coverage at all: a message
+ * mixing a local signer with a delegated one exercises both arms. */
+#if defined(WOLFCOSE_EXT_SIGN) && defined(WOLFCOSE_SIGN_SIGN) && \
+    defined(WOLFCOSE_SIGN_VERIFY) && defined(WOLFCOSE_HAVE_ES256)
+static void test_cose_sign_ext_sign_multi(void)
+{
+    WOLFCOSE_KEY localKey;
+    WOLFCOSE_KEY extKey;
+    WOLFCOSE_KEY verifyKey;
+    WOLFCOSE_SIGNATURE signers[2];
+    ecc_key localEcc;
+    ecc_key extEcc;
+    WC_RNG rng;
+    test_ext_ctx ctx;
+    int ret = 0;
+    int rngInited = 0;
+    int localInited = 0;
+    int extInited = 0;
+    uint8_t payload[] = "multi-signer delegated";
+    uint8_t kidA[] = "local";
+    uint8_t kidB[] = "hsm";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[1024];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+
+    TEST_LOG("  [Sign multi-signer ext-sign]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "multi ext rng init");
+    if (ret == 0) {
+        rngInited = 1;
+        ret = wc_ecc_init(&localEcc);
+        TEST_ASSERT(ret == 0, "multi local ecc init");
+    }
+    if (ret == 0) {
+        localInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &localEcc);
+        TEST_ASSERT(ret == 0, "multi local keygen");
+    }
+    if (ret == 0) {
+        ret = wc_ecc_init(&extEcc);
+        TEST_ASSERT(ret == 0, "multi ext ecc init");
+    }
+    if (ret == 0) {
+        extInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &extEcc);
+        TEST_ASSERT(ret == 0, "multi ext keygen");
+    }
+
+    ctx.rng = &rng;
+    ctx.key = &extEcc;
+    ctx.coordSz = 32u;
+    ctx.called = 0;
+
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&localKey);
+        ret = (ret == 0) ?
+            wc_CoseKey_SetEcc(&localKey, WOLFCOSE_CRV_P256, &localEcc) : ret;
+        TEST_ASSERT(ret == 0, "multi local key");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&extKey);
+        extKey.kty = WOLFCOSE_KTY_EC2;
+        extKey.crv = WOLFCOSE_CRV_P256;
+        ret = (ret == 0) ?
+            wc_CoseKey_SetExtSigner(&extKey, test_ext_sign_cb, &ctx) : ret;
+        TEST_ASSERT(ret == 0, "multi ext signer");
+    }
+
+    signers[0].algId = WOLFCOSE_ALG_ES256;
+    signers[0].key = &localKey;
+    signers[0].kid = kidA;
+    signers[0].kidLen = sizeof(kidA) - 1;
+    signers[1].algId = WOLFCOSE_ALG_ES256;
+    signers[1].key = &extKey;
+    signers[1].kid = kidB;
+    signers[1].kidLen = sizeof(kidB) - 1;
+
+    if (ret == 0) {
+        ret = wc_CoseSign_Sign(signers, 2,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == 0 && outLen > 0, "multi delegated sign");
+        TEST_ASSERT(ctx.called == 1, "multi delegated callback invoked once");
+    }
+
+    /* Signer 0 is local, signer 1 came from the callback; both must verify. */
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&verifyKey);
+        ret = (ret == 0) ?
+            wc_CoseKey_SetEcc(&verifyKey, WOLFCOSE_CRV_P256, &localEcc) : ret;
+        ret = (ret == 0) ? wc_CoseSign_Verify(&verifyKey, 0, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen) : ret;
+        TEST_ASSERT(ret == 0, "multi verify local signer");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&verifyKey);
+        ret = (ret == 0) ?
+            wc_CoseKey_SetEcc(&verifyKey, WOLFCOSE_CRV_P256, &extEcc) : ret;
+        ret = (ret == 0) ? wc_CoseSign_Verify(&verifyKey, 1, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen) : ret;
+        TEST_ASSERT(ret == 0, "multi verify delegated signer");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+            (decPayload != NULL) &&
+            memcmp(decPayload, payload, decPayloadLen) == 0,
+            "multi payload match");
+    }
+
+    if (localInited != 0) {
+        (void)wc_ecc_free(&localEcc);
+    }
+    if (extInited != 0) {
+        (void)wc_ecc_free(&extEcc);
+    }
+    if (rngInited != 0) {
+        (void)wc_FreeRng(&rng);
+    }
+}
+#endif /* EXT_SIGN && SIGN_SIGN && SIGN_VERIFY && HAVE_ES256 */
+
+/* The multi-signer delegated branch places the signature past the
+ * Sig_structure only for algorithms that sign it in place. ES256 takes the
+ * other arm, so a delegated Ed25519 signer is what covers this one. */
+#if defined(WOLFCOSE_EXT_SIGN) && defined(WOLFCOSE_SIGN_SIGN) && \
+    defined(WOLFCOSE_SIGN_VERIFY) && defined(WOLFCOSE_HAVE_EDDSA)
+static void test_cose_sign_ext_sign_ed25519(void)
+{
+    WOLFCOSE_KEY signKey;
+    WOLFCOSE_KEY verifyKey;
+    WOLFCOSE_SIGNATURE signers[1];
+    ed25519_key edKey;
+    WC_RNG rng;
+    int ret = 0;
+    int rngInited = 0;
+    int edInited = 0;
+    uint8_t payload[] = "multi delegated ed25519";
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[1024];
+    size_t outLen = 0;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0;
+    WOLFCOSE_HDR hdr;
+
+    TEST_LOG("  [Sign multi-signer ext-sign Ed25519]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "multi ed ext rng init");
+    if (ret == 0) {
+        rngInited = 1;
+        ret = wc_ed25519_init(&edKey);
+        TEST_ASSERT(ret == 0, "multi ed ext key init");
+    }
+    if (ret == 0) {
+        edInited = 1;
+        ret = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey);
+        TEST_ASSERT(ret == 0, "multi ed ext keygen");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&signKey);
+        signKey.kty = WOLFCOSE_KTY_OKP;
+        signKey.crv = WOLFCOSE_CRV_ED25519;
+        ret = (ret == 0) ?
+            wc_CoseKey_SetExtSigner(&signKey, test_ext_cb_ed25519, &edKey) : ret;
+        TEST_ASSERT(ret == 0, "multi ed ext set signer");
+    }
+
+    signers[0].algId = WOLFCOSE_ALG_EDDSA;
+    signers[0].key = &signKey;
+    signers[0].kid = NULL;
+    signers[0].kidLen = 0;
+
+    if (ret == 0) {
+        ret = wc_CoseSign_Sign(signers, 1,
+            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, NULL);
+        TEST_ASSERT(ret == 0 && outLen > 0, "multi ed delegated sign");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&verifyKey);
+        ret = (ret == 0) ? wc_CoseKey_SetEd25519(&verifyKey, &edKey) : ret;
+        ret = (ret == 0) ? wc_CoseSign_Verify(&verifyKey, 0, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen) : ret;
+        TEST_ASSERT(ret == 0, "multi ed delegated verify");
+        TEST_ASSERT(decPayloadLen == sizeof(payload) - 1 &&
+            (decPayload != NULL) &&
+            memcmp(decPayload, payload, decPayloadLen) == 0,
+            "multi ed payload match");
+    }
+
+    if (edInited != 0) {
+        (void)wc_ed25519_free(&edKey);
+    }
+    if (rngInited != 0) {
+        (void)wc_FreeRng(&rng);
+    }
+}
+#endif /* EXT_SIGN && SIGN_SIGN && SIGN_VERIFY && HAVE_EDDSA */
+
 #ifdef WOLFCOSE_HAVE_EDDSA
 static void test_cose_sign1_eddsa(void)
 {
@@ -5444,7 +6490,8 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
 {
     int ret = -1;
     WOLFCOSE_CBOR_CTX ctx;
-    uint64_t count = 0;
+    uint64_t tagVal = 0;
+    size_t count = 0;
     const uint8_t* protectedData = NULL;
     size_t protectedLen = 0;
     size_t protectedOffset;
@@ -5455,7 +6502,7 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
 
     if ((ctx.idx < ctx.bufSz) &&
         (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
-        ret = wc_CBOR_DecodeTag(&ctx, &count);
+        ret = wc_CBOR_DecodeTag(&ctx, &tagVal);
     }
     else {
         ret = 0;
@@ -17427,6 +18474,12 @@ int test_cose(void)
     test_cose_sign1_ecc("ES256", WOLFCOSE_ALG_ES256, WOLFCOSE_CRV_P256, 32);
     test_cose_sign1_with_aad();
     test_cose_sign1_detached();
+#if defined(WOLFCOSE_EXT_SIGN)
+    test_cose_sign1_ext_sign();
+#if defined(WOLFCOSE_SIGN_SIGN) && defined(WOLFCOSE_SIGN_VERIFY)
+    test_cose_sign_ext_sign_multi();
+#endif
+#endif
 #if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
     test_cose_sign1_word32_overflow_guard();
 #endif
@@ -17435,6 +18488,24 @@ int test_cose(void)
 #endif
 #ifdef WOLFCOSE_HAVE_ES512
     test_cose_sign1_ecc("ES512", WOLFCOSE_ALG_ES512, WOLFCOSE_CRV_P521, 66);
+#endif
+#endif
+
+    /* Delegated per-family tests: guarded by their own algorithm only, so
+     * they still run in profiles that build without ES256. */
+#if defined(WOLFCOSE_EXT_SIGN)
+#if defined(WOLFCOSE_HAVE_EDDSA)
+    test_cose_sign1_ext_sign_eddsa_capacity();
+    test_cose_sign1_ext_sign_ed25519();
+#if defined(WOLFCOSE_SIGN_SIGN) && defined(WOLFCOSE_SIGN_VERIFY)
+    test_cose_sign_ext_sign_ed25519();
+#endif
+#endif
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
+    test_cose_sign1_ext_sign_rsapss();
+#endif
+#if defined(WOLFCOSE_HAVE_MLDSA)
+    test_cose_sign1_ext_sign_mldsa();
 #endif
 #endif
 #ifdef WOLFCOSE_HAVE_EDDSA
@@ -17592,13 +18663,11 @@ int test_cose(void)
 
     /* Phase 1: Algorithm Combination Tests */
     TEST_LOG("\n--- Algorithm Combination Tests ---\n");
-#ifdef WOLFCOSE_HAVE_ES256
 #ifdef WOLFCOSE_HAVE_ES384
     test_cose_sign1_es384();
 #endif
 #ifdef WOLFCOSE_HAVE_ES512
     test_cose_sign1_es512();
-#endif
 #endif
 #ifdef WOLFCOSE_HAVE_AESGCM
     test_cose_encrypt0_a192gcm();

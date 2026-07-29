@@ -98,6 +98,9 @@ typedef enum {
     /* Hash failures */
     WOLF_FAIL_HASH,                  /* wc_Hash */
 
+    /* External signer failures */
+    WOLF_FAIL_EXT_SIGN,              /* WOLFCOSE_SIGN_CB */
+
     WOLF_FAIL_COUNT
 } WolfForceFailure;
 
