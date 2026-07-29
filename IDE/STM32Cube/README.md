@@ -17,6 +17,9 @@ This directory holds the files the pack builds from:
 
 Install the wolfSSL pack (`I-CUBE-wolfSSL`, version 5.9.2 or later) first and
 enable `wolfCrypt: Core`. wolfCOSE uses wolfCrypt for hashing, signing, and AEAD.
+See the
+[wolfSSL STM32Cube README](https://github.com/wolfSSL/wolfssl/blob/master/IDE/STM32Cube/README.md)
+for the wolfSSL pack documentation and install instructions.
 
 ## Enabling in STM32CubeMX
 
