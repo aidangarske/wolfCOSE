@@ -242,6 +242,11 @@ static int tool_keygen(int32_t alg, const char* algStr, const char* outPath)
     uint8_t keyBuf[WOLFCOSE_TOOL_MAX_KEY];
     size_t keyLen = 0;
 
+#if !defined(WOLFCOSE_HAVE_EDDSA) && !defined(WOLFCOSE_HAVE_ED448)
+    /* Only the Ed448-vs-Ed25519 disambiguation reads this. */
+    (void)algStr;
+#endif
+
     ret = wc_InitRng(&rng);
     if (ret != 0) {
         fprintf(stderr, "RNG init failed: %d\n", ret);
@@ -435,6 +440,12 @@ static int tool_sign(const char* keyPath, int32_t alg, const char* algStr,
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     WOLFCOSE_KEY coseKey;
     WC_RNG rng;
+
+#if !defined(WOLFCOSE_HAVE_EDDSA) && !defined(WOLFCOSE_HAVE_ED448)
+    /* Only the Ed448-vs-Ed25519 disambiguation reads this. */
+    (void)algStr;
+#endif
+
 
     ret = read_file(keyPath, keyBuf, sizeof(keyBuf), &keyLen);
     if (ret != 0) return ret;
