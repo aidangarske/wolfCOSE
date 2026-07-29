@@ -104,6 +104,19 @@ extern "C" {
     #endif
 #endif /* WOLFCOSE_LEAN_MLDSA */
 
+/* ----- Integration seams -----
+ *
+ * Opt-in in every build, including a full one. These are not algorithms, so
+ * there is no "wolfSSL provides the primitive" clause to auto-enable them and a
+ * default build is byte-identical to one built without them.
+ * ----- */
+
+/* External/delegated signing: the caller supplies the signature over the
+ * to-be-signed bytes, so no private key material enters wolfCOSE — extension. */
+#if defined(WOLFCOSE_ENABLE_EXT_SIGN)
+    #define WOLFCOSE_EXT_SIGN
+#endif
+
 /* ----- Signature algorithms ----- */
 
 /* ES256 — core (on whenever wolfSSL has ECC) */
@@ -501,6 +514,11 @@ extern "C" {
 
 #if defined(WOLFCOSE_HAVE_MLDSA) && (WOLFCOSE_MAX_SCRATCH_SZ < 4096u)
     #error "wolfCOSE: ML-DSA enabled but WOLFCOSE_MAX_SCRATCH_SZ too small"
+#endif
+
+#if defined(WOLFCOSE_EXT_SIGN) && !defined(WOLFCOSE_SIGN1_SIGN) && \
+    !defined(WOLFCOSE_SIGN_SIGN)
+    #error "WOLFCOSE_ENABLE_EXT_SIGN needs a signing op, which needs at least one local signature algorithm; the LEAN_VERIFY profiles are incompatible"
 #endif
 
 #ifdef __cplusplus

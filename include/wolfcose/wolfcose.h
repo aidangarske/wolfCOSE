@@ -314,6 +314,26 @@ typedef struct WOLFCOSE_HDR {
 #define WOLFCOSE_HDR_FLAG_DETACHED 0x01u
 
 /**
+ * \brief Caller-supplied signature callback (RFC 9052 Section 4.4).
+ *
+ * Return the signature exactly as it appears in the message; for ECDSA that is
+ * fixed-width r||s (RFC 9053 Section 2.1), not DER. wolfCOSE converts nothing
+ * but does check the length. See docs/Macros.md.
+ *
+ * \param cbCtx  Opaque caller context, passed through untouched.
+ * \param alg    WOLFCOSE_ALG_* being signed with.
+ * \param tbs    To-be-signed bytes (digest, or Sig_structure for EdDSA).
+ * \param tbsSz  Length of tbs.
+ * \param sig    Output buffer for the signature.
+ * \param sigSz  Capacity of sig.
+ * \param sigLen Output: bytes written to sig.
+ * \return 0 on success, non-zero to fail the operation.
+ */
+typedef int (*WOLFCOSE_SIGN_CB)(void* cbCtx, int32_t alg,
+                                const uint8_t* tbs, size_t tbsSz,
+                                uint8_t* sig, size_t sigSz, size_t* sigLen);
+
+/**
  * \brief COSE key structure. Pointers to caller-owned wolfCrypt key structs.
  *
  * Caller allocates and initializes wolfCrypt keys (wc_ecc_init, etc).
@@ -353,8 +373,21 @@ typedef struct WOLFCOSE_KEY {
     const uint8_t* mldsaSeed;    /**< RFC 9964 ML-DSA private seed (32B), caller-owned */
     size_t         mldsaSeedLen; /**< ML-DSA private seed length */
 #endif
-    uint8_t hasPrivate;  /**< 1 if private key material present */
+    uint8_t hasPrivate;  /**< 1 if wolfCOSE holds private key material.
+                          *   Independent of signCb: a delegated key may also
+                          *   carry a local key, which wc_CoseKey_Encode then
+                          *   declines to serialise. */
     uint8_t attachedType; /**< WOLFCOSE_ATT_*, set by wc_CoseKey_Set*() */
+    /* Appended last and present regardless of WOLFCOSE_ENABLE_EXT_SIGN, so
+     * that macro alone cannot make a library and an application disagree
+     * about sizeof(WOLFCOSE_KEY). Fields above still sit behind wolfSSL
+     * feature macros, which must match between the two. */
+    WOLFCOSE_SIGN_CB signCb;   /**< NULL: sign locally with wolfCrypt.
+                                *   wc_CoseKey_Init() is mandatory: this is
+                                *   called if non-NULL, so an uninitialised
+                                *   key is an indirect call through stack
+                                *   garbage. */
+    void*            signCtx;  /**< Opaque, passed to signCb untouched */
 } WOLFCOSE_KEY;
 
 /**
@@ -641,6 +674,25 @@ WOLFCOSE_API int wc_CoseKey_SetRsa(WOLFCOSE_KEY* key, RsaKey* rsaKey);
  */
 WOLFCOSE_API int wc_CoseKey_SetSymmetric(WOLFCOSE_KEY* key,
                                           const uint8_t* data, size_t dataLen);
+
+#if defined(WOLFCOSE_EXT_SIGN)
+/**
+ * \brief Delegate signing to a caller-supplied callback.
+ *
+ * Call after any wc_CoseKey_Set*(), which detach the signer. Leaves kty/crv,
+ * the key union and hasPrivate alone, but wc_CoseKey_Encode() will not
+ * serialise a private key while a signer is attached. Permits a NULL rng.
+ *
+ * Which kty/crv each algorithm still needs: see docs/Macros.md.
+ *
+ * \param key    COSE key (must be initialized).
+ * \param cb     Signature callback, or NULL to detach.
+ * \param cbCtx  Opaque context passed to cb (may be NULL).
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_SetExtSigner(WOLFCOSE_KEY* key,
+                                          WOLFCOSE_SIGN_CB cb, void* cbCtx);
+#endif
 
 #if defined(WOLFCOSE_KEY_ENCODE)
 /**

@@ -299,6 +299,7 @@ WOLFCOSE_LOCAL int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
                                         WC_RNG* rng, ecc_key* eccKey);
 #endif /* WOLFCOSE_SIGN1_SIGN || WOLFCOSE_SIGN_SIGN */
 
+
 /**
  * \brief Verify a raw r||s ECC signature.
  *        Converts raw r||s -> DER then calls wc_ecc_verify_hash.
@@ -316,6 +317,27 @@ WOLFCOSE_LOCAL int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
                                           size_t coordSz,
                                           ecc_key* eccKey, int* verified);
 #endif /* WOLFCOSE_HAVE_ECDSA */
+
+#if defined(WOLFCOSE_EXT_SIGN)
+/**
+ * \brief Produce a signature via the key's external signer callback.
+ *        Pre-hashes the Sig_structure for algorithms whose primitive takes a
+ *        digest, then validates the length the callback reports.
+ * \param key           Key with signCb set.
+ * \param alg           WOLFCOSE_ALG_* being signed with.
+ * \param sigStruct     Encoded Sig_structure.
+ * \param sigStructLen  Sig_structure length.
+ * \param sig           Output buffer for the signature.
+ * \param sigSz         Capacity of sig.
+ * \param sigLen        Output: bytes written to sig.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_LOCAL int wolfCose_ExtSign(const WOLFCOSE_KEY* key, int32_t alg,
+                                     const uint8_t* sigStruct,
+                                     size_t sigStructLen,
+                                     uint8_t* sig, size_t sigSz,
+                                     size_t* sigLen);
+#endif /* WOLFCOSE_EXT_SIGN */
 
 #ifdef __cplusplus
 }
