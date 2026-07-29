@@ -49,6 +49,7 @@ MAC_DEMO  = examples/mac0_demo
 SIGN1_DEMO = examples/sign1_demo
 LEANV_DEMO = examples/sign1_verify_lean
 MLDSA_DEMO  = examples/sign1_mldsa
+EXTSIGN_DEMO = examples/ext_sign_demo
 MLDSAV_DEMO = examples/sign1_verify_mldsa
 
 # Comprehensive tests (CI)
@@ -64,7 +65,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test zeroize-test coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check clean
+.PHONY: all shared test zeroize-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check clean
 
 # --- Core library ---
 all: $(LIB_A)
@@ -90,6 +91,12 @@ zeroize-test:
 	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(LDFLAGS)
 	./$(TEST_BIN)
 
+# --- Delegated signing seam test: exercises the ext-sign callback ---
+ext-sign-test:
+	$(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EXT_SIGN \
+	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(LDFLAGS)
+	./$(TEST_BIN)
+
 # --- Coverage ---
 coverage: clean
 	$(CC) $(CFLAGS) --coverage -fprofile-arcs -ftest-coverage -c src/wolfcose_cbor.c -o src/wolfcose_cbor.o
@@ -109,6 +116,14 @@ coverage-force-failure: clean
 	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE --coverage -fprofile-arcs -ftest-coverage -o $(TEST_BIN) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LIB_A) $(LDFLAGS)
 	./$(TEST_BIN)
 	gcov src/*.c
+
+# --- Forced-failure coverage of the delegated seam ---
+# WOLF_FAIL_EXT_SIGN lives behind both WOLFCOSE_FORCE_FAILURE and
+# WOLFCOSE_ENABLE_EXT_SIGN, so it is unreachable unless both are set.
+ext-sign-force-failure: clean
+	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE -DWOLFCOSE_ENABLE_EXT_SIGN \
+	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LDFLAGS)
+	./$(TEST_BIN)
 
 # --- CLI Tool (compiled out of core lib) ---
 tool: $(LIB_A)
@@ -153,6 +168,15 @@ lean-verify:
 		$(LEANV_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS)
 	@echo "=== Running lean verify-only example ==="
 	./$(LEANV_DEMO)
+
+# --- Delegated signing example (WOLFCOSE_ENABLE_EXT_SIGN) ---
+# Built from sources with the opt-in macro, since the prebuilt library does
+# not carry the seam.
+ext-sign-demo:
+	$(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EXT_SIGN -o $(EXTSIGN_DEMO) \
+		$(EXTSIGN_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS)
+	@echo "=== Running delegated signing example ==="
+	./$(EXTSIGN_DEMO)
 
 # --- Post-quantum ML-DSA lean sign + verify (WOLFCOSE_LEAN_MLDSA) ---
 # Requires wolfSSL built with ML-DSA (./configure --enable-dilithium).
@@ -232,10 +256,12 @@ C99_SRC   = $(SRC) $(TEST_SRC) $(TOOL_SRC) $(DEMO_SRC) \
             $(ENC_DEMO).c $(MAC_DEMO).c $(SIGN1_DEMO).c \
             $(COMP_SIGN).c $(COMP_ENCRYPT).c $(COMP_MAC).c $(COMP_ERRORS).c \
             $(SCEN_FIRMWARE).c $(SCEN_MULTIPARTY).c $(SCEN_IOTFLEET).c \
-            $(SCEN_SENSOR).c $(SCEN_BROADCAST).c
-# Default features plus the opt-in WOLFCOSE_FLOAT paths, so the gate judges
-# every conditionally-compiled translation unit, not just the default subset.
-C99_CONFIGS = "" "-DWOLFCOSE_FLOAT"
+            $(SCEN_SENSOR).c $(SCEN_BROADCAST).c $(EXTSIGN_DEMO).c
+# Default features plus the opt-in paths (WOLFCOSE_FLOAT, delegated signing,
+# and delegated signing without EdDSA), so the gate judges every
+# conditionally-compiled translation unit, not just the default subset.
+C99_CONFIGS = "" "-DWOLFCOSE_FLOAT" "-DWOLFCOSE_ENABLE_EXT_SIGN" \
+    "-DWOLFCOSE_ENABLE_EXT_SIGN -DWOLFCOSE_NO_EDDSA -DWOLFCOSE_NO_ED448"
 
 c99-check:
 	@for cfg in $(C99_CONFIGS); do \
@@ -249,8 +275,10 @@ c99-check:
 # --- Cleanup ---
 clean:
 	rm -f $(OBJ) $(TEST_BIN) $(TOOL_BIN) $(DEMO_BIN) $(ENC_DEMO) $(MAC_DEMO) \
-	    $(SIGN1_DEMO) $(COMP_SIGN) $(COMP_ENCRYPT) $(COMP_MAC) $(COMP_ERRORS) \
+	    $(EXTSIGN_DEMO) $(SIGN1_DEMO) $(COMP_SIGN) $(COMP_ENCRYPT) $(COMP_MAC) $(COMP_ERRORS) \
 	    $(SCEN_FIRMWARE) $(SCEN_MULTIPARTY) $(SCEN_IOTFLEET) $(SCEN_SENSOR) $(SCEN_BROADCAST) \
 	    $(INTEROP_DIR)/*.o $(INTEROP_DIR)/*.su $(INTEROP_BIN) \
-	    $(LIB_A) $(LIB_SO) src/*.su tests/*.su examples/comprehensive/*.su examples/scenarios/*.su \
+	    $(LIB_A) $(LIB_SO) src/*.su tests/*.su examples/*.su examples/comprehensive/*.su examples/scenarios/*.su \
 	    src/*.gcno src/*.gcda tests/*.gcno tests/*.gcda *.gcov
+	rm -rf tests/*.dSYM tools/*.dSYM examples/*.dSYM \
+	    examples/comprehensive/*.dSYM examples/scenarios/*.dSYM

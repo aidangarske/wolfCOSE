@@ -101,6 +101,7 @@ jobs:
             -DHAVE_AES_KEYWRAP -DWOLFSSL_AES_DIRECT \
             -DHAVE_HKDF -DHAVE_AES_CBC \
             -DWOLFCOSE_FLOAT \
+            -DWOLFCOSE_ENABLE_EXT_SIGN \
             -I./include -isystem $WOLFSSL_DIR/include"
         for f in src/*.c; do
           gcc $MISRA_FLAGS -c "$f" -o /dev/null 2>&1 | tee -a compiler-warnings.txt || true
@@ -228,6 +229,7 @@ jobs:
             -DWOLFCOSE_CBOR_ENCODE -DWOLFCOSE_CBOR_DECODE \
             -DWOLFCOSE_KEY_ENCODE -DWOLFCOSE_KEY_DECODE \
             -DWOLFCOSE_FLOAT \
+            -DWOLFCOSE_ENABLE_EXT_SIGN \
             > clang-tidy-report.txt 2>&1 || true
 
     - name: clang-tidy summary
