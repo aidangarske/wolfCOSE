@@ -36,6 +36,7 @@ It uses [wolfSSL](https://www.wolfssl.com/) as the cryptographic backend and is 
 | [[Footprint]] | Size and speed numbers, desktop and on-device |
 | [[Testing]] | Unit tests, coverage, and failure injection |
 | [[Project Structure]] | Source code layout and file descriptions |
+| [[STM32Cube]] | Install and run wolfCOSE as an STM32Cube pack on device |
 | [[Release Notes]] | Per-version changelog and release highlights |
 
 ## Supported Message Types
