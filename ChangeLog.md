@@ -13,6 +13,24 @@ MAC, and key distribution, and standardized post-quantum ML-DSA signatures
 
 ## New Feature Additions
 
+* `wc_CoseKey_Encode_ex()` takes a flags argument, with
+  `WOLFCOSE_KEY_PUBLIC_ONLY` to serialize only the public half of a key.
+  `wc_CoseKey_Encode()` is unchanged and still emits private key material when
+  the key carries it.
+* `wc_CoseKey_EncodeSize()` / `wc_CoseKey_EncodeSize_ex()` report the exact
+  encoded size of a `COSE_Key` without encoding into a buffer.
+* `wc_CoseKey_EncodeEccRaw()` encodes an EC2 `COSE_Key` from raw affine
+  coordinates, with no `ecc_key` and no point import.
+* `wc_CoseKey_PeekInfo()` reads `kty`/`alg`/`crv`/`kid` out of a `COSE_Key`
+  without importing anything, so a caller can attach the matching wolfCrypt key
+  before calling `wc_CoseKey_Decode()`.
+* `wc_CBOR_EncoderInit()` / `wc_CBOR_DecoderInit()` initialize a
+  `WOLFCOSE_CBOR_CTX` for one direction in a single call.
+* `wc_CBOR_SkipItem()` skips a CBOR item and reports its raw encoded bytes, for
+  deferred or nested parsing.
+* `wc_CBOR_DecodeLabel()`, with `wc_CBOR_LabelIsInt()` /
+  `wc_CBOR_LabelIsText()`, decodes a map label that may be an integer or a text
+  string (RFC 9052 `label = int / tstr`).
 * `wc_CoseSign1_Sign_ex()` can emit untagged COSE_Sign1 messages, and
   `wc_CoseSign1_SignSize_ex()` reports their exact encoded size without
   signing or invoking an external signer.
