@@ -4926,6 +4926,7 @@ static void test_cose_key_encode_public_only_ecc(void)
     uint8_t pub[256];
     size_t fullLen = 0;
     size_t pubLen = 0;
+    size_t sized = 0;
     int ret;
 
     TEST_LOG("  [Key Encode Public-Only ECC]\n");
@@ -4973,6 +4974,18 @@ static void test_cose_key_encode_public_only_ecc(void)
     ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen, 0x8000u);
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "pubonly bad flag rejected");
 
+    /* Size query agrees exactly with both encodings. */
+    ret = wc_CoseKey_EncodeSize(&key, &sized);
+    TEST_ASSERT(ret == 0 && sized == fullLen, "pubonly size default");
+    ret = wc_CoseKey_EncodeSize_ex(&key, &sized, WOLFCOSE_KEY_PUBLIC_ONLY);
+    TEST_ASSERT(ret == 0 && sized == 77u, "pubonly size public-only");
+    ret = wc_CoseKey_EncodeSize_ex(&key, &sized, 0x8000u);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "pubonly size bad flag");
+    ret = wc_CoseKey_EncodeSize(NULL, &sized);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "pubonly size null key");
+    ret = wc_CoseKey_EncodeSize(&key, NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "pubonly size null out");
+
     /* The public-only output must decode into a key with no private half. */
     ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen,
                                WOLFCOSE_KEY_PUBLIC_ONLY);
@@ -4999,6 +5012,226 @@ static void test_cose_key_encode_public_only_ecc(void)
 }
 
 #endif /* WOLFCOSE_HAVE_ES256 */
+
+/* The size query must be exact, not an upper bound, for every key type the
+ * build supports. Compares against what the encoder actually writes. */
+static void test_cose_key_encode_size_exact(void)
+{
+    uint8_t out[4096];
+    size_t outLen = 0;
+    size_t sized = 0;
+    int ret;
+
+    TEST_LOG("  [Key EncodeSize Exact]\n");
+
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY symKey;
+        static const uint8_t symBytes[32] = {0};
+        static const uint8_t symKid[] = "sym-1";
+
+        (void)wc_CoseKey_Init(&symKey);
+        (void)wc_CoseKey_SetSymmetric(&symKey, symBytes, sizeof(symBytes));
+        symKey.kid = symKid;
+        symKey.kidLen = sizeof(symKid) - 1u;
+        symKey.alg = WOLFCOSE_ALG_HMAC_256_256;
+
+        ret = wc_CoseKey_Encode(&symKey, out, sizeof(out), &outLen);
+        TEST_ASSERT(ret == 0, "size symm encode");
+        ret = wc_CoseKey_EncodeSize(&symKey, &sized);
+        TEST_ASSERT(ret == 0 && sized == outLen, "size symm exact");
+        /* A symmetric key is entirely private: no public form exists. */
+        ret = wc_CoseKey_Encode_ex(&symKey, out, sizeof(out), &outLen,
+                                   WOLFCOSE_KEY_PUBLIC_ONLY);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "size symm public-only rejected");
+        ret = wc_CoseKey_EncodeSize_ex(&symKey, &sized,
+                                       WOLFCOSE_KEY_PUBLIC_ONLY);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "size symm public-only size rejected");
+        wc_CoseKey_Free(&symKey);
+    }
+
+#ifdef WOLFCOSE_HAVE_ES256
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY eccCoseKey;
+        ecc_key eccKey;
+        WC_RNG rng;
+        static const int curves[3] = { WOLFCOSE_CRV_P256, WOLFCOSE_CRV_P384,
+                                       WOLFCOSE_CRV_P521 };
+        static const int sizes[3] = { 32, 48, 66 };
+        int i;
+
+        (void)wc_InitRng(&rng);
+        for (i = 0; i < 3; i++) {
+#if !defined(WOLFCOSE_HAVE_ES384)
+            if (curves[i] == WOLFCOSE_CRV_P384) { continue; }
+#endif
+#if !defined(WOLFCOSE_HAVE_ES512)
+            if (curves[i] == WOLFCOSE_CRV_P521) { continue; }
+#endif
+            (void)wc_ecc_init(&eccKey);
+            if (wc_ecc_make_key(&rng, sizes[i], &eccKey) == 0) {
+                (void)wc_CoseKey_Init(&eccCoseKey);
+                (void)wc_CoseKey_SetEcc(&eccCoseKey, curves[i], &eccKey);
+                ret = wc_CoseKey_Encode(&eccCoseKey, out, sizeof(out),
+                                        &outLen);
+                TEST_ASSERT(ret == 0, "size ecc encode");
+                ret = wc_CoseKey_EncodeSize(&eccCoseKey, &sized);
+                TEST_ASSERT(ret == 0 && sized == outLen, "size ecc exact");
+                ret = wc_CoseKey_Encode_ex(&eccCoseKey, out, sizeof(out),
+                                           &outLen, WOLFCOSE_KEY_PUBLIC_ONLY);
+                TEST_ASSERT(ret == 0, "size ecc pub encode");
+                ret = wc_CoseKey_EncodeSize_ex(&eccCoseKey, &sized,
+                                               WOLFCOSE_KEY_PUBLIC_ONLY);
+                TEST_ASSERT(ret == 0 && sized == outLen,
+                            "size ecc pub exact");
+                wc_CoseKey_Free(&eccCoseKey);
+            }
+            (void)wc_ecc_free(&eccKey);
+        }
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_ES256 */
+
+#ifdef WOLFCOSE_HAVE_EDDSA
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY edCoseKey;
+        ed25519_key edKey;
+        WC_RNG rng;
+
+        (void)wc_InitRng(&rng);
+        (void)wc_ed25519_init(&edKey);
+        if (wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey) == 0) {
+            (void)wc_CoseKey_Init(&edCoseKey);
+            (void)wc_CoseKey_SetEd25519(&edCoseKey, &edKey);
+            edCoseKey.alg = WOLFCOSE_ALG_EDDSA;
+            ret = wc_CoseKey_Encode(&edCoseKey, out, sizeof(out), &outLen);
+            TEST_ASSERT(ret == 0, "size ed25519 encode");
+            ret = wc_CoseKey_EncodeSize(&edCoseKey, &sized);
+            TEST_ASSERT(ret == 0 && sized == outLen, "size ed25519 exact");
+            ret = wc_CoseKey_Encode_ex(&edCoseKey, out, sizeof(out), &outLen,
+                                       WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0, "size ed25519 pub encode");
+            ret = wc_CoseKey_EncodeSize_ex(&edCoseKey, &sized,
+                                           WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0 && sized == outLen,
+                        "size ed25519 pub exact");
+            wc_CoseKey_Free(&edCoseKey);
+        }
+        (void)wc_ed25519_free(&edKey);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_EDDSA */
+
+#ifdef WOLFCOSE_HAVE_ED448
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY edCoseKey;
+        ed448_key edKey;
+        WC_RNG rng;
+
+        (void)wc_InitRng(&rng);
+        (void)wc_ed448_init(&edKey);
+        if (wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edKey) == 0) {
+            (void)wc_CoseKey_Init(&edCoseKey);
+            (void)wc_CoseKey_SetEd448(&edCoseKey, &edKey);
+            ret = wc_CoseKey_Encode(&edCoseKey, out, sizeof(out), &outLen);
+            TEST_ASSERT(ret == 0, "size ed448 encode");
+            ret = wc_CoseKey_EncodeSize(&edCoseKey, &sized);
+            TEST_ASSERT(ret == 0 && sized == outLen, "size ed448 exact");
+            ret = wc_CoseKey_Encode_ex(&edCoseKey, out, sizeof(out), &outLen,
+                                       WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0, "size ed448 pub encode");
+            ret = wc_CoseKey_EncodeSize_ex(&edCoseKey, &sized,
+                                           WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0 && sized == outLen, "size ed448 pub exact");
+            wc_CoseKey_Free(&edCoseKey);
+        }
+        (void)wc_ed448_free(&edKey);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_ED448 */
+
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY rsaCoseKey;
+        RsaKey rsaKey;
+        WC_RNG rng;
+
+        (void)wc_InitRng(&rng);
+        (void)wc_InitRsaKey(&rsaKey, NULL);
+        if (wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng) == 0) {
+            (void)wc_CoseKey_Init(&rsaCoseKey);
+            (void)wc_CoseKey_SetRsa(&rsaCoseKey, &rsaKey);
+            rsaCoseKey.alg = WOLFCOSE_ALG_PS256;
+            ret = wc_CoseKey_Encode(&rsaCoseKey, out, sizeof(out), &outLen);
+            TEST_ASSERT(ret == 0, "size rsa encode");
+            ret = wc_CoseKey_EncodeSize(&rsaCoseKey, &sized);
+            TEST_ASSERT(ret == 0 && sized == outLen, "size rsa exact");
+            ret = wc_CoseKey_Encode_ex(&rsaCoseKey, out, sizeof(out), &outLen,
+                                       WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0, "size rsa pub encode");
+            ret = wc_CoseKey_EncodeSize_ex(&rsaCoseKey, &sized,
+                                           WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0 && sized == outLen, "size rsa pub exact");
+            wc_CoseKey_Free(&rsaCoseKey);
+        }
+        (void)wc_FreeRsaKey(&rsaKey);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
+
+#ifdef WOLFCOSE_HAVE_MLDSA
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY dlCoseKey;
+        wc_MlDsaKey dlKey;
+        WC_RNG rng;
+        uint8_t seed[WOLFCOSE_MLDSA_SEED_SZ];
+        uint8_t dlOut[8192];
+        size_t dlOutLen = 0;
+
+        (void)wc_InitRng(&rng);
+        (void)wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
+        if ((wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44) == 0) &&
+            (wc_RNG_GenerateBlock(&rng, seed, sizeof(seed)) == 0) &&
+            (wc_MlDsaKey_MakeKeyFromSeed(&dlKey, seed) == 0)) {
+            (void)wc_CoseKey_Init(&dlCoseKey);
+            (void)wc_CoseKey_SetMlDsa_ex(&dlCoseKey, WOLFCOSE_ALG_ML_DSA_44,
+                                         &dlKey, seed, sizeof(seed));
+            ret = wc_CoseKey_Encode(&dlCoseKey, dlOut, sizeof(dlOut),
+                                    &dlOutLen);
+            TEST_ASSERT(ret == 0, "size mldsa encode");
+            ret = wc_CoseKey_EncodeSize(&dlCoseKey, &sized);
+            TEST_ASSERT(ret == 0 && sized == dlOutLen, "size mldsa exact");
+            ret = wc_CoseKey_Encode_ex(&dlCoseKey, dlOut, sizeof(dlOut),
+                                       &dlOutLen, WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0, "size mldsa pub encode");
+            ret = wc_CoseKey_EncodeSize_ex(&dlCoseKey, &sized,
+                                           WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0 && sized == dlOutLen,
+                        "size mldsa pub exact");
+            wc_CoseKey_Free(&dlCoseKey);
+        }
+        (void)wc_MlDsaKey_Free(&dlKey);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_MLDSA */
+
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY badKey;
+
+        (void)wc_CoseKey_Init(&badKey);
+        badKey.kty = 99;
+        ret = wc_CoseKey_EncodeSize(&badKey, &sized);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE, "size unknown kty");
+    }
+}
 
 /* ----- RFC 9052 interop test vectors (cose-wg/Examples) ----- */
 
@@ -18760,6 +18993,7 @@ int test_cose(void)
     test_cose_key_ecc();
     test_cose_key_encode_public_only_ecc();
 #endif
+    test_cose_key_encode_size_exact();
 #ifdef WOLFCOSE_HAVE_EDDSA
     test_cose_key_ed25519();
 #endif

@@ -752,6 +752,35 @@ WOLFCOSE_API int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out,
                                        size_t outSz, size_t* outLen,
                                        uint32_t flags);
 
+/**
+ * \brief Compute the exact encoded size wc_CoseKey_Encode() would produce.
+ *
+ * Equivalent to wc_CoseKey_EncodeSize_ex() with \p flags of 0. Note that this
+ * therefore sizes a buffer large enough to hold the PRIVATE key; see the
+ * warning on wc_CoseKey_Encode().
+ *
+ * \param key     Key to size.
+ * \param outLen  Output: exact encoded size in bytes.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_EncodeSize(const WOLFCOSE_KEY* key,
+                                        size_t* outLen);
+
+/**
+ * \brief Compute the exact encoded size wc_CoseKey_Encode_ex() would produce.
+ *
+ * Nothing is written and no key material is exported; only the component
+ * lengths of the attached key are read. The result is exact, not an upper
+ * bound, so it can be used to size a buffer or to reject an oversized key
+ * before committing storage.
+ *
+ * \param key     Key to size.
+ * \param outLen  Output: exact encoded size in bytes.
+ * \param flags   Bitmask of WOLFCOSE_KEY_* output options.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key,
+                                           size_t* outLen, uint32_t flags);
 #endif /* WOLFCOSE_KEY_ENCODE */
 
 #if defined(WOLFCOSE_KEY_DECODE)

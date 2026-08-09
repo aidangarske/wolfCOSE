@@ -354,6 +354,30 @@ ret = wc_CoseKey_Encode_ex(&key, cose, sizeof(cose), &coseLen,
 
 ---
 
+### wc_CoseKey_EncodeSize / wc_CoseKey_EncodeSize_ex
+
+```c
+int wc_CoseKey_EncodeSize(const WOLFCOSE_KEY* key, size_t* outLen);
+int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
+                             uint32_t flags);
+```
+
+Compute the **exact** number of bytes `wc_CoseKey_Encode()` /
+`wc_CoseKey_Encode_ex()` would write, without encoding into a buffer. This is
+the `COSE_Key` counterpart of
+[`wc_CoseSign1_SignSize_ex()`](#wc_cosesign1_signsize_ex): nothing is written
+and no key material is exported, only the component lengths of the attached
+key are read. The result is exact, not an upper bound, so it can size a buffer
+or reject an oversized key before committing storage.
+
+`flags` takes the same `WOLFCOSE_KEY_*` values as `wc_CoseKey_Encode_ex()`, so
+`WOLFCOSE_KEY_PUBLIC_ONLY` sizes the public-only encoding. `flags = 0` sizes
+the private encoding - see the warning on `wc_CoseKey_Encode()`.
+
+**Returns:** `WOLFCOSE_SUCCESS` or error code
+
+---
+
 ### wc_CoseKey_Decode
 
 ```c
