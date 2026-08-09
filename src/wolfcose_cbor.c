@@ -780,7 +780,9 @@ int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label, const uint8_t* text,
                 diff |= (unsigned int)label->text[i] ^
                         (unsigned int)text[i];
             }
-            match = (diff == 0u) ? 1 : 0;
+            if (diff == 0u) {
+                match = 1;
+            }
         }
         else {
             /* No action required */
