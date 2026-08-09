@@ -760,15 +760,23 @@ int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label, const uint8_t* text,
                          size_t textLen)
 {
     int match = 0;
+    uint8_t diff = 0u;
+    size_t i;
 
     if ((label != NULL) && (label->isText != 0u) &&
         (label->textLen == textLen)) {
         if (textLen == 0u) {
             match = 1;
         }
-        else if ((label->text != NULL) && (text != NULL) &&
-                 (XMEMCMP(label->text, text, textLen) == 0)) {
-            match = 1;
+        else if ((label->text != NULL) && (text != NULL)) {
+            /* A map label is public, but the core library takes no
+             * variable-time compares at all (.github/semgrep-rules.yml), so
+             * this scans the whole label rather than stopping at the first
+             * difference. */
+            for (i = 0u; i < textLen; i++) {
+                diff |= (uint8_t)(label->text[i] ^ text[i]);
+            }
+            match = (diff == 0u) ? 1 : 0;
         }
         else {
             /* No action required */

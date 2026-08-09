@@ -2231,6 +2231,9 @@ int wc_CoseKey_EncodeEccRaw(int32_t crv, const uint8_t* x, const uint8_t* y,
              (crv != WOLFCOSE_CRV_P521)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
+    else {
+        /* No action required */
+    }
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_CrvKeySize(crv, &coordSz);
     }
@@ -2437,7 +2440,7 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
             size_t modSz = 0u;
             size_t eSz = 0u;
             int rsaPriv = 0;
-            int rsaEncSz = 0;
+            int rsaEncSz;
 
             if (key->key.rsa == NULL) {
                 ret = WOLFCOSE_E_INVALID_ARG;
@@ -2699,13 +2702,14 @@ int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
     WOLFCOSE_CBOR_CTX ctx;
     WOLFCOSE_HDR_STATE keyLabelState;
     size_t mapCount = 0;
-    size_t i;
     int64_t label;
 
     if ((in == NULL) || (inSz == 0u) || (info == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
+        size_t i;
+
         ctx.buf = NULL;
         ctx.cbuf = in;
         ctx.bufSz = inSz;

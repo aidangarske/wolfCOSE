@@ -5572,10 +5572,6 @@ static void test_cose_key_encode_public_only_types(void)
         wc_MlDsaKey dlPub;
         WC_RNG rng;
         uint8_t seed[WOLFCOSE_MLDSA_SEED_SZ];
-        uint8_t dlFull[8192];
-        uint8_t dlPubBuf[8192];
-        size_t dlFullLen = 0;
-        size_t dlPubLen = 0;
 
         (void)wc_InitRng(&rng);
         (void)wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
@@ -5586,20 +5582,19 @@ static void test_cose_key_encode_public_only_types(void)
             (void)wc_CoseKey_SetMlDsa_ex(&key, WOLFCOSE_ALG_ML_DSA_44,
                                          &dlKey, seed, sizeof(seed));
 
-            ret = wc_CoseKey_Encode(&key, dlFull, sizeof(dlFull),
-                                    &dlFullLen);
+            ret = wc_CoseKey_Encode(&key, full, sizeof(full), &fullLen);
             TEST_ASSERT(ret == 0 && key.hasPrivate == 1,
                         "pubtype mldsa full encode");
-            ret = wc_CoseKey_Encode_ex(&key, dlPubBuf, sizeof(dlPubBuf),
-                                       &dlPubLen, WOLFCOSE_KEY_PUBLIC_ONLY);
-            TEST_ASSERT(ret == 0 && dlPubLen < dlFullLen,
+            ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen,
+                                       WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0 && pubLen < fullLen,
                         "pubtype mldsa public is shorter");
 
             (void)wc_MlDsaKey_Init(&dlPub, NULL, INVALID_DEVID);
             (void)wc_CoseKey_Init(&decKey);
             (void)wc_CoseKey_SetMlDsa(&decKey, WOLFCOSE_ALG_ML_DSA_44,
                                       &dlPub);
-            ret = wc_CoseKey_Decode(&decKey, dlPubBuf, dlPubLen);
+            ret = wc_CoseKey_Decode(&decKey, pub, pubLen);
             TEST_ASSERT(ret == 0 && decKey.hasPrivate == 0,
                         "pubtype mldsa no private survives");
             wc_CoseKey_Free(&decKey);
@@ -5610,12 +5605,6 @@ static void test_cose_key_encode_public_only_types(void)
         (void)wc_FreeRng(&rng);
     }
 #endif /* WOLFCOSE_HAVE_MLDSA */
-
-    (void)full;
-    (void)pub;
-    (void)fullLen;
-    (void)pubLen;
-    (void)ret;
 }
 #endif /* EDDSA || ED448 || (RSAPSS && KEY_GEN) || MLDSA */
 

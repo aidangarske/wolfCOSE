@@ -1063,7 +1063,7 @@ static void test_cbor_skip_item(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         size_t nestedLen = ctx.idx - nestedStart;
-        size_t total = ctx.idx;
+        size_t total;
         size_t count = 0;
         uint64_t uval = 0;
 
