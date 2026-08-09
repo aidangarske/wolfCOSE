@@ -5109,6 +5109,103 @@ static void test_cose_key_encode_ecc_raw(void)
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
+
+#if defined(WOLFCOSE_HAVE_ES384) || defined(WOLFCOSE_HAVE_ES512)
+/* Coordinate width is per-curve, and so is the bstr head it produces, so
+ * P-256 parity with the ecc_key path does not imply P-384/P-521 parity. */
+static void test_cose_key_encode_ecc_raw_curves(void)
+{
+    static const int curves[2] = { WOLFCOSE_CRV_P384, WOLFCOSE_CRV_P521 };
+    static const size_t coordSz[2] = { 48u, 66u };
+    static const uint8_t kid[] = "curve-kid";
+    int i;
+
+    TEST_LOG("  [Key Encode ECC Raw P-384/P-521]\n");
+
+    for (i = 0; i < 2; i++) {
+        WOLFCOSE_KEY key;
+        ecc_key eccKey;
+        WC_RNG rng;
+        uint8_t xBuf[66];
+        uint8_t yBuf[66];
+        uint8_t dBuf[66];
+        word32 xLen = (word32)coordSz[i];
+        word32 yLen = (word32)coordSz[i];
+        word32 dLen = (word32)coordSz[i];
+        uint8_t viaKey[256];
+        uint8_t viaRaw[256];
+        size_t viaKeyLen = 0;
+        size_t viaRawLen = 0;
+        size_t wrongLen;
+        int ret;
+
+#if !defined(WOLFCOSE_HAVE_ES384)
+        if (curves[i] == WOLFCOSE_CRV_P384) { continue; }
+#endif
+#if !defined(WOLFCOSE_HAVE_ES512)
+        if (curves[i] == WOLFCOSE_CRV_P521) { continue; }
+#endif
+        ret = wc_InitRng(&rng);
+        TEST_ASSERT(ret == 0, "eccraw curve rng init");
+        if (ret != 0) {
+            continue;
+        }
+        ret = wc_ecc_init(&eccKey);
+        TEST_ASSERT(ret == 0, "eccraw curve ecc init");
+        ret = wc_ecc_make_key(&rng, (int)coordSz[i], &eccKey);
+        TEST_ASSERT(ret == 0, "eccraw curve keygen");
+        if (ret != 0) {
+            (void)wc_ecc_free(&eccKey);
+            (void)wc_FreeRng(&rng);
+            continue;
+        }
+        ret = wc_ecc_export_public_raw(&eccKey, xBuf, &xLen, yBuf, &yLen);
+        TEST_ASSERT(ret == 0 && (size_t)xLen == coordSz[i] &&
+                    (size_t)yLen == coordSz[i], "eccraw curve export pub");
+        ret = wc_ecc_export_private_only(&eccKey, dBuf, &dLen);
+        TEST_ASSERT(ret == 0 && (size_t)dLen == coordSz[i],
+                    "eccraw curve export priv");
+
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEcc(&key, curves[i], &eccKey);
+        key.kid = kid;
+        key.kidLen = sizeof(kid) - 1u;
+
+        ret = wc_CoseKey_Encode_ex(&key, viaKey, sizeof(viaKey), &viaKeyLen,
+                                   WOLFCOSE_KEY_PUBLIC_ONLY);
+        TEST_ASSERT(ret == 0, "eccraw curve encode pub via key");
+        ret = wc_CoseKey_EncodeEccRaw(curves[i], xBuf, yBuf, NULL,
+                                      coordSz[i], kid, sizeof(kid) - 1u,
+                                      WOLFCOSE_ALG_UNSET,
+                                      viaRaw, sizeof(viaRaw), &viaRawLen);
+        TEST_ASSERT(ret == 0 && viaRawLen == viaKeyLen &&
+                    memcmp(viaRaw, viaKey, viaRawLen) == 0,
+                    "eccraw curve public matches key path");
+
+        ret = wc_CoseKey_Encode(&key, viaKey, sizeof(viaKey), &viaKeyLen);
+        TEST_ASSERT(ret == 0, "eccraw curve encode priv via key");
+        ret = wc_CoseKey_EncodeEccRaw(curves[i], xBuf, yBuf, dBuf,
+                                      coordSz[i], kid, sizeof(kid) - 1u,
+                                      WOLFCOSE_ALG_UNSET,
+                                      viaRaw, sizeof(viaRaw), &viaRawLen);
+        TEST_ASSERT(ret == 0 && viaRawLen == viaKeyLen &&
+                    memcmp(viaRaw, viaKey, viaRawLen) == 0,
+                    "eccraw curve private matches key path");
+
+        /* A coordinate size from another curve must not be accepted. */
+        wrongLen = (curves[i] == WOLFCOSE_CRV_P384) ? 66u : 48u;
+        ret = wc_CoseKey_EncodeEccRaw(curves[i], xBuf, yBuf, NULL, wrongLen,
+                                      NULL, 0u, WOLFCOSE_ALG_UNSET,
+                                      viaRaw, sizeof(viaRaw), &viaRawLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                    "eccraw curve wrong coord size rejected");
+
+        wc_CoseKey_Free(&key);
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
+    }
+}
+#endif /* WOLFCOSE_HAVE_ES384 || WOLFCOSE_HAVE_ES512 */
 #endif /* WOLFCOSE_HAVE_ES256 */
 
 /* The size query must be exact, not an upper bound, for every key type the
@@ -5331,6 +5428,390 @@ static void test_cose_key_encode_size_exact(void)
     }
 }
 
+#if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448) || \
+    (defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)) || \
+    defined(WOLFCOSE_HAVE_MLDSA)
+/* WOLFCOSE_KEY_PUBLIC_ONLY must actually drop the private material for every
+ * key type, not merely agree with the size query: the encoder and the sizer
+ * share the flag handling, so a flag that was a no-op for one key type would
+ * leave both consistently wrong and a size comparison would still pass. Each
+ * type is measured against its own full encoding and re-decoded to confirm
+ * no private half survives. */
+static void test_cose_key_encode_public_only_types(void)
+{
+    uint8_t full[4096];
+    uint8_t pub[4096];
+    size_t fullLen = 0;
+    size_t pubLen = 0;
+    int ret;
+
+    TEST_LOG("  [Key Public-Only Per Type]\n");
+
+#ifdef WOLFCOSE_HAVE_EDDSA
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY key;
+        WOLFCOSE_KEY decKey;
+        ed25519_key edKey;
+        ed25519_key edPub;
+        WC_RNG rng;
+
+        (void)wc_InitRng(&rng);
+        (void)wc_ed25519_init(&edKey);
+        if (wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, &edKey) == 0) {
+            (void)wc_CoseKey_Init(&key);
+            (void)wc_CoseKey_SetEd25519(&key, &edKey);
+            key.alg = WOLFCOSE_ALG_EDDSA;
+
+            ret = wc_CoseKey_Encode(&key, full, sizeof(full), &fullLen);
+            TEST_ASSERT(ret == 0 && key.hasPrivate == 1,
+                        "pubtype ed25519 full encode");
+            ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen,
+                                       WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0 && pubLen < fullLen,
+                        "pubtype ed25519 public is shorter");
+
+            (void)wc_ed25519_init(&edPub);
+            (void)wc_CoseKey_Init(&decKey);
+            (void)wc_CoseKey_SetEd25519(&decKey, &edPub);
+            ret = wc_CoseKey_Decode(&decKey, pub, pubLen);
+            TEST_ASSERT(ret == 0 && decKey.hasPrivate == 0,
+                        "pubtype ed25519 no private survives");
+            wc_CoseKey_Free(&decKey);
+            (void)wc_ed25519_free(&edPub);
+            wc_CoseKey_Free(&key);
+        }
+        (void)wc_ed25519_free(&edKey);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_EDDSA */
+
+#ifdef WOLFCOSE_HAVE_ED448
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY key;
+        WOLFCOSE_KEY decKey;
+        ed448_key edKey;
+        ed448_key edPub;
+        WC_RNG rng;
+
+        (void)wc_InitRng(&rng);
+        (void)wc_ed448_init(&edKey);
+        if (wc_ed448_make_key(&rng, ED448_KEY_SIZE, &edKey) == 0) {
+            (void)wc_CoseKey_Init(&key);
+            (void)wc_CoseKey_SetEd448(&key, &edKey);
+
+            ret = wc_CoseKey_Encode(&key, full, sizeof(full), &fullLen);
+            TEST_ASSERT(ret == 0 && key.hasPrivate == 1,
+                        "pubtype ed448 full encode");
+            ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen,
+                                       WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0 && pubLen < fullLen,
+                        "pubtype ed448 public is shorter");
+
+            (void)wc_ed448_init(&edPub);
+            (void)wc_CoseKey_Init(&decKey);
+            (void)wc_CoseKey_SetEd448(&decKey, &edPub);
+            ret = wc_CoseKey_Decode(&decKey, pub, pubLen);
+            TEST_ASSERT(ret == 0 && decKey.hasPrivate == 0,
+                        "pubtype ed448 no private survives");
+            wc_CoseKey_Free(&decKey);
+            (void)wc_ed448_free(&edPub);
+            wc_CoseKey_Free(&key);
+        }
+        (void)wc_ed448_free(&edKey);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_ED448 */
+
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY key;
+        WOLFCOSE_KEY decKey;
+        RsaKey rsaKey;
+        RsaKey rsaPub;
+        WC_RNG rng;
+
+        (void)wc_InitRng(&rng);
+        (void)wc_InitRsaKey(&rsaKey, NULL);
+        if (wc_MakeRsaKey(&rsaKey, 2048, WC_RSA_EXPONENT, &rng) == 0) {
+            (void)wc_CoseKey_Init(&key);
+            (void)wc_CoseKey_SetRsa(&key, &rsaKey);
+            key.alg = WOLFCOSE_ALG_PS256;
+
+            ret = wc_CoseKey_Encode(&key, full, sizeof(full), &fullLen);
+            TEST_ASSERT(ret == 0 && key.hasPrivate == 1,
+                        "pubtype rsa full encode");
+            ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen,
+                                       WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0 && pubLen < fullLen,
+                        "pubtype rsa public is shorter");
+
+            (void)wc_InitRsaKey(&rsaPub, NULL);
+            (void)wc_CoseKey_Init(&decKey);
+            (void)wc_CoseKey_SetRsa(&decKey, &rsaPub);
+            ret = wc_CoseKey_Decode(&decKey, pub, pubLen);
+            TEST_ASSERT(ret == 0 && decKey.hasPrivate == 0,
+                        "pubtype rsa no private survives");
+            wc_CoseKey_Free(&decKey);
+            (void)wc_FreeRsaKey(&rsaPub);
+            wc_CoseKey_Free(&key);
+        }
+        (void)wc_FreeRsaKey(&rsaKey);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
+
+#ifdef WOLFCOSE_HAVE_MLDSA
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY key;
+        WOLFCOSE_KEY decKey;
+        wc_MlDsaKey dlKey;
+        wc_MlDsaKey dlPub;
+        WC_RNG rng;
+        uint8_t seed[WOLFCOSE_MLDSA_SEED_SZ];
+        uint8_t dlFull[8192];
+        uint8_t dlPubBuf[8192];
+        size_t dlFullLen = 0;
+        size_t dlPubLen = 0;
+
+        (void)wc_InitRng(&rng);
+        (void)wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
+        if ((wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44) == 0) &&
+            (wc_RNG_GenerateBlock(&rng, seed, sizeof(seed)) == 0) &&
+            (wc_MlDsaKey_MakeKeyFromSeed(&dlKey, seed) == 0)) {
+            (void)wc_CoseKey_Init(&key);
+            (void)wc_CoseKey_SetMlDsa_ex(&key, WOLFCOSE_ALG_ML_DSA_44,
+                                         &dlKey, seed, sizeof(seed));
+
+            ret = wc_CoseKey_Encode(&key, dlFull, sizeof(dlFull),
+                                    &dlFullLen);
+            TEST_ASSERT(ret == 0 && key.hasPrivate == 1,
+                        "pubtype mldsa full encode");
+            ret = wc_CoseKey_Encode_ex(&key, dlPubBuf, sizeof(dlPubBuf),
+                                       &dlPubLen, WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0 && dlPubLen < dlFullLen,
+                        "pubtype mldsa public is shorter");
+
+            (void)wc_MlDsaKey_Init(&dlPub, NULL, INVALID_DEVID);
+            (void)wc_CoseKey_Init(&decKey);
+            (void)wc_CoseKey_SetMlDsa(&decKey, WOLFCOSE_ALG_ML_DSA_44,
+                                      &dlPub);
+            ret = wc_CoseKey_Decode(&decKey, dlPubBuf, dlPubLen);
+            TEST_ASSERT(ret == 0 && decKey.hasPrivate == 0,
+                        "pubtype mldsa no private survives");
+            wc_CoseKey_Free(&decKey);
+            (void)wc_MlDsaKey_Free(&dlPub);
+            wc_CoseKey_Free(&key);
+        }
+        (void)wc_MlDsaKey_Free(&dlKey);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_MLDSA */
+
+    (void)full;
+    (void)pub;
+    (void)fullLen;
+    (void)pubLen;
+    (void)ret;
+}
+#endif /* EDDSA || ED448 || (RSAPSS && KEY_GEN) || MLDSA */
+
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFCOSE_HAVE_RSA_PRIVATE_KEY)
+/* RFC 8230 Section 4: the RSA private exponent is carried at its full
+ * modulus width, so an exported d with a leading zero byte is left-padded on
+ * the way out. Random keygen produces such a d about once in 256 keys, which
+ * leaves the padding branch -- and the agreement between wc_CoseKey_Encode()
+ * and wc_CoseKey_EncodeSize() that depends on it -- effectively untested.
+ * This is a fixed 2048-bit key whose d is 255 bytes. */
+static const uint8_t kRsaShortD[] = {
+    0x30u, 0x82u, 0x04u, 0xA0u, 0x02u, 0x01u, 0x00u, 0x02u, 0x82u, 0x01u,
+    0x01u, 0x00u, 0xDAu, 0x58u, 0xCDu, 0xB4u, 0x0Cu, 0x96u, 0xA5u, 0x56u,
+    0x30u, 0x75u, 0xA3u, 0x18u, 0x66u, 0x52u, 0x09u, 0x41u, 0xAAu, 0x10u,
+    0x05u, 0x0Eu, 0xD4u, 0x06u, 0x85u, 0xE4u, 0x81u, 0xE5u, 0x13u, 0x3Au,
+    0xD4u, 0xFBu, 0xFAu, 0xC6u, 0xFDu, 0xA6u, 0xEDu, 0xC7u, 0x44u, 0x65u,
+    0xC3u, 0x64u, 0xA2u, 0x8Au, 0x42u, 0xD6u, 0xABu, 0x00u, 0x29u, 0xFDu,
+    0x4Cu, 0xD0u, 0x41u, 0xD0u, 0x87u, 0x94u, 0x6Bu, 0xB0u, 0xD8u, 0x75u,
+    0xA5u, 0x71u, 0x08u, 0x1Fu, 0x63u, 0xB0u, 0xDFu, 0xCEu, 0xC5u, 0xE0u,
+    0xC3u, 0x3Eu, 0x1Fu, 0x1Du, 0x62u, 0xDAu, 0xB3u, 0x7Au, 0x24u, 0xF5u,
+    0x6Du, 0x95u, 0x90u, 0xFDu, 0x69u, 0x29u, 0x5Fu, 0xD9u, 0x3Fu, 0x3Fu,
+    0x5Au, 0x6Fu, 0x13u, 0x2Bu, 0x1Au, 0x46u, 0x8Eu, 0xC2u, 0xB8u, 0x66u,
+    0xD1u, 0x4Au, 0x92u, 0xDEu, 0x94u, 0xC6u, 0x9Bu, 0x3Du, 0xB1u, 0x19u,
+    0xB5u, 0x35u, 0x9Bu, 0x32u, 0x59u, 0x4Au, 0x9Eu, 0xD9u, 0x83u, 0x0Fu,
+    0x26u, 0x31u, 0xD8u, 0x97u, 0x32u, 0x79u, 0x9Cu, 0xFAu, 0x44u, 0x86u,
+    0xE6u, 0xE1u, 0x99u, 0xD0u, 0xE9u, 0x5Bu, 0xC5u, 0x63u, 0xA7u, 0x47u,
+    0xC2u, 0x58u, 0xC3u, 0xECu, 0x1Cu, 0x86u, 0xB0u, 0xEEu, 0xF1u, 0x20u,
+    0x7Fu, 0xE9u, 0x7Fu, 0x67u, 0x4Bu, 0x91u, 0x7Eu, 0x01u, 0x2Fu, 0x9Bu,
+    0x85u, 0xF1u, 0x86u, 0x77u, 0x56u, 0x65u, 0xEEu, 0xD8u, 0xCDu, 0xBEu,
+    0xDBu, 0x9Du, 0xA6u, 0x9Du, 0x80u, 0xC9u, 0x4Bu, 0xEBu, 0x10u, 0x80u,
+    0xF3u, 0x5Au, 0x4Fu, 0x46u, 0x10u, 0xD7u, 0x52u, 0xB6u, 0xC5u, 0x0Du,
+    0xA0u, 0xECu, 0x55u, 0x6Cu, 0x80u, 0xD1u, 0x3Eu, 0x97u, 0x20u, 0xB5u,
+    0xF7u, 0x69u, 0x89u, 0xFFu, 0x65u, 0xE5u, 0x92u, 0x08u, 0xFAu, 0xF2u,
+    0xBAu, 0xEFu, 0x63u, 0x72u, 0x7Fu, 0xC0u, 0xCDu, 0xF2u, 0xBEu, 0xBFu,
+    0x4Cu, 0xC8u, 0x65u, 0x12u, 0x67u, 0xB5u, 0x6Bu, 0x6Bu, 0xA4u, 0xEDu,
+    0x5Du, 0xB9u, 0x8Bu, 0x45u, 0xACu, 0x90u, 0x34u, 0x3Au, 0x68u, 0xEEu,
+    0x5Au, 0xCEu, 0x88u, 0x07u, 0x46u, 0xDFu, 0xD0u, 0x55u, 0x23u, 0x5Fu,
+    0x17u, 0x17u, 0x7Du, 0x89u, 0x2Eu, 0x8Bu, 0x60u, 0x99u, 0x02u, 0x03u,
+    0x01u, 0x00u, 0x01u, 0x02u, 0x81u, 0xFFu, 0x08u, 0x04u, 0x9Eu, 0xF7u,
+    0xA7u, 0xA5u, 0x4Fu, 0xF0u, 0x97u, 0x2Bu, 0xDBu, 0x0Eu, 0xB0u, 0x45u,
+    0xA0u, 0xA3u, 0x5Bu, 0x4Du, 0x75u, 0x3Bu, 0xEAu, 0x5Fu, 0xF2u, 0xD5u,
+    0xC3u, 0x4Cu, 0xC7u, 0xAAu, 0xB1u, 0x1Fu, 0xE9u, 0x87u, 0x77u, 0x92u,
+    0xBDu, 0xB0u, 0xABu, 0x2Cu, 0xD3u, 0x82u, 0x82u, 0xB3u, 0x7Cu, 0xDDu,
+    0x25u, 0xE0u, 0x87u, 0x01u, 0x57u, 0x14u, 0x5Du, 0xFDu, 0x6Bu, 0xD4u,
+    0xB9u, 0xFAu, 0xD5u, 0x5Du, 0x93u, 0xF7u, 0x83u, 0x95u, 0xBEu, 0x73u,
+    0x53u, 0x69u, 0x0Au, 0xB9u, 0x80u, 0x1Fu, 0x50u, 0x2Eu, 0xF6u, 0x26u,
+    0x3Au, 0xB3u, 0xEEu, 0xB2u, 0xBDu, 0x69u, 0x3Bu, 0x07u, 0xABu, 0x0Eu,
+    0xA7u, 0xD2u, 0x40u, 0x4Du, 0x5Au, 0xE8u, 0xBBu, 0x89u, 0xABu, 0xA1u,
+    0x37u, 0x93u, 0x6Du, 0x2Bu, 0x5Fu, 0xB1u, 0x82u, 0x6Au, 0xE2u, 0x2Eu,
+    0x52u, 0x6Fu, 0xF8u, 0x7Bu, 0x25u, 0x6Fu, 0x13u, 0x68u, 0xF6u, 0x31u,
+    0x8Bu, 0x58u, 0xC7u, 0x3Du, 0x21u, 0xACu, 0xD9u, 0xFEu, 0xC1u, 0xC3u,
+    0x46u, 0x93u, 0x17u, 0x12u, 0xBDu, 0x5Au, 0xD7u, 0x32u, 0xE3u, 0x89u,
+    0xBBu, 0xEAu, 0x88u, 0x8Cu, 0x43u, 0xE9u, 0x14u, 0xD1u, 0x20u, 0xA6u,
+    0xD9u, 0xF4u, 0x31u, 0x1Du, 0xE1u, 0x3Eu, 0xA6u, 0xA6u, 0x1Fu, 0xA4u,
+    0x88u, 0x0Du, 0xF0u, 0x23u, 0x2Du, 0xD1u, 0x19u, 0xE2u, 0xE7u, 0x0Du,
+    0x09u, 0xCFu, 0x6Bu, 0xD2u, 0xA4u, 0x25u, 0xABu, 0xD4u, 0xDCu, 0xEAu,
+    0xAEu, 0x4Au, 0xB7u, 0x5Cu, 0x9Au, 0xBDu, 0xE2u, 0xC5u, 0xF4u, 0x7Au,
+    0x97u, 0xECu, 0x12u, 0xB1u, 0xBEu, 0x3Bu, 0x6Bu, 0xC6u, 0x12u, 0x67u,
+    0x55u, 0x82u, 0xB9u, 0x6Fu, 0xC0u, 0x5Au, 0xDAu, 0xCAu, 0xF0u, 0xDEu,
+    0x33u, 0x75u, 0x12u, 0x06u, 0x21u, 0x01u, 0x8Bu, 0x97u, 0x37u, 0x0Fu,
+    0x0Bu, 0x0Au, 0x42u, 0x20u, 0x5Cu, 0xA3u, 0x53u, 0x83u, 0xE1u, 0xA8u,
+    0x7Eu, 0x98u, 0x98u, 0xE3u, 0x6Cu, 0xAFu, 0x6Bu, 0xA9u, 0x70u, 0xEDu,
+    0x60u, 0x54u, 0xD1u, 0xC9u, 0x9Fu, 0x4Du, 0x04u, 0xA0u, 0x23u, 0x67u,
+    0xF5u, 0xA4u, 0x04u, 0xA8u, 0xD8u, 0x00u, 0xA4u, 0x9Eu, 0x92u, 0x62u,
+    0x45u, 0x02u, 0x81u, 0x81u, 0x00u, 0xFBu, 0x35u, 0x16u, 0xB6u, 0xC6u,
+    0x26u, 0xA2u, 0xA3u, 0x81u, 0x5Du, 0xD6u, 0x49u, 0x52u, 0x5Cu, 0x24u,
+    0xC9u, 0x2Bu, 0x3Bu, 0x8Bu, 0xB1u, 0x4Bu, 0x86u, 0xC3u, 0xC8u, 0xABu,
+    0x5Bu, 0xCAu, 0x7Bu, 0xB5u, 0xF1u, 0xDAu, 0x93u, 0xC1u, 0xBAu, 0x64u,
+    0x0Au, 0x9Au, 0x05u, 0xF1u, 0x43u, 0x71u, 0x96u, 0x08u, 0xC8u, 0xE3u,
+    0xE0u, 0xD9u, 0x9Bu, 0x0Fu, 0x8Eu, 0x3Cu, 0xDEu, 0x86u, 0x70u, 0xEDu,
+    0xA8u, 0x0Du, 0x5Au, 0x92u, 0x1Fu, 0x73u, 0xF1u, 0x84u, 0xB2u, 0xD1u,
+    0x4Cu, 0x8Bu, 0x3Cu, 0x7Au, 0x40u, 0xB7u, 0x26u, 0xA2u, 0xDBu, 0x26u,
+    0xECu, 0x5Au, 0x98u, 0x73u, 0xFEu, 0x82u, 0x63u, 0x26u, 0xFAu, 0x36u,
+    0x59u, 0x1Cu, 0x45u, 0x1Au, 0xC2u, 0x44u, 0x1Au, 0x25u, 0xD1u, 0xBFu,
+    0x6Fu, 0xB2u, 0x3Fu, 0xC2u, 0xF3u, 0x83u, 0x19u, 0xBFu, 0xD4u, 0x09u,
+    0x19u, 0xADu, 0x05u, 0xFCu, 0x45u, 0x11u, 0x7Cu, 0x7Du, 0x7Au, 0xE1u,
+    0x67u, 0xF2u, 0x90u, 0xDBu, 0x80u, 0x76u, 0xEDu, 0xD1u, 0x3Bu, 0xF0u,
+    0x09u, 0x94u, 0x55u, 0x02u, 0x81u, 0x81u, 0x00u, 0xDEu, 0x83u, 0x38u,
+    0xE7u, 0xA6u, 0x78u, 0x17u, 0x13u, 0x59u, 0xB3u, 0x66u, 0x5Fu, 0xADu,
+    0xA2u, 0x43u, 0x50u, 0x1Eu, 0x79u, 0x3Fu, 0x58u, 0xC1u, 0x95u, 0x09u,
+    0x2Fu, 0xF4u, 0xA3u, 0xFEu, 0x82u, 0x75u, 0xC0u, 0x78u, 0xF1u, 0xDCu,
+    0xC7u, 0x5Bu, 0x7Fu, 0x38u, 0x4Fu, 0x01u, 0xE5u, 0xA9u, 0x7Au, 0xDEu,
+    0x74u, 0x28u, 0x38u, 0x29u, 0x14u, 0x4Bu, 0x11u, 0x64u, 0xABu, 0xA1u,
+    0xDEu, 0xB4u, 0x06u, 0xCCu, 0xF0u, 0x9Du, 0xB0u, 0x21u, 0xA7u, 0x7Eu,
+    0xC0u, 0xA9u, 0xDAu, 0x33u, 0x06u, 0x50u, 0x90u, 0x91u, 0xD4u, 0xB6u,
+    0xA4u, 0x9Eu, 0x35u, 0x03u, 0x1Bu, 0x5Bu, 0xF7u, 0x45u, 0xCDu, 0x13u,
+    0x72u, 0xFDu, 0x13u, 0x8Eu, 0x05u, 0xBEu, 0xE3u, 0xF3u, 0xCBu, 0x05u,
+    0x5Cu, 0x03u, 0x69u, 0x5Fu, 0x37u, 0x18u, 0x8Du, 0x38u, 0x0Cu, 0x9Du,
+    0x77u, 0xBFu, 0x09u, 0xCBu, 0xF5u, 0x2Au, 0x9Fu, 0x99u, 0x09u, 0x60u,
+    0x5Fu, 0x93u, 0xD4u, 0xFDu, 0x6Eu, 0xE4u, 0x90u, 0x48u, 0xB7u, 0xAFu,
+    0x18u, 0xB1u, 0x93u, 0xFFu, 0x35u, 0x02u, 0x81u, 0x80u, 0x77u, 0x8Bu,
+    0xA8u, 0x27u, 0x8Au, 0xDCu, 0xD0u, 0x01u, 0x27u, 0x8Bu, 0x54u, 0x72u,
+    0xC8u, 0x32u, 0xF9u, 0x7Eu, 0x92u, 0x88u, 0x5Fu, 0xCEu, 0x1Bu, 0xB7u,
+    0x22u, 0x6Cu, 0xD8u, 0xBFu, 0x71u, 0xF8u, 0xB5u, 0x79u, 0x47u, 0x1Fu,
+    0x91u, 0xCDu, 0xF5u, 0xD5u, 0xE5u, 0xBEu, 0x76u, 0x36u, 0x36u, 0x53u,
+    0xC4u, 0x12u, 0x75u, 0xFFu, 0x87u, 0x0Eu, 0xF7u, 0xB4u, 0x24u, 0xDBu,
+    0x70u, 0xF7u, 0x44u, 0xE1u, 0xF8u, 0x98u, 0xE5u, 0x78u, 0xFAu, 0x60u,
+    0x31u, 0x5Au, 0x37u, 0xA8u, 0x49u, 0x8Au, 0x9Au, 0x53u, 0x39u, 0xD5u,
+    0xB5u, 0x22u, 0xBDu, 0xBFu, 0x34u, 0xCDu, 0xE0u, 0x45u, 0x7Au, 0x1Fu,
+    0x5Du, 0x69u, 0x2Du, 0x7Bu, 0xF2u, 0xACu, 0x20u, 0x33u, 0xDAu, 0xDCu,
+    0xE6u, 0xAAu, 0x8Eu, 0x83u, 0xC5u, 0x3Bu, 0xFAu, 0xB6u, 0x8Fu, 0xE9u,
+    0x2Du, 0x14u, 0xE6u, 0xCFu, 0xC5u, 0x3Bu, 0x57u, 0xF6u, 0x36u, 0x80u,
+    0x1Bu, 0xE6u, 0xE2u, 0x65u, 0xE9u, 0x55u, 0x6Eu, 0x60u, 0x10u, 0x38u,
+    0xD4u, 0x9Du, 0xC5u, 0x79u, 0x89u, 0x91u, 0x02u, 0x81u, 0x80u, 0x7Fu,
+    0xD7u, 0xF9u, 0x1Bu, 0xEFu, 0x63u, 0x54u, 0x2Eu, 0xC3u, 0xFCu, 0xF5u,
+    0x36u, 0xC7u, 0xB6u, 0x50u, 0xE2u, 0x79u, 0x7Fu, 0xC4u, 0x4Bu, 0xA4u,
+    0x7Du, 0x92u, 0x97u, 0xC1u, 0x01u, 0x70u, 0x3Bu, 0x58u, 0x98u, 0x4Bu,
+    0x64u, 0xFBu, 0x2Au, 0x77u, 0x81u, 0x72u, 0xC2u, 0xC2u, 0x1Eu, 0x47u,
+    0xEFu, 0xD6u, 0x5Bu, 0xFAu, 0xB7u, 0xB9u, 0xB2u, 0x75u, 0x26u, 0xFBu,
+    0x26u, 0x39u, 0x8Cu, 0x90u, 0xF6u, 0xCFu, 0x4Cu, 0xF7u, 0xECu, 0xB8u,
+    0x89u, 0x59u, 0xA4u, 0x2Cu, 0x72u, 0xB7u, 0x9Au, 0x4Bu, 0x33u, 0xA4u,
+    0xF6u, 0x08u, 0x32u, 0x30u, 0xCBu, 0xD8u, 0x8Bu, 0x21u, 0x9Du, 0xC2u,
+    0xB6u, 0xFFu, 0x13u, 0xB4u, 0x20u, 0x46u, 0x1Bu, 0x3Bu, 0x00u, 0x11u,
+    0x94u, 0x75u, 0xF1u, 0xD5u, 0xEBu, 0xF6u, 0xCEu, 0xDBu, 0x06u, 0x58u,
+    0x4Bu, 0xB7u, 0x35u, 0x93u, 0xC7u, 0x77u, 0x2Du, 0xD7u, 0x5Du, 0x77u,
+    0x3Au, 0x11u, 0xEBu, 0x18u, 0x2Eu, 0xE9u, 0xA5u, 0x8Bu, 0x20u, 0xF3u,
+    0x06u, 0xC6u, 0x4Du, 0x73u, 0xC9u, 0xCAu, 0x79u, 0x02u, 0x81u, 0x80u,
+    0x6Fu, 0x86u, 0x00u, 0x05u, 0xFAu, 0x04u, 0x09u, 0xBEu, 0xC4u, 0x09u,
+    0xEBu, 0xA5u, 0x6Cu, 0x96u, 0x20u, 0x20u, 0x53u, 0x08u, 0xF6u, 0xE7u,
+    0x54u, 0xFEu, 0xBAu, 0x82u, 0x86u, 0x7Fu, 0x39u, 0xD0u, 0x0Eu, 0x58u,
+    0x6Au, 0xBDu, 0xB7u, 0x3Eu, 0x49u, 0x2Cu, 0x69u, 0xEBu, 0x46u, 0x41u,
+    0x20u, 0x60u, 0xB3u, 0xEBu, 0x6Fu, 0xEDu, 0xD4u, 0x36u, 0xA6u, 0xC7u,
+    0x0Bu, 0x32u, 0x1Bu, 0xC2u, 0x5Du, 0x9Fu, 0xD6u, 0x66u, 0x9Au, 0x97u,
+    0xC4u, 0x79u, 0x81u, 0x7Fu, 0x65u, 0x5Bu, 0x4Au, 0x83u, 0x98u, 0x86u,
+    0x61u, 0xE2u, 0x9Fu, 0x7Du, 0x96u, 0xEDu, 0x60u, 0x12u, 0x91u, 0xE3u,
+    0xFBu, 0x09u, 0xBDu, 0x3Eu, 0xFAu, 0x5Eu, 0x10u, 0xD5u, 0x59u, 0xC5u,
+    0xC2u, 0x7Au, 0xC6u, 0x34u, 0x82u, 0xB2u, 0x5Du, 0x2Cu, 0xA6u, 0xD3u,
+    0x59u, 0x47u, 0xE4u, 0x3Fu, 0xEDu, 0xA1u, 0x44u, 0xCAu, 0x12u, 0x6Eu,
+    0x9Eu, 0x03u, 0x72u, 0x59u, 0x96u, 0xAAu, 0x70u, 0x1Cu, 0xA5u, 0xADu,
+    0xB1u, 0xC0u, 0x91u, 0x80u, 0xF3u, 0x65u, 0x37u, 0x1Du};
+
+static void test_cose_key_encode_rsa_short_d(void)
+{
+    RsaKey rsaKey;
+    WOLFCOSE_KEY key;
+    WOLFCOSE_CBOR_CTX dec;
+    uint8_t out[2048];
+    const uint8_t* dBytes = NULL;
+    size_t outLen = 0;
+    size_t sized = 0;
+    size_t mapCount = 0;
+    size_t dLen = 0;
+    size_t i;
+    word32 idx = 0;
+    int64_t label = 0;
+    int ret;
+
+    TEST_LOG("  [Key RSA short-d padding]\n");
+
+    ret = wc_InitRsaKey(&rsaKey, NULL);
+    TEST_ASSERT(ret == 0, "short-d rsa init");
+    if (ret != 0) {
+        return;
+    }
+    ret = wc_RsaPrivateKeyDecode(kRsaShortD, &idx, &rsaKey,
+                                 (word32)sizeof(kRsaShortD));
+    TEST_ASSERT(ret == 0, "short-d rsa key decode");
+    if (ret != 0) {
+        (void)wc_FreeRsaKey(&rsaKey);
+        return;
+    }
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetRsa(&key, &rsaKey);
+    TEST_ASSERT(ret == 0 && key.hasPrivate == 1, "short-d set rsa");
+    key.alg = WOLFCOSE_ALG_PS256;
+
+    ret = wc_CoseKey_Encode(&key, out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "short-d encode");
+    ret = wc_CoseKey_EncodeSize(&key, &sized);
+    TEST_ASSERT(ret == 0 && sized == outLen,
+                "short-d size matches padded encoding");
+
+    /* -3: d must be the full modulus width, zero-padded at the front. */
+    (void)wc_CBOR_DecoderInit(&dec, out, outLen);
+    ret = wc_CBOR_DecodeMapStart(&dec, &mapCount);
+    TEST_ASSERT(ret == 0, "short-d map start");
+    for (i = 0; (ret == 0) && (i < mapCount); i++) {
+        ret = wc_CBOR_DecodeInt(&dec, &label);
+        if (ret == 0) {
+            if (label == (int64_t)WOLFCOSE_KEY_LABEL_Y) {
+                ret = wc_CBOR_DecodeBstr(&dec, &dBytes, &dLen);
+            }
+            else {
+                ret = wc_CBOR_Skip(&dec);
+            }
+        }
+    }
+    TEST_ASSERT(ret == 0 && dBytes != NULL && dLen == 256u &&
+                dBytes[0] == 0x00u, "short-d left-padded to modulus width");
+
+    wc_CoseKey_Free(&key);
+    (void)wc_FreeRsaKey(&rsaKey);
+}
+#endif /* WOLFCOSE_HAVE_RSAPSS && WOLFCOSE_HAVE_RSA_PRIVATE_KEY */
+
 /* ----- Non-destructive COSE_Key metadata peek ----- */
 static void test_cose_key_peek_info(void)
 {
@@ -5491,6 +5972,55 @@ static void test_cose_key_peek_info(void)
         TEST_ASSERT(wc_CoseKey_PeekInfo(buf, enc.idx, &info) ==
                     WOLFCOSE_E_CBOR_MALFORMED, "peek text label rejected");
     }
+}
+
+/* Every COSE signature algorithm identifier is negative, so the alg path is
+ * signed throughout; the int32 range guards on alg and crv are what stops an
+ * out-of-range CBOR integer from being silently truncated into the info. */
+static void test_cose_key_peek_info_alg(void)
+{
+    WOLFCOSE_KEY_INFO info;
+    WOLFCOSE_CBOR_CTX enc;
+    uint8_t buf[64];
+    int ret;
+
+    TEST_LOG("  [Key PeekInfo alg range]\n");
+
+    /* {1: 2, 3: -7, -1: 1}: ES256 is negative, the common real case. */
+    (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+    (void)wc_CBOR_EncodeMapStart(&enc, 3);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ES256);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+    (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_P256);
+    ret = wc_CoseKey_PeekInfo(buf, enc.idx, &info);
+    TEST_ASSERT(ret == 0 && info.kty == WOLFCOSE_KTY_EC2 &&
+                info.alg == WOLFCOSE_ALG_ES256 &&
+                info.crv == WOLFCOSE_CRV_P256, "peek negative alg");
+
+    /* alg below INT32_MIN is rejected, not truncated. */
+    (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+    (void)wc_CBOR_EncodeMapStart(&enc, 2);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    (void)wc_CBOR_EncodeInt(&enc, (int64_t)INT32_MIN - 1);
+    ret = wc_CoseKey_PeekInfo(buf, enc.idx, &info);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG && info.alg ==
+                WOLFCOSE_ALG_UNSET, "peek alg out of int32 range");
+
+    /* Same guard on crv, which shares the label with bstr-valued members. */
+    (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+    (void)wc_CBOR_EncodeMapStart(&enc, 2);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+    (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+    (void)wc_CBOR_EncodeInt(&enc, (int64_t)INT32_MAX + 1);
+    ret = wc_CoseKey_PeekInfo(buf, enc.idx, &info);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR && info.crv == 0,
+                "peek crv out of int32 range");
 }
 
 /* ----- RFC 9052 interop test vectors (cose-wg/Examples) ----- */
@@ -19253,9 +19783,21 @@ int test_cose(void)
     test_cose_key_ecc();
     test_cose_key_encode_public_only_ecc();
     test_cose_key_encode_ecc_raw();
+#if defined(WOLFCOSE_HAVE_ES384) || defined(WOLFCOSE_HAVE_ES512)
+    test_cose_key_encode_ecc_raw_curves();
+#endif
 #endif
     test_cose_key_encode_size_exact();
+#if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448) || \
+    (defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)) || \
+    defined(WOLFCOSE_HAVE_MLDSA)
+    test_cose_key_encode_public_only_types();
+#endif
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFCOSE_HAVE_RSA_PRIVATE_KEY)
+    test_cose_key_encode_rsa_short_d();
+#endif
     test_cose_key_peek_info();
+    test_cose_key_peek_info_alg();
 #ifdef WOLFCOSE_HAVE_EDDSA
     test_cose_key_ed25519();
 #endif
