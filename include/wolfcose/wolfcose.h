@@ -961,6 +961,41 @@ WOLFCOSE_API int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key,
 
 #if defined(WOLFCOSE_KEY_DECODE)
 /**
+ * \brief Key metadata read out of a COSE_Key without importing anything.
+ *
+ * Filled by wc_CoseKey_PeekInfo(). kid points into the caller's input buffer.
+ */
+typedef struct WOLFCOSE_KEY_INFO {
+    int32_t        kty;     /**< WOLFCOSE_KTY_*, always set on success */
+    int32_t        alg;     /**< WOLFCOSE_ALG_*, WOLFCOSE_ALG_UNSET if absent */
+    int32_t        crv;     /**< WOLFCOSE_CRV_*, 0 if absent or N/A */
+    const uint8_t* kid;     /**< Key ID, zero-copy pointer, NULL if absent */
+    size_t         kidLen;  /**< Key ID length, 0 if absent */
+} WOLFCOSE_KEY_INFO;
+
+/**
+ * \brief Read kty/alg/crv/kid from a COSE_Key buffer without importing it.
+ *
+ * wc_CoseKey_Decode() needs a wolfCrypt key of the matching type attached up
+ * front and returns WOLFCOSE_E_COSE_KEY_TYPE otherwise, so a parser that
+ * accepts more than one key type would have to guess and retry. This reads
+ * the metadata first so the caller can attach the right key object once.
+ *
+ * Nothing is imported, no key object is needed, and \p in is not modified.
+ * The same structural checks wc_CoseKey_Decode() applies are applied here
+ * (integer labels only, no duplicate labels, kty required, no trailing
+ * bytes), so a buffer that peeks successfully will not be rejected by the
+ * decoder for those reasons.
+ *
+ * \param in    Input CBOR COSE_Key buffer.
+ * \param inSz  Input buffer size; must be exactly the encoded length.
+ * \param info  Output: decoded metadata.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
+                                      WOLFCOSE_KEY_INFO* info);
+
+/**
  * \brief Decode a CBOR COSE_Key map into a WOLFCOSE_KEY structure.
  *        For symmetric keys, pointers reference the input buffer.
  *        For ECC/Ed25519, caller must attach a key struct via
@@ -973,6 +1008,7 @@ WOLFCOSE_API int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key,
  * \param in    Input CBOR buffer.
  * \param inSz  Input buffer size.
  * \return WOLFCOSE_SUCCESS or negative error code.
+ * \see wc_CoseKey_PeekInfo() to learn the key type before attaching one.
  */
 WOLFCOSE_API int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in,
                                     size_t inSz);

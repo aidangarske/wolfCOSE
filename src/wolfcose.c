@@ -2647,6 +2647,132 @@ static int wolfCose_KeyAttachedTypeCheck(const WOLFCOSE_KEY* key)
     return ret;
 }
 
+int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
+                         WOLFCOSE_KEY_INFO* info)
+{
+    int ret;
+    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_HDR_STATE keyLabelState;
+    size_t mapCount = 0;
+    size_t i;
+    int64_t label;
+
+    if ((in == NULL) || (inSz == 0u) || (info == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        ctx.buf = NULL;
+        ctx.cbuf = in;
+        ctx.bufSz = inSz;
+        ctx.idx = 0;
+        wolfCose_HdrStateInit(&keyLabelState);
+
+        info->kty = 0;
+        info->alg = WOLFCOSE_ALG_UNSET;
+        info->crv = 0;
+        info->kid = NULL;
+        info->kidLen = 0;
+
+        ret = wc_CBOR_DecodeMapStart(&ctx, &mapCount);
+
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (mapCount > (size_t)WOLFCOSE_MAX_MAP_ITEMS)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+            mapCount = 0; /* Coverity: clear tainted loop bound */
+        }
+
+        for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < mapCount); i++) {
+            int keySkipped = 0;
+
+            /* RFC 9052: COSE_Key labels follow label = int / tstr; the
+             * decoder supports the integer form only, so mirror it here. */
+            ret = wolfCose_SkipIfTstrLabel(&ctx, &keySkipped);
+            if ((ret == WOLFCOSE_SUCCESS) && (keySkipped == 0)) {
+                ret = wc_CBOR_DecodeInt(&ctx, &label);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_HdrStateCheckAndAdd(&keyLabelState, label);
+            }
+
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (label == WOLFCOSE_KEY_LABEL_KTY)) {
+                uint64_t uval;
+                ret = wc_CBOR_DecodeUint(&ctx, &uval);
+                if ((ret == WOLFCOSE_SUCCESS) &&
+                    (uval > (uint64_t)INT32_MAX)) {
+                    ret = WOLFCOSE_E_COSE_BAD_HDR;
+                }
+                if (ret == WOLFCOSE_SUCCESS) {
+                    info->kty = (int32_t)uval;
+                }
+            }
+            else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (label == WOLFCOSE_KEY_LABEL_KID)) {
+                ret = wc_CBOR_DecodeBstr(&ctx, &info->kid, &info->kidLen);
+            }
+            else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (label == WOLFCOSE_KEY_LABEL_ALG)) {
+                int64_t algVal;
+                ret = wc_CBOR_DecodeInt(&ctx, &algVal);
+                if ((ret == WOLFCOSE_SUCCESS) &&
+                    (wolfCose_InInt32Range(algVal) == 0)) {
+                    ret = WOLFCOSE_E_COSE_BAD_ALG;
+                }
+                if (ret == WOLFCOSE_SUCCESS) {
+                    info->alg = (int32_t)algVal;
+                }
+            }
+            else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (label == WOLFCOSE_KEY_LABEL_CRV)) {
+                /* -1 is crv for EC2/OKP but k (bstr) for Symmetric and n
+                 * (bstr) for RSA, so dispatch on the CBOR type -- kty may
+                 * not have been seen yet. */
+                if ((ctx.idx < ctx.bufSz) &&
+                    (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_BSTR)) {
+                    ret = wc_CBOR_Skip(&ctx);
+                }
+                else {
+                    int64_t crvVal;
+                    ret = wc_CBOR_DecodeInt(&ctx, &crvVal);
+                    if ((ret == WOLFCOSE_SUCCESS) &&
+                        (wolfCose_InInt32Range(crvVal) == 0)) {
+                        ret = WOLFCOSE_E_COSE_BAD_HDR;
+                    }
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        info->crv = (int32_t)crvVal;
+                    }
+                }
+            }
+            else {
+                if (ret == WOLFCOSE_SUCCESS) {
+                    ret = wc_CBOR_Skip(&ctx);
+                }
+            }
+        }
+
+        /* kty is mandatory: without it there is nothing to dispatch on. */
+        if ((ret == WOLFCOSE_SUCCESS) && (info->kty == 0)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+        /* RFC 8949 Section 5.3.1: reject trailing data, as wc_CoseKey_Decode
+         * does, so a successful peek predicts a successful decode. */
+        if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+
+        if (ret != WOLFCOSE_SUCCESS) {
+            /* Never leave a half-parsed key looking usable. */
+            info->kty = 0;
+            info->alg = WOLFCOSE_ALG_UNSET;
+            info->crv = 0;
+            info->kid = NULL;
+            info->kidLen = 0;
+        }
+    }
+
+    return ret;
+}
+
 int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 {
     int ret;

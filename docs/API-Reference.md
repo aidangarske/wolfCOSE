@@ -445,9 +445,71 @@ Attach the wolfCrypt key with `wc_CoseKey_SetEcc()`, `wc_CoseKey_SetEd25519()`,
 assigning the `key.*` union directly does not, and no key material is imported.
 
 The decoded `kty`/`crv` must name the attached key type or
-`WOLFCOSE_E_COSE_KEY_TYPE` is returned before any importer runs. Decoding into a
-key with nothing attached runs no importer and yields metadata only, which is
-how to inspect an untrusted `COSE_Key` before choosing a key object for it.
+`WOLFCOSE_E_COSE_KEY_TYPE` is returned before any importer runs. To learn which
+key type a buffer holds before attaching anything, use
+[`wc_CoseKey_PeekInfo()`](#wc_cosekey_peekinfo).
+
+Decoding is strict: preferred CBOR only, integer labels only, no duplicate
+labels, and `bufSz` must be exactly the encoded length. See
+[Getting Started - Strict
+decoding](Getting-Started.md#strict-decoding-rfc-8949-preferred-serialization).
+
+---
+
+### wc_CoseKey_PeekInfo
+
+```c
+typedef struct WOLFCOSE_KEY_INFO {
+    int32_t        kty;     /* WOLFCOSE_KTY_*, always set on success */
+    int32_t        alg;     /* WOLFCOSE_ALG_*, WOLFCOSE_ALG_UNSET if absent */
+    int32_t        crv;     /* WOLFCOSE_CRV_*, 0 if absent or N/A */
+    const uint8_t* kid;     /* Key ID, zero-copy pointer, NULL if absent */
+    size_t         kidLen;
+} WOLFCOSE_KEY_INFO;
+
+int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
+                        WOLFCOSE_KEY_INFO* info);
+```
+
+Read `kty`, `alg`, `crv`, and `kid` out of a `COSE_Key` buffer without
+importing any key material and without needing a wolfCrypt key object.
+
+`wc_CoseKey_Decode()` requires the caller to have attached a key of the
+matching type up front and returns `WOLFCOSE_E_COSE_KEY_TYPE` otherwise, so a
+parser that accepts more than one key type would have to guess and retry.
+Peek first, then attach once:
+
+```c
+WOLFCOSE_KEY_INFO info;
+
+ret = wc_CoseKey_PeekInfo(in, inSz, &info);
+if (ret == WOLFCOSE_SUCCESS) {
+    if (info.kty == WOLFCOSE_KTY_EC2) {
+        (void)wc_ecc_init(&ecc);
+        ret = wc_CoseKey_SetEcc(&key, info.crv, &ecc);
+    }
+    else if (info.kty == WOLFCOSE_KTY_OKP) {
+        (void)wc_ed25519_init(&ed);
+        ret = wc_CoseKey_SetEd25519(&key, &ed);
+    }
+    /* ... */
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CoseKey_Decode(&key, in, inSz);
+    }
+}
+```
+
+`in` is not modified and nothing is consumed, so the call is repeatable. `kid`
+points into `in`, so it stays valid only as long as that buffer does.
+
+The same structural checks `wc_CoseKey_Decode()` applies are applied here -
+integer labels only, no duplicate labels, `kty` required, no trailing bytes -
+so a buffer that peeks successfully will not be rejected by the decoder for
+those reasons. Label `-1` is `crv` for EC2/OKP but `k`/`n` for symmetric/RSA
+keys; the value is dispatched on its CBOR type, so `crv` stays 0 for the
+latter. On any error every field of `info` is cleared.
+
+**Returns:** `WOLFCOSE_SUCCESS` or error code
 
 ---
 

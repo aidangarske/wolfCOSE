@@ -5331,6 +5331,168 @@ static void test_cose_key_encode_size_exact(void)
     }
 }
 
+/* ----- Non-destructive COSE_Key metadata peek ----- */
+static void test_cose_key_peek_info(void)
+{
+    WOLFCOSE_KEY_INFO info;
+    uint8_t buf[512];
+    size_t bufLen = 0;
+    int ret;
+
+    TEST_LOG("  [Key PeekInfo]\n");
+
+    /* Symmetric: kty only, plus kid and alg. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY symKey;
+        static const uint8_t symBytes[16] = {0};
+        static const uint8_t symKid[] = "sym-peek";
+
+        (void)wc_CoseKey_Init(&symKey);
+        (void)wc_CoseKey_SetSymmetric(&symKey, symBytes, sizeof(symBytes));
+        symKey.kid = symKid;
+        symKey.kidLen = sizeof(symKid) - 1u;
+        symKey.alg = WOLFCOSE_ALG_HMAC_256_256;
+        ret = wc_CoseKey_Encode(&symKey, buf, sizeof(buf), &bufLen);
+        TEST_ASSERT(ret == 0, "peek symm encode");
+
+        (void)memset(&info, 0xAA, sizeof(info));
+        ret = wc_CoseKey_PeekInfo(buf, bufLen, &info);
+        TEST_ASSERT(ret == 0 && info.kty == WOLFCOSE_KTY_SYMMETRIC &&
+                    info.alg == WOLFCOSE_ALG_HMAC_256_256 && info.crv == 0 &&
+                    info.kidLen == (sizeof(symKid) - 1u) &&
+                    (memcmp(info.kid, symKid, info.kidLen) == 0),
+                    "peek symm metadata");
+        /* k is a bstr at label -1 and must not be mistaken for crv. */
+        TEST_ASSERT(info.crv == 0, "peek symm leaves crv unset");
+        wc_CoseKey_Free(&symKey);
+    }
+
+#ifdef WOLFCOSE_HAVE_ES256
+    /* EC2: kty, crv, and no alg. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY eccCoseKey;
+        WOLFCOSE_KEY decKey;
+        ecc_key eccKey;
+        ecc_key decEcc;
+        WC_RNG rng;
+
+        (void)wc_InitRng(&rng);
+        (void)wc_ecc_init(&eccKey);
+        if (wc_ecc_make_key(&rng, 32, &eccKey) == 0) {
+            (void)wc_CoseKey_Init(&eccCoseKey);
+            (void)wc_CoseKey_SetEcc(&eccCoseKey, WOLFCOSE_CRV_P256, &eccKey);
+            ret = wc_CoseKey_Encode_ex(&eccCoseKey, buf, sizeof(buf), &bufLen,
+                                       WOLFCOSE_KEY_PUBLIC_ONLY);
+            TEST_ASSERT(ret == 0, "peek ecc encode");
+
+            (void)memset(&info, 0xAA, sizeof(info));
+            ret = wc_CoseKey_PeekInfo(buf, bufLen, &info);
+            TEST_ASSERT(ret == 0 && info.kty == WOLFCOSE_KTY_EC2 &&
+                        info.crv == WOLFCOSE_CRV_P256 &&
+                        info.alg == WOLFCOSE_ALG_UNSET &&
+                        info.kid == NULL && info.kidLen == 0,
+                        "peek ecc metadata");
+
+            /* The point of the peek: attach the right key, then decode. */
+            (void)wc_ecc_init(&decEcc);
+            (void)wc_CoseKey_Init(&decKey);
+            if (info.kty == WOLFCOSE_KTY_EC2) {
+                ret = wc_CoseKey_SetEcc(&decKey, info.crv, &decEcc);
+                TEST_ASSERT(ret == 0, "peek ecc attach");
+                ret = wc_CoseKey_Decode(&decKey, buf, bufLen);
+                TEST_ASSERT(ret == 0, "peek ecc decode after attach");
+            }
+            (void)wc_ecc_free(&decEcc);
+
+            /* Peeking must not have consumed or altered the buffer. */
+            (void)memset(&info, 0, sizeof(info));
+            ret = wc_CoseKey_PeekInfo(buf, bufLen, &info);
+            TEST_ASSERT(ret == 0 && info.kty == WOLFCOSE_KTY_EC2,
+                        "peek ecc repeatable");
+            wc_CoseKey_Free(&eccCoseKey);
+        }
+        (void)wc_ecc_free(&eccKey);
+        (void)wc_FreeRng(&rng);
+    }
+#endif /* WOLFCOSE_HAVE_ES256 */
+
+    /* Unknown labels are skipped, not fatal. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_CBOR_CTX enc;
+
+        (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+        (void)wc_CBOR_EncodeMapStart(&enc, 3);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_ED25519);
+        (void)wc_CBOR_EncodeInt(&enc, 77);
+        (void)wc_CBOR_EncodeArrayStart(&enc, 2);
+        (void)wc_CBOR_EncodeUint(&enc, 1);
+        (void)wc_CBOR_EncodeUint(&enc, 2);
+
+        ret = wc_CoseKey_PeekInfo(buf, enc.idx, &info);
+        TEST_ASSERT(ret == 0 && info.kty == WOLFCOSE_KTY_OKP &&
+                    info.crv == WOLFCOSE_CRV_ED25519,
+                    "peek skips unknown labels");
+    }
+
+    /* Error cases */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_CBOR_CTX enc;
+        static const uint8_t notAMap[] = {0x01};
+
+        TEST_ASSERT(wc_CoseKey_PeekInfo(NULL, 4, &info) ==
+                    WOLFCOSE_E_INVALID_ARG, "peek null in");
+        TEST_ASSERT(wc_CoseKey_PeekInfo(buf, 0, &info) ==
+                    WOLFCOSE_E_INVALID_ARG, "peek zero len");
+        TEST_ASSERT(wc_CoseKey_PeekInfo(buf, 4, NULL) ==
+                    WOLFCOSE_E_INVALID_ARG, "peek null info");
+        TEST_ASSERT(wc_CoseKey_PeekInfo(notAMap, sizeof(notAMap), &info) ==
+                    WOLFCOSE_E_CBOR_TYPE, "peek non-map");
+
+        /* Missing kty */
+        (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+        (void)wc_CBOR_EncodeMapStart(&enc, 1);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_P256);
+        ret = wc_CoseKey_PeekInfo(buf, enc.idx, &info);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR && info.kty == 0 &&
+                    info.crv == 0, "peek missing kty clears info");
+
+        /* Duplicate label */
+        (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+        (void)wc_CBOR_EncodeMapStart(&enc, 2);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
+        TEST_ASSERT(wc_CoseKey_PeekInfo(buf, enc.idx, &info) ==
+                    WOLFCOSE_E_CBOR_MALFORMED, "peek duplicate label");
+
+        /* Trailing bytes */
+        (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+        (void)wc_CBOR_EncodeMapStart(&enc, 1);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+        (void)wc_CBOR_EncodeUint(&enc, 9);
+        TEST_ASSERT(wc_CoseKey_PeekInfo(buf, enc.idx, &info) ==
+                    WOLFCOSE_E_CBOR_MALFORMED, "peek trailing bytes");
+
+        /* Text label */
+        (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+        (void)wc_CBOR_EncodeMapStart(&enc, 1);
+        (void)wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"kty", 3);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+        TEST_ASSERT(wc_CoseKey_PeekInfo(buf, enc.idx, &info) ==
+                    WOLFCOSE_E_CBOR_MALFORMED, "peek text label rejected");
+    }
+}
+
 /* ----- RFC 9052 interop test vectors (cose-wg/Examples) ----- */
 
 /* ECDSA-01: P-256 / ES256 Sign1 (ecdsa-sig-01.json) */
@@ -19093,6 +19255,7 @@ int test_cose(void)
     test_cose_key_encode_ecc_raw();
 #endif
     test_cose_key_encode_size_exact();
+    test_cose_key_peek_info();
 #ifdef WOLFCOSE_HAVE_EDDSA
     test_cose_key_ed25519();
 #endif
