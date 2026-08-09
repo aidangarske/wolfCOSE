@@ -671,6 +671,58 @@ WOLFCOSE_API int wc_CBOR_SkipItem(WOLFCOSE_CBOR_CTX* ctx,
                                    const uint8_t** data, size_t* dataLen);
 
 /**
+ * \brief Decoded CBOR map label: either an integer or a text string.
+ *
+ * RFC 9052 allows `label = int / tstr`, and real COSE and CTAP2 maps use both
+ * spellings for the same field (`3` vs `"alg"`, `1` vs `"type"`, `2` vs
+ * `"id"`). Populated by wc_CBOR_DecodeLabel(); compare with
+ * wc_CBOR_LabelIsInt() / wc_CBOR_LabelIsText().
+ */
+typedef struct WOLFCOSE_CBOR_LABEL {
+    int64_t        val;      /**< Integer label, valid when isText == 0 */
+    const uint8_t* text;     /**< Text label, points into the input buffer */
+    size_t         textLen;  /**< Text label length in bytes */
+    uint8_t        isText;   /**< 1 if the label was a text string, else 0 */
+} WOLFCOSE_CBOR_LABEL;
+
+/**
+ * \brief Decode a map label that may be an integer or a text string.
+ *
+ * Consumes exactly one item. Major types 0 and 1 populate label->val with
+ * isText 0; major type 3 populates label->text / label->textLen with isText 1
+ * and no copy. Anything else is WOLFCOSE_E_CBOR_TYPE with the item consumed.
+ *
+ * \param ctx    Decoder context.
+ * \param label  Output: decoded label.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CBOR_DecodeLabel(WOLFCOSE_CBOR_CTX* ctx,
+                                      WOLFCOSE_CBOR_LABEL* label);
+
+/**
+ * \brief Test a decoded label against an integer value.
+ * \param label  Label from wc_CBOR_DecodeLabel().
+ * \param val    Integer to compare against.
+ * \return 1 if the label is that integer, 0 otherwise (including NULL).
+ */
+WOLFCOSE_API int wc_CBOR_LabelIsInt(const WOLFCOSE_CBOR_LABEL* label,
+                                     int64_t val);
+
+/**
+ * \brief Test a decoded label against a text value.
+ *
+ * Compares bytes, not Unicode: no normalization or case folding, matching how
+ * CTAP2 and COSE compare text labels.
+ *
+ * \param label    Label from wc_CBOR_DecodeLabel().
+ * \param text     Text to compare against (not NUL-terminated by contract).
+ * \param textLen  Length of text in bytes.
+ * \return 1 if the label is that text, 0 otherwise (including NULL).
+ */
+WOLFCOSE_API int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label,
+                                      const uint8_t* text, size_t textLen);
+
+/**
  * \brief Peek at the major type of the next item without consuming it.
  * \param ctx  Decoder context.
  * \return Major type (0-7), or 0xFF if ctx is NULL or the buffer is exhausted.

@@ -956,6 +956,7 @@ is `NULL`.
 | `wc_CBOR_DecodeArrayStart(ctx, count)` | Decode array header |
 | `wc_CBOR_DecodeMapStart(ctx, count)` | Decode map header |
 | `wc_CBOR_DecodeTag(ctx, tag)` | Decode CBOR tag |
+| `wc_CBOR_DecodeLabel(ctx, label)` | Decode an int-or-text map label |
 | `wc_CBOR_Skip(ctx)` | Skip over any CBOR item |
 | `wc_CBOR_SkipItem(ctx, data, dataLen)` | Skip an item and capture its raw bytes |
 | `wc_CBOR_PeekType(ctx)` | Peek at next item's major type |
@@ -998,6 +999,57 @@ if (ret == WOLFCOSE_SUCCESS) {
 **Returns:** `WOLFCOSE_SUCCESS` or error code
 
 ---
+
+### wc_CBOR_DecodeLabel
+
+```c
+typedef struct WOLFCOSE_CBOR_LABEL {
+    int64_t        val;      /* Integer label, valid when isText == 0 */
+    const uint8_t* text;     /* Text label, points into the input buffer */
+    size_t         textLen;
+    uint8_t        isText;
+} WOLFCOSE_CBOR_LABEL;
+
+int wc_CBOR_DecodeLabel(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_LABEL* label);
+int wc_CBOR_LabelIsInt(const WOLFCOSE_CBOR_LABEL* label, int64_t val);
+int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label,
+                        const uint8_t* text, size_t textLen);
+```
+
+RFC 9052 defines `label = int / tstr`, and real COSE and CTAP2 maps use both
+spellings for the same field (`3` vs `"alg"`, `1` vs `"type"`, `2` vs `"id"`).
+`wc_CBOR_DecodeLabel()` consumes one item and reports whichever form it found,
+so a parser writes the dispatch once instead of duplicating a
+`wc_CBOR_PeekType()` branch at every map.
+
+Major types 0 and 1 fill `val` with `isText == 0`; major type 3 fills
+`text`/`textLen` with `isText == 1` and no copy. Anything else returns
+`WOLFCOSE_E_CBOR_TYPE`.
+
+`wc_CBOR_LabelIsInt()` and `wc_CBOR_LabelIsText()` return 1 on match and 0
+otherwise, including for a `NULL` label. Text comparison is byte-exact: no
+Unicode normalization or case folding, matching how CTAP2 and COSE compare
+labels.
+
+```c
+WOLFCOSE_CBOR_LABEL label;
+static const uint8_t algText[] = "alg";
+
+ret = wc_CBOR_DecodeLabel(&ctx, &label);
+if (wc_CBOR_LabelIsInt(&label, 3) || wc_CBOR_LabelIsText(&label, algText, 3)) {
+    ret = wc_CBOR_DecodeInt(&ctx, &alg);
+}
+else {
+    ret = wc_CBOR_Skip(&ctx);
+}
+```
+
+Note that `wc_CoseKey_Decode()` and the COSE header parsers accept integer
+labels only, by design: silently skipping text labels would break their
+duplicate-label enforcement. `wc_CBOR_DecodeLabel()` is for caller-written
+parsers of protocol maps such as CTAP2.
+
+**Returns:** `WOLFCOSE_SUCCESS` or error code
 
 ---
 

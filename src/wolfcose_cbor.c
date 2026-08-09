@@ -699,4 +699,82 @@ int wc_CBOR_SkipItem(WOLFCOSE_CBOR_CTX* ctx, const uint8_t** data,
     return ret;
 }
 
+int wc_CBOR_DecodeLabel(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_CBOR_LABEL* label)
+{
+    int ret;
+    WOLFCOSE_CBOR_ITEM item;
+
+    if ((ctx == NULL) || (label == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        ret = wolfCose_CBOR_DecodeHead(ctx, &item);
+        if (ret == WOLFCOSE_SUCCESS) {
+            label->val = 0;
+            label->text = NULL;
+            label->textLen = 0;
+            label->isText = 0u;
+
+            if (item.majorType == WOLFCOSE_CBOR_UINT) {
+                if (item.val > (uint64_t)INT64_MAX) {
+                    ret = WOLFCOSE_E_CBOR_OVERFLOW;
+                }
+                else {
+                    label->val = (int64_t)item.val;
+                }
+            }
+            else if (item.majorType == WOLFCOSE_CBOR_NEGINT) {
+                /* RFC 8949: value = -1 - val */
+                if (item.val > (uint64_t)INT64_MAX) {
+                    ret = WOLFCOSE_E_CBOR_OVERFLOW;
+                }
+                else {
+                    label->val = -1 - (int64_t)item.val;
+                }
+            }
+            else if (item.majorType == WOLFCOSE_CBOR_TSTR) {
+                label->text = item.data;
+                label->textLen = item.dataLen;
+                label->isText = 1u;
+            }
+            else {
+                /* RFC 9052: label = int / tstr, nothing else. */
+                ret = WOLFCOSE_E_CBOR_TYPE;
+            }
+        }
+    }
+    return ret;
+}
+
+int wc_CBOR_LabelIsInt(const WOLFCOSE_CBOR_LABEL* label, int64_t val)
+{
+    int match = 0;
+
+    if ((label != NULL) && (label->isText == 0u) && (label->val == val)) {
+        match = 1;
+    }
+    return match;
+}
+
+int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label, const uint8_t* text,
+                         size_t textLen)
+{
+    int match = 0;
+
+    if ((label != NULL) && (label->isText != 0u) &&
+        (label->textLen == textLen)) {
+        if (textLen == 0u) {
+            match = 1;
+        }
+        else if ((label->text != NULL) && (text != NULL) &&
+                 (XMEMCMP(label->text, text, textLen) == 0)) {
+            match = 1;
+        }
+        else {
+            /* No action required */
+        }
+    }
+    return match;
+}
+
 #endif /* WOLFCOSE_CBOR_DECODE */

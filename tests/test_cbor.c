@@ -1119,6 +1119,84 @@ static void test_cbor_skip_item(void)
     }
 }
 
+static void test_cbor_decode_label(void)
+{
+    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_LABEL label;
+    uint8_t buf[64];
+    static const uint8_t algText[] = "alg";
+    int ret;
+
+    printf("  [Int-or-text labels]\n");
+
+    /* {3: 1, "alg": 2, -1: 3} */
+    (void)wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    (void)wc_CBOR_EncodeMapStart(&ctx, 3);
+    (void)wc_CBOR_EncodeUint(&ctx, 3);
+    (void)wc_CBOR_EncodeUint(&ctx, 1);
+    (void)wc_CBOR_EncodeTstr(&ctx, algText, 3);
+    (void)wc_CBOR_EncodeUint(&ctx, 2);
+    (void)wc_CBOR_EncodeInt(&ctx, -1);
+    (void)wc_CBOR_EncodeUint(&ctx, 3);
+
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        size_t count = 0;
+        uint64_t uval = 0;
+
+        (void)wc_CBOR_DecoderInit(&ctx, buf, ctx.idx);
+        ret = wc_CBOR_DecodeMapStart(&ctx, &count);
+        TEST_ASSERT(ret == 0 && count == 3, "label map start");
+
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == 0 && label.isText == 0 && label.val == 3,
+                    "label int 3");
+        TEST_ASSERT(wc_CBOR_LabelIsInt(&label, 3) == 1, "label int matches");
+        TEST_ASSERT(wc_CBOR_LabelIsInt(&label, 4) == 0, "label int mismatch");
+        TEST_ASSERT(wc_CBOR_LabelIsText(&label, algText, 3) == 0,
+                    "int label is not text");
+        (void)wc_CBOR_DecodeUint(&ctx, &uval);
+
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == 0 && label.isText == 1 && label.textLen == 3 &&
+                    memcmp(label.text, algText, 3) == 0, "label tstr alg");
+        TEST_ASSERT(wc_CBOR_LabelIsText(&label, algText, 3) == 1,
+                    "label text matches");
+        TEST_ASSERT(wc_CBOR_LabelIsText(&label, algText, 2) == 0,
+                    "label text length mismatch");
+        TEST_ASSERT(wc_CBOR_LabelIsText(&label, (const uint8_t*)"blg", 3) == 0,
+                    "label text value mismatch");
+        TEST_ASSERT(wc_CBOR_LabelIsInt(&label, 3) == 0,
+                    "text label is not int");
+        (void)wc_CBOR_DecodeUint(&ctx, &uval);
+
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == 0 && label.isText == 0 && label.val == -1,
+                    "label negint -1");
+        TEST_ASSERT(wc_CBOR_LabelIsInt(&label, -1) == 1,
+                    "label negint matches");
+    }
+
+    /* A bstr is not a valid label. */
+    (void)wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    (void)wc_CBOR_EncodeBstr(&ctx, algText, 3);
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        size_t encLen = ctx.idx;
+        (void)wc_CBOR_DecoderInit(&ctx, buf, encLen);
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE, "bstr rejected as label");
+    }
+
+    TEST_ASSERT(wc_CBOR_DecodeLabel(NULL, &label) == WOLFCOSE_E_INVALID_ARG,
+                "label null ctx");
+    TEST_ASSERT(wc_CBOR_DecodeLabel(&ctx, NULL) == WOLFCOSE_E_INVALID_ARG,
+                "label null out");
+    TEST_ASSERT(wc_CBOR_LabelIsInt(NULL, 0) == 0, "label int null safe");
+    TEST_ASSERT(wc_CBOR_LabelIsText(NULL, algText, 3) == 0,
+                "label text null safe");
+}
+
 int test_cbor(void)
 {
     g_failures = 0;
@@ -1130,6 +1208,7 @@ int test_cbor(void)
     test_cbor_peektype_bounds();
     test_cbor_ctx_init();
     test_cbor_skip_item();
+    test_cbor_decode_label();
     test_cbor_nested();
     test_cbor_skip();
     test_cbor_skip_depth();
