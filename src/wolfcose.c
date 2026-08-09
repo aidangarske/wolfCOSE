@@ -1497,6 +1497,57 @@ static int wolfCose_EncodeKeyOptionalFields(WOLFCOSE_CBOR_CTX* ctx,
 }
 
 #ifdef WOLFCOSE_HAVE_RSAPSS
+/* Widest RSA public exponent wolfCOSE emits. Both wc_CoseKey_Encode_ex() and
+ * wc_CoseKey_EncodeSize_ex() read e through a buffer this size, so the size
+ * query fails on an oversized exponent exactly where the encoder does. */
+#define WOLFCOSE_RSA_E_MAX_SZ 8u
+
+/* Measure the RSA public exponent without mp_unsigned_bin_size(): that is
+ * declared MP_API, which wolfSSL exports only when built with
+ * WOLFSSL_PUBLIC_MP, so calling it here fails to link (undefined reference
+ * to sp_unsigned_bin_size) against a stock library. */
+static int wolfCose_RsaExponentSize(RsaKey* rsa, size_t* eLen)
+{
+    uint8_t eBuf[WOLFCOSE_RSA_E_MAX_SZ];
+    word32 len = (word32)sizeof(eBuf);
+    size_t lead = 0u;
+    int ret = WOLFCOSE_SUCCESS;
+#if !defined(HAVE_ECC) && !defined(WOLFSSL_EXPORT_INT)
+    uint8_t nBuf[WOLFCOSE_MAX_SCRATCH_SZ];
+    word32 nLen = (word32)sizeof(nBuf);
+#endif
+
+#if defined(HAVE_ECC) || defined(WOLFSSL_EXPORT_INT)
+    /* wc_export_int() zero-pads to keySz, so the natural width is what is
+     * left once the leading zeros are dropped. */
+    if (wc_export_int(&rsa->e, eBuf, &len, (word32)sizeof(eBuf),
+                      WC_TYPE_UNSIGNED_BIN) != 0) {
+        ret = WOLFCOSE_E_CRYPTO;
+    }
+#else
+    /* Without wc_export_int() the only public reader of e also wants the
+     * modulus; take it into scratch and drop it. n is public, but there is
+     * no reason to leave a copy on the stack. */
+    if (wc_RsaFlattenPublicKey(rsa, eBuf, &len, nBuf, &nLen) != 0) {
+        ret = WOLFCOSE_E_CRYPTO;
+    }
+    wolfCose_ForceZero(nBuf, sizeof(nBuf));
+#endif
+
+    if (ret == WOLFCOSE_SUCCESS) {
+        while ((lead < (size_t)len) && (eBuf[lead] == 0x00u)) {
+            lead++;
+        }
+        if (lead == (size_t)len) {
+            ret = WOLFCOSE_E_CRYPTO; /* e == 0 is not a usable key */
+        }
+        else {
+            *eLen = (size_t)len - lead;
+        }
+    }
+    return ret;
+}
+
 /* Finalize a directly-exported RSA bstr (n or d). The caller reserved a 3-byte
  * header at hdrPos and wrote the payload at hdrPos+3; emit the preferred CBOR
  * length form (0x58 for <256, shifting the payload left over the unused byte;
@@ -1697,7 +1748,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             /* RFC 8230: {1:3, -1:n, -2:e [, -3:d, -4:p, -5:q, -8:qInv]}.
              * Export large components straight into the output buffer to
              * avoid stack copies (RSA-4096 modulus = 512 bytes). */
-            uint8_t eBuf[8]; /* exponent, typically 3 bytes */
+            uint8_t eBuf[WOLFCOSE_RSA_E_MAX_SZ]; /* typically 3 bytes */
             word32 eLen = (word32)sizeof(eBuf);
             word32 nLen;
             size_t hdrPos;
@@ -2402,13 +2453,7 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
                 }
             }
             if (ret == WOLFCOSE_SUCCESS) {
-                int eLen = mp_unsigned_bin_size(&key->key.rsa->e);
-                if (eLen <= 0) {
-                    ret = WOLFCOSE_E_CRYPTO;
-                }
-                else {
-                    eSz = (size_t)eLen;
-                }
+                ret = wolfCose_RsaExponentSize(key->key.rsa, &eSz);
             }
 #ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
             if ((ret == WOLFCOSE_SUCCESS) &&
