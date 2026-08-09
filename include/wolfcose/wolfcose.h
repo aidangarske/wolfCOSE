@@ -542,6 +542,14 @@ WOLFCOSE_API int wc_CBOR_EncodeDouble(WOLFCOSE_CBOR_CTX* ctx, double val);
  * CBOR Decode API (zero-copy, single-pass)
  *
  * Guarded by WOLFCOSE_CBOR_DECODE — always needed for verify/decrypt builds.
+ *
+ * Strictness note (RFC 8949 Section 4.2.1): every decode entry point requires
+ * preferred, shortest-form argument encoding and rejects indefinite-length
+ * items. This is what COSE deterministic encoding and CTAP2 canonical CBOR
+ * require, but it is stricter than a general-purpose CBOR parser: input that
+ * other decoders accept — 0x1817 for 23, an indefinite-length bstr — is
+ * rejected here with WOLFCOSE_E_CBOR_MALFORMED or WOLFCOSE_E_UNSUPPORTED.
+ * See docs/Getting-Started.md, "Strict decoding".
  * ----- */
 
 #if defined(WOLFCOSE_CBOR_DECODE)
@@ -575,6 +583,13 @@ static inline int wc_CBOR_DecoderInit(WOLFCOSE_CBOR_CTX* ctx,
 /**
  * \brief Decode a CBOR data item head. Core decoder function.
  *        For bstr/tstr, sets item->data to point into the input buffer.
+ *
+ * Enforces RFC 8949 Section 4.2.1 preferred serialization: an argument that
+ * could have been encoded in fewer bytes is WOLFCOSE_E_CBOR_MALFORMED, and an
+ * indefinite-length item (additional information 31) is
+ * WOLFCOSE_E_UNSUPPORTED. Deliberately stricter than a general-purpose CBOR
+ * parser; see the section note above.
+ *
  * \param ctx   Decoder context (advances idx past the decoded item head + data).
  * \param item  Output: decoded item.
  * \return WOLFCOSE_SUCCESS or negative error code.

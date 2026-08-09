@@ -961,6 +961,12 @@ is `NULL`.
 | `wc_CBOR_SkipItem(ctx, data, dataLen)` | Skip an item and capture its raw bytes |
 | `wc_CBOR_PeekType(ctx)` | Peek at next item's major type |
 
+> **Decoding is strict by design.** Every decode entry point requires
+> RFC 8949 Section 4.2.1 preferred (shortest-form) arguments and rejects
+> indefinite lengths. See [Getting Started - Strict
+> decoding](Getting-Started.md#strict-decoding-rfc-8949-preferred-serialization)
+> before debugging an interop failure.
+
 ### wc_CBOR_SkipItem
 
 ```c
