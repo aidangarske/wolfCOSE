@@ -998,6 +998,45 @@ static void test_cbor_peektype_bounds(void)
     TEST_ASSERT(wc_CBOR_PeekType(NULL) == 0xFFu, "peektype null sentinel");
 }
 
+static void test_cbor_ctx_init(void)
+{
+    WOLFCOSE_CBOR_CTX ctx;
+    uint8_t buf[16];
+    uint64_t uval = 0;
+    int ret;
+
+    printf("  [Context initialisers]\n");
+
+    /* Poison every field so a partial init is visible. */
+    ctx.buf = (uint8_t*)0x1;
+    ctx.cbuf = (const uint8_t*)0x1;
+    ctx.bufSz = 0xDEAD;
+    ctx.idx = 0xBEEF;
+
+    ret = wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0 && ctx.buf == buf && ctx.cbuf == NULL &&
+                ctx.bufSz == sizeof(buf) && ctx.idx == 0,
+                "encoder init sets encode side only");
+    ret = wc_CBOR_EncodeUint(&ctx, 1000);
+    TEST_ASSERT(ret == 0 && ctx.idx == 3, "encoder init usable");
+
+    ret = wc_CBOR_DecoderInit(&ctx, buf, ctx.idx);
+    TEST_ASSERT(ret == 0 && ctx.cbuf == buf && ctx.buf == NULL &&
+                ctx.bufSz == 3 && ctx.idx == 0,
+                "decoder init sets decode side only");
+    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+    TEST_ASSERT(ret == 0 && uval == 1000, "decoder init usable");
+
+    TEST_ASSERT(wc_CBOR_EncoderInit(NULL, buf, sizeof(buf)) ==
+                WOLFCOSE_E_INVALID_ARG, "encoder init null ctx");
+    TEST_ASSERT(wc_CBOR_EncoderInit(&ctx, NULL, 4) ==
+                WOLFCOSE_E_INVALID_ARG, "encoder init null buf");
+    TEST_ASSERT(wc_CBOR_DecoderInit(NULL, buf, 4) ==
+                WOLFCOSE_E_INVALID_ARG, "decoder init null ctx");
+    TEST_ASSERT(wc_CBOR_DecoderInit(&ctx, NULL, 4) ==
+                WOLFCOSE_E_INVALID_ARG, "decoder init null buf");
+}
+
 int test_cbor(void)
 {
     g_failures = 0;
@@ -1007,6 +1046,7 @@ int test_cbor(void)
     test_cbor_roundtrip();
     test_cbor_boundary_roundtrip();
     test_cbor_peektype_bounds();
+    test_cbor_ctx_init();
     test_cbor_nested();
     test_cbor_skip();
     test_cbor_skip_depth();

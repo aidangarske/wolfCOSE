@@ -902,10 +902,38 @@ Verify a COSE_Mac message as a specific recipient.
 
 Basic CBOR encoding/decoding functions in `wolfcose.h`:
 
+### Context Setup
+
+`WOLFCOSE_CBOR_CTX` carries both a mutable `buf` (encode) and a const `cbuf`
+(decode). These set the right one, clear the other, set `bufSz`, and zero
+`idx` in a single call:
+
+```c
+int wc_CBOR_EncoderInit(WOLFCOSE_CBOR_CTX* ctx, uint8_t* buf, size_t bufSz);
+int wc_CBOR_DecoderInit(WOLFCOSE_CBOR_CTX* ctx, const uint8_t* buf, size_t bufSz);
+```
+
+Both are `static inline` in the header, so they cost nothing over assigning
+the fields by hand.
+
+```c
+WOLFCOSE_CBOR_CTX ctx;
+
+(void)wc_CBOR_EncoderInit(&ctx, out, sizeof(out));
+ret = wc_CBOR_EncodeMapStart(&ctx, 2);
+...
+(void)wc_CBOR_DecoderInit(&ctx, in, inSz);
+ret = wc_CBOR_DecodeMapStart(&ctx, &count);
+```
+
+**Returns:** `WOLFCOSE_SUCCESS`, or `WOLFCOSE_E_INVALID_ARG` if `ctx` or `buf`
+is `NULL`.
+
 ### Encoding Functions
 
 | Function | Description |
 |----------|-------------|
+| `wc_CBOR_EncoderInit(ctx, buf, bufSz)` | Initialize an encode context |
 | `wc_CBOR_EncodeUint(ctx, val)` | Encode unsigned integer |
 | `wc_CBOR_EncodeInt(ctx, val)` | Encode signed integer |
 | `wc_CBOR_EncodeBstr(ctx, data, len)` | Encode byte string |
@@ -920,6 +948,7 @@ Basic CBOR encoding/decoding functions in `wolfcose.h`:
 
 | Function | Description |
 |----------|-------------|
+| `wc_CBOR_DecoderInit(ctx, buf, bufSz)` | Initialize a decode context |
 | `wc_CBOR_DecodeUint(ctx, val)` | Decode unsigned integer |
 | `wc_CBOR_DecodeInt(ctx, val)` | Decode signed integer |
 | `wc_CBOR_DecodeBstr(ctx, data, len)` | Decode byte string (zero-copy) |

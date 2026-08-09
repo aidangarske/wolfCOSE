@@ -432,6 +432,33 @@ typedef struct WOLFCOSE_SIGNATURE {
 #if defined(WOLFCOSE_CBOR_ENCODE)
 
 /**
+ * \brief Initialize a context for encoding into \p buf.
+ *
+ * WOLFCOSE_CBOR_CTX carries both an encode pointer (buf) and a decode pointer
+ * (cbuf); this sets the encode one, clears the decode one, and rewinds idx, so
+ * a context can never be half-initialized from the wrong direction.
+ *
+ * \param ctx    Context to initialize.
+ * \param buf    Output buffer.
+ * \param bufSz  Output buffer size.
+ * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_INVALID_ARG.
+ */
+static inline int wc_CBOR_EncoderInit(WOLFCOSE_CBOR_CTX* ctx, uint8_t* buf,
+                                       size_t bufSz)
+{
+    int ret = WOLFCOSE_E_INVALID_ARG;
+
+    if ((ctx != NULL) && (buf != NULL)) {
+        ctx->buf = buf;
+        ctx->cbuf = NULL;
+        ctx->bufSz = bufSz;
+        ctx->idx = 0u;
+        ret = WOLFCOSE_SUCCESS;
+    }
+    return ret;
+}
+
+/**
  * \brief Encode an unsigned integer.
  * \param ctx  Encoder context with output buffer.
  * \param val  Value to encode.
@@ -518,6 +545,32 @@ WOLFCOSE_API int wc_CBOR_EncodeDouble(WOLFCOSE_CBOR_CTX* ctx, double val);
  * ----- */
 
 #if defined(WOLFCOSE_CBOR_DECODE)
+
+/**
+ * \brief Initialize a context for decoding from \p buf.
+ *
+ * Sets the const decode pointer, clears the mutable encode pointer, and
+ * rewinds idx. The buffer is never written through this context.
+ *
+ * \param ctx    Context to initialize.
+ * \param buf    Input buffer.
+ * \param bufSz  Input buffer size.
+ * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_INVALID_ARG.
+ */
+static inline int wc_CBOR_DecoderInit(WOLFCOSE_CBOR_CTX* ctx,
+                                       const uint8_t* buf, size_t bufSz)
+{
+    int ret = WOLFCOSE_E_INVALID_ARG;
+
+    if ((ctx != NULL) && (buf != NULL)) {
+        ctx->buf = NULL;
+        ctx->cbuf = buf;
+        ctx->bufSz = bufSz;
+        ctx->idx = 0u;
+        ret = WOLFCOSE_SUCCESS;
+    }
+    return ret;
+}
 
 /**
  * \brief Decode a CBOR data item head. Core decoder function.
