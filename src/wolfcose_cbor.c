@@ -760,8 +760,6 @@ int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label, const uint8_t* text,
                          size_t textLen)
 {
     int match = 0;
-    uint8_t diff = 0u;
-    size_t i;
 
     if ((label != NULL) && (label->isText != 0u) &&
         (label->textLen == textLen)) {
@@ -772,9 +770,15 @@ int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label, const uint8_t* text,
             /* A map label is public, but the core library takes no
              * variable-time compares at all (.github/semgrep-rules.yml), so
              * this scans the whole label rather than stopping at the first
-             * difference. */
+             * difference. Same OR-accumulate shape as the MAC tag compare in
+             * wolfcose.c; volatile keeps the loop from becoming an early
+             * exit. */
+            volatile unsigned int diff = 0;
+            size_t i;
+
             for (i = 0u; i < textLen; i++) {
-                diff |= (uint8_t)(label->text[i] ^ text[i]);
+                diff |= (unsigned int)label->text[i] ^
+                        (unsigned int)text[i];
             }
             match = (diff == 0u) ? 1 : 0;
         }
