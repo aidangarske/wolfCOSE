@@ -1557,8 +1557,9 @@ static int wolfCose_EncodeRsaMp(WOLFCOSE_CBOR_CTX* ctx, int64_t label,
 #ifdef HAVE_ECC
 /* Emit an EC2 COSE_Key map from raw affine coordinates:
  *   {1: kty [, 2: kid] [, 3: alg], -1: crv, -2: x, -3: y [, -4: d]}
- * wc_CoseKey_Encode_ex() exports the coordinates out of an ecc_key first.
- * d == NULL selects the public-only form. */
+ * Shared by wc_CoseKey_Encode_ex(), which exports the coordinates out of an
+ * ecc_key first, and wc_CoseKey_EncodeEccRaw(), where the caller supplies
+ * them. d == NULL selects the public-only form. */
 static int wolfCose_EncodeEc2Map(WOLFCOSE_CBOR_CTX* ctx,
     const WOLFCOSE_KEY* key,
     const uint8_t* x, size_t xLen, const uint8_t* y, size_t yLen,
@@ -2158,6 +2159,76 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
 
     return ret;
 }
+
+#ifdef HAVE_ECC
+int wc_CoseKey_EncodeEccRaw(int32_t crv, const uint8_t* x, const uint8_t* y,
+                             const uint8_t* d, size_t coordLen,
+                             const uint8_t* kid, size_t kidLen, int32_t alg,
+                             uint8_t* out, size_t outSz, size_t* outLen)
+{
+    int ret = WOLFCOSE_SUCCESS;
+    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_KEY meta;
+    size_t coordSz = 0u;
+
+    if ((x == NULL) || (y == NULL) || (out == NULL) || (outLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    /* Only RFC 9053 EC2 curves belong in this map; wolfCose_CrvKeySize()
+     * also answers for the OKP curves, which do not. */
+    else if ((crv != WOLFCOSE_CRV_P256) && (crv != WOLFCOSE_CRV_P384) &&
+             (crv != WOLFCOSE_CRV_P521)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_CrvKeySize(crv, &coordSz);
+    }
+    /* RFC 9053 Section 7.1.1: EC2 coordinates are fixed length with leading
+     * zeros preserved, so a short buffer is a caller error, not a value to
+     * pad here. */
+    if ((ret == WOLFCOSE_SUCCESS) && (coordLen != coordSz)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (kid == NULL) && (kidLen != 0u)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+
+    if (ret == WOLFCOSE_SUCCESS) {
+        /* Metadata carrier only: no wolfCrypt key is attached or needed. */
+        ret = wc_CoseKey_Init(&meta);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        meta.kty = WOLFCOSE_KTY_EC2;
+        meta.crv = crv;
+        meta.alg = alg;
+        meta.kid = kid;
+        meta.kidLen = kidLen;
+
+        ctx.buf = out;
+        ctx.cbuf = NULL;
+        ctx.bufSz = outSz;
+        ctx.idx = 0;
+
+        ret = wolfCose_EncodeEc2Map(&ctx, &meta, x, coordLen, y, coordLen,
+                                    d, coordLen);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        *outLen = ctx.idx;
+    }
+
+    /* Cleanup: zero output buffer on error */
+    if (ret != WOLFCOSE_SUCCESS) {
+        if (out != NULL) {
+            (void)wolfCose_ForceZero(out, outSz);
+        }
+        if (outLen != NULL) {
+            *outLen = 0;
+        }
+    }
+
+    return ret;
+}
+#endif /* HAVE_ECC */
 
 /* Size of a CBOR integer as wc_CBOR_EncodeInt() would emit it. */
 static size_t wolfCose_CborIntSize(int64_t val)

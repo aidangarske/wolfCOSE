@@ -354,6 +354,50 @@ ret = wc_CoseKey_Encode_ex(&key, cose, sizeof(cose), &coseLen,
 
 ---
 
+### wc_CoseKey_EncodeEccRaw
+
+```c
+int wc_CoseKey_EncodeEccRaw(int32_t crv,
+                            const uint8_t* x, const uint8_t* y,
+                            const uint8_t* d, size_t coordLen,
+                            const uint8_t* kid, size_t kidLen, int32_t alg,
+                            uint8_t* out, size_t outSz, size_t* outLen);
+```
+
+Encode an EC2 `COSE_Key` straight from raw affine coordinates. For callers
+that hold only the coordinates - re-emitting a stored credential record, or
+echoing a peer key - this avoids `wc_ecc_import_unsigned()`, which pays a full
+point import, an on-curve check, and an `ecc_key` worth of stack purely to
+serialise bytes that are already in hand.
+
+The output is byte-identical to what `wc_CoseKey_Encode_ex()` produces for the
+same `crv`/`kid`/`alg` and the same coordinates.
+
+**Parameters:**
+| Name | Description |
+|------|-------------|
+| `crv` | `WOLFCOSE_CRV_P256` / `P384` / `P521` (EC2 curves only) |
+| `x`, `y` | Coordinates, each exactly `coordLen` bytes, big-endian, zero-padded |
+| `d` | Private scalar (`coordLen` bytes), or `NULL` for a public-only key |
+| `coordLen` | Must equal the curve size: 32, 48, or 66 |
+| `kid`, `kidLen` | Optional key identifier (`NULL`, 0 to omit) |
+| `alg` | Algorithm for the `3: alg` entry, or `WOLFCOSE_ALG_UNSET` to omit |
+| `out`, `outSz`, `outLen` | Output buffer and encoded length |
+
+**Returns:** `WOLFCOSE_SUCCESS` or error code
+
+Nothing here checks that `(x, y)` is on the curve: the bytes are copied into
+the map as supplied. Encoding an unvalidated point is safe; *using* one is
+not, so import it through wolfCrypt before any ECDH or verify operation.
+
+There is deliberately no `wc_CoseKey_SetEccRaw()`. `WOLFCOSE_KEY` holds a
+single pointer-sized union member for the key, which cannot carry three
+independent buffers (`x`, `y`, `d`), and widening the structure would change
+`sizeof(WOLFCOSE_KEY)` and break the ABI for already-compiled callers. The
+free function above is the supported raw-coordinate path.
+
+---
+
 ### wc_CoseKey_EncodeSize / wc_CoseKey_EncodeSize_ex
 
 ```c

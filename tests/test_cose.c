@@ -5011,6 +5011,104 @@ static void test_cose_key_encode_public_only_ecc(void)
     (void)wc_FreeRng(&rng);
 }
 
+/* Raw-coordinate EC2 encoding: no ecc_key, no point import. */
+static void test_cose_key_encode_ecc_raw(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    uint8_t xBuf[32];
+    uint8_t yBuf[32];
+    uint8_t dBuf[32];
+    word32 xLen = (word32)sizeof(xBuf);
+    word32 yLen = (word32)sizeof(yBuf);
+    word32 dLen = (word32)sizeof(dBuf);
+    uint8_t viaKey[256];
+    uint8_t viaRaw[256];
+    size_t viaKeyLen = 0;
+    size_t viaRawLen = 0;
+    static const uint8_t kid[] = "cred-01";
+    int ret;
+
+    TEST_LOG("  [Key Encode ECC Raw]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "eccraw rng init");
+    if (ret != 0) {
+        return;
+    }
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "eccraw ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "eccraw keygen");
+    ret = wc_ecc_export_public_raw(&eccKey, xBuf, &xLen, yBuf, &yLen);
+    TEST_ASSERT(ret == 0 && xLen == 32u && yLen == 32u, "eccraw export pub");
+    ret = wc_ecc_export_private_only(&eccKey, dBuf, &dLen);
+    TEST_ASSERT(ret == 0 && dLen == 32u, "eccraw export priv");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    key.alg = WOLFCOSE_ALG_ES256;
+    key.kid = kid;
+    key.kidLen = sizeof(kid) - 1u;
+
+    /* Public-only through both paths must be byte-identical. */
+    ret = wc_CoseKey_Encode_ex(&key, viaKey, sizeof(viaKey), &viaKeyLen,
+                               WOLFCOSE_KEY_PUBLIC_ONLY);
+    TEST_ASSERT(ret == 0, "eccraw encode via key");
+    ret = wc_CoseKey_EncodeEccRaw(WOLFCOSE_CRV_P256, xBuf, yBuf, NULL, 32u,
+                                  kid, sizeof(kid) - 1u, WOLFCOSE_ALG_ES256,
+                                  viaRaw, sizeof(viaRaw), &viaRawLen);
+    TEST_ASSERT(ret == 0, "eccraw encode public");
+    TEST_ASSERT(viaRawLen == viaKeyLen &&
+                memcmp(viaRaw, viaKey, viaRawLen) == 0,
+                "eccraw public matches key path");
+
+    /* And with the private scalar. */
+    ret = wc_CoseKey_Encode(&key, viaKey, sizeof(viaKey), &viaKeyLen);
+    TEST_ASSERT(ret == 0, "eccraw encode priv via key");
+    ret = wc_CoseKey_EncodeEccRaw(WOLFCOSE_CRV_P256, xBuf, yBuf, dBuf, 32u,
+                                  kid, sizeof(kid) - 1u, WOLFCOSE_ALG_ES256,
+                                  viaRaw, sizeof(viaRaw), &viaRawLen);
+    TEST_ASSERT(ret == 0, "eccraw encode private");
+    TEST_ASSERT(viaRawLen == viaKeyLen &&
+                memcmp(viaRaw, viaKey, viaRawLen) == 0,
+                "eccraw private matches key path");
+
+    /* No kid, no alg: the minimal public EC2 map. */
+    ret = wc_CoseKey_EncodeEccRaw(WOLFCOSE_CRV_P256, xBuf, yBuf, NULL, 32u,
+                                  NULL, 0u, WOLFCOSE_ALG_UNSET,
+                                  viaRaw, sizeof(viaRaw), &viaRawLen);
+    TEST_ASSERT(ret == 0 && viaRawLen == 75u && viaRaw[0] == 0xA4u,
+                "eccraw minimal map");
+
+    /* Error cases */
+    ret = wc_CoseKey_EncodeEccRaw(WOLFCOSE_CRV_P256, NULL, yBuf, NULL, 32u,
+                                  NULL, 0u, WOLFCOSE_ALG_UNSET,
+                                  viaRaw, sizeof(viaRaw), &viaRawLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "eccraw null x");
+    ret = wc_CoseKey_EncodeEccRaw(WOLFCOSE_CRV_ED25519, xBuf, yBuf, NULL, 32u,
+                                  NULL, 0u, WOLFCOSE_ALG_UNSET,
+                                  viaRaw, sizeof(viaRaw), &viaRawLen);
+    TEST_ASSERT(ret != 0, "eccraw non-EC2 curve rejected");
+    ret = wc_CoseKey_EncodeEccRaw(WOLFCOSE_CRV_P256, xBuf, yBuf, NULL, 31u,
+                                  NULL, 0u, WOLFCOSE_ALG_UNSET,
+                                  viaRaw, sizeof(viaRaw), &viaRawLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "eccraw short coord rejected");
+    ret = wc_CoseKey_EncodeEccRaw(WOLFCOSE_CRV_P256, xBuf, yBuf, NULL, 32u,
+                                  NULL, 4u, WOLFCOSE_ALG_UNSET,
+                                  viaRaw, sizeof(viaRaw), &viaRawLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "eccraw null kid with len");
+    ret = wc_CoseKey_EncodeEccRaw(WOLFCOSE_CRV_P256, xBuf, yBuf, NULL, 32u,
+                                  NULL, 0u, WOLFCOSE_ALG_UNSET,
+                                  viaRaw, 8u, &viaRawLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL && viaRawLen == 0u,
+                "eccraw buffer too small");
+
+    wc_CoseKey_Free(&key);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
+}
 #endif /* WOLFCOSE_HAVE_ES256 */
 
 /* The size query must be exact, not an upper bound, for every key type the
@@ -18992,6 +19090,7 @@ int test_cose(void)
 #ifdef WOLFCOSE_HAVE_ES256
     test_cose_key_ecc();
     test_cose_key_encode_public_only_ecc();
+    test_cose_key_encode_ecc_raw();
 #endif
     test_cose_key_encode_size_exact();
 #ifdef WOLFCOSE_HAVE_EDDSA

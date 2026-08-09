@@ -752,6 +752,44 @@ WOLFCOSE_API int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out,
                                        size_t outSz, size_t* outLen,
                                        uint32_t flags);
 
+#ifdef HAVE_ECC
+/**
+ * \brief Encode an EC2 COSE_Key from raw affine coordinates.
+ *
+ * For callers that hold only the coordinates (a stored credential record, a
+ * peer key received on the wire) and want to re-emit them. No ecc_key is
+ * needed, so none of the point import, on-curve check, or key-object stack
+ * footprint of wc_ecc_import_unsigned() is paid just to serialise.
+ *
+ * Nothing here validates that (x, y) is on the curve; the bytes are copied
+ * into the map as given. Encoding an unvalidated point is safe, using one is
+ * not: import it through wolfCrypt before any ECDH or verify operation.
+ *
+ * \param crv       WOLFCOSE_CRV_P256/P384/P521.
+ * \param x         X coordinate, exactly \p coordLen bytes, big-endian,
+ *                  zero-padded (RFC 9053 Section 7.1.1).
+ * \param y         Y coordinate, exactly \p coordLen bytes.
+ * \param d         Private scalar, exactly \p coordLen bytes, or NULL for a
+ *                  public-only key.
+ * \param coordLen  Coordinate size; must equal the curve size (32/48/66).
+ * \param kid       Key ID for the `2: kid` entry, or NULL to omit it.
+ * \param kidLen    Key ID length.
+ * \param alg       WOLFCOSE_ALG_* for the `3: alg` entry, or
+ *                  WOLFCOSE_ALG_UNSET to omit it.
+ * \param out       Output buffer.
+ * \param outSz     Output buffer size.
+ * \param outLen    Output: number of bytes written.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_EncodeEccRaw(int32_t crv,
+                                          const uint8_t* x, const uint8_t* y,
+                                          const uint8_t* d, size_t coordLen,
+                                          const uint8_t* kid, size_t kidLen,
+                                          int32_t alg,
+                                          uint8_t* out, size_t outSz,
+                                          size_t* outLen);
+#endif /* HAVE_ECC */
+
 /**
  * \brief Compute the exact encoded size wc_CoseKey_Encode() would produce.
  *
