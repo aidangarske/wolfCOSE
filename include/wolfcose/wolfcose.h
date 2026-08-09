@@ -653,6 +653,24 @@ WOLFCOSE_API int wc_CBOR_DecodeTag(WOLFCOSE_CBOR_CTX* ctx, uint64_t* tag);
 WOLFCOSE_API int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx);
 
 /**
+ * \brief Skip a complete CBOR item and capture its raw encoded bytes.
+ *
+ * As wc_CBOR_Skip(), but also reports where the skipped item started and how
+ * long it was, zero-copy into the decoder input. That is what a caller needs
+ * to defer or nest a parse: a CTAP2 allowList entry, a COSE_Key embedded in
+ * an extension map, the keyAgreement value in authenticatorClientPIN. Feed
+ * \p data / \p dataLen to wc_CBOR_DecoderInit() or wc_CoseKey_Decode() later.
+ *
+ * \param ctx      Decoder context (idx advances past the skipped item).
+ * \param data     Output: pointer to the first byte of the skipped item.
+ * \param dataLen  Output: encoded length of the skipped item.
+ * \return WOLFCOSE_SUCCESS or negative error code. On failure the outputs are
+ *         untouched and ctx->idx may have advanced, as with wc_CBOR_Skip().
+ */
+WOLFCOSE_API int wc_CBOR_SkipItem(WOLFCOSE_CBOR_CTX* ctx,
+                                   const uint8_t** data, size_t* dataLen);
+
+/**
  * \brief Peek at the major type of the next item without consuming it.
  * \param ctx  Decoder context.
  * \return Major type (0-7), or 0xFF if ctx is NULL or the buffer is exhausted.

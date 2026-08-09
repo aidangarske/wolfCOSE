@@ -1037,6 +1037,88 @@ static void test_cbor_ctx_init(void)
                 WOLFCOSE_E_INVALID_ARG, "decoder init null buf");
 }
 
+static void test_cbor_skip_item(void)
+{
+    WOLFCOSE_CBOR_CTX ctx;
+    uint8_t buf[64];
+    const uint8_t* item = NULL;
+    size_t itemLen = 0;
+    size_t nestedStart;
+    int ret;
+
+    printf("  [SkipItem capture]\n");
+
+    /* [1, {1: "a", 2: [3, 4]}, 5] -- capture the middle map verbatim. */
+    (void)wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    (void)wc_CBOR_EncodeArrayStart(&ctx, 3);
+    (void)wc_CBOR_EncodeUint(&ctx, 1);
+    nestedStart = ctx.idx;
+    (void)wc_CBOR_EncodeMapStart(&ctx, 2);
+    (void)wc_CBOR_EncodeUint(&ctx, 1);
+    (void)wc_CBOR_EncodeTstr(&ctx, (const uint8_t*)"a", 1);
+    (void)wc_CBOR_EncodeUint(&ctx, 2);
+    (void)wc_CBOR_EncodeArrayStart(&ctx, 2);
+    (void)wc_CBOR_EncodeUint(&ctx, 3);
+    (void)wc_CBOR_EncodeUint(&ctx, 4);
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        size_t nestedLen = ctx.idx - nestedStart;
+        size_t total = ctx.idx;
+        size_t count = 0;
+        uint64_t uval = 0;
+
+        (void)wc_CBOR_EncodeUint(&ctx, 5);
+        total = ctx.idx;
+
+        (void)wc_CBOR_DecoderInit(&ctx, buf, total);
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+        TEST_ASSERT(ret == 0 && count == 3, "skipitem outer array");
+        ret = wc_CBOR_DecodeUint(&ctx, &uval);
+        TEST_ASSERT(ret == 0 && uval == 1, "skipitem first element");
+
+        ret = wc_CBOR_SkipItem(&ctx, &item, &itemLen);
+        TEST_ASSERT(ret == 0 && item == &buf[nestedStart] &&
+                    itemLen == nestedLen,
+                    "skipitem captures the nested map exactly");
+
+        ret = wc_CBOR_DecodeUint(&ctx, &uval);
+        TEST_ASSERT(ret == 0 && uval == 5 && ctx.idx == total,
+                    "skipitem leaves the cursor after the item");
+
+        /* The captured bytes must parse standalone. */
+        /* empty-brace-scan: allow - test-local temporary scope */
+        {
+            WOLFCOSE_CBOR_CTX sub;
+            size_t subCount = 0;
+
+            (void)wc_CBOR_DecoderInit(&sub, item, itemLen);
+            ret = wc_CBOR_DecodeMapStart(&sub, &subCount);
+            TEST_ASSERT(ret == 0 && subCount == 2,
+                        "skipitem capture reparses standalone");
+        }
+    }
+
+    TEST_ASSERT(wc_CBOR_SkipItem(NULL, &item, &itemLen) ==
+                WOLFCOSE_E_INVALID_ARG, "skipitem null ctx");
+    (void)wc_CBOR_DecoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(wc_CBOR_SkipItem(&ctx, NULL, &itemLen) ==
+                WOLFCOSE_E_INVALID_ARG, "skipitem null data");
+    TEST_ASSERT(wc_CBOR_SkipItem(&ctx, &item, NULL) ==
+                WOLFCOSE_E_INVALID_ARG, "skipitem null len");
+
+    /* Truncated input: the underlying skip fails and nothing is reported. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        static const uint8_t trunc[] = {0x82, 0x01};  /* array(2), one item */
+        item = NULL;
+        itemLen = 0;
+        (void)wc_CBOR_DecoderInit(&ctx, trunc, sizeof(trunc));
+        ret = wc_CBOR_SkipItem(&ctx, &item, &itemLen);
+        TEST_ASSERT(ret != 0 && item == NULL && itemLen == 0,
+                    "skipitem truncated input fails");
+    }
+}
+
 int test_cbor(void)
 {
     g_failures = 0;
@@ -1047,6 +1129,7 @@ int test_cbor(void)
     test_cbor_boundary_roundtrip();
     test_cbor_peektype_bounds();
     test_cbor_ctx_init();
+    test_cbor_skip_item();
     test_cbor_nested();
     test_cbor_skip();
     test_cbor_skip_depth();

@@ -957,7 +957,47 @@ is `NULL`.
 | `wc_CBOR_DecodeMapStart(ctx, count)` | Decode map header |
 | `wc_CBOR_DecodeTag(ctx, tag)` | Decode CBOR tag |
 | `wc_CBOR_Skip(ctx)` | Skip over any CBOR item |
+| `wc_CBOR_SkipItem(ctx, data, dataLen)` | Skip an item and capture its raw bytes |
 | `wc_CBOR_PeekType(ctx)` | Peek at next item's major type |
+
+### wc_CBOR_SkipItem
+
+```c
+int wc_CBOR_SkipItem(WOLFCOSE_CBOR_CTX* ctx,
+                     const uint8_t** data, size_t* dataLen);
+```
+
+As `wc_CBOR_Skip()`, but also reports the raw encoded bytes of the item that
+was skipped, zero-copy into the decoder input. This is the deferred/nested
+parse primitive: capture a sub-item now, parse it later or with a different
+decoder. It replaces the hand-rolled
+
+```c
+start = ctx.idx;
+ret = wc_CBOR_Skip(&ctx);
+ptr = ctx.cbuf + start;
+len = ctx.idx - start;
+```
+
+that every integrator ends up writing - CTAP2 `allowList` entries, a
+`COSE_Key` embedded in an extension map, `keyAgreement` in
+`authenticatorClientPIN`.
+
+```c
+const uint8_t* sub;
+size_t subLen;
+
+ret = wc_CBOR_SkipItem(&ctx, &sub, &subLen);
+if (ret == WOLFCOSE_SUCCESS) {
+    ret = wc_CoseKey_Decode(&peerKey, sub, subLen);  /* parse it later */
+}
+```
+
+`wc_CBOR_Skip()` is unchanged. On failure the outputs are untouched.
+
+**Returns:** `WOLFCOSE_SUCCESS` or error code
+
+---
 
 ---
 

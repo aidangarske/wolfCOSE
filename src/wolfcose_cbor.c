@@ -677,4 +677,26 @@ int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx)
     return ret;
 }
 
+int wc_CBOR_SkipItem(WOLFCOSE_CBOR_CTX* ctx, const uint8_t** data,
+                      size_t* dataLen)
+{
+    int ret;
+
+    if ((ctx == NULL) || (ctx->cbuf == NULL) || (data == NULL) ||
+        (dataLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        size_t start = ctx->idx;
+
+        ret = wc_CBOR_Skip(ctx);
+        if (ret == WOLFCOSE_SUCCESS) {
+            /* wc_CBOR_Skip only ever advances idx, and never past bufSz. */
+            *data = &ctx->cbuf[start];
+            *dataLen = ctx->idx - start;
+        }
+    }
+    return ret;
+}
+
 #endif /* WOLFCOSE_CBOR_DECODE */
