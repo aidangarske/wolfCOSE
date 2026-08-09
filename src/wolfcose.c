@@ -1379,14 +1379,18 @@ int wc_CoseKey_SetExtSigner(WOLFCOSE_KEY* key, WOLFCOSE_SIGN_CB cb,
     defined(WOLFCOSE_HAVE_MLDSA) || defined(WOLFCOSE_HAVE_EDDSA) || \
     defined(WOLFCOSE_HAVE_ED448)
 /* A delegated key may still carry local material, but its private half
- * belongs to the external signer and must not be serialised. Guarded to
- * match its call sites, which are all per-algorithm. */
-static int wolfCose_KeyEmitsPrivate(const WOLFCOSE_KEY* key)
+ * belongs to the external signer and must not be serialised. A caller can
+ * also demand a public-only encoding outright. Guarded to match its call
+ * sites, which are all per-algorithm. */
+static int wolfCose_KeyEmitsPrivate(const WOLFCOSE_KEY* key, uint32_t flags)
 {
     int emits = 0;
 
     if (key->hasPrivate != 0u) {
         emits = 1;
+    }
+    if ((flags & WOLFCOSE_KEY_PUBLIC_ONLY) != 0u) {
+        emits = 0;
     }
 #if defined(WOLFCOSE_EXT_SIGN)
     if (key->signCb != NULL) {
@@ -1498,13 +1502,83 @@ static int wolfCose_EncodeRsaMp(WOLFCOSE_CBOR_CTX* ctx, int64_t label,
 }
 #endif /* WOLFCOSE_HAVE_RSA_PRIVATE_KEY */
 
+#ifdef HAVE_ECC
+/* Emit an EC2 COSE_Key map from raw affine coordinates:
+ *   {1: kty [, 2: kid] [, 3: alg], -1: crv, -2: x, -3: y [, -4: d]}
+ * wc_CoseKey_Encode_ex() exports the coordinates out of an ecc_key first.
+ * d == NULL selects the public-only form. */
+static int wolfCose_EncodeEc2Map(WOLFCOSE_CBOR_CTX* ctx,
+    const WOLFCOSE_KEY* key,
+    const uint8_t* x, size_t xLen, const uint8_t* y, size_t yLen,
+    const uint8_t* d, size_t dLen)
+{
+    int ret;
+    /* Map: kty [, kid] [, alg], crv, x, y [, d]. Optional kid and alg are
+     * emitted when set so the decode/encode roundtrip preserves them. */
+    size_t mapEntries = (d != NULL) ? (size_t)5 : (size_t)4;
+
+    mapEntries += wolfCose_KeyOptionalEntries(key);
+    ret = wc_CBOR_EncodeMapStart(ctx, mapEntries);
+
+    /* 1: kty */
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeUint(ctx, (uint64_t)WOLFCOSE_KEY_LABEL_KTY);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeUint(ctx, (uint64_t)key->kty);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_EncodeKeyOptionalFields(ctx, key);
+    }
+    /* -1: crv */
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeInt(ctx, (int64_t)WOLFCOSE_KEY_LABEL_CRV);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeUint(ctx, (uint64_t)key->crv);
+    }
+    /* -2: x */
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeInt(ctx, (int64_t)WOLFCOSE_KEY_LABEL_X);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(ctx, x, xLen);
+    }
+    /* -3: y */
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeInt(ctx, (int64_t)WOLFCOSE_KEY_LABEL_Y);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(ctx, y, yLen);
+    }
+    /* -4: d (private key, optional) */
+    if ((ret == WOLFCOSE_SUCCESS) && (d != NULL)) {
+        ret = wc_CBOR_EncodeInt(ctx, (int64_t)WOLFCOSE_KEY_LABEL_D);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeBstr(ctx, d, dLen);
+        }
+    }
+
+    return ret;
+}
+#endif /* HAVE_ECC */
+
 int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                        size_t* outLen)
+{
+    return wc_CoseKey_Encode_ex(key, out, outSz, outLen, 0u);
+}
+
+int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
+                          size_t* outLen, uint32_t flags)
 {
     int ret = WOLFCOSE_SUCCESS;
     WOLFCOSE_CBOR_CTX ctx;
 
     if ((key == NULL) || (out == NULL) || (outLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if ((flags & ~(uint32_t)WOLFCOSE_KEY_PUBLIC_ONLY) != 0u) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
@@ -1516,10 +1590,12 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
         if (key->kty == WOLFCOSE_KTY_EC2) {
             uint8_t xBuf[66]; /* Max P-521 coordinate */
             uint8_t yBuf[66];
+            uint8_t dBuf[66];
             word32 xLen = (word32)sizeof(xBuf);
             word32 yLen = (word32)sizeof(yBuf);
+            word32 dLen = (word32)sizeof(dBuf);
             size_t coordSz;
-            size_t mapEntries;
+            int emitPriv = 0;
 
             if (key->key.ecc == NULL) {
                 ret = WOLFCOSE_E_INVALID_ARG;
@@ -1536,64 +1612,22 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                     ret = WOLFCOSE_E_CRYPTO;
                 }
             }
-
-            /* Map: kty [, kid] [, alg], crv, x, y [, d]. Optional kid and
-             * alg are emitted when set so the decode/encode roundtrip
-             * preserves them. */
-            mapEntries = (wolfCose_KeyEmitsPrivate(key) != 0) ? (size_t)5 : (size_t)4;
-            mapEntries += wolfCose_KeyOptionalEntries(key);
             if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
+                emitPriv = wolfCose_KeyEmitsPrivate(key, flags);
             }
-
-            /* 1: kty */
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeUint(&ctx, (uint64_t)WOLFCOSE_KEY_LABEL_KTY);
-            }
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeUint(&ctx, (uint64_t)key->kty);
-            }
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wolfCose_EncodeKeyOptionalFields(&ctx, key);
-            }
-            /* -1: crv */
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeInt(&ctx, (int64_t)WOLFCOSE_KEY_LABEL_CRV);
-            }
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeUint(&ctx, (uint64_t)key->crv);
-            }
-            /* -2: x */
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeInt(&ctx, (int64_t)WOLFCOSE_KEY_LABEL_X);
-            }
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeBstr(&ctx, xBuf, (size_t)xLen);
-            }
-            /* -3: y */
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeInt(&ctx, (int64_t)WOLFCOSE_KEY_LABEL_Y);
-            }
-            if (ret == WOLFCOSE_SUCCESS) {
-                ret = wc_CBOR_EncodeBstr(&ctx, yBuf, (size_t)yLen);
-            }
-            /* -4: d (private key, optional) */
-            if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_KeyEmitsPrivate(key) != 0)) {
-                uint8_t dBuf[66];
-                word32 dLen = (word32)sizeof(dBuf);
+            if ((ret == WOLFCOSE_SUCCESS) && (emitPriv != 0)) {
                 INJECT_FAILURE(WOLF_FAIL_ECC_EXPORT_PRIVATE, -1,
-                    ret = wc_ecc_export_private_only(key->key.ecc, dBuf, &dLen));
+                    ret = wc_ecc_export_private_only(key->key.ecc, dBuf,
+                                                     &dLen));
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
-                else {
-                    ret = wc_CBOR_EncodeInt(&ctx,
-                                             (int64_t)WOLFCOSE_KEY_LABEL_D);
-                    if (ret == WOLFCOSE_SUCCESS) {
-                        ret = wc_CBOR_EncodeBstr(&ctx, dBuf, (size_t)dLen);
-                    }
-                }
-                (void)wolfCose_ForceZero(dBuf, sizeof(dBuf));
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_EncodeEc2Map(&ctx, key, xBuf, (size_t)xLen,
+                                            yBuf, (size_t)yLen,
+                                            (emitPriv != 0) ? dBuf : NULL,
+                                            (size_t)dLen);
             }
 
             if (ret == WOLFCOSE_SUCCESS) {
@@ -1601,6 +1635,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             }
             (void)wolfCose_ForceZero(xBuf, sizeof(xBuf));
             (void)wolfCose_ForceZero(yBuf, sizeof(yBuf));
+            (void)wolfCose_ForceZero(dBuf, sizeof(dBuf));
         }
         else
 #endif /* HAVE_ECC */
@@ -1624,7 +1659,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             }
             /* Private round-trip needs the CRT export; else public-only. */
 #ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
-            if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_KeyEmitsPrivate(key) != 0)) {
+            if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_KeyEmitsPrivate(key, flags) != 0)) {
                 rsaPriv = 1;
 #ifdef WOLF_CRYPTO_CB
                 /* Device-backed keys have no local CRT to export. */
@@ -1823,7 +1858,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             /* Emit priv only when a valid 32-byte seed is attached; wolfCrypt
              * does not retain the seed, so a keypair without one (e.g. from
              * wc_MlDsaKey_MakeKey) is exported as a public-only AKP key. */
-            if ((wolfCose_KeyEmitsPrivate(key) != 0) && (key->mldsaSeed != NULL) &&
+            if ((wolfCose_KeyEmitsPrivate(key, flags) != 0) && (key->mldsaSeed != NULL) &&
                 (key->mldsaSeedLen == WOLFCOSE_MLDSA_SEED_SZ)) {
                 emitPriv = 1;
             }
@@ -1939,7 +1974,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 ret = WOLFCOSE_E_COSE_BAD_ALG;
             }
 
-            mapEntries = (wolfCose_KeyEmitsPrivate(key) != 0) ? (size_t)4 : (size_t)3;
+            mapEntries = (wolfCose_KeyEmitsPrivate(key, flags) != 0) ? (size_t)4 : (size_t)3;
             mapEntries += wolfCose_KeyOptionalEntries(key);
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
@@ -1970,7 +2005,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 ret = wc_CBOR_EncodeBstr(&ctx, pubBuf, (size_t)pubLen);
             }
             /* -4: d (private key, optional) */
-            if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_KeyEmitsPrivate(key) != 0)) {
+            if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_KeyEmitsPrivate(key, flags) != 0)) {
                 uint8_t privBuf[57]; /* Ed448 priv = 57 bytes */
                 word32 privLen = (word32)sizeof(privBuf);
 #ifdef WOLFCOSE_HAVE_EDDSA
@@ -2020,10 +2055,13 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             /* {1: 4, -1: k_bytes} */
             size_t mapEntries = 2u + wolfCose_KeyOptionalEntries(key);
 
-#if defined(WOLFCOSE_EXT_SIGN)
             /* k is the whole key, so there is no public-only form to fall
              * back on the way the asymmetric types have. */
-            if (key->signCb != NULL) {
+            if ((flags & WOLFCOSE_KEY_PUBLIC_ONLY) != 0u) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+#if defined(WOLFCOSE_EXT_SIGN)
+            if ((ret == WOLFCOSE_SUCCESS) && (key->signCb != NULL)) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
 #endif
@@ -2068,6 +2106,7 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
 
     return ret;
 }
+
 #endif /* WOLFCOSE_KEY_ENCODE */
 
 #if defined(WOLFCOSE_KEY_DECODE)
@@ -4020,7 +4059,6 @@ static int wolfCose_CborStringSize(size_t len, size_t* encodedLen)
     }
     return ret;
 }
-
 int wc_CoseSign1_SignSize_ex(const WOLFCOSE_KEY* key, int32_t alg,
     size_t kidLen, size_t payloadLen, size_t detachedLen,
     uint32_t flags, size_t* outLen)

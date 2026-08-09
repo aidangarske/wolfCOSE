@@ -126,6 +126,9 @@ extern "C" {
  * wc_CoseSign1_SignSize_ex(). */
 #define WOLFCOSE_SIGN1_UNTAGGED 0x0001u  /* Omit the tag 18 prefix */
 
+/* Output options for wc_CoseKey_Encode_ex() and wc_CoseKey_EncodeSize_ex(). */
+#define WOLFCOSE_KEY_PUBLIC_ONLY 0x0001u /* Never serialise private material */
+
 /* Tags (RFC 9052) */
 #define WOLFCOSE_TAG_SIGN1      18u
 #define WOLFCOSE_TAG_ENCRYPT0   16u
@@ -701,6 +704,20 @@ WOLFCOSE_API int wc_CoseKey_SetExtSigner(WOLFCOSE_KEY* key,
 #if defined(WOLFCOSE_KEY_ENCODE)
 /**
  * \brief Encode a WOLFCOSE_KEY to CBOR COSE_Key map format.
+ *
+ * \warning This serialises the PRIVATE key when the key carries one, and says
+ *          so nowhere in the output beyond one extra map entry: an ECC key
+ *          attached with wc_CoseKey_SetEcc() has key->hasPrivate set whenever
+ *          the ecc_key is a keypair, so publishing "the public key" of a live
+ *          keypair with this function discloses the private scalar (P-256
+ *          ES256: 112 bytes / map(6) instead of 77 bytes / map(5)). The same
+ *          holds for RSA, Ed25519/Ed448, ML-DSA (seed) and symmetric keys.
+ *          Anything that publishes a public key - WebAuthn/CTAP2 attestation
+ *          authData, ECDH key agreement, JWK-style publication - must call
+ *          wc_CoseKey_Encode_ex() with WOLFCOSE_KEY_PUBLIC_ONLY instead.
+ *
+ * Equivalent to wc_CoseKey_Encode_ex() with \p flags of 0.
+ *
  * \param key     Key to encode.
  * \param out     Output buffer.
  * \param outSz   Output buffer size.
@@ -709,6 +726,32 @@ WOLFCOSE_API int wc_CoseKey_SetExtSigner(WOLFCOSE_KEY* key,
  */
 WOLFCOSE_API int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out,
                                     size_t outSz, size_t* outLen);
+
+/**
+ * \brief Encode a WOLFCOSE_KEY to CBOR COSE_Key map format, with options.
+ *
+ * Identical to wc_CoseKey_Encode() with the addition of \p flags, which is a
+ * bitmask of WOLFCOSE_KEY_* values. Passing 0 is equivalent to calling
+ * wc_CoseKey_Encode().
+ *
+ * | Flag | Effect |
+ * |------|--------|
+ * | WOLFCOSE_KEY_PUBLIC_ONLY | Emit the public half only: no `-4: d` for EC2
+ *   or OKP, no `-3: d` / CRT factors for RSA, no `-2: priv` seed for an
+ *   RFC 9964 AKP key. A symmetric key has no public half, so the whole key
+ *   would be private material and WOLFCOSE_E_COSE_KEY_TYPE is returned. |
+ *
+ * \param key     Key to encode.
+ * \param out     Output buffer.
+ * \param outSz   Output buffer size.
+ * \param outLen  Output: number of bytes written.
+ * \param flags   Bitmask of WOLFCOSE_KEY_* output options.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out,
+                                       size_t outSz, size_t* outLen,
+                                       uint32_t flags);
+
 #endif /* WOLFCOSE_KEY_ENCODE */
 
 #if defined(WOLFCOSE_KEY_DECODE)

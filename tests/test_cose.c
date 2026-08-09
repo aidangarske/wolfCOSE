@@ -4909,6 +4909,97 @@ static void test_cose_key_decode_optional_labels(void)
     TEST_ASSERT(key.key.symm.keyLen == sizeof(symmKey), "key decode k len");
 }
 
+/* ----- Public-only COSE_Key encoding and encoded-size query ----- */
+
+#ifdef WOLFCOSE_HAVE_ES256
+/* wc_CoseKey_Encode() serialises d whenever the attached ecc_key is a
+ * keypair. WOLFCOSE_KEY_PUBLIC_ONLY is the supported way to publish the
+ * public half without reaching into key.hasPrivate. */
+static void test_cose_key_encode_public_only_ecc(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_KEY pubKey;
+    ecc_key eccKey;
+    ecc_key eccPub;
+    WC_RNG rng;
+    uint8_t full[256];
+    uint8_t pub[256];
+    size_t fullLen = 0;
+    size_t pubLen = 0;
+    int ret;
+
+    TEST_LOG("  [Key Encode Public-Only ECC]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "pubonly rng init");
+    if (ret != 0) {
+        return;
+    }
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "pubonly ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "pubonly ecc keygen");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0 && key.hasPrivate == 1, "pubonly set ecc");
+    key.alg = WOLFCOSE_ALG_ES256;
+
+    ret = wc_CoseKey_Encode(&key, full, sizeof(full), &fullLen);
+    TEST_ASSERT(ret == 0, "pubonly default encode");
+    /* {1,3,-1,-2,-3,-4} = map(6) = 112 bytes for P-256 + ES256 */
+    TEST_ASSERT(fullLen == 112u && full[0] == 0xA6u,
+                "pubonly default encode emits d");
+
+    ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen,
+                               WOLFCOSE_KEY_PUBLIC_ONLY);
+    TEST_ASSERT(ret == 0, "pubonly ex encode");
+    /* {1,3,-1,-2,-3} = map(5) = 77 bytes */
+    TEST_ASSERT(pubLen == 77u && pub[0] == 0xA5u,
+                "pubonly ex encode omits d");
+    TEST_ASSERT(memcmp(pub, full, 2u) == 0 || pub[0] != full[0],
+                "pubonly ex encode differs in map head");
+    TEST_ASSERT(key.hasPrivate == 1,
+                "pubonly ex encode leaves the key untouched");
+
+    /* flags == 0 must reproduce wc_CoseKey_Encode() bit for bit. */
+    (void)memset(pub, 0, sizeof(pub));
+    ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen, 0u);
+    TEST_ASSERT(ret == 0 && pubLen == fullLen &&
+                memcmp(pub, full, fullLen) == 0,
+                "pubonly ex flags 0 matches wrapper");
+
+    /* Unknown flag bits are rejected rather than ignored. */
+    ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen, 0x8000u);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "pubonly bad flag rejected");
+
+    /* The public-only output must decode into a key with no private half. */
+    ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen,
+                               WOLFCOSE_KEY_PUBLIC_ONLY);
+    TEST_ASSERT(ret == 0, "pubonly re-encode");
+    ret = wc_ecc_init(&eccPub);
+    TEST_ASSERT(ret == 0, "pubonly ecc2 init");
+    (void)wc_CoseKey_Init(&pubKey);
+    (void)wc_CoseKey_SetEcc(&pubKey, WOLFCOSE_CRV_P256, &eccPub);
+    ret = wc_CoseKey_Decode(&pubKey, pub, pubLen);
+    TEST_ASSERT(ret == 0 && pubKey.hasPrivate == 0,
+                "pubonly output decodes public-only");
+
+    /* A key with no private half is unaffected by the flag. */
+    (void)memset(full, 0, sizeof(full));
+    ret = wc_CoseKey_Encode(&pubKey, full, sizeof(full), &fullLen);
+    TEST_ASSERT(ret == 0 && fullLen == pubLen,
+                "pubonly public key unaffected");
+
+    wc_CoseKey_Free(&pubKey);
+    wc_CoseKey_Free(&key);
+    (void)wc_ecc_free(&eccPub);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
+}
+
+#endif /* WOLFCOSE_HAVE_ES256 */
+
 /* ----- RFC 9052 interop test vectors (cose-wg/Examples) ----- */
 
 /* ECDSA-01: P-256 / ES256 Sign1 (ecdsa-sig-01.json) */
@@ -18667,6 +18758,7 @@ int test_cose(void)
     test_cose_key_init();
 #ifdef WOLFCOSE_HAVE_ES256
     test_cose_key_ecc();
+    test_cose_key_encode_public_only_ecc();
 #endif
 #ifdef WOLFCOSE_HAVE_EDDSA
     test_cose_key_ed25519();

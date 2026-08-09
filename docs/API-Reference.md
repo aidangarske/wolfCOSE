@@ -291,10 +291,23 @@ Set symmetric key material in a COSE key structure.
 ### wc_CoseKey_Encode
 
 ```c
-int wc_CoseKey_Encode(const WOLFCOSE_KEY* key, uint8_t* buf, size_t bufSz, size_t* outLen);
+int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* buf, size_t bufSz, size_t* outLen);
 ```
 
 Encode a COSE key to CBOR format.
+
+> **Warning: this serialises the private key when the key has one.**
+> `wc_CoseKey_SetEcc()` sets `key->hasPrivate` whenever the attached `ecc_key`
+> is a keypair, and `wc_CoseKey_Encode()` then emits the `-4: d` entry. The
+> output is a perfectly valid `COSE_Key`, only longer - for P-256 with `alg`
+> set, 112 bytes / `map(6)` instead of 77 bytes / `map(5)` - so nothing fails
+> loudly. The same applies to RSA (`-3: d` plus the CRT factors), Ed25519 and
+> Ed448 (`-4: d`), an RFC 9964 AKP key (`-2: priv` seed), and symmetric keys
+> (`-1: k` is the whole key). Anything that publishes a public key derived
+> from a live keypair - WebAuthn/CTAP2 attestation `authData`, ECDH key
+> agreement, JWK-style publication - must use
+> [`wc_CoseKey_Encode_ex()`](#wc_cosekey_encode_ex) with
+> `WOLFCOSE_KEY_PUBLIC_ONLY`.
 
 **Parameters:**
 | Name | Description |
@@ -303,6 +316,39 @@ Encode a COSE key to CBOR format.
 | `buf` | Output buffer |
 | `bufSz` | Size of output buffer |
 | `outLen` | Receives actual encoded length |
+
+**Returns:** `WOLFCOSE_SUCCESS` or error code
+
+---
+
+### wc_CoseKey_Encode_ex
+
+```c
+int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* buf, size_t bufSz,
+                         size_t* outLen, uint32_t flags);
+```
+
+As `wc_CoseKey_Encode()`, plus output options. Passing `flags = 0` is
+equivalent to calling `wc_CoseKey_Encode()`.
+
+| Flag | Effect |
+|------|--------|
+| `WOLFCOSE_KEY_PUBLIC_ONLY` | Emit the public half only. No `-4: d` for EC2/OKP, no `-3: d` or CRT factors for RSA, no `-2: priv` seed for an AKP key. |
+
+Unknown flag bits are rejected with `WOLFCOSE_E_INVALID_ARG`.
+
+A symmetric key has no public half - `-1: k` *is* the key - so
+`WOLFCOSE_KEY_PUBLIC_ONLY` on `WOLFCOSE_KTY_SYMMETRIC` returns
+`WOLFCOSE_E_COSE_KEY_TYPE` rather than emitting a key with no key material.
+
+The key structure is not modified; the flag affects only this call, so the
+same key can still sign afterwards.
+
+```c
+/* Publish the attestation public key without the private scalar. */
+ret = wc_CoseKey_Encode_ex(&key, cose, sizeof(cose), &coseLen,
+                           WOLFCOSE_KEY_PUBLIC_ONLY);
+```
 
 **Returns:** `WOLFCOSE_SUCCESS` or error code
 
