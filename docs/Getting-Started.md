@@ -325,6 +325,41 @@ The `examples/` directory contains complete working examples:
 | `sensor_attestation.c` | EAT-style attestation with replay protection via AAD |
 | `group_broadcast_mac.c` | Authenticated broadcast to multiple subscribers |
 
+## Strict Decoding (RFC 8949 Preferred Serialization)
+
+**Read this before filing an interop bug.** wolfCOSE's decoder accepts only
+*deterministically encoded* CBOR. This is required by COSE (RFC 9052) and by
+CTAP2 canonical CBOR, but it is stricter than most general-purpose CBOR
+parsers, so on a device the symptom is usually "my authenticator rejects
+requests from client X" rather than an obvious parse bug.
+
+Two rules apply at every decode entry point - `wc_CBOR_Decode*()`,
+`wc_CoseKey_Decode()`, and every `_Verify` / `_Decrypt` function:
+
+| Rule | Example rejected input | Error |
+|------|------------------------|-------|
+| Arguments must use the **shortest** additional-information form (RFC 8949 Section 4.2.1) | `0x18 0x17` for 23 (must be `0x17`); `0x19 0x00 0x64` for 100 (must be `0x18 0x64`) | `WOLFCOSE_E_CBOR_MALFORMED` |
+| **Indefinite lengths** are not accepted (additional information 31) | `0x5F ... 0xFF` (chunked bstr), `0x9F ... 0xFF` (open array) | `WOLFCOSE_E_UNSUPPORTED` |
+
+Related strictness that surprises integrators for the same reason:
+
+- Trailing bytes after the encoded object are rejected. `inSz` must be exactly
+  the object length, not the capacity of the buffer holding it. Use
+  [`wc_CBOR_SkipItem()`](API-Reference.md#wc_cbor_skipitem) to carve out the
+  exact byte range of an embedded item.
+- Two-byte simple values below 32 are malformed, per RFC 8949.
+- EC2 coordinates must be exactly the curve size, with leading zeros preserved
+  (RFC 9053 Section 7.1.1) - a 31-byte P-256 `x` is rejected, not left-padded.
+- A duplicate label in a header or `COSE_Key` map is rejected.
+- `COSE_Key` and COSE header maps accept integer labels only. For your own
+  protocol maps that mix integer and text labels, use
+  [`wc_CBOR_DecodeLabel()`](API-Reference.md#wc_cbor_decodelabel).
+
+None of this is configurable: relaxing it would let a signature or MAC be
+recomputed over a re-encoding of the same data, which is the class of bug
+deterministic encoding exists to prevent. If a peer emits non-preferred CBOR,
+fix the peer - it is not producing valid COSE.
+
 ## Cross-Compilation
 
 For embedded targets:

@@ -998,6 +998,248 @@ static void test_cbor_peektype_bounds(void)
     TEST_ASSERT(wc_CBOR_PeekType(NULL) == 0xFFu, "peektype null sentinel");
 }
 
+static void test_cbor_ctx_init(void)
+{
+    WOLFCOSE_CBOR_CTX ctx;
+    uint8_t buf[16];
+    uint64_t uval = 0;
+    int ret;
+
+    printf("  [Context initialisers]\n");
+
+    /* Poison every field so a partial init is visible. */
+    ctx.buf = (uint8_t*)0x1;
+    ctx.cbuf = (const uint8_t*)0x1;
+    ctx.bufSz = 0xDEAD;
+    ctx.idx = 0xBEEF;
+
+    ret = wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0 && ctx.buf == buf && ctx.cbuf == NULL &&
+                ctx.bufSz == sizeof(buf) && ctx.idx == 0,
+                "encoder init sets encode side only");
+    ret = wc_CBOR_EncodeUint(&ctx, 1000);
+    TEST_ASSERT(ret == 0 && ctx.idx == 3, "encoder init usable");
+
+    ret = wc_CBOR_DecoderInit(&ctx, buf, ctx.idx);
+    TEST_ASSERT(ret == 0 && ctx.cbuf == buf && ctx.buf == NULL &&
+                ctx.bufSz == 3 && ctx.idx == 0,
+                "decoder init sets decode side only");
+    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+    TEST_ASSERT(ret == 0 && uval == 1000, "decoder init usable");
+
+    TEST_ASSERT(wc_CBOR_EncoderInit(NULL, buf, sizeof(buf)) ==
+                WOLFCOSE_E_INVALID_ARG, "encoder init null ctx");
+    TEST_ASSERT(wc_CBOR_EncoderInit(&ctx, NULL, 4) ==
+                WOLFCOSE_E_INVALID_ARG, "encoder init null buf");
+    TEST_ASSERT(wc_CBOR_DecoderInit(NULL, buf, 4) ==
+                WOLFCOSE_E_INVALID_ARG, "decoder init null ctx");
+    TEST_ASSERT(wc_CBOR_DecoderInit(&ctx, NULL, 4) ==
+                WOLFCOSE_E_INVALID_ARG, "decoder init null buf");
+}
+
+static void test_cbor_skip_item(void)
+{
+    WOLFCOSE_CBOR_CTX ctx;
+    uint8_t buf[64];
+    const uint8_t* item = NULL;
+    size_t itemLen = 0;
+    size_t nestedStart;
+    int ret;
+
+    printf("  [SkipItem capture]\n");
+
+    /* [1, {1: "a", 2: [3, 4]}, 5] -- capture the middle map verbatim. */
+    (void)wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    (void)wc_CBOR_EncodeArrayStart(&ctx, 3);
+    (void)wc_CBOR_EncodeUint(&ctx, 1);
+    nestedStart = ctx.idx;
+    (void)wc_CBOR_EncodeMapStart(&ctx, 2);
+    (void)wc_CBOR_EncodeUint(&ctx, 1);
+    (void)wc_CBOR_EncodeTstr(&ctx, (const uint8_t*)"a", 1);
+    (void)wc_CBOR_EncodeUint(&ctx, 2);
+    (void)wc_CBOR_EncodeArrayStart(&ctx, 2);
+    (void)wc_CBOR_EncodeUint(&ctx, 3);
+    (void)wc_CBOR_EncodeUint(&ctx, 4);
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        size_t nestedLen = ctx.idx - nestedStart;
+        size_t total;
+        size_t count = 0;
+        uint64_t uval = 0;
+
+        (void)wc_CBOR_EncodeUint(&ctx, 5);
+        total = ctx.idx;
+
+        (void)wc_CBOR_DecoderInit(&ctx, buf, total);
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+        TEST_ASSERT(ret == 0 && count == 3, "skipitem outer array");
+        ret = wc_CBOR_DecodeUint(&ctx, &uval);
+        TEST_ASSERT(ret == 0 && uval == 1, "skipitem first element");
+
+        ret = wc_CBOR_SkipItem(&ctx, &item, &itemLen);
+        TEST_ASSERT(ret == 0 && item == &buf[nestedStart] &&
+                    itemLen == nestedLen,
+                    "skipitem captures the nested map exactly");
+
+        ret = wc_CBOR_DecodeUint(&ctx, &uval);
+        TEST_ASSERT(ret == 0 && uval == 5 && ctx.idx == total,
+                    "skipitem leaves the cursor after the item");
+
+        /* The captured bytes must parse standalone. */
+        /* empty-brace-scan: allow - test-local temporary scope */
+        {
+            WOLFCOSE_CBOR_CTX sub;
+            size_t subCount = 0;
+
+            (void)wc_CBOR_DecoderInit(&sub, item, itemLen);
+            ret = wc_CBOR_DecodeMapStart(&sub, &subCount);
+            TEST_ASSERT(ret == 0 && subCount == 2,
+                        "skipitem capture reparses standalone");
+        }
+    }
+
+    TEST_ASSERT(wc_CBOR_SkipItem(NULL, &item, &itemLen) ==
+                WOLFCOSE_E_INVALID_ARG, "skipitem null ctx");
+    (void)wc_CBOR_DecoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(wc_CBOR_SkipItem(&ctx, NULL, &itemLen) ==
+                WOLFCOSE_E_INVALID_ARG, "skipitem null data");
+    TEST_ASSERT(wc_CBOR_SkipItem(&ctx, &item, NULL) ==
+                WOLFCOSE_E_INVALID_ARG, "skipitem null len");
+
+    /* Truncated input: the underlying skip fails and nothing is reported. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        static const uint8_t trunc[] = {0x82, 0x01};  /* array(2), one item */
+        item = NULL;
+        itemLen = 0;
+        (void)wc_CBOR_DecoderInit(&ctx, trunc, sizeof(trunc));
+        ret = wc_CBOR_SkipItem(&ctx, &item, &itemLen);
+        TEST_ASSERT(ret != 0 && item == NULL && itemLen == 0,
+                    "skipitem truncated input fails");
+    }
+}
+
+static void test_cbor_decode_label(void)
+{
+    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_LABEL label;
+    uint8_t buf[64];
+    static const uint8_t algText[] = "alg";
+    int ret;
+
+    printf("  [Int-or-text labels]\n");
+
+    /* {3: 1, "alg": 2, -1: 3} */
+    (void)wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    (void)wc_CBOR_EncodeMapStart(&ctx, 3);
+    (void)wc_CBOR_EncodeUint(&ctx, 3);
+    (void)wc_CBOR_EncodeUint(&ctx, 1);
+    (void)wc_CBOR_EncodeTstr(&ctx, algText, 3);
+    (void)wc_CBOR_EncodeUint(&ctx, 2);
+    (void)wc_CBOR_EncodeInt(&ctx, -1);
+    (void)wc_CBOR_EncodeUint(&ctx, 3);
+
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        size_t count = 0;
+        uint64_t uval = 0;
+
+        (void)wc_CBOR_DecoderInit(&ctx, buf, ctx.idx);
+        ret = wc_CBOR_DecodeMapStart(&ctx, &count);
+        TEST_ASSERT(ret == 0 && count == 3, "label map start");
+
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == 0 && label.isText == 0 && label.val == 3,
+                    "label int 3");
+        TEST_ASSERT(wc_CBOR_LabelIsInt(&label, 3) == 1, "label int matches");
+        TEST_ASSERT(wc_CBOR_LabelIsInt(&label, 4) == 0, "label int mismatch");
+        TEST_ASSERT(wc_CBOR_LabelIsText(&label, algText, 3) == 0,
+                    "int label is not text");
+        (void)wc_CBOR_DecodeUint(&ctx, &uval);
+
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == 0 && label.isText == 1 && label.textLen == 3 &&
+                    memcmp(label.text, algText, 3) == 0, "label tstr alg");
+        TEST_ASSERT(wc_CBOR_LabelIsText(&label, algText, 3) == 1,
+                    "label text matches");
+        TEST_ASSERT(wc_CBOR_LabelIsText(&label, algText, 2) == 0,
+                    "label text length mismatch");
+        TEST_ASSERT(wc_CBOR_LabelIsText(&label, (const uint8_t*)"blg", 3) == 0,
+                    "label text value mismatch");
+        TEST_ASSERT(wc_CBOR_LabelIsInt(&label, 3) == 0,
+                    "text label is not int");
+        (void)wc_CBOR_DecodeUint(&ctx, &uval);
+
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == 0 && label.isText == 0 && label.val == -1,
+                    "label negint -1");
+        TEST_ASSERT(wc_CBOR_LabelIsInt(&label, -1) == 1,
+                    "label negint matches");
+    }
+
+    /* A label argument above INT64_MAX has no int64_t spelling, in either
+     * sign. The negint boundary is one step further out: RFC 8949 encodes -n
+     * as n-1, so argument INT64_MAX is INT64_MIN and still valid. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        /* uint 0xFFFFFFFFFFFFFFFF = 2^64-1 */
+        static const uint8_t bigUint[] = {
+            0x1Bu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu
+        };
+        /* uint 0x8000000000000000 = INT64_MAX + 1 */
+        static const uint8_t justOver[] = {
+            0x1Bu, 0x80u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u
+        };
+        /* negint arg 0x7FFFFFFFFFFFFFFF = INT64_MAX -> INT64_MIN */
+        static const uint8_t minInt[] = {
+            0x3Bu, 0x7Fu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu
+        };
+        /* negint arg 0x8000000000000000 -> one below INT64_MIN */
+        static const uint8_t belowMin[] = {
+            0x3Bu, 0x80u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u
+        };
+
+        (void)wc_CBOR_DecoderInit(&ctx, bigUint, sizeof(bigUint));
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_OVERFLOW,
+                    "label uint 2^64-1 overflows");
+
+        (void)wc_CBOR_DecoderInit(&ctx, justOver, sizeof(justOver));
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_OVERFLOW,
+                    "label uint INT64_MAX+1 overflows");
+
+        (void)wc_CBOR_DecoderInit(&ctx, minInt, sizeof(minInt));
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == 0 && label.isText == 0 && label.val == INT64_MIN,
+                    "label negint INT64_MIN");
+
+        (void)wc_CBOR_DecoderInit(&ctx, belowMin, sizeof(belowMin));
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_OVERFLOW,
+                    "label negint below INT64_MIN overflows");
+    }
+
+    /* A bstr is not a valid label. */
+    (void)wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    (void)wc_CBOR_EncodeBstr(&ctx, algText, 3);
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        size_t encLen = ctx.idx;
+        (void)wc_CBOR_DecoderInit(&ctx, buf, encLen);
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE, "bstr rejected as label");
+    }
+
+    TEST_ASSERT(wc_CBOR_DecodeLabel(NULL, &label) == WOLFCOSE_E_INVALID_ARG,
+                "label null ctx");
+    TEST_ASSERT(wc_CBOR_DecodeLabel(&ctx, NULL) == WOLFCOSE_E_INVALID_ARG,
+                "label null out");
+    TEST_ASSERT(wc_CBOR_LabelIsInt(NULL, 0) == 0, "label int null safe");
+    TEST_ASSERT(wc_CBOR_LabelIsText(NULL, algText, 3) == 0,
+                "label text null safe");
+}
+
 int test_cbor(void)
 {
     g_failures = 0;
@@ -1007,6 +1249,9 @@ int test_cbor(void)
     test_cbor_roundtrip();
     test_cbor_boundary_roundtrip();
     test_cbor_peektype_bounds();
+    test_cbor_ctx_init();
+    test_cbor_skip_item();
+    test_cbor_decode_label();
     test_cbor_nested();
     test_cbor_skip();
     test_cbor_skip_depth();

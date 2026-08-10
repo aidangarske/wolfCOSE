@@ -126,6 +126,9 @@ extern "C" {
  * wc_CoseSign1_SignSize_ex(). */
 #define WOLFCOSE_SIGN1_UNTAGGED 0x0001u  /* Omit the tag 18 prefix */
 
+/* Output options for wc_CoseKey_Encode_ex() and wc_CoseKey_EncodeSize_ex(). */
+#define WOLFCOSE_KEY_PUBLIC_ONLY 0x0001u /* Never serialise private material */
+
 /* Tags (RFC 9052) */
 #define WOLFCOSE_TAG_SIGN1      18u
 #define WOLFCOSE_TAG_ENCRYPT0   16u
@@ -429,6 +432,33 @@ typedef struct WOLFCOSE_SIGNATURE {
 #if defined(WOLFCOSE_CBOR_ENCODE)
 
 /**
+ * \brief Initialize a context for encoding into \p buf.
+ *
+ * WOLFCOSE_CBOR_CTX carries both an encode pointer (buf) and a decode pointer
+ * (cbuf); this sets the encode one, clears the decode one, and rewinds idx, so
+ * a context can never be half-initialized from the wrong direction.
+ *
+ * \param ctx    Context to initialize.
+ * \param buf    Output buffer.
+ * \param bufSz  Output buffer size.
+ * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_INVALID_ARG.
+ */
+static inline int wc_CBOR_EncoderInit(WOLFCOSE_CBOR_CTX* ctx, uint8_t* buf,
+                                       size_t bufSz)
+{
+    int ret = WOLFCOSE_E_INVALID_ARG;
+
+    if ((ctx != NULL) && (buf != NULL)) {
+        ctx->buf = buf;
+        ctx->cbuf = NULL;
+        ctx->bufSz = bufSz;
+        ctx->idx = 0u;
+        ret = WOLFCOSE_SUCCESS;
+    }
+    return ret;
+}
+
+/**
  * \brief Encode an unsigned integer.
  * \param ctx  Encoder context with output buffer.
  * \param val  Value to encode.
@@ -512,13 +542,54 @@ WOLFCOSE_API int wc_CBOR_EncodeDouble(WOLFCOSE_CBOR_CTX* ctx, double val);
  * CBOR Decode API (zero-copy, single-pass)
  *
  * Guarded by WOLFCOSE_CBOR_DECODE — always needed for verify/decrypt builds.
+ *
+ * Strictness note (RFC 8949 Section 4.2.1): every decode entry point requires
+ * preferred, shortest-form argument encoding and rejects indefinite-length
+ * items. This is what COSE deterministic encoding and CTAP2 canonical CBOR
+ * require, but it is stricter than a general-purpose CBOR parser: input that
+ * other decoders accept — 0x1817 for 23, an indefinite-length bstr — is
+ * rejected here with WOLFCOSE_E_CBOR_MALFORMED or WOLFCOSE_E_UNSUPPORTED.
+ * See docs/Getting-Started.md, "Strict decoding".
  * ----- */
 
 #if defined(WOLFCOSE_CBOR_DECODE)
 
 /**
+ * \brief Initialize a context for decoding from \p buf.
+ *
+ * Sets the const decode pointer, clears the mutable encode pointer, and
+ * rewinds idx. The buffer is never written through this context.
+ *
+ * \param ctx    Context to initialize.
+ * \param buf    Input buffer.
+ * \param bufSz  Input buffer size.
+ * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_INVALID_ARG.
+ */
+static inline int wc_CBOR_DecoderInit(WOLFCOSE_CBOR_CTX* ctx,
+                                       const uint8_t* buf, size_t bufSz)
+{
+    int ret = WOLFCOSE_E_INVALID_ARG;
+
+    if ((ctx != NULL) && (buf != NULL)) {
+        ctx->buf = NULL;
+        ctx->cbuf = buf;
+        ctx->bufSz = bufSz;
+        ctx->idx = 0u;
+        ret = WOLFCOSE_SUCCESS;
+    }
+    return ret;
+}
+
+/**
  * \brief Decode a CBOR data item head. Core decoder function.
  *        For bstr/tstr, sets item->data to point into the input buffer.
+ *
+ * Enforces RFC 8949 Section 4.2.1 preferred serialization: an argument that
+ * could have been encoded in fewer bytes is WOLFCOSE_E_CBOR_MALFORMED, and an
+ * indefinite-length item (additional information 31) is
+ * WOLFCOSE_E_UNSUPPORTED. Deliberately stricter than a general-purpose CBOR
+ * parser; see the section note above.
+ *
  * \param ctx   Decoder context (advances idx past the decoded item head + data).
  * \param item  Output: decoded item.
  * \return WOLFCOSE_SUCCESS or negative error code.
@@ -595,6 +666,76 @@ WOLFCOSE_API int wc_CBOR_DecodeTag(WOLFCOSE_CBOR_CTX* ctx, uint64_t* tag);
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
 WOLFCOSE_API int wc_CBOR_Skip(WOLFCOSE_CBOR_CTX* ctx);
+
+/**
+ * \brief Skip a complete CBOR item and capture its raw encoded bytes.
+ *
+ * As wc_CBOR_Skip(), but also reports where the skipped item started and how
+ * long it was, zero-copy into the decoder input. That is what a caller needs
+ * to defer or nest a parse: a CTAP2 allowList entry, a COSE_Key embedded in
+ * an extension map, the keyAgreement value in authenticatorClientPIN. Feed
+ * \p data / \p dataLen to wc_CBOR_DecoderInit() or wc_CoseKey_Decode() later.
+ *
+ * \param ctx      Decoder context (idx advances past the skipped item).
+ * \param data     Output: pointer to the first byte of the skipped item.
+ * \param dataLen  Output: encoded length of the skipped item.
+ * \return WOLFCOSE_SUCCESS or negative error code. On failure the outputs are
+ *         untouched and ctx->idx may have advanced, as with wc_CBOR_Skip().
+ */
+WOLFCOSE_API int wc_CBOR_SkipItem(WOLFCOSE_CBOR_CTX* ctx,
+                                   const uint8_t** data, size_t* dataLen);
+
+/**
+ * \brief Decoded CBOR map label: either an integer or a text string.
+ *
+ * RFC 9052 allows `label = int / tstr`, and real COSE and CTAP2 maps use both
+ * spellings for the same field (`3` vs `"alg"`, `1` vs `"type"`, `2` vs
+ * `"id"`). Populated by wc_CBOR_DecodeLabel(); compare with
+ * wc_CBOR_LabelIsInt() / wc_CBOR_LabelIsText().
+ */
+typedef struct WOLFCOSE_CBOR_LABEL {
+    int64_t        val;      /**< Integer label, valid when isText == 0 */
+    const uint8_t* text;     /**< Text label, points into the input buffer */
+    size_t         textLen;  /**< Text label length in bytes */
+    uint8_t        isText;   /**< 1 if the label was a text string, else 0 */
+} WOLFCOSE_CBOR_LABEL;
+
+/**
+ * \brief Decode a map label that may be an integer or a text string.
+ *
+ * Consumes exactly one item. Major types 0 and 1 populate label->val with
+ * isText 0; major type 3 populates label->text / label->textLen with isText 1
+ * and no copy. Anything else is WOLFCOSE_E_CBOR_TYPE with the item consumed.
+ *
+ * \param ctx    Decoder context.
+ * \param label  Output: decoded label.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CBOR_DecodeLabel(WOLFCOSE_CBOR_CTX* ctx,
+                                      WOLFCOSE_CBOR_LABEL* label);
+
+/**
+ * \brief Test a decoded label against an integer value.
+ * \param label  Label from wc_CBOR_DecodeLabel().
+ * \param val    Integer to compare against.
+ * \return 1 if the label is that integer, 0 otherwise (including NULL).
+ */
+WOLFCOSE_API int wc_CBOR_LabelIsInt(const WOLFCOSE_CBOR_LABEL* label,
+                                     int64_t val);
+
+/**
+ * \brief Test a decoded label against a text value.
+ *
+ * Compares bytes, not Unicode: no normalization or case folding, matching how
+ * CTAP2 and COSE compare text labels.
+ *
+ * \param label    Label from wc_CBOR_DecodeLabel().
+ * \param text     Text to compare against (not NUL-terminated by contract).
+ * \param textLen  Length of text in bytes.
+ * \return 1 if the label is that text, 0 otherwise (including NULL).
+ */
+WOLFCOSE_API int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label,
+                                      const uint8_t* text, size_t textLen);
 
 /**
  * \brief Peek at the major type of the next item without consuming it.
@@ -701,6 +842,20 @@ WOLFCOSE_API int wc_CoseKey_SetExtSigner(WOLFCOSE_KEY* key,
 #if defined(WOLFCOSE_KEY_ENCODE)
 /**
  * \brief Encode a WOLFCOSE_KEY to CBOR COSE_Key map format.
+ *
+ * \warning This serialises the PRIVATE key when the key carries one, and says
+ *          so nowhere in the output beyond one extra map entry: an ECC key
+ *          attached with wc_CoseKey_SetEcc() has key->hasPrivate set whenever
+ *          the ecc_key is a keypair, so publishing "the public key" of a live
+ *          keypair with this function discloses the private scalar (P-256
+ *          ES256: 112 bytes / map(6) instead of 77 bytes / map(5)). The same
+ *          holds for RSA, Ed25519/Ed448, ML-DSA (seed) and symmetric keys.
+ *          Anything that publishes a public key - WebAuthn/CTAP2 attestation
+ *          authData, ECDH key agreement, JWK-style publication - must call
+ *          wc_CoseKey_Encode_ex() with WOLFCOSE_KEY_PUBLIC_ONLY instead.
+ *
+ * Equivalent to wc_CoseKey_Encode_ex() with \p flags of 0.
+ *
  * \param key     Key to encode.
  * \param out     Output buffer.
  * \param outSz   Output buffer size.
@@ -709,9 +864,143 @@ WOLFCOSE_API int wc_CoseKey_SetExtSigner(WOLFCOSE_KEY* key,
  */
 WOLFCOSE_API int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out,
                                     size_t outSz, size_t* outLen);
+
+/**
+ * \brief Encode a WOLFCOSE_KEY to CBOR COSE_Key map format, with options.
+ *
+ * Identical to wc_CoseKey_Encode() with the addition of \p flags, which is a
+ * bitmask of WOLFCOSE_KEY_* values. Passing 0 is equivalent to calling
+ * wc_CoseKey_Encode().
+ *
+ * | Flag | Effect |
+ * |------|--------|
+ * | WOLFCOSE_KEY_PUBLIC_ONLY | Emit the public half only: no `-4: d` for EC2
+ *   or OKP, no `-3: d` / CRT factors for RSA, no `-2: priv` seed for an
+ *   RFC 9964 AKP key. A symmetric key has no public half, so the whole key
+ *   would be private material and WOLFCOSE_E_COSE_KEY_TYPE is returned. |
+ *
+ * \param key     Key to encode.
+ * \param out     Output buffer.
+ * \param outSz   Output buffer size.
+ * \param outLen  Output: number of bytes written.
+ * \param flags   Bitmask of WOLFCOSE_KEY_* output options.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out,
+                                       size_t outSz, size_t* outLen,
+                                       uint32_t flags);
+
+#ifdef HAVE_ECC
+/**
+ * \brief Encode an EC2 COSE_Key from raw affine coordinates.
+ *
+ * For callers that hold only the coordinates (a stored credential record, a
+ * peer key received on the wire) and want to re-emit them. No ecc_key is
+ * needed, so none of the point import, on-curve check, or key-object stack
+ * footprint of wc_ecc_import_unsigned() is paid just to serialise.
+ *
+ * Nothing here validates that (x, y) is on the curve; the bytes are copied
+ * into the map as given. Encoding an unvalidated point is safe, using one is
+ * not: import it through wolfCrypt before any ECDH or verify operation.
+ *
+ * \param crv       WOLFCOSE_CRV_P256/P384/P521.
+ * \param x         X coordinate, exactly \p coordLen bytes, big-endian,
+ *                  zero-padded (RFC 9053 Section 7.1.1).
+ * \param y         Y coordinate, exactly \p coordLen bytes.
+ * \param d         Private scalar, exactly \p coordLen bytes, or NULL for a
+ *                  public-only key.
+ * \param coordLen  Coordinate size; must equal the curve size (32/48/66).
+ * \param kid       Key ID for the `2: kid` entry, or NULL to omit it.
+ * \param kidLen    Key ID length.
+ * \param alg       WOLFCOSE_ALG_* for the `3: alg` entry, or
+ *                  WOLFCOSE_ALG_UNSET to omit it.
+ * \param out       Output buffer.
+ * \param outSz     Output buffer size.
+ * \param outLen    Output: number of bytes written.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_EncodeEccRaw(int32_t crv,
+                                          const uint8_t* x, const uint8_t* y,
+                                          const uint8_t* d, size_t coordLen,
+                                          const uint8_t* kid, size_t kidLen,
+                                          int32_t alg,
+                                          uint8_t* out, size_t outSz,
+                                          size_t* outLen);
+#endif /* HAVE_ECC */
+
+/**
+ * \brief Compute the exact encoded size wc_CoseKey_Encode() would produce.
+ *
+ * Equivalent to wc_CoseKey_EncodeSize_ex() with \p flags of 0. Note that this
+ * therefore sizes a buffer large enough to hold the PRIVATE key; see the
+ * warning on wc_CoseKey_Encode().
+ *
+ * \param key     Key to size.
+ * \param outLen  Output: exact encoded size in bytes.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_EncodeSize(const WOLFCOSE_KEY* key,
+                                        size_t* outLen);
+
+/**
+ * \brief Compute the exact encoded size wc_CoseKey_Encode_ex() would produce.
+ *
+ * Nothing is written and no key material is exported; only the component
+ * lengths of the attached key are read. The result is exact, not an upper
+ * bound, so it can be used to size a buffer or to reject an oversized key
+ * before committing storage.
+ *
+ * One configuration limit: in a build with neither HAVE_ECC nor
+ * WOLFSSL_EXPORT_INT, reading the RSA public exponent needs a scratch copy of
+ * the modulus, so an RSA key whose modulus exceeds WOLFCOSE_MAX_SCRATCH_SZ
+ * returns WOLFCOSE_E_CRYPTO here even though wc_CoseKey_Encode_ex() encodes
+ * it. Any build with ECC or WOLFSSL_EXPORT_INT enabled is unaffected.
+ *
+ * \param key     Key to size.
+ * \param outLen  Output: exact encoded size in bytes.
+ * \param flags   Bitmask of WOLFCOSE_KEY_* output options.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key,
+                                           size_t* outLen, uint32_t flags);
 #endif /* WOLFCOSE_KEY_ENCODE */
 
 #if defined(WOLFCOSE_KEY_DECODE)
+/**
+ * \brief Key metadata read out of a COSE_Key without importing anything.
+ *
+ * Filled by wc_CoseKey_PeekInfo(). kid points into the caller's input buffer.
+ */
+typedef struct WOLFCOSE_KEY_INFO {
+    int32_t        kty;     /**< WOLFCOSE_KTY_*, always set on success */
+    int32_t        alg;     /**< WOLFCOSE_ALG_*, WOLFCOSE_ALG_UNSET if absent */
+    int32_t        crv;     /**< WOLFCOSE_CRV_*, 0 if absent or N/A */
+    const uint8_t* kid;     /**< Key ID, zero-copy pointer, NULL if absent */
+    size_t         kidLen;  /**< Key ID length, 0 if absent */
+} WOLFCOSE_KEY_INFO;
+
+/**
+ * \brief Read kty/alg/crv/kid from a COSE_Key buffer without importing it.
+ *
+ * wc_CoseKey_Decode() needs a wolfCrypt key of the matching type attached up
+ * front and returns WOLFCOSE_E_COSE_KEY_TYPE otherwise, so a parser that
+ * accepts more than one key type would have to guess and retry. This reads
+ * the metadata first so the caller can attach the right key object once.
+ *
+ * Nothing is imported, no key object is needed, and \p in is not modified.
+ * The same structural checks wc_CoseKey_Decode() applies are applied here
+ * (integer labels only, no duplicate labels, kty required, no trailing
+ * bytes), so a buffer that peeks successfully will not be rejected by the
+ * decoder for those reasons.
+ *
+ * \param in    Input CBOR COSE_Key buffer.
+ * \param inSz  Input buffer size; must be exactly the encoded length.
+ * \param info  Output: decoded metadata.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
+                                      WOLFCOSE_KEY_INFO* info);
+
 /**
  * \brief Decode a CBOR COSE_Key map into a WOLFCOSE_KEY structure.
  *        For symmetric keys, pointers reference the input buffer.
@@ -725,6 +1014,7 @@ WOLFCOSE_API int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out,
  * \param in    Input CBOR buffer.
  * \param inSz  Input buffer size.
  * \return WOLFCOSE_SUCCESS or negative error code.
+ * \see wc_CoseKey_PeekInfo() to learn the key type before attaching one.
  */
 WOLFCOSE_API int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in,
                                     size_t inSz);

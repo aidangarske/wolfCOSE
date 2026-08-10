@@ -98,7 +98,12 @@ TK="$WORK/tamper.key"; TC="$WORK/tamper.cose"
 if "$TOOL" keygen -a ES256 -o "$TK" >/dev/null 2>&1 && \
    "$TOOL" sign -k "$TK" -a ES256 -i "$IN" -o "$TC" >/dev/null 2>&1; then
     SZ=$(wc -c < "$TC")
-    printf '\xff' | dd of="$TC" bs=1 seek=$((SZ-1)) count=1 conv=notrunc >/dev/null 2>&1
+    # Invert the last byte rather than setting it to a fixed value: an ECDSA
+    # signature ends in 0xff about once in 256 runs, and overwriting it with
+    # 0xff then left the message intact and the check failing.
+    LAST=$(dd if="$TC" bs=1 skip=$((SZ-1)) count=1 2>/dev/null | od -An -tu1 | tr -d '[:space:]')
+    printf "\\$(printf '%03o' $((LAST ^ 255)))" |
+        dd of="$TC" bs=1 seek=$((SZ-1)) count=1 conv=notrunc >/dev/null 2>&1
     if "$TOOL" verify -k "$TK" -i "$TC" >/dev/null 2>&1; then
         bad "tampered signature rejected"
     else
