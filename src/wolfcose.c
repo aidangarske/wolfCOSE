@@ -1695,9 +1695,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
-        ctx.buf = out;
-        ctx.bufSz = outSz;
-        ctx.idx = 0;
+        (void)wc_CBOR_EncoderInit(&ctx, out, outSz);
 
 #ifdef HAVE_ECC
         if (key->kty == WOLFCOSE_KTY_EC2) {
