@@ -2520,20 +2520,29 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
             if (key->key.mldsa == NULL) {
                 ret = WOLFCOSE_E_INVALID_ARG;
             }
-            /* FIPS 204 public key sizes, keyed off the RFC 9964 alg. */
+            /* Read the FIPS 204 public key length from the key itself, not
+             * from alg: alg is caller-supplied and wc_CoseKey_SetMlDsa() does
+             * not cross-check it against the attached parameter set, so an
+             * alg-derived length would disagree with the wc_MlDsaKey_ExportPubRaw()
+             * length the encoder writes. Mirrors the encoder's alg and range
+             * checks so the size is exact whenever the encode succeeds. */
             if (ret == WOLFCOSE_SUCCESS) {
-                if (key->alg == WOLFCOSE_ALG_ML_DSA_44) {
-                    pubSz = 1312u;
-                }
-                else if (key->alg == WOLFCOSE_ALG_ML_DSA_65) {
-                    pubSz = 1952u;
-                }
-                else if (key->alg == WOLFCOSE_ALG_ML_DSA_87) {
-                    pubSz = 2592u;
-                }
-                else {
+                int dlPubLen = 0;
+
+                if (key->alg == WOLFCOSE_ALG_UNSET) {
                     /* RFC 9964: alg is REQUIRED for AKP keys. */
                     ret = WOLFCOSE_E_COSE_BAD_ALG;
+                }
+                else if (wc_MlDsaKey_GetPubLen(key->key.mldsa,
+                                               &dlPubLen) != 0) {
+                    ret = WOLFCOSE_E_CRYPTO;
+                }
+                else if ((dlPubLen < 256) || (dlPubLen > 65535)) {
+                    /* Encoder reserves a 3-byte header for a 2-byte AI. */
+                    ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+                }
+                else {
+                    pubSz = (size_t)dlPubLen;
                 }
             }
             if ((ret == WOLFCOSE_SUCCESS) &&
