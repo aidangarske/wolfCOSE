@@ -4958,8 +4958,6 @@ static void test_cose_key_encode_public_only_ecc(void)
     /* {1,3,-1,-2,-3} = map(5) = 77 bytes */
     TEST_ASSERT(pubLen == 77u && pub[0] == 0xA5u,
                 "pubonly ex encode omits d");
-    TEST_ASSERT(memcmp(pub, full, 2u) == 0 || pub[0] != full[0],
-                "pubonly ex encode differs in map head");
     TEST_ASSERT(key.hasPrivate == 1,
                 "pubonly ex encode leaves the key untouched");
 
@@ -5778,7 +5776,9 @@ static void test_cose_key_encode_rsa_short_d(void)
     TEST_ASSERT(ret == 0 && sized == outLen,
                 "short-d size matches padded encoding");
 
-    /* -3: d must be the full modulus width, zero-padded at the front. */
+    /* -3: d must be the full modulus width, zero-padded at the front.
+     * RFC 8230 puts RSA d at label -3, the same number EC2 uses for y, and
+     * the encoder emits it through WOLFCOSE_KEY_LABEL_Y. */
     (void)wc_CBOR_DecoderInit(&dec, out, outLen);
     ret = wc_CBOR_DecodeMapStart(&dec, &mapCount);
     TEST_ASSERT(ret == 0, "short-d map start");
