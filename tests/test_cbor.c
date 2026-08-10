@@ -1177,6 +1177,49 @@ static void test_cbor_decode_label(void)
                     "label negint matches");
     }
 
+    /* A label argument above INT64_MAX has no int64_t spelling, in either
+     * sign. The negint boundary is one step further out: RFC 8949 encodes -n
+     * as n-1, so argument INT64_MAX is INT64_MIN and still valid. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        /* uint 0xFFFFFFFFFFFFFFFF = 2^64-1 */
+        static const uint8_t bigUint[] = {
+            0x1Bu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu
+        };
+        /* uint 0x8000000000000000 = INT64_MAX + 1 */
+        static const uint8_t justOver[] = {
+            0x1Bu, 0x80u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u
+        };
+        /* negint arg 0x7FFFFFFFFFFFFFFF = INT64_MAX -> INT64_MIN */
+        static const uint8_t minInt[] = {
+            0x3Bu, 0x7Fu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu
+        };
+        /* negint arg 0x8000000000000000 -> one below INT64_MIN */
+        static const uint8_t belowMin[] = {
+            0x3Bu, 0x80u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u
+        };
+
+        (void)wc_CBOR_DecoderInit(&ctx, bigUint, sizeof(bigUint));
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_OVERFLOW,
+                    "label uint 2^64-1 overflows");
+
+        (void)wc_CBOR_DecoderInit(&ctx, justOver, sizeof(justOver));
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_OVERFLOW,
+                    "label uint INT64_MAX+1 overflows");
+
+        (void)wc_CBOR_DecoderInit(&ctx, minInt, sizeof(minInt));
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == 0 && label.isText == 0 && label.val == INT64_MIN,
+                    "label negint INT64_MIN");
+
+        (void)wc_CBOR_DecoderInit(&ctx, belowMin, sizeof(belowMin));
+        ret = wc_CBOR_DecodeLabel(&ctx, &label);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_OVERFLOW,
+                    "label negint below INT64_MIN overflows");
+    }
+
     /* A bstr is not a valid label. */
     (void)wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
     (void)wc_CBOR_EncodeBstr(&ctx, algText, 3);
