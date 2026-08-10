@@ -950,6 +950,12 @@ WOLFCOSE_API int wc_CoseKey_EncodeSize(const WOLFCOSE_KEY* key,
  * bound, so it can be used to size a buffer or to reject an oversized key
  * before committing storage.
  *
+ * One configuration limit: in a build with neither HAVE_ECC nor
+ * WOLFSSL_EXPORT_INT, reading the RSA public exponent needs a scratch copy of
+ * the modulus, so an RSA key whose modulus exceeds WOLFCOSE_MAX_SCRATCH_SZ
+ * returns WOLFCOSE_E_CRYPTO here even though wc_CoseKey_Encode_ex() encodes
+ * it. Any build with ECC or WOLFSSL_EXPORT_INT enabled is unaffected.
+ *
  * \param key     Key to size.
  * \param outLen  Output: exact encoded size in bytes.
  * \param flags   Bitmask of WOLFCOSE_KEY_* output options.
