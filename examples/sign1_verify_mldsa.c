@@ -72,9 +72,10 @@ int main(void)
                                   &payload, &payloadLen);
     }
 
-    if (ret == WOLFCOSE_SUCCESS &&
-        payloadLen == (sizeof(EXPECTED_PAYLOAD) - 1) && payload != NULL &&
-        memcmp(payload, EXPECTED_PAYLOAD, payloadLen) == 0) {
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (payloadLen == (sizeof(EXPECTED_PAYLOAD) - 1)) &&
+        (payload != NULL) &&
+        (memcmp(payload, EXPECTED_PAYLOAD, payloadLen) == 0)) {
         (void)printf("lean ML-DSA verify-only: COSE_Sign1 ML-DSA-44 verified, "
                      "payload = \"%.*s\"\n", (int)payloadLen, payload);
         rc = 0;

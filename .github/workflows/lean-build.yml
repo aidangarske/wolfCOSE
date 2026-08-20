@@ -131,6 +131,8 @@ jobs:
         gcc $SF -DWOLFCOSE_LEAN -c src/wolfcose.c -o /tmp/leanall.o
         echo "== WOLFCOSE_LEAN_VERIFY =="
         gcc $SF -DWOLFCOSE_LEAN_VERIFY -c src/wolfcose.c -o /tmp/lean.o
+        echo "== COSE_Mac without COSE_Mac0 =="
+        gcc $SF -DWOLFCOSE_NO_MAC0 -c src/wolfcose.c -o /tmp/mac-no-mac0.o
         echo "== sign-only =="
         gcc $SF -DWOLFCOSE_NO_SIGN1_VERIFY -DWOLFCOSE_NO_ENCRYPT0 -DWOLFCOSE_NO_MAC0 \
             -DWOLFCOSE_NO_SIGN -DWOLFCOSE_NO_ENCRYPT -DWOLFCOSE_NO_MAC \

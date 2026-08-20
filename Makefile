@@ -65,7 +65,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test zeroize-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check clean
+.PHONY: all shared test ecdsa-policy-test rsapss-policy-test zero-alloc-check zeroize-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check clean
 
 # --- Core library ---
 all: $(LIB_A)
@@ -81,7 +81,178 @@ src/%.o: src/%.c src/wolfcose_internal.h include/wolfcose/wolfcose.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # --- Tests ---
-test: $(LIB_A)
+# Keep this synthetic policy probe independent of profiles used by the build
+# under test. It must exercise the local ECDSA Sign1 signing path even when the
+# caller is testing a no-ECDSA or verify-only configuration.
+ECDSA_POLICY_OPTS ?= -include wolfssl/options.h
+ECDSA_POLICY_BASE_FLAGS = $(CFLAGS) -x c -fsyntax-only -Wno-error \
+                          $(ECDSA_POLICY_OPTS) -DHAVE_ECC \
+                          -UWOLFCOSE_ENABLE_DETERMINISTIC_ECDSA \
+                          -UWOLFCOSE_NO_ES256 -UWOLFCOSE_NO_SIGN1 \
+                          -UWOLFCOSE_NO_SIGN1_SIGN -UWOLFCOSE_LEAN_VERIFY \
+                          -UWOLFCOSE_LEAN_VERIFY_MLDSA \
+                          -UWOLFCOSE_LEAN_MLDSA
+ECDSA_POLICY_NO_SUPPORT_FLAGS = $(CFLAGS) -x c -fsyntax-only -Wno-error \
+                                -DWOLFSSL_NO_OPTIONS_H -DHAVE_ECC \
+                                -UWOLFSSL_ECDSA_DETERMINISTIC_K \
+                                -UWOLFSSL_ECDSA_DETERMINISTIC_K_VARIANT \
+                                -UWOLFCOSE_NO_ES256 -UWOLFCOSE_NO_SIGN1 \
+                                -UWOLFCOSE_NO_SIGN1_SIGN \
+                                -UWOLFCOSE_LEAN_VERIFY \
+                                -UWOLFCOSE_LEAN_VERIFY_MLDSA \
+                                -UWOLFCOSE_LEAN_MLDSA
+ECDSA_POLICY_FLAGS = $(ECDSA_POLICY_BASE_FLAGS) \
+                     -DWOLFSSL_ECDSA_DETERMINISTIC_K \
+                     -DWOLFCOSE_ENABLE_DETERMINISTIC_ECDSA
+ECDSA_POLICY_HEADER = include/wolfcose/settings.h
+
+ecdsa-policy-test:
+	@set -e; \
+	log_file=$$(mktemp "$${TMPDIR:-/tmp}/wolfcose-ecdsa.XXXXXX"); \
+	trap 'rm -f "$$log_file"' 0 1 2 3 15; \
+	if ! $(CC) $(ECDSA_POLICY_BASE_FLAGS) $(ECDSA_POLICY_HEADER) \
+	        >"$$log_file" 2>&1; then \
+	    cat "$$log_file"; \
+	    echo "FAIL: default ECDSA policy rejected"; \
+	    exit 1; \
+	fi; \
+	if $(CC) $(ECDSA_POLICY_NO_SUPPORT_FLAGS) \
+	        -DWOLFCOSE_ENABLE_DETERMINISTIC_ECDSA \
+	        $(ECDSA_POLICY_HEADER) >"$$log_file" 2>&1; then \
+	    echo "FAIL: deterministic ECDSA accepted without wolfSSL support"; \
+	    exit 1; \
+	fi; \
+	if ! grep -Fq \
+	        "WOLFCOSE_ENABLE_DETERMINISTIC_ECDSA requires wolfSSL support" \
+	        "$$log_file"; then \
+	    cat "$$log_file"; \
+	    echo "FAIL: deterministic ECDSA probe failed unexpectedly"; \
+	    exit 1; \
+	fi; \
+	if ! $(CC) $(ECDSA_POLICY_FLAGS) $(ECDSA_POLICY_HEADER) \
+	        >"$$log_file" 2>&1; then \
+	    cat "$$log_file"; \
+	    echo "FAIL: ECDSA policy probe environment unusable"; \
+	    exit 1; \
+	fi; \
+	for backend in \
+	    "-DWOLF_CRYPTO_CB -DWOLF_CRYPTO_CB_FIND" \
+	    "-DWOLF_CRYPTO_CB -DWOLF_CRYPTO_CB_ONLY_ECC" \
+	    "-DWOLFSSL_STM32_PKA" \
+	    "-DWOLFSSL_ATECC508A" \
+	    "-DWOLFSSL_ATECC608A" \
+	    "-DWOLFSSL_MICROCHIP_TA100" \
+	    "-DPLUTON_CRYPTO_ECC" \
+	    "-DWOLFSSL_CRYPTOCELL" \
+	    "-DWOLFSSL_SILABS_SE_ACCEL" \
+	    "-DWOLFSSL_KCAPI_ECC" \
+	    "-DWOLFSSL_SE050" \
+	    "-DWOLFSSL_ASYNC_CRYPT -DWC_ASYNC_ENABLE_ECC -DHAVE_CAVIUM -DHAVE_CAVIUM_V" \
+	    "-DWOLFSSL_ASYNC_CRYPT -DWC_ASYNC_ENABLE_ECC -DHAVE_INTEL_QA"; do \
+	    if $(CC) $(ECDSA_POLICY_FLAGS) $$backend $(ECDSA_POLICY_HEADER) \
+	            >"$$log_file" 2>&1; then \
+	        echo "FAIL: unverified ECDSA backend accepted: $$backend"; \
+	        exit 1; \
+	    fi; \
+	    if ! grep -Fq \
+	            "ECDSA backend does not support deterministic signing" \
+	            "$$log_file"; then \
+	        cat "$$log_file"; \
+	        echo "FAIL: ECDSA backend probe failed unexpectedly: $$backend"; \
+	        exit 1; \
+	    fi; \
+	    if ! $(CC) $(ECDSA_POLICY_BASE_FLAGS) $$backend \
+	            $(ECDSA_POLICY_HEADER) \
+	            >"$$log_file" 2>&1; then \
+	        cat "$$log_file"; \
+	        echo "FAIL: default ECDSA backend rejected: $$backend"; \
+	        exit 1; \
+	    fi; \
+	done; \
+	if ! $(CC) $(ECDSA_POLICY_FLAGS) -DWOLFSSL_XILINX_CRYPT_VERSAL \
+	        $(ECDSA_POLICY_HEADER) >"$$log_file" 2>&1; then \
+	    cat "$$log_file"; \
+	    echo "FAIL: deterministic Xilinx Versal ECDSA backend rejected"; \
+	    exit 1; \
+	fi; \
+	if ! $(CC) $(ECDSA_POLICY_FLAGS) -DWOLFSSL_STM32_PKA \
+	        -DWC_STM32_PKA_VERIFY_ONLY $(ECDSA_POLICY_HEADER) \
+	        >"$$log_file" 2>&1; then \
+	    cat "$$log_file"; \
+	    echo "FAIL: STM32 PKA verify-only backend rejected"; \
+	    exit 1; \
+	fi; \
+	if ! $(CC) $(ECDSA_POLICY_FLAGS) -DWOLF_CRYPTO_CB \
+	        $(ECDSA_POLICY_HEADER) >"$$log_file" 2>&1; then \
+	    cat "$$log_file"; \
+	    echo "FAIL: software-fallback crypto callback rejected"; \
+	    exit 1; \
+	fi; \
+	if ! $(CC) $(ECDSA_POLICY_FLAGS) -DWOLF_CRYPTO_CB \
+	        -DWOLFCOSE_LEAN_VERIFY $(ECDSA_POLICY_HEADER) \
+	        >"$$log_file" 2>&1; then \
+	    cat "$$log_file"; \
+	    echo "FAIL: ECDSA offload rejected in a verification-only build"; \
+	    exit 1; \
+	fi; \
+	if ! $(CC) $(ECDSA_POLICY_FLAGS) -DWOLFSSL_SE050 \
+	        -DWOLFSSL_SE050_ONLY_KEY_ID $(ECDSA_POLICY_HEADER) \
+	        >"$$log_file" 2>&1; then \
+	    cat "$$log_file"; \
+	    echo "FAIL: deterministic ECDSA rejected for SE050 software keys"; \
+	    exit 1; \
+	fi; \
+	echo "PASS: optional ECDSA nonce policy enforced"
+
+rsapss-policy-test:
+	$(CC) $(CFLAGS) -Werror=unused-function -fsyntax-only \
+	    -DWOLFCOSE_NO_SIGN1 -DWOLFCOSE_NO_SIGN src/wolfcose.c
+	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	    -DWC_RSA_PSS -DWOLFCOSE_NO_KEY_ENCODE \
+	    -DWOLFCOSE_ENABLE_RSAPSS src/wolfcose.c
+	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	    -DWC_RSA_PSS -DWOLFCOSE_LEAN_VERIFY \
+	    -DWOLFCOSE_ENABLE_RSAPSS src/wolfcose.c
+	@set -e; \
+	log_file=$$(mktemp "$${TMPDIR:-/tmp}/wolfcose-rsapss.XXXXXX"); \
+	trap 'rm -f "$$log_file"' 0 1 2 3 15; \
+	if $(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	    -UHAVE_ECC -UWOLFSSL_EXPORT_INT \
+	    -DWC_RSA_PSS -DWOLFCOSE_ENABLE_RSAPSS \
+	    -DWOLFSSL_RSA_VERIFY_ONLY -DWOLFCOSE_LEAN_VERIFY \
+	    src/wolfcose.c >"$$log_file" 2>&1; then \
+	    echo "FAIL: unsupported RSA verify-only policy compiled"; \
+	    exit 1; \
+	fi; \
+	grep -q "RSA-PSS key validation requires WOLFSSL_EXPORT_INT" \
+	    "$$log_file"
+	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	    -UHAVE_ECC -UWOLFSSL_EXPORT_INT \
+	    -DWC_RSA_PSS -DWOLFCOSE_ENABLE_RSAPSS \
+	    -DWOLFSSL_RSA_VERIFY_ONLY -DWOLFSSL_EXPORT_INT \
+	    -DWOLFCOSE_LEAN_VERIFY src/wolfcose.c
+	@set -e; \
+	log_file=$$(mktemp "$${TMPDIR:-/tmp}/wolfcose-rsapss.XXXXXX"); \
+	trap 'rm -f "$$log_file"' 0 1 2 3 15; \
+	for backend in WOLF_CRYPTO_CB WOLFSSL_MICROCHIP_TA100; do \
+	    if $(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	        -UHAVE_ECC -UWOLFSSL_EXPORT_INT \
+	        -DWC_RSA_PSS -DWOLFCOSE_ENABLE_RSAPSS \
+	        -DWOLFSSL_RSA_VERIFY_ONLY -D$$backend \
+	        -DWOLFCOSE_LEAN_VERIFY include/wolfcose/settings.h \
+	        >"$$log_file" 2>&1; then \
+	        echo "FAIL: mixed RSA verify-only policy compiled: $$backend"; \
+	        exit 1; \
+	    fi; \
+	    grep -q "RSA-PSS key validation requires WOLFSSL_EXPORT_INT" \
+	        "$$log_file"; \
+	done
+	@echo "PASS: RSA-PSS operation guards compile cleanly"
+
+zero-alloc-check:
+	sh scripts/check_zero_alloc.sh
+
+test: ecdsa-policy-test rsapss-policy-test zero-alloc-check $(LIB_A)
 	$(CC) $(CFLAGS) -o $(TEST_BIN) $(TEST_SRC) $(LIB_A) $(LDFLAGS)
 	./$(TEST_BIN)
 
@@ -89,6 +260,14 @@ test: $(LIB_A)
 zeroize-test:
 	$(CC) $(CFLAGS) -DWOLFCOSE_TEST_ZEROIZE_HOOK -DWOLFCOSE_TEST_LOG_ENABLE \
 	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(LDFLAGS)
+	./$(TEST_BIN)
+
+# --- ECC private-import backend policy ---
+# Exercise the fail-closed path without requiring a hardware SDK/device.
+ecc-import-policy-test:
+	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE \
+	    -DWOLFCOSE_TEST_NONTRANSACTIONAL_ECC_IMPORT \
+	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LDFLAGS)
 	./$(TEST_BIN)
 
 # --- Delegated signing seam test: exercises the ext-sign callback ---
@@ -270,6 +449,10 @@ c99-check:
 	        $(CC) $(C99_FLAGS) $$cfg -fsyntax-only $$f || exit 1; \
 	    done; \
 	done
+	@$(CC) $(C99_FLAGS) -Werror=unused-function -Werror=unused-parameter \
+	    -DNO_HMAC -DHAVE_AES_CBC -DWOLFCOSE_ENABLE_AESMAC \
+	    -DWOLFCOSE_NO_RECIPIENTS -DWOLFCOSE_NO_ENCRYPT \
+	    -fsyntax-only src/wolfcose.c
 	@echo "PASS: all sources conform to ISO C99 (-pedantic-errors)"
 
 # --- Cleanup ---

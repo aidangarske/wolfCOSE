@@ -729,6 +729,10 @@ static void test_cbor_reject_non_preferred(void)
     uint8_t u2[]  = {0x19, 0x00, 0x17};                /* uint 23 overlong */
     uint8_t u4[]  = {0x1A, 0x00, 0x00, 0x00, 0x18};    /* uint 24 overlong */
     uint8_t u8[]  = {0x1B, 0,0,0,0, 0,0,0x01,0x00};    /* uint 256 overlong */
+    uint8_t u1Max[] = {0x18, 0x17};                     /* uint 23 overlong */
+    uint8_t u2Max[] = {0x19, 0x00, 0xFF};               /* uint 255 overlong */
+    uint8_t u4Max[] = {0x1A, 0x00, 0x00, 0xFF, 0xFF}; /* uint 65535 overlong */
+    uint8_t u8Max[] = {0x1B, 0,0,0,0, 0xFF,0xFF,0xFF,0xFF};
     uint8_t bs[]  = {0x58, 0x00};                      /* empty bstr overlong */
     uint8_t arr[] = {0x98, 0x00};                      /* array(0) overlong */
 
@@ -749,6 +753,26 @@ static void test_cbor_reject_non_preferred(void)
     ctx.cbuf = u8; ctx.bufSz = sizeof(u8); ctx.idx = 0;
     ret = wc_CBOR_DecodeUint(&ctx, &uval);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED, "reject overlong uint 256");
+
+    ctx.cbuf = u1Max; ctx.bufSz = sizeof(u1Max); ctx.idx = 0;
+    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "reject max overlong 1-byte uint");
+
+    ctx.cbuf = u2Max; ctx.bufSz = sizeof(u2Max); ctx.idx = 0;
+    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "reject max overlong 2-byte uint");
+
+    ctx.cbuf = u4Max; ctx.bufSz = sizeof(u4Max); ctx.idx = 0;
+    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "reject max overlong 4-byte uint");
+
+    ctx.cbuf = u8Max; ctx.bufSz = sizeof(u8Max); ctx.idx = 0;
+    ret = wc_CBOR_DecodeUint(&ctx, &uval);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "reject max overlong 8-byte uint");
 
     ctx.cbuf = bs; ctx.bufSz = sizeof(bs); ctx.idx = 0;
     ret = wc_CBOR_DecodeBstr(&ctx, &data, &dataLen);

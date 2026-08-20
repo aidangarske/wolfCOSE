@@ -45,7 +45,10 @@ wolfCOSE has implemented all RFC 9052 messages both single-actor and multi-actor
 
 ## Prerequisites (wolfSSL)
 
-wolfCOSE requires [wolfSSL](https://www.wolfssl.com/) as its crypto backend. **Minimum supported version: v5.8.0-stable** (first release with the public `wc_ForceZero` symbol). Post-quantum signing uses the canonical FIPS 204 `wc_MlDsaKey` API, which lands in wolfSSL **after v5.9.1-stable**; building wolfCOSE against v5.8.0–v5.9.1 works for everything except ML-DSA. Older 5.x releases can technically be supported but require source-level changes; contact [wolfSSL](https://www.wolfssl.com/contact/) for commercial support.
+wolfCOSE requires [wolfSSL](https://www.wolfssl.com/) as its crypto backend.
+**Minimum supported version: v5.8.0-stable**. Some optional algorithms require
+newer releases; see [Getting Started](docs/Getting-Started.md#prerequisites) for
+feature-specific dependency floors.
 
 Choose a build configuration based on the algorithms you need.
 
@@ -189,7 +192,7 @@ Full documentation is available in the [Wiki](https://github.com/wolfSSL/wolfCOS
 - [Message Types](https://github.com/wolfSSL/wolfCOSE/wiki/Message-Types): All six RFC 9052 messages (Sign1, Sign, Encrypt0, Encrypt, Mac0, Mac) with code samples
 - [Algorithms](https://github.com/wolfSSL/wolfCOSE/wiki/Algorithms): Complete list of 40 supported algorithms with COSE IDs
 - [API Reference](https://github.com/wolfSSL/wolfCOSE/wiki/API-Reference): Function signatures, data structures, error codes
-- [Macros](https://github.com/wolfSSL/wolfCOSE/wiki/Macros): Compile-time configuration options
+- [Macros](https://github.com/wolfSSL/wolfCOSE/wiki/Macros): Compile-time configuration, size tuning, and ECDSA nonce policy
 - [Footprint](https://github.com/wolfSSL/wolfCOSE/wiki/Footprint): Size and speed numbers, desktop and on-device
 - [Testing](https://github.com/wolfSSL/wolfCOSE/wiki/Testing): Test infrastructure, coverage, and failure injection
 - [MISRA Compliance](https://github.com/wolfSSL/wolfCOSE/wiki/MISRA-Compliance): MISRA C:2012 and C:2023 compliance status and deviation rationale

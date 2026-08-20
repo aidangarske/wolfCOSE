@@ -38,6 +38,15 @@ git grep -nE "$tab" -- $PATHS | report "tabs are banned in C sources; use spaces
 # No trailing whitespace.
 git grep -nE ' +$' -- $PATHS | report "trailing whitespace"
 
+# Examples follow the documented explicit-precedence style: each operand in a
+# logical-AND condition is parenthesized independently.
+git grep -nE '^[[:space:]]*if \([^()].*&&' -- $PATHS | \
+    grep '^examples/' | \
+    report "parenthesize each && operand in example if conditions"
+git grep -nE '^[[:space:]]*for \([^;]*; [^()].*&&' -- $PATHS | \
+    grep '^examples/' | \
+    report "parenthesize each && operand in example loop conditions"
+
 if [ "$status" -ne 0 ]; then
     printf '\nHouse-style check failed.\n'
     exit 1

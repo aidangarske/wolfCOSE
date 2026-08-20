@@ -92,9 +92,9 @@ int main(void)
                                   gScratch, sizeof(gScratch), &hdr,
                                   &payload, &payloadLen);
     }
-    if (ret == WOLFCOSE_SUCCESS &&
-        payloadLen == (sizeof(PAYLOAD) - 1) && payload != NULL &&
-        memcmp(payload, PAYLOAD, payloadLen) == 0) {
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (payloadLen == (sizeof(PAYLOAD) - 1)) && (payload != NULL) &&
+        (memcmp(payload, PAYLOAD, payloadLen) == 0)) {
         (void)printf("ML-DSA-44 verify: OK, payload = \"%.*s\"\n",
                      (int)payloadLen, payload);
         rc = 0;

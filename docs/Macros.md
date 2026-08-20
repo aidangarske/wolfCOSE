@@ -36,6 +36,63 @@ Per-algorithm opt-outs for the default (non-lean) build. Each also has a `WOLFCO
 | `WOLFCOSE_NO_HMAC512` | HMAC-SHA512 | `WOLFSSL_SHA512` |
 | `WOLFCOSE_NO_AESMAC` | AES-CBC-MAC | `HAVE_AES_CBC` |
 
+RSA-PSS operations enforce RFC 8230's minimum 2048-bit modulus. A minimal
+wolfSSL RSA verify-only build must define `WOLFSSL_EXPORT_INT` so wolfCOSE can
+inspect the exact modulus width; builds that also enable ECC already expose
+the required wolfSSL integer-export API.
+
+### ECDSA Nonce Policy
+
+Local ES256, ES384, and ES512 signing uses wolfSSL's configured nonce policy by
+default. Deterministic ECDSA is an optional hardening feature because its RFC
+6979 and HMAC support increases the linked footprint and requires a specially
+built wolfSSL. When enabled, wolfCOSE selects SHA-256, SHA-384, or SHA-512 to
+match the COSE algorithm before every signature, then restores the caller's
+deterministic-mode and hash settings.
+
+| Define | Description | Default |
+|--------|-------------|---------|
+| `WOLFCOSE_ENABLE_DETERMINISTIC_ECDSA` | Require RFC 6979 deterministic local ECDSA signing | off |
+
+The feature requires wolfSSL built with `WOLFSSL_ECDSA_DETERMINISTIC_K` or
+`WOLFSSL_ECDSA_DETERMINISTIC_K_VARIANT`. wolfSSL has no dedicated configure
+switch for these defines, so enable one in wolfSSL's `CPPFLAGS`, then enable the
+wolfCOSE feature when building:
+
+```bash
+cd wolfssl
+CPPFLAGS="-DWOLFSSL_ECDSA_DETERMINISTIC_K -DWOLFSSL_NO_MALLOC" \
+    ./configure <options>
+make && sudo make install
+
+cd ../wolfcose
+make EXTRA_CFLAGS="-DWOLFCOSE_ENABLE_DETERMINISTIC_ECDSA"
+```
+
+`WOLFSSL_NO_MALLOC` keeps the wolfCrypt deterministic-nonce helper on its
+preallocated path. It is not required to enable deterministic signing, but it
+preserves zero-heap operation across the wolfCOSE and wolfCrypt layers.
+
+Verification-only builds do not need the option. A delegated signing callback
+chooses its own nonce policy. For a `WOLFSSL_USER_SETTINGS` test build, override
+the policy probe include, for example with
+`ECDSA_POLICY_OPTS='-DWOLFSSL_USER_SETTINGS -Ipath/to/settings'`.
+
+wolfCOSE also rejects local signing through wolfSSL dispatchers that do not
+consume the key's deterministic nonce state: crypto callbacks that always
+search or require callback-only ECC, STM32 PKA signing, ATECC508A/608A,
+Microchip TA100, Pluton, CryptoCell, Silicon Labs SE acceleration, KCAPI,
+SE050, and Cavium/Intel async ECC when the feature is enabled. A plain
+crypto-callback build may use the software fallback, but a device-bound key is
+rejected at runtime. The Xilinx Versal path remains permitted because wolfSSL
+passes its RFC 6979-derived nonce to that hardware signer.
+
+Without `WOLFSSL_NO_MALLOC`, wolfSSL may allocate a temporary deterministic
+nonce object per signature. In an ES256-only x86_64 macOS link, deterministic
+support increased text and constants by approximately 7.1 KB. The exact cost
+is platform and wolfSSL-configuration dependent, which is why the feature is
+off by default.
+
 ## Message Type Gates
 
 ### COSE_Sign1 (Single Signer)
@@ -116,7 +173,7 @@ Per-algorithm opt-outs for the default (non-lean) build. Each also has a `WOLFCO
 | `WOLFCOSE_ENABLE_AESWRAP` | Opt in AES Key Wrap under `WOLFCOSE_LEAN` | - |
 | `WOLFCOSE_ENABLE_ECDH_ES` | Opt in ECDH-ES under `WOLFCOSE_LEAN` | - |
 
-Resolved internally as read-only `WOLFCOSE_KEY_WRAP`, `WOLFCOSE_ECDH`, and `WOLFCOSE_ECDH_WRAP` gates. Requires the matching wolfSSL feature (`HAVE_AES_KEYWRAP`; `HAVE_ECC` + `HAVE_HKDF` for ECDH-ES) and at least one multi-recipient message type enabled.
+Resolved internally as read-only `WOLFCOSE_KEY_WRAP`, `WOLFCOSE_ECDH`, and `WOLFCOSE_ECDH_WRAP` gates. Requires the matching wolfSSL feature (`HAVE_AES_KEYWRAP`; `HAVE_ECC` + `HAVE_HKDF` for ECDH-ES) and at least one multi-recipient message type enabled. AES Key Wrap also requires wolfSSL 5.9.0 or later; older releases used a comparison whose timing behavior depended on the compiler and `XMEMCMP` configuration. Define `WOLFCOSE_NO_AESWRAP` when building the otherwise supported wolfSSL 5.8.x series.
 
 ---
 
@@ -309,6 +366,7 @@ wolfCOSE requires these wolfSSL features for full functionality:
 | wolfSSL Define | wolfCOSE Feature |
 |----------------|------------------|
 | `HAVE_ECC` | ECDSA signing (ES256/ES384/ES512), ECDH key agreement |
+| `WOLFSSL_ECDSA_DETERMINISTIC_K` or `WOLFSSL_ECDSA_DETERMINISTIC_K_VARIANT` | Optional deterministic local ECDSA signing |
 | `HAVE_ED25519` | EdDSA signing (Ed25519) |
 | `HAVE_ED448` | EdDSA signing (Ed448) |
 | `WOLFSSL_HAVE_MLDSA` | ML-DSA post-quantum signing |

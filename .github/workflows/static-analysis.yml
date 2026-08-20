@@ -15,6 +15,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Enforce zero dynamic allocation
+      run: make zero-alloc-check
+
     - name: Install cppcheck
       run: |
         sudo apt-get update

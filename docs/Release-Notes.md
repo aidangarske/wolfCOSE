@@ -53,11 +53,24 @@ MAC, and key distribution, and standardized post-quantum ML-DSA signatures
   private RSA key round-trips reliably against strict RSA decoders.
 - `COSE_Mac` emits an empty protected header for direct-key recipients, matching
   the COSE structure other implementations expect on the wire.
+- Multi-recipient Encrypt and MAC now require an explicit recipient algorithm,
+  enforce the RFC recipient-mode combinations, and require an empty bstr or
+  null for a direct recipient's ciphertext item. Direct encoders emit
+  `{1: -6}` in each recipient's unprotected map, adding two bytes per direct
+  recipient.
+- RSA-PSS operations reject keys below the RFC 8230 minimum of 2048 bits.
+- AES-CCM algorithms using a 13-byte nonce reject payloads above 65535 bytes,
+  matching the algorithm's two-byte message-length field.
+- `wc_CoseKey_Decode` and `wc_CoseKey_PeekInfo` reject the optional `key_ops`
+  label with `WOLFCOSE_E_UNSUPPORTED`; operation arrays are not retained by
+  the fixed-size key wrapper.
 - `COSE_Key` emits preferred (shortest) CBOR length for the RSA `n` and `d` byte
   strings, keeping serialized keys deterministic.
 
 ### Improvements/Optimizations
 
+- Optional RFC 6979 deterministic ECDSA signing through
+  `WOLFCOSE_ENABLE_DETERMINISTIC_ECDSA`.
 - Minimal footprint: an ES256 `COSE_Sign1` build is ~5.1 KB verify-only and
   ~6.8 KB sign + verify for the wolfCOSE COSE + CBOR engine. See [[Footprint]].
 - MISRA C:2012 and C:2023 checked. See [[MISRA Compliance]].

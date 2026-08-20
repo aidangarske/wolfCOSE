@@ -48,16 +48,29 @@ Pointer-based key structure (~48 bytes). Caller owns underlying wolfCrypt keys.
 
 ```c
 typedef struct WOLFCOSE_HDR {
-    int32_t alg;              /* Algorithm from protected header */
+    int32_t alg;              /* Algorithm from either header bucket */
     const uint8_t* kid;       /* Key ID (zero-copy pointer) */
     size_t kidLen;
     const uint8_t* iv;        /* IV from unprotected header */
     size_t ivLen;
+    const uint8_t* partialIv; /* Partial IV from unprotected header */
+    size_t partialIvLen;
+    int32_t contentType;      /* Content type from either header bucket */
     uint8_t flags;            /* WOLFCOSE_HDR_FLAG_* */
 } WOLFCOSE_HDR;
 ```
 
-Parsed COSE header information.
+Parsed COSE header information. `alg` and `contentType` may come from either
+the protected or unprotected header bucket; `kid`, `iv`, and `partialIv` are
+unprotected metadata. `WOLFCOSE_HDR_FLAG_CONTENT_TYPE_UNPROTECTED` is set when
+the unprotected bucket contains the content-type label. Integer values are
+stored in `contentType`; text-string values are accepted but not retained.
+wolfCOSE pins an unprotected algorithm to the supplied key where cryptographic
+policy requires it, but applications must not treat the other returned fields
+as authenticated policy unless they independently pin them.
+
+All message APIs require the external AAD pointer to be non-NULL when its
+length is non-zero.
 
 ---
 
@@ -453,6 +466,17 @@ Decoding is strict: preferred CBOR only, integer labels only, no duplicate
 labels, and `bufSz` must be exactly the encoded length. See
 [Getting Started - Strict
 decoding](Getting-Started.md#strict-decoding-rfc-8949-preferred-serialization).
+Keys containing the optional `key_ops` label (4) return
+`WOLFCOSE_E_UNSUPPORTED` before any key material is imported because the
+fixed-size `WOLFCOSE_KEY` wrapper cannot retain arbitrary operation arrays.
+
+An attached `ecc_key` that will receive private EC2 material must be freshly
+initialized, with no existing curve or key material. Reusing a populated ECC
+object returns `WOLFCOSE_E_INVALID_ARG` without replacing its key. Free and
+initialize the object again before decoding another private EC2 key. This
+precondition lets wolfCOSE roll back a failed software import without losing
+caller-owned wolfCrypt configuration. Backends or math layouts that cannot be
+rolled back safely return `WOLFCOSE_E_UNSUPPORTED` before private import.
 
 ---
 
@@ -507,7 +531,8 @@ integer labels only, no duplicate labels, `kty` required, no trailing bytes -
 so a buffer that peeks successfully will not be rejected by the decoder for
 those reasons. Label `-1` is `crv` for EC2/OKP but `k`/`n` for symmetric/RSA
 keys; the value is dispatched on its CBOR type, so `crv` stays 0 for the
-latter. On any error every field of `info` is cleared.
+latter. A `key_ops` label returns `WOLFCOSE_E_UNSUPPORTED`, matching decode.
+On any error every field of `info` is cleared.
 
 **Returns:** `WOLFCOSE_SUCCESS` or error code
 
@@ -536,7 +561,7 @@ Create a COSE_Sign1 message (single signer).
 **Parameters:**
 | Name | Description |
 |------|-------------|
-| `key` | Signing key (must have private key) |
+| `key` | Signing key with private material, or an external signing callback when enabled |
 | `alg` | Algorithm: `WOLFCOSE_ALG_ES256`, `WOLFCOSE_ALG_ES384`, `WOLFCOSE_ALG_ES512`, `WOLFCOSE_ALG_EDDSA`, etc. |
 | `kid`, `kidLen` | Optional key identifier |
 | `payload`, `payloadLen` | Payload to include in message (or NULL for detached) |
@@ -544,7 +569,7 @@ Create a COSE_Sign1 message (single signer).
 | `extAad`, `extAadLen` | External additional authenticated data |
 | `scratch`, `scratchSz` | Scratch buffer (min `WOLFCOSE_MAX_SCRATCH_SZ`) |
 | `out`, `outSz`, `outLen` | Output buffer and length |
-| `rng` | Random number generator for ECDSA |
+| `rng` | Random number generator for local signing; may be NULL with an external signing callback |
 
 **Returns:** `WOLFCOSE_SUCCESS` or error code
 
@@ -842,6 +867,11 @@ int wc_CoseEncrypt_Encrypt(
 
 Create a COSE_Encrypt message for multiple recipients.
 
+Direct recipients are encoded with the mandatory unprotected `{1: -6}`
+algorithm header and an empty bstr ciphertext item. This adds two bytes per
+direct recipient compared with the former empty-map encoding; callers using
+fixed output buffers must leave room for it.
+
 **Parameters:**
 | Name | Description |
 |------|-------------|
@@ -877,6 +907,13 @@ int wc_CoseEncrypt_Decrypt(
 
 Decrypt a COSE_Encrypt message as a specific recipient.
 
+Every recipient must declare its key-management algorithm. Direct encryption
+algorithms may coexist with each other, direct key agreement requires one
+recipient, and key-transport algorithms may coexist with each other. Direct
+recipients must carry an empty bstr or null ciphertext item. If the body
+algorithm is only in the unprotected header,
+`recipient->key->alg` must pin the same algorithm.
+
 **Parameters:**
 | Name | Description |
 |------|-------------|
@@ -911,6 +948,10 @@ int wc_CoseMac_Create(
 
 Create a COSE_Mac message for multiple recipients.
 
+Each direct recipient is encoded with the mandatory unprotected `{1: -6}`
+algorithm header and an empty bstr ciphertext item. This adds two bytes per
+recipient compared with the former empty-map encoding.
+
 **Parameters:**
 | Name | Description |
 |------|-------------|
@@ -943,6 +984,11 @@ int wc_CoseMac_Verify(
 ```
 
 Verify a COSE_Mac message as a specific recipient.
+
+Every recipient must declare `WOLFCOSE_ALG_DIRECT`, sibling recipients must use
+direct mode, and the recipient ciphertext item must be an empty bstr or null.
+If the body algorithm is only in the unprotected header, `recipient->key->alg` must
+pin the same algorithm.
 
 **Parameters:**
 | Name | Description |

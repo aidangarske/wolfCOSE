@@ -60,12 +60,23 @@
 #ifdef WOLFCOSE_HAVE_RSAPSS
     #include <wolfssl/wolfcrypt/rsa.h>
 #endif
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
+    #define USE_CERT_BUFFERS_1024
+    #include <wolfssl/certs_test.h>
+#endif
 #ifdef WOLFCOSE_TEST_LOG_ENABLE
     #include <stdio.h>
 #endif
 #include <string.h>
 #ifdef WOLFCOSE_FORCE_FAILURE
     #include "force_failure.h"
+#endif
+
+#if defined(HAVE_ECC) && defined(WOLFCOSE_KEY_DECODE) && \
+    defined(ALT_ECC_SIZE) && defined(USE_FAST_MATH) && \
+    defined(HAVE_WOLF_BIGINT) && \
+    !defined(WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED)
+    #error "fast ALT ECC with bigint requires fail-closed private import"
 #endif
 
 static int g_failures = 0;
@@ -86,6 +97,105 @@ static int g_failures = 0;
         TEST_LOG("  PASS: %s\n", (name));                      \
     }                                                          \
 } while (0)
+
+#if (defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)) || \
+    (defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM))
+/* Locate the one-byte direct-alg value in a generated recipient header. */
+static int find_recipient_direct_alg(const uint8_t* msg, size_t msgLen,
+    size_t fieldsBeforeRecipients, size_t recipientIndex, size_t* algOffset)
+{
+    int ret = WOLFCOSE_SUCCESS;
+    WOLFCOSE_CBOR_CTX ctx;
+    uint64_t tag = 0u;
+    size_t count = 0u;
+    size_t i;
+    const uint8_t* protectedData = NULL;
+    size_t protectedLen = 0u;
+    int found = 0;
+
+    if ((msg == NULL) || (algOffset == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        (void)XMEMSET(&ctx, 0, sizeof(ctx));
+        ctx.cbuf = msg;
+        ctx.bufSz = msgLen;
+        if ((ctx.idx < ctx.bufSz) &&
+            (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
+            ret = wc_CBOR_DecodeTag(&ctx, &tag);
+        }
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (count != (fieldsBeforeRecipients + 1u))) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    for (i = 0u; (ret == WOLFCOSE_SUCCESS) &&
+         (i < fieldsBeforeRecipients); i++) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (recipientIndex >= count)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    for (i = 0u; (ret == WOLFCOSE_SUCCESS) && (i < recipientIndex); i++) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (count != 3u)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &protectedData, &protectedLen);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (protectedLen != 0u)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_DecodeMapStart(&ctx, &count);
+    }
+    for (i = 0u; (ret == WOLFCOSE_SUCCESS) && (i < count); i++) {
+        int64_t label = 0;
+
+        ret = wc_CBOR_DecodeInt(&ctx, &label);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (label == WOLFCOSE_HDR_ALG)) {
+            int64_t alg = 0;
+            size_t offset = ctx.idx;
+
+            ret = wc_CBOR_DecodeInt(&ctx, &alg);
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                ((alg != WOLFCOSE_ALG_DIRECT) ||
+                 (ctx.idx != (offset + 1u)))) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                *algOffset = offset;
+                found = 1;
+            }
+        }
+        else if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_Skip(&ctx);
+        }
+        else {
+            /* No action required */
+        }
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (found == 0)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+
+    (void)tag;
+    (void)protectedData;
+    return ret;
+}
+#endif
 
 /* ----- Internal helper tests ----- */
 static void test_wolfcose_force_zero(void)
@@ -231,9 +341,16 @@ static void test_cose_key_ecc(void)
         ret = wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
         TEST_ASSERT(ret == 0, "key2 set ecc");
         ret = wc_CoseKey_Decode(&key2, cbuf, cLen);
+#ifdef WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
+        TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED &&
+                    key2.kty == WOLFCOSE_KTY_EC2 &&
+                    key2.crv == WOLFCOSE_CRV_P256 && key2.hasPrivate == 0,
+                    "key ecc decode backend rejected");
+#else
         TEST_ASSERT(ret == 0 && key2.kty == WOLFCOSE_KTY_EC2 &&
                     key2.crv == WOLFCOSE_CRV_P256 && key2.hasPrivate == 1,
                     "key ecc decode");
+#endif
         (void)wc_ecc_free(&eccKey2);
     }
 
@@ -382,6 +499,116 @@ static void test_cose_key_symmetric(void)
     wc_CoseKey_Free(&key);
 }
 
+#if defined(WOLFCOSE_KEY_DECODE)
+static void test_cose_key_operations(void)
+{
+    static const uint8_t encodedKey[] = {
+        0xA3u,
+        0x01u, 0x04u,
+        0x04u, 0x81u, 0x0Au,
+        0x20u, 0x58u, 0x20u,
+        0x00u, 0x01u, 0x02u, 0x03u, 0x04u, 0x05u, 0x06u, 0x07u,
+        0x08u, 0x09u, 0x0Au, 0x0Bu, 0x0Cu, 0x0Du, 0x0Eu, 0x0Fu,
+        0x10u, 0x11u, 0x12u, 0x13u, 0x14u, 0x15u, 0x16u, 0x17u,
+        0x18u, 0x19u, 0x1Au, 0x1Bu, 0x1Cu, 0x1Du, 0x1Eu, 0x1Fu
+    };
+    static const uint8_t materialFirst[] = {
+        0xA3u,
+        0x01u, 0x04u,
+        0x20u, 0x58u, 0x20u,
+        0x00u, 0x01u, 0x02u, 0x03u, 0x04u, 0x05u, 0x06u, 0x07u,
+        0x08u, 0x09u, 0x0Au, 0x0Bu, 0x0Cu, 0x0Du, 0x0Eu, 0x0Fu,
+        0x10u, 0x11u, 0x12u, 0x13u, 0x14u, 0x15u, 0x16u, 0x17u,
+        0x18u, 0x19u, 0x1Au, 0x1Bu, 0x1Cu, 0x1Du, 0x1Eu, 0x1Fu,
+        0x04u, 0x81u, 0x0Au
+    };
+    WOLFCOSE_KEY key;
+    WOLFCOSE_KEY_INFO info;
+    int ret;
+
+    TEST_LOG("  [Key Operations]\n");
+
+    ret = wc_CoseKey_Init(&key);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "key ops init");
+    ret = wc_CoseKey_Decode(&key, encodedKey, sizeof(encodedKey));
+    TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED && key.hasPrivate == 0u &&
+                key.key.symm.key == NULL && key.key.symm.keyLen == 0u,
+                "key ops rejected before import");
+
+    ret = wc_CoseKey_PeekInfo(encodedKey, sizeof(encodedKey), &info);
+    TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED && info.kty == 0 &&
+                info.alg == WOLFCOSE_ALG_UNSET && info.kid == NULL,
+                "key ops peek rejected and cleared");
+
+    ret = wc_CoseKey_Init(&key);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "key ops second init");
+    ret = wc_CoseKey_Decode(&key, materialFirst, sizeof(materialFirst));
+    TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED && key.hasPrivate == 0u &&
+                key.key.symm.key == NULL && key.key.symm.keyLen == 0u,
+                "key ops reject material before operation policy");
+}
+
+static void test_cose_key_akp_alg_metadata(void)
+{
+    static const uint8_t missingAlg[] = {
+        0xA2u, 0x01u, 0x07u, 0x20u, 0x41u, 0x00u
+    };
+    static const uint8_t wrongAlg[] = {
+        0xA3u, 0x01u, 0x07u, 0x03u, 0x26u,
+        0x20u, 0x41u, 0x00u
+    };
+    WOLFCOSE_KEY key;
+    int ret;
+
+    TEST_LOG("  [Key AKP algorithm metadata]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, missingAlg, sizeof(missingAlg));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "AKP metadata rejects missing algorithm");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, wrongAlg, sizeof(wrongAlg));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "AKP metadata rejects non-ML-DSA algorithm");
+}
+
+static void test_cose_key_akp_public_metadata(void)
+{
+    static const uint8_t missingPublic[] = {
+        0xA2u, 0x01u, 0x07u, 0x03u, 0x38u, 0x2Fu
+    };
+    WOLFCOSE_KEY key;
+    int ret;
+
+    TEST_LOG("  [Key AKP public metadata]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, missingPublic, sizeof(missingPublic));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "AKP metadata rejects missing public key");
+}
+
+static void test_cose_key_akp_seed_metadata(void)
+{
+    static const uint8_t shortSeed[] = {
+        0xA4u, 0x01u, 0x07u, 0x03u, 0x38u, 0x2Fu,
+        0x20u, 0x41u, 0x00u, 0x21u, 0x50u,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u
+    };
+    WOLFCOSE_KEY key;
+    int ret;
+
+    TEST_LOG("  [Key AKP seed metadata]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, shortSeed, sizeof(shortSeed));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "AKP metadata rejects wrong seed length");
+}
+#endif
+
 /* ----- COSE_Sign1 tests ----- */
 #ifdef WOLFCOSE_HAVE_ES256
 static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
@@ -399,6 +626,11 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t out[512];
     size_t outLen = 0;
+#ifdef WOLFCOSE_HAVE_DETERMINISTIC_ECDSA
+    uint8_t deterministicOut[512];
+    size_t deterministicOutLen = 0;
+    enum wc_HashType expectedHashType = WC_HASH_TYPE_NONE;
+#endif
     size_t sizedLen = 0;
     const uint8_t* decPayload = NULL;
     size_t decPayloadLen = 0;
@@ -425,6 +657,10 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
     if (ret == 0) {
         ret = wc_CoseKey_Init(&signKey);
         TEST_ASSERT(ret == 0, "sign key init");
+#ifdef WOLFCOSE_HAVE_DETERMINISTIC_ECDSA
+        eccKey.deterministic = 0u;
+        eccKey.hashType = WC_HASH_TYPE_SHA512;
+#endif
         if (ret == 0) {
             ret = wc_CoseKey_SetEcc(&signKey, crv, &eccKey);
             TEST_ASSERT(ret == 0, "sign key set ecc");
@@ -449,6 +685,35 @@ static void test_cose_sign1_ecc(const char* label, int32_t alg, int32_t crv,
             TEST_ASSERT(outLen == sizedLen, "sign1 ecc exact size");
         }
     }
+
+#ifdef WOLFCOSE_HAVE_DETERMINISTIC_ECDSA
+    if (ret == 0) {
+        ret = wolfCose_AlgToHashType(alg, &expectedHashType);
+        TEST_ASSERT(ret == 0, "sign1 deterministic hash mapping");
+    }
+    if (ret == 0) {
+        TEST_ASSERT(eccKey.deterministic == 0u,
+                    "sign1 restores caller deterministic mode");
+        TEST_ASSERT(eccKey.hashType == WC_HASH_TYPE_SHA512,
+                    "sign1 restores caller deterministic hash");
+
+        ret = wc_CoseSign1_Sign(&signKey, alg,
+            kid, sizeof(kid) - 1,
+            payload, sizeof(payload) - 1,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), deterministicOut,
+            sizeof(deterministicOut), &deterministicOutLen, &rng);
+        TEST_ASSERT(ret == 0, "sign1 deterministic repeat sign");
+        TEST_ASSERT(ret != 0 ||
+                    (deterministicOutLen == outLen &&
+                     memcmp(deterministicOut, out, outLen) == 0),
+                    "sign1 deterministic repeat output");
+        TEST_ASSERT(eccKey.deterministic == 0u,
+                    "sign1 repeat restores deterministic mode");
+        TEST_ASSERT(eccKey.hashType == WC_HASH_TYPE_SHA512,
+                    "sign1 repeat restores deterministic hash");
+    }
+#endif
 
     if (ret == 0) {
         /* Verify with same key (through a const pointer: the verify API only
@@ -551,13 +816,16 @@ static int test_ext_sign_cb(void* cbCtx, int32_t alg,
                             uint8_t* sig, size_t sigSz, size_t* sigLen)
 {
     test_ext_ctx* ctx = (test_ext_ctx*)cbCtx;
+    enum wc_HashType hashType = WC_HASH_TYPE_NONE;
     int ret;
 
-    (void)alg;
     ctx->called++;
     *sigLen = sigSz;
-    ret = wolfCose_EccSignRaw(tbs, tbsSz, sig, sigLen, ctx->coordSz,
-                              ctx->rng, ctx->key);
+    ret = wolfCose_AlgToHashType(alg, &hashType);
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_EccSignRaw(tbs, tbsSz, sig, sigLen, ctx->coordSz,
+                                  hashType, ctx->rng, ctx->key);
+    }
     return (ret == 0) ? 0 : -1;
 }
 
@@ -1660,6 +1928,18 @@ static void test_cose_sign1_eddsa(void)
     }
 
     if (ret == 0) {
+        WOLFCOSE_KEY wrongTypeKey = signKey;
+        int wrongRet;
+
+        wrongTypeKey.attachedType = WOLFCOSE_ATT_NONE;
+        wrongRet = wc_CoseSign1_Verify(&wrongTypeKey, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(wrongRet == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "sign1 eddsa attachedType mismatch rejected");
+    }
+
+    if (ret == 0) {
         /* Wrong key should fail */
         ed25519_key edWrong;
         WOLFCOSE_KEY wrongKey;
@@ -1754,6 +2034,18 @@ static void test_cose_sign1_ed448(void)
                     memcmp(decPayload, payload, decPayloadLen) == 0,
                     "sign1 ed448 payload match");
         TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_EDDSA, "sign1 ed448 hdr alg");
+    }
+
+    if (ret == 0) {
+        WOLFCOSE_KEY wrongTypeKey = signKey;
+        int wrongRet;
+
+        wrongTypeKey.attachedType = WOLFCOSE_ATT_NONE;
+        wrongRet = wc_CoseSign1_Verify(&wrongTypeKey, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(wrongRet == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "sign1 ed448 attachedType mismatch rejected");
     }
 
     if (ret == 0) {
@@ -2115,6 +2407,16 @@ static void test_cose_encrypt0_with_aad(void)
         scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret != 0, "enc0 missing aad fails");
+
+    ret = wc_CoseEncrypt0_Encrypt(&key, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0u, NULL,
+        NULL, 1u,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "enc0 null aad with length rejected");
 }
 #endif /* WOLFCOSE_HAVE_AESGCM */
 
@@ -2469,6 +2771,116 @@ static void test_cose_aes_ccm_all_params(void)
                     "ccm sweep multi roundtrip");
     }
 }
+
+#define TEST_CCM_L2_TOO_LONG 65536u
+#define TEST_CCM_L2_TAG_LEN  16u
+#define TEST_CCM_L2_OUT_SZ   65792u
+
+static uint8_t testCcmL2Payload[TEST_CCM_L2_TOO_LONG];
+static uint8_t testCcmL2Output[TEST_CCM_L2_OUT_SZ];
+
+static void test_cose_aes_ccm_l2_payload_limit(void)
+{
+    static const uint8_t enc0Detached[] = {
+        0xD0u, 0x83u, 0x44u, 0xA1u, 0x01u, 0x18u, 0x1Eu,
+        0xA1u, 0x05u, 0x4Du,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+        0xF6u
+    };
+#if defined(WOLFCOSE_ENCRYPT)
+    static const uint8_t encryptDetached[] = {
+        0xD8u, 0x60u, 0x84u,
+        0x44u, 0xA1u, 0x01u, 0x18u, 0x1Eu,
+        0xA1u, 0x05u, 0x4Du,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+        0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u,
+        0xF6u,
+        0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
+    };
+    WOLFCOSE_RECIPIENT recipient;
+#endif
+    WOLFCOSE_KEY key;
+    WOLFCOSE_HDR hdr;
+    uint8_t keyBytes[16] = {0};
+    uint8_t iv[13] = {0};
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[64];
+    size_t outLen = 0;
+    size_t detachedLen = 0;
+    size_t plaintextLen = 0;
+    int ret;
+
+    TEST_LOG("  [AES-CCM L=2 payload limit]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyBytes, sizeof(keyBytes));
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "ccm L=2 key set");
+
+#if defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
+    ret = wc_CoseEncrypt0_Encrypt(&key,
+        WOLFCOSE_ALG_AES_CCM_16_128_128,
+        iv, sizeof(iv), testCcmL2Payload, UINT16_MAX,
+        testCcmL2Output, sizeof(testCcmL2Output), &detachedLen,
+        NULL, 0u, scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) &&
+                (detachedLen == ((size_t)UINT16_MAX + TEST_CCM_L2_TAG_LEN)),
+                "encrypt0 accepts maximum CCM L=2 payload");
+
+    ret = wc_CoseEncrypt0_Encrypt(&key,
+        WOLFCOSE_ALG_AES_CCM_64_128_128,
+        iv, 7u, testCcmL2Payload, sizeof(testCcmL2Payload),
+        testCcmL2Output, sizeof(testCcmL2Output), &detachedLen,
+        NULL, 0u, scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) &&
+                (detachedLen == (TEST_CCM_L2_TOO_LONG +
+                                 TEST_CCM_L2_TAG_LEN)),
+                "encrypt0 accepts payload above CCM L=2 limit for L=8");
+
+    ret = wc_CoseEncrypt0_Encrypt(&key,
+        WOLFCOSE_ALG_AES_CCM_16_128_128,
+        iv, sizeof(iv), testCcmL2Payload, sizeof(testCcmL2Payload),
+        testCcmL2Output, sizeof(testCcmL2Output), &detachedLen,
+        NULL, 0u, scratch, sizeof(scratch), out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "encrypt0 rejects CCM L=2 oversized payload");
+#endif
+
+#if defined(WOLFCOSE_ENCRYPT0_DECRYPT)
+    ret = wc_CoseEncrypt0_Decrypt(&key,
+        enc0Detached, sizeof(enc0Detached),
+        testCcmL2Output, TEST_CCM_L2_TOO_LONG + TEST_CCM_L2_TAG_LEN,
+        NULL, 0u, scratch, sizeof(scratch), &hdr,
+        testCcmL2Payload, sizeof(testCcmL2Payload), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "encrypt0 rejects CCM L=2 oversized ciphertext");
+#endif
+
+#if defined(WOLFCOSE_ENCRYPT)
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0u;
+
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1u,
+        WOLFCOSE_ALG_AES_CCM_16_128_128,
+        iv, sizeof(iv), testCcmL2Payload, sizeof(testCcmL2Payload),
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+        testCcmL2Output, sizeof(testCcmL2Output), &outLen, NULL);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "encrypt rejects CCM L=2 oversized payload");
+
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0u,
+        encryptDetached, sizeof(encryptDetached),
+        testCcmL2Output, TEST_CCM_L2_TOO_LONG + TEST_CCM_L2_TAG_LEN,
+        NULL, 0u, scratch, sizeof(scratch), &hdr,
+        testCcmL2Payload, sizeof(testCcmL2Payload), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "encrypt rejects CCM L=2 oversized ciphertext");
+#endif
+
+    wc_CoseKey_Free(&key);
+}
 #endif /* WOLFCOSE_HAVE_AESCCM */
 
 /* ----- COSE_Sign1 RSA-PSS tests ----- */
@@ -2579,7 +2991,342 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
         (void)wc_FreeRng(&rng);
     }
 }
+
+static void test_cose_rsa_pss_minimum_key_size(void)
+{
+    WOLFCOSE_KEY key;
+    RsaKey rsaKey;
+    RsaKey boundaryKey;
+    WC_RNG rng;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX enc;
+    uint8_t protectedBuf[8];
+    uint8_t signature[128] = {0};
+    uint8_t boundaryModulus[256] = {0};
+    const uint8_t rsaExponent[] = {0x01, 0x00, 0x01};
+    const uint8_t largeExponent[] = {
+        0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01
+    };
+    uint8_t payload[] = "RSA-PSS minimum key size";
+    uint8_t scratch[1024];
+    uint8_t out[1024];
+    uint8_t sign1Msg[256];
+    size_t protectedLen = 0u;
+    size_t outLen = 0u;
+    size_t sign1MsgLen = 0u;
+    size_t sizedLen = 0u;
+    word32 idx = 0u;
+    const uint8_t* decPayload = NULL;
+    size_t decPayloadLen = 0u;
+    int ret;
+    int keyInit = 0;
+    int boundaryInit = 0;
+    int rsaInit = 0;
+    int rngInit = 0;
+#ifdef WOLFCOSE_SIGN
+    WOLFCOSE_SIGNATURE signer;
+    uint8_t signMsg[256];
+    size_t signMsgLen = 0u;
+#endif
+
+    TEST_LOG("  [RSA-PSS minimum key size]\n");
+
+    ret = wc_CoseKey_Init(&key);
+    TEST_ASSERT(ret == 0, "rsa minimum COSE key init");
+    if (ret == 0) {
+        keyInit = 1;
+    }
+    if (ret == 0) {
+        ret = wc_InitRsaKey(&rsaKey, NULL);
+        TEST_ASSERT(ret == 0, "rsa minimum key init");
+        if (ret == 0) {
+            rsaInit = 1;
+        }
+    }
+    if (ret == 0) {
+        ret = wc_InitRng(&rng);
+        TEST_ASSERT(ret == 0, "rsa minimum rng init");
+        if (ret == 0) {
+            rngInit = 1;
+        }
+    }
+    if (ret == 0) {
+        ret = wc_RsaPrivateKeyDecode(client_key_der_1024, &idx, &rsaKey,
+                                     sizeof_client_key_der_1024);
+        TEST_ASSERT(ret == 0, "rsa minimum weak key import");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_SetRsa(&key, &rsaKey);
+        TEST_ASSERT(ret == 0, "rsa minimum COSE key set");
+    }
+
+    if (ret == 0) {
+        ret = wc_CoseSign1_SignSize_ex(&key, WOLFCOSE_ALG_PS256, 0u,
+            sizeof(payload) - 1u, 0u, 0u, &sizedLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "sign1 pss size rejects 1024-bit key");
+
+        ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_PS256,
+            NULL, 0u, payload, sizeof(payload) - 1u,
+            NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "sign1 pss rejects 1024-bit key");
+    }
+
+    ret = wc_CBOR_EncoderInit(&enc, protectedBuf, sizeof(protectedBuf));
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&enc, WOLFCOSE_HDR_ALG);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_PS256);
+    }
+    if (ret == 0) {
+        protectedLen = enc.idx;
+        ret = wc_CBOR_EncoderInit(&enc, sign1Msg, sizeof(sign1Msg));
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeTag(&enc, WOLFCOSE_TAG_SIGN1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 4u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, protectedBuf, protectedLen);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 0u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, payload, sizeof(payload) - 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, signature, sizeof(signature));
+    }
+    TEST_ASSERT(ret == 0, "rsa minimum Sign1 fixture encode");
+    if (ret == 0) {
+        sign1MsgLen = enc.idx;
+        ret = wc_CoseSign1_Verify(&key, sign1Msg, sign1MsgLen,
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "sign1 pss verify rejects 1024-bit key");
+    }
+
+#ifdef WOLFCOSE_SIGN
+    signer.algId = WOLFCOSE_ALG_PS256;
+    signer.key = &key;
+    signer.kid = NULL;
+    signer.kidLen = 0u;
+    ret = wc_CoseSign_Sign(&signer, 1u,
+        payload, sizeof(payload) - 1u, NULL, 0u, NULL, 0u,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "multi pss sign rejects 1024-bit key");
+
+    ret = wc_CBOR_EncoderInit(&enc, signMsg, sizeof(signMsg));
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeTag(&enc, WOLFCOSE_TAG_SIGN);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 4u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 0u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, payload, sizeof(payload) - 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 3u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, protectedBuf, protectedLen);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 0u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, signature, sizeof(signature));
+    }
+    TEST_ASSERT(ret == 0, "rsa minimum Sign fixture encode");
+    if (ret == 0) {
+        signMsgLen = enc.idx;
+        ret = wc_CoseSign_Verify(&key, 0u, signMsg, signMsgLen,
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "multi pss verify rejects 1024-bit key");
+    }
+#endif
+
+    ret = WOLFCOSE_SUCCESS;
+    if (ret == 0) {
+        ret = wc_InitRsaKey(&boundaryKey, NULL);
+        TEST_ASSERT(ret == 0, "rsa boundary key init");
+        if (ret == 0) {
+            boundaryInit = 1;
+        }
+    }
+    if (ret == 0) {
+        boundaryModulus[0] = 0x7fu;
+        boundaryModulus[sizeof(boundaryModulus) - 1u] = 0x01u;
+        ret = wc_RsaPublicKeyDecodeRaw(boundaryModulus,
+            (word32)sizeof(boundaryModulus), rsaExponent,
+            (word32)sizeof(rsaExponent), &boundaryKey);
+        TEST_ASSERT(ret == 0, "rsa 2047-bit boundary key import");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_SetRsa(&key, &boundaryKey);
+        TEST_ASSERT(ret == 0, "rsa 2047-bit COSE key set");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_SignSize_ex(&key, WOLFCOSE_ALG_PS256, 0u,
+            sizeof(payload) - 1u, 0u, 0u, &sizedLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "sign1 pss size rejects 2047-bit key");
+    }
+
+    if (boundaryInit != 0) {
+        (void)wc_FreeRsaKey(&boundaryKey);
+        boundaryInit = 0;
+    }
+    ret = wc_InitRsaKey(&boundaryKey, NULL);
+    TEST_ASSERT(ret == 0, "rsa large-exponent key init");
+    if (ret == 0) {
+        boundaryInit = 1;
+        boundaryModulus[0] = 0x80u;
+        ret = wc_RsaPublicKeyDecodeRaw(boundaryModulus,
+            (word32)sizeof(boundaryModulus), largeExponent,
+            (word32)sizeof(largeExponent), &boundaryKey);
+        TEST_ASSERT(ret == 0, "rsa large-exponent key import");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_SetRsa(&key, &boundaryKey);
+        TEST_ASSERT(ret == 0, "rsa large-exponent COSE key set");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_SignSize_ex(&key, WOLFCOSE_ALG_PS256, 0u,
+            sizeof(payload) - 1u, 0u, 0u, &sizedLen);
+        TEST_ASSERT((ret == 0) && (sizedLen > 0u),
+                    "sign1 pss size accepts 2048-bit large-exponent key");
+    }
+
+    if (keyInit != 0) {
+        (void)wc_CoseKey_Free(&key);
+    }
+    if (boundaryInit != 0) {
+        (void)wc_FreeRsaKey(&boundaryKey);
+    }
+    if (rsaInit != 0) {
+        (void)wc_FreeRsaKey(&rsaKey);
+    }
+    if (rngInit != 0) {
+        (void)wc_FreeRng(&rng);
+    }
+}
 #endif /* WOLFCOSE_HAVE_RSAPSS && WOLFSSL_KEY_GEN */
+
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFCOSE_SIGN1_SIGN) && \
+    (defined(WOLF_CRYPTO_CB) || defined(WOLFSSL_MICROCHIP_TA100))
+static void test_cose_rsa_pss_opaque_key_size(void)
+{
+    WOLFCOSE_KEY key;
+    RsaKey rsaKey;
+    RsaKey boundaryKey;
+    uint8_t boundaryModulus[256] = {0};
+    const uint8_t rsaExponent[] = {0x01, 0x00, 0x01};
+    size_t sizedLen = 0u;
+    int ret;
+    int rsaInit = 0;
+    int boundaryInit = 0;
+
+    TEST_LOG("  [RSA-PSS opaque key size]\n");
+
+    ret = wc_CoseKey_Init(&key);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "opaque rsa COSE key init");
+#ifdef WOLF_CRYPTO_CB
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_InitRsaKey_ex(&rsaKey, NULL, 1);
+    }
+#else
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_InitRsaKey(&rsaKey, NULL);
+    }
+#endif
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "opaque rsa key init");
+    if (ret == WOLFCOSE_SUCCESS) {
+        rsaInit = 1;
+    }
+#ifdef WOLFSSL_MICROCHIP_TA100
+    if (ret == WOLFCOSE_SUCCESS) {
+        rsaKey.uKeyH = 1u;
+    }
+#endif
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CoseKey_SetRsa(&key, &rsaKey);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "opaque rsa COSE key set");
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CoseSign1_SignSize_ex(&key, WOLFCOSE_ALG_PS256, 0u,
+            1u, 0u, 0u, &sizedLen);
+        TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (sizedLen > 0u),
+                    "sign1 pss size accepts opaque 2048-bit key");
+    }
+
+#ifdef WOLF_CRYPTO_CB
+    ret = wc_InitRsaKey_ex(&boundaryKey, NULL, 1);
+#else
+    ret = wc_InitRsaKey(&boundaryKey, NULL);
+#endif
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "callback rsa boundary key init");
+    if (ret == WOLFCOSE_SUCCESS) {
+        boundaryInit = 1;
+    }
+#ifdef WOLFSSL_MICROCHIP_TA100
+    if (ret == WOLFCOSE_SUCCESS) {
+        boundaryKey.uKeyH = 1u;
+    }
+#endif
+    if (ret == WOLFCOSE_SUCCESS) {
+        boundaryModulus[0] = 0x7fu;
+        boundaryModulus[sizeof(boundaryModulus) - 1u] = 0x01u;
+        ret = wc_RsaPublicKeyDecodeRaw(boundaryModulus,
+            (word32)sizeof(boundaryModulus), rsaExponent,
+            (word32)sizeof(rsaExponent), &boundaryKey);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "callback rsa boundary key import");
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CoseKey_SetRsa(&key, &boundaryKey);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "callback rsa boundary COSE key set");
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CoseSign1_SignSize_ex(&key, WOLFCOSE_ALG_PS256, 0u,
+            1u, 0u, 0u, &sizedLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "sign1 pss size rejects materialized 2047-bit key");
+    }
+
+    (void)wc_CoseKey_Free(&key);
+    if (rsaInit != 0) {
+        (void)wc_FreeRsaKey(&rsaKey);
+    }
+    if (boundaryInit != 0) {
+        (void)wc_FreeRsaKey(&boundaryKey);
+    }
+}
+#endif
 
 /* ----- COSE_Sign1 ML-DSA tests ----- */
 #ifdef WOLFCOSE_HAVE_MLDSA
@@ -3158,6 +3905,178 @@ static void test_cose_key_mldsa(const char* label, int32_t alg,
 
 /* ----- COSE_Mac0 tests ----- */
 #ifdef WOLFCOSE_HAVE_HMAC256
+static int test_cose_reencode_mac_tag(const uint8_t* in, size_t inLen,
+    size_t tagLen, uint8_t* out, size_t outSz, size_t* outLen)
+{
+    int ret = WOLFCOSE_SUCCESS;
+    WOLFCOSE_CBOR_CTX dec;
+    WOLFCOSE_CBOR_CTX enc;
+    uint64_t coseTag = 0;
+    size_t arrayCount = 0;
+    size_t tagOffset = 0;
+    size_t suffixOffset = 0;
+    size_t suffixLen = 0;
+    const uint8_t* originalTag = NULL;
+    size_t originalTagLen = 0;
+    size_t copyLen = 0;
+    size_t i;
+    uint8_t tag[WC_MAX_DIGEST_SIZE + 1u];
+
+    if ((in == NULL) || (out == NULL) || (outLen == NULL) ||
+        (tagLen > sizeof(tag))) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        *outLen = 0;
+        dec.cbuf = in;
+        dec.bufSz = inLen;
+        dec.idx = 0;
+
+        if ((dec.idx < dec.bufSz) &&
+            (wc_CBOR_PeekType(&dec) == WOLFCOSE_CBOR_TAG)) {
+            ret = wc_CBOR_DecodeTag(&dec, &coseTag);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_DecodeArrayStart(&dec, &arrayCount);
+        }
+        if ((ret == WOLFCOSE_SUCCESS) && (arrayCount < 4u)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+        for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < 3u); i++) {
+            ret = wc_CBOR_Skip(&dec);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            tagOffset = dec.idx;
+            ret = wc_CBOR_DecodeBstr(&dec, &originalTag,
+                                     &originalTagLen);
+        }
+
+        if (ret == WOLFCOSE_SUCCESS) {
+            suffixOffset = dec.idx;
+            suffixLen = inLen - suffixOffset;
+            copyLen = originalTagLen;
+            if (copyLen > tagLen) {
+                copyLen = tagLen;
+            }
+            if (copyLen > 0u) {
+                (void)memcpy(tag, originalTag, copyLen);
+            }
+            if (tagLen > copyLen) {
+                (void)memset(&tag[copyLen], 0xA5, tagLen - copyLen);
+            }
+
+            if (tagOffset > outSz) {
+                ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+            }
+            else {
+                (void)memcpy(out, in, tagOffset);
+                enc.buf = out;
+                enc.bufSz = outSz;
+                enc.idx = tagOffset;
+                ret = wc_CBOR_EncodeBstr(&enc, tag, tagLen);
+            }
+        }
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (suffixLen > (outSz - enc.idx))) {
+            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            if (suffixLen > 0u) {
+                (void)memcpy(&out[enc.idx], &in[suffixOffset], suffixLen);
+            }
+            enc.idx += suffixLen;
+            *outLen = enc.idx;
+        }
+    }
+
+    return ret;
+}
+
+static void test_cose_mac_wrong_tag_lengths(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_HDR hdr;
+    const uint8_t keyData[32] = {0};
+    const uint8_t payload[] = "wrong tag length";
+    const uint8_t* decoded = NULL;
+    size_t decodedLen = 0;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t malformed[272];
+    size_t malformedLen = 0;
+    static const size_t wrongTagLens[2] = {
+        8u, WC_SHA256_DIGEST_SIZE + 1u
+    };
+    size_t i;
+    int ret;
+
+    TEST_LOG("  [MAC well-formed wrong tag lengths]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "wrong tag length key set");
+
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+            NULL, 0, payload, sizeof(payload) - 1u,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+    }
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "wrong tag length Mac0 create");
+
+    for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < 2u); i++) {
+        ret = test_cose_reencode_mac_tag(out, outLen, wrongTagLens[i],
+            malformed, sizeof(malformed), &malformedLen);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "wrong tag length Mac0 re-encode");
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CoseMac0_Verify(&key, malformed, malformedLen,
+                NULL, 0, NULL, 0, scratch, sizeof(scratch),
+                &hdr, &decoded, &decodedLen);
+            TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL,
+                (i == 0u) ? "Mac0 rejects short tag" :
+                            "Mac0 rejects long tag");
+            ret = WOLFCOSE_SUCCESS;
+        }
+    }
+
+#ifdef WOLFCOSE_MAC
+    if (ret == WOLFCOSE_SUCCESS) {
+        WOLFCOSE_RECIPIENT recipient;
+
+        recipient.algId = WOLFCOSE_ALG_DIRECT;
+        recipient.key = &key;
+        recipient.kid = NULL;
+        recipient.kidLen = 0;
+        ret = wc_CoseMac_Create(&recipient, 1,
+            WOLFCOSE_ALG_HMAC_256_256,
+            payload, sizeof(payload) - 1u,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            out, sizeof(out), &outLen);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "wrong tag length Mac create");
+
+        for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < 2u); i++) {
+            ret = test_cose_reencode_mac_tag(out, outLen, wrongTagLens[i],
+                malformed, sizeof(malformed), &malformedLen);
+            TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                        "wrong tag length Mac re-encode");
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CoseMac_Verify(&recipient, 0, malformed,
+                    malformedLen, NULL, 0, NULL, 0,
+                    scratch, sizeof(scratch), &hdr, &decoded, &decodedLen);
+                TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL,
+                    (i == 0u) ? "Mac rejects short tag" :
+                                "Mac rejects long tag");
+                ret = WOLFCOSE_SUCCESS;
+            }
+        }
+    }
+#endif
+
+    wc_CoseKey_Free(&key);
+}
+
 static void test_cose_mac0_hmac256(void)
 {
     WOLFCOSE_KEY key;
@@ -3367,6 +4286,7 @@ static void test_cose_mac_multi_per_recipient(void)
     size_t outLen = 0;
     int ret;
     size_t r;
+    size_t algOffsets[2] = {0u, 0u};
     const uint8_t payload[] = "multi recipient mac";
 
     TEST_LOG("  [Mac multi per-recipient roundtrip]\n");
@@ -3386,6 +4306,12 @@ static void test_cose_mac_multi_per_recipient(void)
         scratch, sizeof(scratch), out, sizeof(out), &outLen);
     TEST_ASSERT(ret == 0, "multi mac create");
 
+    for (r = 0u; (ret == 0) && (r < 2u); r++) {
+        ret = find_recipient_direct_alg(out, outLen, 4u, r,
+                                        &algOffsets[r]);
+        TEST_ASSERT(ret == 0, "locate direct mac recipient alg");
+    }
+
     /* Every encoded recipient must verify. */
     for (r = 0; (ret == 0) && (r < 2u); r++) {
         memset(&hdr, 0, sizeof(hdr));
@@ -3396,6 +4322,34 @@ static void test_cose_mac_multi_per_recipient(void)
         TEST_ASSERT(ret == 0, "multi recipient mac verify");
         TEST_ASSERT(decPayloadLen == sizeof(payload) - 1,
                     "multi recipient mac payload len");
+    }
+
+    if (ret == 0) {
+        out[algOffsets[1]] = 0x29u; /* direct + HKDF-SHA-256 */
+        ret = wc_CoseMac_Verify(&recipients[0], 0, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "mac allows direct encryption sibling modes");
+        out[algOffsets[1]] = 0x25u; /* direct */
+    }
+
+    if (ret == 0) {
+        out[algOffsets[1]] = 0x22u; /* A128KW */
+        ret = wc_CoseMac_Verify(&recipients[0], 0, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                    "mac rejects later mixed recipient mode");
+        out[algOffsets[1]] = 0x25u; /* direct */
+        ret = WOLFCOSE_SUCCESS;
+        out[algOffsets[0]] = 0x22u; /* A128KW */
+        ret = wc_CoseMac_Verify(&recipients[1], 1, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &decPayload, &decPayloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                    "mac rejects earlier mixed recipient mode");
+        out[algOffsets[0]] = 0x25u; /* direct */
     }
 }
 
@@ -4259,8 +5213,13 @@ static void test_cose_key_decode_type_confusion(void)
     (void)wc_CoseKey_Init(&key);
     (void)wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     ret = wc_CoseKey_Decode(&key, blob, blobLen);
+#ifdef WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
+    TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED,
+                "ecc private-only backend policy applies after type gate");
+#else
     TEST_ASSERT((ret == WOLFCOSE_SUCCESS) || (ret == WOLFCOSE_E_CRYPTO),
                 "ecc attached accepts a different EC2 curve");
+#endif
 
     (void)wc_ecc_free(&eccKey);
 #endif /* HAVE_ECC */
@@ -4400,18 +5359,28 @@ static void test_cose_key_decode_private_only(void)
         WC_RNG rng;
         uint8_t dBuf[32];
         word32 dSz = sizeof(dBuf);
+        uint8_t xBuf[32];
+        uint8_t yBuf[32];
+        word32 xSz = sizeof(xBuf);
+        word32 ySz = sizeof(yBuf);
         uint8_t keyBuf[128];
+        uint8_t fullKeyBuf[256];
         WOLFCOSE_CBOR_CTX enc;
+        WOLFCOSE_CBOR_CTX fullEnc;
+#ifndef WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
         uint8_t hash[32];
         uint8_t sig[80];
         word32 sigLen = sizeof(sig);
         int verifyStatus = 0;
+#endif
         int ret;
+#ifndef WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
         size_t i;
 
         for (i = 0; i < sizeof(hash); i++) {
             hash[i] = (uint8_t)i;
         }
+#endif
 
         ret = wc_InitRng(&rng);
         TEST_ASSERT(ret == 0, "ec priv-only rng init");
@@ -4423,6 +5392,11 @@ static void test_cose_key_decode_private_only(void)
         TEST_ASSERT(ret == 0, "ec priv-only keygen");
         ret = wc_ecc_export_private_only(&eccKey, dBuf, &dSz);
         TEST_ASSERT(ret == 0 && dSz == sizeof(dBuf), "ec priv-only export d");
+        if (ret == 0) {
+            ret = wc_ecc_export_public_raw(&eccKey, xBuf, &xSz, yBuf, &ySz);
+        }
+        TEST_ASSERT(ret == 0 && xSz == sizeof(xBuf) && ySz == sizeof(yBuf),
+                    "ec private import export public");
 
         /* Build {kty: EC2, crv: P-256, d: <32>} with no x/y. */
         enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
@@ -4434,9 +5408,31 @@ static void test_cose_key_decode_private_only(void)
         wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_D);
         wc_CBOR_EncodeBstr(&enc, dBuf, dSz);
 
+        /* Build {kty, crv, x, y, d} to exercise the full private import. */
+        fullEnc.buf = fullKeyBuf;
+        fullEnc.bufSz = sizeof(fullKeyBuf);
+        fullEnc.idx = 0;
+        wc_CBOR_EncodeMapStart(&fullEnc, 5);
+        wc_CBOR_EncodeInt(&fullEnc, WOLFCOSE_KEY_LABEL_KTY);
+        wc_CBOR_EncodeUint(&fullEnc, WOLFCOSE_KTY_EC2);
+        wc_CBOR_EncodeInt(&fullEnc, WOLFCOSE_KEY_LABEL_CRV);
+        wc_CBOR_EncodeUint(&fullEnc, WOLFCOSE_CRV_P256);
+        wc_CBOR_EncodeInt(&fullEnc, WOLFCOSE_KEY_LABEL_X);
+        wc_CBOR_EncodeBstr(&fullEnc, xBuf, xSz);
+        wc_CBOR_EncodeInt(&fullEnc, WOLFCOSE_KEY_LABEL_Y);
+        wc_CBOR_EncodeBstr(&fullEnc, yBuf, ySz);
+        wc_CBOR_EncodeInt(&fullEnc, WOLFCOSE_KEY_LABEL_D);
+        wc_CBOR_EncodeBstr(&fullEnc, dBuf, dSz);
+
         (void)wc_CoseKey_Init(&key2);
         (void)wc_CoseKey_SetEcc(&key2, WOLFCOSE_CRV_P256, &eccKey2);
         ret = wc_CoseKey_Decode(&key2, keyBuf, enc.idx);
+#ifdef WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
+        TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED,
+                    "ec2 private-only backend rejected before import");
+        TEST_ASSERT((key2.hasPrivate == 0) && (mp_iszero(eccKey2.k) != 0),
+                    "ec2 rejected backend imports no scalar");
+#else
         TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                     "ec2 private-only {kty,crv,d} accepted");
         TEST_ASSERT(key2.hasPrivate == 1, "ec2 private-only has private");
@@ -4449,6 +5445,341 @@ static void test_cose_key_decode_private_only(void)
                                  &verifyStatus, &eccKey);
         TEST_ASSERT(ret == 0 && verifyStatus == 1,
                     "ec2 private-only signature verifies");
+#endif
+
+#ifdef WOLFCOSE_FORCE_FAILURE
+#ifndef WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
+        /* A failed import must clear the scalar and leave the key reusable. */
+        /* empty-brace-scan: allow - test-local temporary scope */
+        {
+            WOLFCOSE_KEY failedKey;
+            ecc_key failedEcc;
+            uint8_t exposedD[32];
+            word32 exposedDSz = sizeof(exposedD);
+            const void* failedHeap;
+            int failedType;
+            int failedIdx;
+            int failedState;
+            const ecc_set_type* failedDp;
+#if defined(HAVE_WOLF_BIGINT) && \
+    (!defined(ALT_ECC_SIZE) || !defined(USE_FAST_MATH))
+            size_t rawIdx;
+            int rawCleared = 1;
+#endif
+#if defined(PLUTON_CRYPTO_ECC) || defined(WOLF_CRYPTO_CB)
+            void* failedDevCtx;
+            int failedDevId;
+#endif
+
+            ret = wc_ecc_init(&failedEcc);
+            TEST_ASSERT(ret == 0, "ec failed-import key init");
+            failedHeap = failedEcc.heap;
+            failedType = failedEcc.type;
+            failedIdx = failedEcc.idx;
+            failedState = failedEcc.state;
+            failedDp = failedEcc.dp;
+            ret = wc_ecc_set_flags(&failedEcc, WC_ECC_FLAG_COFACTOR);
+            TEST_ASSERT(ret == 0, "ec failed-import flags set");
+            ret = wc_ecc_set_rng(&failedEcc, &rng);
+            TEST_ASSERT(ret == 0, "ec failed-import rng set");
+#if defined(PLUTON_CRYPTO_ECC) || defined(WOLF_CRYPTO_CB)
+            failedDevCtx = (void*)&failedKey;
+            failedDevId = failedEcc.devId;
+            failedEcc.devCtx = failedDevCtx;
+#endif
+#ifdef WOLF_PRIVATE_KEY_ID
+            failedEcc.id[0] = 0xa5u;
+            failedEcc.idLen = 1;
+            failedEcc.label[0] = 'k';
+            failedEcc.labelLen = 1;
+#endif
+#if defined(WOLFSSL_ECDSA_DETERMINISTIC_K) || \
+    defined(WOLFSSL_ECDSA_DETERMINISTIC_K_VARIANT)
+            failedEcc.deterministic = 1u;
+            failedEcc.hashType = WC_HASH_TYPE_SHA256;
+#endif
+            (void)wc_CoseKey_Init(&failedKey);
+            (void)wc_CoseKey_SetEcc(&failedKey, WOLFCOSE_CRV_P256,
+                                    &failedEcc);
+
+#if defined(WOLFSSL_SP_MATH_ALL) || defined(WOLFSSL_SP_MATH)
+            /* SP import overwrites only used digits. Leave a marker in the
+             * initialized tail so the rollback must scrub full capacity. */
+    #ifdef ALT_ECC_SIZE
+            TEST_ASSERT(failedEcc.ka[0].size > 0u,
+                        "ec failed-import alt SP storage initialized");
+            failedEcc.ka[0].dp[failedEcc.ka[0].size - 1u] = (mp_digit)0xa5u;
+    #else
+            TEST_ASSERT(failedEcc.k->size > 0u,
+                        "ec failed-import SP storage initialized");
+            failedEcc.k->dp[failedEcc.k->size - 1u] = (mp_digit)0xa5u;
+    #endif
+#endif
+
+            /* Import succeeds first; the post hook then converts that success
+             * into an error so rollback sees real imported key state. */
+            wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_PRIVATE_POST);
+            ret = wc_CoseKey_Decode(&failedKey, keyBuf, enc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO,
+                        "ec2 failed private-only import rejected");
+            TEST_ASSERT(wolfForceFailure_Get() == WOLF_FAIL_NONE,
+                        "ec2 post-import failure hook reached");
+            TEST_ASSERT(mp_iszero(failedEcc.k) != 0,
+                        "ec2 failed private-only import zeroes scalar");
+#if defined(WOLFSSL_SP_MATH_ALL) || defined(WOLFSSL_SP_MATH)
+    #ifdef ALT_ECC_SIZE
+            TEST_ASSERT(failedEcc.ka[0].dp[
+                            failedEcc.ka[0].size - 1u] == (mp_digit)0,
+                        "ec2 failed import scrubs alt SP capacity");
+    #else
+            TEST_ASSERT(failedEcc.k->dp[
+                            failedEcc.k->size - 1u] == (mp_digit)0,
+                        "ec2 failed import scrubs SP capacity");
+    #endif
+#endif
+#if defined(HAVE_WOLF_BIGINT) && \
+    (!defined(ALT_ECC_SIZE) || !defined(USE_FAST_MATH))
+    #ifdef ALT_ECC_SIZE
+            for (rawIdx = 0; rawIdx < failedEcc.ka[0].raw.len; rawIdx++) {
+                if (failedEcc.ka[0].raw.buf[rawIdx] != 0u) {
+    #else
+            for (rawIdx = 0; rawIdx < failedEcc.k->raw.len; rawIdx++) {
+                if (failedEcc.k->raw.buf[rawIdx] != 0u) {
+    #endif
+                    rawCleared = 0;
+                }
+            }
+            TEST_ASSERT(rawCleared == 1,
+                        "ec2 failed private-only import zeroes raw scalar");
+#endif
+            ret = wc_ecc_export_private_only(&failedEcc, exposedD,
+                                              &exposedDSz);
+            TEST_ASSERT(ret != 0,
+                        "ec2 failed private-only import clears scalar");
+            TEST_ASSERT(failedKey.hasPrivate == 0,
+                        "ec2 failed private-only import leaves wrapper public");
+            TEST_ASSERT(failedEcc.heap == failedHeap,
+                        "ec2 failed private-only import preserves heap");
+            TEST_ASSERT(failedEcc.flags == WC_ECC_FLAG_COFACTOR,
+                        "ec2 failed private-only import preserves flags");
+            TEST_ASSERT((failedEcc.type == failedType) &&
+                        (failedEcc.idx == failedIdx) &&
+                        (failedEcc.state == failedState) &&
+                        (failedEcc.dp == failedDp),
+                        "ec2 failed private-only import restores key state");
+#ifdef ECC_TIMING_RESISTANT
+            TEST_ASSERT(failedEcc.rng == &rng,
+                        "ec2 failed private-only import preserves rng");
+#endif
+#ifdef WOLFSSL_ECC_BLIND_K
+            TEST_ASSERT((mp_iszero(failedEcc.kb) != 0) &&
+                        (mp_iszero(failedEcc.ku) != 0),
+                        "ec2 failed private-only import clears blinding state");
+#endif
+#if defined(PLUTON_CRYPTO_ECC) || defined(WOLF_CRYPTO_CB)
+            TEST_ASSERT(failedEcc.devCtx == failedDevCtx,
+                        "ec2 failed private-only import preserves device ctx");
+            TEST_ASSERT(failedEcc.devId == failedDevId,
+                        "ec2 failed private-only import preserves device id");
+#endif
+#ifdef WOLF_PRIVATE_KEY_ID
+            TEST_ASSERT((failedEcc.idLen == 1) &&
+                        (failedEcc.id[0] == 0xa5u),
+                        "ec2 failed private-only import preserves key id");
+            TEST_ASSERT((failedEcc.labelLen == 1) &&
+                        (failedEcc.label[0] == 'k'),
+                        "ec2 failed private-only import preserves key label");
+#endif
+#if defined(WOLFSSL_ECDSA_DETERMINISTIC_K) || \
+    defined(WOLFSSL_ECDSA_DETERMINISTIC_K_VARIANT)
+            TEST_ASSERT((failedEcc.deterministic == 1u) &&
+                        (failedEcc.hashType == WC_HASH_TYPE_SHA256),
+                        "ec2 failed private-only import preserves signing mode");
+#endif
+
+            wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_PRIVATE_POST);
+            ret = wc_CoseKey_Decode(&failedKey, fullKeyBuf, fullEnc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO,
+                        "ec2 failed full private import rejected");
+            TEST_ASSERT(wolfForceFailure_Get() == WOLF_FAIL_NONE,
+                        "ec2 full post-import failure hook reached");
+            TEST_ASSERT((mp_iszero(failedEcc.k) != 0) &&
+                        (failedKey.hasPrivate == 0),
+                        "ec2 failed full private import clears scalar");
+            TEST_ASSERT((failedEcc.type == failedType) &&
+                        (failedEcc.idx == failedIdx) &&
+                        (failedEcc.state == failedState) &&
+                        (failedEcc.dp == failedDp),
+                        "ec2 failed full private import restores key state");
+
+#if defined(PLUTON_CRYPTO_ECC) || defined(WOLF_CRYPTO_CB)
+            failedEcc.devCtx = NULL;
+#endif
+            ret = wc_CoseKey_Decode(&failedKey, keyBuf, enc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                        "ec2 key reusable after failed private-only import");
+            TEST_ASSERT(failedKey.hasPrivate == 1,
+                        "ec2 reused key has private");
+            (void)wc_ecc_free(&failedEcc);
+        }
+#else
+        /* Non-transactional backends must be rejected before the import and
+         * therefore before the post-import failure hook can be consumed. */
+        /* empty-brace-scan: allow - test-local temporary scope */
+        {
+            WOLFCOSE_KEY backendKey;
+            ecc_key backendEcc;
+            int backendType;
+            int backendIdx;
+            int backendState;
+            const ecc_set_type* backendDp;
+
+            ret = wc_ecc_init(&backendEcc);
+            TEST_ASSERT(ret == 0, "ec backend-reject key init");
+            backendType = backendEcc.type;
+            backendIdx = backendEcc.idx;
+            backendState = backendEcc.state;
+            backendDp = backendEcc.dp;
+            (void)wc_CoseKey_Init(&backendKey);
+            (void)wc_CoseKey_SetEcc(&backendKey, WOLFCOSE_CRV_P256,
+                                    &backendEcc);
+            wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_PRIVATE_POST);
+            ret = wc_CoseKey_Decode(&backendKey, keyBuf, enc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED,
+                        "ec2 non-transactional backend rejected");
+            TEST_ASSERT(wolfForceFailure_Get() ==
+                            WOLF_FAIL_ECC_IMPORT_PRIVATE_POST,
+                        "ec2 backend rejection occurs before import");
+            wolfForceFailure_Clear();
+            TEST_ASSERT((mp_iszero(backendEcc.k) != 0) &&
+                        (backendEcc.type == backendType) &&
+                        (backendEcc.idx == backendIdx) &&
+                        (backendEcc.state == backendState) &&
+                        (backendEcc.dp == backendDp),
+                        "ec2 backend rejection preserves empty key");
+
+            wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_PRIVATE_POST);
+            ret = wc_CoseKey_Decode(&backendKey, fullKeyBuf, fullEnc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED,
+                        "ec2 full private backend rejected");
+            TEST_ASSERT(wolfForceFailure_Get() ==
+                            WOLF_FAIL_ECC_IMPORT_PRIVATE_POST,
+                        "ec2 full backend rejection occurs before import");
+            wolfForceFailure_Clear();
+            (void)wc_ecc_free(&backendEcc);
+        }
+#endif /* WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED */
+
+#if !defined(WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED) && \
+    (((defined(WOLF_CRYPTO_CB) && defined(WOLF_CRYPTO_CB_SETKEY)) && \
+      !defined(WOLF_CRYPTO_CB_FIND)) || \
+     defined(WOLFSSL_MAXQ10XX_CRYPTO))
+        /* A configured callback/device would make the import
+         * non-transactional even when software fallback is otherwise safe. */
+        /* empty-brace-scan: allow - test-local temporary scope */
+        {
+            WOLFCOSE_KEY deviceKey;
+            ecc_key deviceEcc;
+            int savedDevId;
+
+            ret = wc_ecc_init(&deviceEcc);
+            TEST_ASSERT(ret == 0, "ec device-reject key init");
+            savedDevId = deviceEcc.devId;
+            deviceEcc.devId = 1;
+            (void)wc_CoseKey_Init(&deviceKey);
+            (void)wc_CoseKey_SetEcc(&deviceKey, WOLFCOSE_CRV_P256,
+                                    &deviceEcc);
+            wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_PRIVATE_POST);
+            ret = wc_CoseKey_Decode(&deviceKey, keyBuf, enc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED,
+                        "ec2 configured device backend rejected");
+            TEST_ASSERT(wolfForceFailure_Get() ==
+                            WOLF_FAIL_ECC_IMPORT_PRIVATE_POST,
+                        "ec2 device rejection occurs before import");
+            wolfForceFailure_Clear();
+            TEST_ASSERT(mp_iszero(deviceEcc.k) != 0,
+                        "ec2 device rejection imports no scalar");
+            deviceEcc.devId = savedDevId;
+            (void)wc_ecc_free(&deviceEcc);
+        }
+#endif
+
+        /* Do not risk replacing an existing private key non-transactionally. */
+        /* empty-brace-scan: allow - test-local temporary scope */
+        {
+            WOLFCOSE_KEY occupiedKey;
+            uint8_t occupiedD[32];
+            word32 occupiedDSz = sizeof(occupiedD);
+
+            (void)wc_CoseKey_Init(&occupiedKey);
+            (void)wc_CoseKey_SetEcc(&occupiedKey, WOLFCOSE_CRV_P256,
+                                    &eccKey);
+            wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_X963);
+            ret = wc_CoseKey_Decode(&occupiedKey, keyBuf, enc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                        "ec2 private-only import rejects occupied key");
+            wolfForceFailure_Clear();
+            ret = wc_ecc_export_private_only(&eccKey, occupiedD,
+                                              &occupiedDSz);
+            TEST_ASSERT((ret == 0) && (occupiedDSz == dSz) &&
+                        (XMEMCMP(occupiedD, dBuf, dSz) == 0),
+                        "ec2 rejected import preserves existing private key");
+        }
+
+        /* Existing curve configuration is also caller-owned state. */
+        /* empty-brace-scan: allow - test-local temporary scope */
+        {
+            WOLFCOSE_KEY configuredKey;
+            ecc_key configuredEcc;
+            const ecc_set_type* configuredDp = &ecc_sets[0];
+
+            ret = wc_ecc_init(&configuredEcc);
+            TEST_ASSERT(ret == 0, "ec configured key init");
+            (void)wc_CoseKey_Init(&configuredKey);
+            ret = wc_CoseKey_SetEcc(&configuredKey, WOLFCOSE_CRV_P256,
+                                    &configuredEcc);
+            TEST_ASSERT(ret == 0, "ec configured COSE key attach");
+            configuredEcc.idx = ECC_CUSTOM_IDX;
+            configuredEcc.dp = configuredDp;
+            wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_X963);
+            ret = wc_CoseKey_Decode(&configuredKey, keyBuf, enc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                        "ec2 private-only import rejects configured curve");
+            wolfForceFailure_Clear();
+            TEST_ASSERT((configuredEcc.idx == ECC_CUSTOM_IDX) &&
+                        (configuredEcc.dp == configuredDp),
+                        "ec2 rejected import preserves configured curve");
+            configuredEcc.idx = 0;
+            configuredEcc.dp = NULL;
+            (void)wc_ecc_free(&configuredEcc);
+        }
+
+#ifdef ALT_ECC_SIZE
+        /* ALT members must still point at their initialized inline storage. */
+        /* empty-brace-scan: allow - test-local temporary scope */
+        {
+            WOLFCOSE_KEY layoutKey;
+            ecc_key layoutEcc;
+
+            ret = wc_ecc_init(&layoutEcc);
+            TEST_ASSERT(ret == 0, "ec alt-layout key init");
+            layoutEcc.k = NULL;
+            (void)wc_CoseKey_Init(&layoutKey);
+            (void)wc_CoseKey_SetEcc(&layoutKey, WOLFCOSE_CRV_P256,
+                                    &layoutEcc);
+            wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_PRIVATE_POST);
+            ret = wc_CoseKey_Decode(&layoutKey, keyBuf, enc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                        "ec2 private-only rejects invalid alt layout");
+            TEST_ASSERT(wolfForceFailure_Get() ==
+                            WOLF_FAIL_ECC_IMPORT_PRIVATE_POST,
+                        "ec2 alt-layout rejection occurs before import");
+            wolfForceFailure_Clear();
+            layoutEcc.k = (mp_int*)&layoutEcc.ka[0];
+            (void)wc_ecc_free(&layoutEcc);
+        }
+#endif
+#endif
 
         (void)wc_ecc_free(&eccKey);
         (void)wc_ecc_free(&eccKey2);
@@ -4712,7 +6043,7 @@ static void test_cose_key_mldsa_public_only(void)
 static void test_cose_key_mldsa_negative(void)
 {
     WOLFCOSE_KEY key;
-    wc_MlDsaKey dlKey, dlKey2;
+    wc_MlDsaKey dlKey, dlKey2, dlMismatch;
     WC_RNG rng;
     uint8_t seed[WOLFCOSE_MLDSA_SEED_SZ];
     uint8_t pubBuf[2048];
@@ -4722,12 +6053,25 @@ static void test_cose_key_mldsa_negative(void)
     size_t outLen;
     WOLFCOSE_CBOR_CTX enc;
     int ret;
+#if !defined(WOLFSSL_MLDSA_DYNAMIC_KEYS) && \
+    !defined(WOLFSSL_MLDSA_VERIFY_ONLY)
+    size_t i;
+#endif
+    int privateCleared = 1;
 
     TEST_LOG("  [Key ML-DSA negative]\n");
 
     wc_InitRng(&rng);
     wc_MlDsaKey_Init(&dlKey, NULL, INVALID_DEVID);
     wc_MlDsaKey_Init(&dlKey2, NULL, INVALID_DEVID);
+    wc_MlDsaKey_Init(&dlMismatch, (void*)&key, INVALID_DEVID);
+#ifdef WOLF_CRYPTO_CB
+    dlMismatch.devCtx = (void*)&dlKey;
+#endif
+#ifdef WOLF_PRIVATE_KEY_ID
+    dlMismatch.id[0] = 0xa5u;
+    dlMismatch.idLen = 1;
+#endif
     wc_MlDsaKey_SetParams(&dlKey, WC_ML_DSA_44);
     wc_RNG_GenerateBlock(&rng, seed, (word32)sizeof(seed));
     wc_MlDsaKey_MakeKeyFromSeed(&dlKey, seed);
@@ -4765,6 +6109,12 @@ static void test_cose_key_mldsa_negative(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PRIV);
     wc_CBOR_EncodeBstr(&enc, seed, sizeof(seed));
     (void)wc_CoseKey_Init(&key);
+
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "metadata-only dl key missing pub rejected");
+
+    (void)wc_CoseKey_Init(&key);
     (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey2);
     ret = wc_CoseKey_Decode(&key, buf, enc.idx);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "dl decode rejects missing pub");
@@ -4777,9 +6127,29 @@ static void test_cose_key_mldsa_negative(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PUB);
     wc_CBOR_EncodeBstr(&enc, pubBuf, (size_t)pubSz);
     (void)wc_CoseKey_Init(&key);
+
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "metadata-only dl key missing alg rejected");
+
+    (void)wc_CoseKey_Init(&key);
     (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey2);
     ret = wc_CoseKey_Decode(&key, buf, enc.idx);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "dl decode rejects missing alg");
+
+    /* Decode: metadata-only AKP key with a non-ML-DSA alg is rejected. */
+    enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 3);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ES256);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PUB);
+    wc_CBOR_EncodeBstr(&enc, pubBuf, (size_t)pubSz);
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "metadata-only dl key unsupported alg rejected");
 
     /* Decode: AKP private key with a wrong-length seed is rejected. */
     enc.idx = 0;
@@ -4793,10 +6163,92 @@ static void test_cose_key_mldsa_negative(void)
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PRIV);
     wc_CBOR_EncodeBstr(&enc, seed, (size_t)16);
     (void)wc_CoseKey_Init(&key);
+
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "metadata-only dl key wrong seed length rejected");
+
+    (void)wc_CoseKey_Init(&key);
     (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey2);
     ret = wc_CoseKey_Decode(&key, buf, enc.idx);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "dl decode rejects wrong seed length");
+
+    /* Decode: a private AKP key with a short public parameter is rejected. */
+    enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 4);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ML_DSA_44);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PUB);
+    wc_CBOR_EncodeBstr(&enc, pubBuf, (size_t)1);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PRIV);
+    wc_CBOR_EncodeBstr(&enc, seed, sizeof(seed));
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlKey2);
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO,
+                "dl private decode rejects short pub");
+
+    /* Decode: pub must match the public key derived from the private seed. */
+    pubBuf[0] ^= 1u;
+    enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 4);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ML_DSA_44);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PUB);
+    wc_CBOR_EncodeBstr(&enc, pubBuf, (size_t)pubSz);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PRIV);
+    wc_CBOR_EncodeBstr(&enc, seed, sizeof(seed));
+    pubBuf[0] ^= 1u;
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetMlDsa(&key, WOLFCOSE_ALG_ML_DSA_44, &dlMismatch);
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "dl private decode rejects mismatched pub and seed");
+    TEST_ASSERT((key.attachedType == WOLFCOSE_ATT_MLDSA) &&
+                (key.key.mldsa == &dlMismatch),
+                "dl mismatch preserves attached key");
+    TEST_ASSERT(dlMismatch.heap == (void*)&key,
+                "dl mismatch preserves heap hint");
+#ifdef WOLF_CRYPTO_CB
+    TEST_ASSERT(dlMismatch.devCtx == (void*)&dlKey,
+                "dl mismatch preserves device context");
+#endif
+#ifdef WOLF_PRIVATE_KEY_ID
+    TEST_ASSERT((dlMismatch.idLen == 1) && (dlMismatch.id[0] == 0xa5u),
+                "dl mismatch preserves private key identifier");
+#endif
+#if defined(WOLFSSL_MLDSA_DYNAMIC_KEYS)
+    privateCleared = (dlMismatch.k == NULL) ? 1 : 0;
+#elif !defined(WOLFSSL_MLDSA_VERIFY_ONLY)
+    for (i = 0u; i < sizeof(dlMismatch.k); i++) {
+        if (dlMismatch.k[i] != 0u) {
+            privateCleared = 0;
+        }
+    }
+#endif
+    TEST_ASSERT((privateCleared == 1) && (dlMismatch.prvKeySet == 0u),
+                "dl mismatch clears derived private key");
+
+    /* The same attached object remains usable for a valid decode. */
+    enc.idx = 0;
+    wc_CBOR_EncodeMapStart(&enc, 4);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+    wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_ALG);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ML_DSA_44);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PUB);
+    wc_CBOR_EncodeBstr(&enc, pubBuf, (size_t)pubSz);
+    wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_PRIV);
+    wc_CBOR_EncodeBstr(&enc, seed, sizeof(seed));
+    ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) && (key.hasPrivate == 1u) &&
+                (key.key.mldsa == &dlMismatch),
+                "dl mismatch key is reusable");
 
     /* Decode: AKP key carrying a crv is rejected (AKP has no crv). */
     enc.idx = 0;
@@ -4815,6 +6267,7 @@ static void test_cose_key_mldsa_negative(void)
     wc_CoseKey_Free(&key);
     (void)wc_MlDsaKey_Free(&dlKey);
     (void)wc_MlDsaKey_Free(&dlKey2);
+    (void)wc_MlDsaKey_Free(&dlMismatch);
     (void)wc_FreeRng(&rng);
 }
 #endif /* WOLFCOSE_HAVE_MLDSA */
@@ -5204,6 +6657,62 @@ static void test_cose_key_encode_ecc_raw_curves(void)
     }
 }
 #endif /* WOLFCOSE_HAVE_ES384 || WOLFCOSE_HAVE_ES512 */
+
+#ifdef WOLFCOSE_HAVE_ES384
+static void test_cose_key_encode_ecc_curve_mismatch(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    uint8_t out[256];
+    size_t outLen = 0u;
+    int ret;
+
+    TEST_LOG("  [Key Encode ECC Curve Mismatch]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "curve mismatch rng init");
+    if (ret != 0) {
+        return;
+    }
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "curve mismatch ecc init");
+    if (ret != 0) {
+        (void)wc_FreeRng(&rng);
+        return;
+    }
+    ret = wc_ecc_make_key(&rng, 48, &eccKey);
+    TEST_ASSERT(ret == 0, "curve mismatch keygen");
+    if (ret == 0) {
+        ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P384, &eccKey);
+    }
+    TEST_ASSERT(ret == 0, "curve mismatch key attach");
+
+    if (ret == 0) {
+        /* The setter now rejects mismatches. Mutate the public metadata to
+         * retain direct coverage of the encoder's independent defense. */
+        key.crv = WOLFCOSE_CRV_P256;
+        ret = wc_CoseKey_EncodeSize_ex(&key, &outLen,
+                                       WOLFCOSE_KEY_PUBLIC_ONLY);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "curve mismatch size rejected");
+        outLen = 0u;
+        ret = wc_CoseKey_Encode_ex(&key, out, sizeof(out), &outLen,
+                                   WOLFCOSE_KEY_PUBLIC_ONLY);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "curve mismatch public encode rejected");
+        outLen = 0u;
+        ret = wc_CoseKey_Encode(&key, out, sizeof(out), &outLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "curve mismatch private encode rejected");
+    }
+
+    wc_CoseKey_Free(&key);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
+}
+#endif /* WOLFCOSE_HAVE_ES384 */
 #endif /* WOLFCOSE_HAVE_ES256 */
 
 /* The size query must be exact, not an upper bound, for every key type the
@@ -5543,8 +7052,13 @@ static void test_cose_key_encode_public_only_types(void)
                         "pubtype rsa full encode");
             ret = wc_CoseKey_Encode_ex(&key, pub, sizeof(pub), &pubLen,
                                        WOLFCOSE_KEY_PUBLIC_ONLY);
+#ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
             TEST_ASSERT(ret == 0 && pubLen < fullLen,
                         "pubtype rsa public is shorter");
+#else
+            TEST_ASSERT(ret == 0 && pubLen == fullLen,
+                        "pubtype rsa is already public-only");
+#endif
 
             (void)wc_InitRsaKey(&rsaPub, NULL);
             (void)wc_CoseKey_Init(&decKey);
@@ -7218,6 +8732,110 @@ static void test_cose_sign_verify_key_alg_mismatch(void)
     (void)wc_FreeRng(&rng);
 }
 
+static void test_cose_sign_verify_unprotected_alg(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_HDR hdr;
+    const uint8_t payloadData[] = "unprotected signer alg";
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    uint8_t emptyProtected = 0;
+    uint8_t sigStruct[128];
+    size_t sigStructLen = 0;
+    uint8_t hash[WC_SHA256_DIGEST_SIZE];
+    uint8_t signature[64];
+    size_t signatureLen = sizeof(signature);
+    uint8_t msg[256];
+    uint8_t scratch[256];
+    int ret;
+
+    TEST_LOG("  [Sign_Verify unprotected signer alg]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "unprotected signer alg rng");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "unprotected signer alg ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "unprotected signer alg keygen");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "unprotected signer alg key set");
+    key.alg = WOLFCOSE_ALG_ES256;
+
+    ret = wolfCose_BuildToBeSignedMaced(
+        WOLFCOSE_CTX_SIGNATURE, sizeof(WOLFCOSE_CTX_SIGNATURE),
+        NULL, 0, &emptyProtected, 0, NULL, 0,
+        payloadData, sizeof(payloadData) - 1,
+        sigStruct, sizeof(sigStruct), &sigStructLen);
+    TEST_ASSERT(ret == 0, "unprotected signer alg structure");
+    ret = wc_Hash(WC_HASH_TYPE_SHA256, sigStruct, (word32)sigStructLen,
+        hash, sizeof(hash));
+    TEST_ASSERT(ret == 0, "unprotected signer alg hash");
+    ret = wolfCose_EccSignRaw(hash, sizeof(hash), signature, &signatureLen,
+        32u, WC_HASH_TYPE_SHA256, &rng, &eccKey);
+    TEST_ASSERT(ret == 0, "unprotected signer alg signature");
+
+    enc.buf = msg;
+    enc.bufSz = sizeof(msg);
+    enc.idx = 0;
+    ret = wc_CBOR_EncodeTag(&enc, WOLFCOSE_TAG_SIGN);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 4u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, NULL, 0);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 0u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, payloadData,
+            sizeof(payloadData) - 1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 3u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, NULL, 0);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_ALG);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ES256);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, signature, signatureLen);
+    }
+    TEST_ASSERT(ret == 0, "unprotected signer alg message");
+
+    ret = wc_CoseSign_Verify(&key, 0, msg, enc.idx,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == 0, "pinned unprotected signer alg accepted");
+
+    key.alg = WOLFCOSE_ALG_UNSET;
+    ret = wc_CoseSign_Verify(&key, 0, msg, enc.idx,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "unpinned unprotected signer alg rejected");
+
+    wc_CoseKey_Free(&key);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
+}
+
 static void test_cose_encrypt0_decrypt_key_alg_mismatch(void)
 {
     WOLFCOSE_KEY encKey;
@@ -8027,6 +9645,150 @@ static void test_cose_encrypt_direct_key_alg_pin_roundtrip(void)
     wc_CoseKey_Free(&key);
 }
 
+static void test_cose_encrypt_unprotected_body_alg(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX aadEnc;
+    Aes aes;
+    const uint8_t keyData[16] = {
+        0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+        0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F
+    };
+    const uint8_t iv[WOLFCOSE_AES_GCM_NONCE_SZ] = {
+        0x40, 0x41, 0x42, 0x43, 0x44, 0x45,
+        0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B
+    };
+    const uint8_t payloadData[] = "unprotected body alg";
+    uint8_t ciphertext[sizeof(payloadData) - 1u + WOLFCOSE_AES_GCM_TAG_SZ];
+    uint8_t aad[32];
+    uint8_t msg[256];
+    uint8_t scratch[256];
+    uint8_t plaintext[64];
+    size_t plaintextLen = 0u;
+    int aesInited = 0;
+    int ret;
+
+    TEST_LOG("  [Encrypt unprotected body alg]\n");
+
+    (void)XMEMSET(&aadEnc, 0, sizeof(aadEnc));
+    aadEnc.buf = aad;
+    aadEnc.bufSz = sizeof(aad);
+    ret = wc_CBOR_EncodeArrayStart(&aadEnc, 3u);
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeTstr(&aadEnc, WOLFCOSE_CTX_ENCRYPT,
+                                 sizeof(WOLFCOSE_CTX_ENCRYPT));
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(&aadEnc, NULL, 0u);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(&aadEnc, NULL, 0u);
+    }
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "unprotected body alg Enc_structure");
+
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_AesInit(&aes, NULL, INVALID_DEVID);
+        if (ret == 0) {
+            aesInited = 1;
+            ret = wc_AesGcmSetKey(&aes, keyData, sizeof(keyData));
+        }
+    }
+    if (ret == 0) {
+        ret = wc_AesGcmEncrypt(&aes, ciphertext, payloadData,
+            (word32)(sizeof(payloadData) - 1u), iv, (word32)sizeof(iv),
+            &ciphertext[sizeof(payloadData) - 1u],
+            (word32)WOLFCOSE_AES_GCM_TAG_SZ, aad, (word32)aadEnc.idx);
+    }
+    TEST_ASSERT(ret == 0, "unprotected body alg encrypt");
+    if (aesInited != 0) {
+        (void)wc_AesFree(&aes);
+    }
+
+    (void)XMEMSET(&enc, 0, sizeof(enc));
+    enc.buf = msg;
+    enc.bufSz = sizeof(msg);
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeTag(&enc, WOLFCOSE_TAG_ENCRYPT);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 4u);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 2u);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_ALG);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_A128GCM);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_IV);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(&enc, iv, sizeof(iv));
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(&enc, ciphertext, sizeof(ciphertext));
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 1u);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 3u);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 1u);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_ALG);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_DIRECT);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u);
+    }
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "unprotected body alg message");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "unprotected body alg key set");
+    key.alg = WOLFCOSE_ALG_A128GCM;
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0u;
+
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, enc.idx,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "pinned unprotected body alg accepted");
+    TEST_ASSERT((plaintextLen == (sizeof(payloadData) - 1u)) &&
+                (XMEMCMP(plaintext, payloadData, plaintextLen) == 0),
+                "unprotected body alg payload");
+
+    key.alg = WOLFCOSE_ALG_UNSET;
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, enc.idx,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "unpinned unprotected body alg rejected");
+
+    wc_CoseKey_Free(&key);
+}
+
 static void test_cose_encrypt_unset_alg_rejected(void)
 {
     WOLFCOSE_KEY key;
@@ -8519,10 +10281,97 @@ static void test_cose_encrypt_ecdh_es_ephemeral_crv_narrowing(void)
     (void)wc_FreeRng(&rng);
 }
 
-static void test_cose_encrypt_ecdh_es_hkdf_256(void)
+static void test_cose_encrypt_ecdh_es_malformed_ephemeral_point(void)
 {
     WOLFCOSE_KEY recipientKey;
     WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    ecc_key recipientEcc;
+    WC_RNG rng;
+    int ret;
+    uint8_t out[1024];
+    size_t outLen = 0u;
+    uint8_t scratch[1024];
+    uint8_t plaintext[128];
+    size_t plaintextLen = 0u;
+    const uint8_t payload[] = "ECDH-ES malformed ephemeral point";
+    uint8_t iv[12];
+    size_t i;
+    size_t xPos = 0u;
+    int found = 0;
+    static const uint8_t xAnchor[] = {
+        0xA4u, 0x01u, 0x02u, 0x20u, 0x01u, 0x21u, 0x58u, 0x20u
+    };
+
+    TEST_LOG("  [Encrypt ECDH-ES malformed ephemeral point]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "ecdh-es-point rng");
+    ret = wc_ecc_init(&recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-point ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-point keygen");
+
+    (void)wc_CoseKey_Init(&recipientKey);
+    ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es-point set key");
+    recipientKey.hasPrivate = 0u;
+
+    recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+    recipient.key = &recipientKey;
+    recipient.kid = NULL;
+    recipient.kidLen = 0u;
+
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    TEST_ASSERT(ret == 0, "ecdh-es-point iv");
+
+    ret = wc_CoseEncrypt_Encrypt(
+        &recipient, 1u,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1u,
+        NULL, 0u, NULL, 0u,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == 0, "ecdh-es-point encrypt");
+
+    for (i = 0u; (found == 0) && (outLen >= sizeof(xAnchor)) &&
+         (i <= (outLen - sizeof(xAnchor))); i++) {
+        if (XMEMCMP(&out[i], xAnchor, sizeof(xAnchor)) == 0) {
+            xPos = i + sizeof(xAnchor);
+            found = 1;
+        }
+    }
+    TEST_ASSERT((found == 1) && ((xPos + 32u) <= outLen),
+                "ecdh-es-point x coordinate located");
+
+    if ((found == 1) && ((xPos + 32u) <= outLen)) {
+        (void)XMEMSET(&out[xPos], 0, 32u);
+        recipientKey.hasPrivate = 1u;
+        (void)XMEMSET(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt_Decrypt(
+            &recipient, 0u,
+            out, outLen,
+            NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch),
+            &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                    "ecdh-es malformed point rejected");
+    }
+
+    wc_CoseKey_Free(&recipientKey);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
+}
+
+static void test_cose_encrypt_ecdh_es_hkdf_256(void)
+{
+    WOLFCOSE_KEY recipientKey;
+    WOLFCOSE_KEY mismatchKey;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_RECIPIENT mismatchRecipient;
     WOLFCOSE_HDR hdr;
     ecc_key recipientEcc;
     WC_RNG rng;
@@ -8564,6 +10413,23 @@ static void test_cose_encrypt_ecdh_es_hkdf_256(void)
     ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
     TEST_ASSERT(ret == 0, "ecdh-es generate iv");
 
+    mismatchKey = recipientKey;
+    mismatchKey.crv = WOLFCOSE_CRV_P384;
+    mismatchRecipient = recipient;
+    mismatchRecipient.key = &mismatchKey;
+    ret = wc_CoseEncrypt_Encrypt(
+        &mismatchRecipient, 1,
+        WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv),
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "ecdh-es rejects mismatched recipient curve");
+
     /* Encrypt */
     ret = wc_CoseEncrypt_Encrypt(
         &recipient, 1,
@@ -8602,6 +10468,320 @@ static void test_cose_encrypt_ecdh_es_hkdf_256(void)
     wc_CoseKey_Free(&recipientKey);
     (void)wc_ecc_free(&recipientEcc);
     (void)wc_FreeRng(&rng);
+}
+
+static void test_cose_encrypt_ecdh_es_long_recipient_protected(void)
+{
+    WOLFCOSE_KEY recipientKey;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX ctx;
+    ecc_key recipientEcc;
+    ecc_key ephemeralEcc;
+    WC_RNG rng;
+    Aes aes;
+    int ret;
+    int rngInited = 0;
+    int recipientInited = 0;
+    int ephemeralInited = 0;
+    int aesInited = 0;
+    word32 xLen;
+    word32 yLen;
+    word32 sharedSecretLen;
+    uint8_t x[32];
+    uint8_t y[32];
+    uint8_t sharedSecret[32];
+    uint8_t cek[16];
+    uint8_t recipientProtected[80];
+    size_t recipientProtectedLen = 0u;
+    uint8_t kdfContext[96];
+    size_t kdfContextLen = 0u;
+    uint8_t bodyProtected[8];
+    size_t bodyProtectedLen = 0u;
+    uint8_t aad[32];
+    size_t aadLen = 0u;
+    uint8_t ciphertext[64];
+    uint8_t msg[384];
+    size_t msgLen = 0u;
+    uint8_t scratch[256];
+    uint8_t plaintext[64];
+    size_t plaintextLen = 0u;
+    const uint8_t payload[] = "ECDH-ES long protected header";
+    const uint8_t iv[WOLFCOSE_AES_GCM_NONCE_SZ] = {
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+        0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B
+    };
+    const uint8_t kid[48] = { 0xA5 };
+
+    TEST_LOG("  [Encrypt ECDH-ES long recipient protected header]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret == 0) {
+        rngInited = 1;
+        ret = wc_ecc_init(&recipientEcc);
+    }
+    if (ret == 0) {
+        recipientInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
+    }
+    if (ret == 0) {
+        ret = wc_ecc_init(&ephemeralEcc);
+    }
+    if (ret == 0) {
+        ephemeralInited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &ephemeralEcc);
+    }
+    if (ret == 0) {
+        ret = wc_ecc_set_rng(&recipientEcc, &rng);
+    }
+    if (ret == 0) {
+        ret = wc_ecc_set_rng(&ephemeralEcc, &rng);
+    }
+    TEST_ASSERT(ret == 0, "ecdh-es long protected key setup");
+
+    xLen = (word32)sizeof(x);
+    yLen = (word32)sizeof(y);
+    if (ret == 0) {
+        ret = wc_ecc_export_public_raw(&ephemeralEcc, x, &xLen, y, &yLen);
+    }
+    sharedSecretLen = (word32)sizeof(sharedSecret);
+    if (ret == 0) {
+        ret = wc_ecc_shared_secret(&ephemeralEcc, &recipientEcc,
+                                   sharedSecret, &sharedSecretLen);
+    }
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.buf = recipientProtected;
+    ctx.bufSz = sizeof(recipientProtected);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&ctx, 2u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_ALG);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_ALG_ECDH_ES_HKDF_256);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_KID);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, kid, sizeof(kid));
+    }
+    if (ret == 0) {
+        recipientProtectedLen = ctx.idx;
+    }
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.buf = kdfContext;
+    ctx.bufSz = sizeof(kdfContext);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 4u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_ALG_A128GCM);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 3u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeNull(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeNull(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeNull(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 3u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeNull(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeNull(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeNull(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 2u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeUint(&ctx, 128u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, recipientProtected,
+                                 recipientProtectedLen);
+    }
+    if (ret == 0) {
+        kdfContextLen = ctx.idx;
+        ret = wc_HKDF(WC_SHA256, sharedSecret, sharedSecretLen,
+                      NULL, 0u, kdfContext, (word32)kdfContextLen,
+                      cek, (word32)sizeof(cek));
+    }
+    TEST_ASSERT((ret == 0) && (kdfContextLen > 64u),
+                "ecdh-es long protected KDF context exceeds 64 bytes");
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.buf = bodyProtected;
+    ctx.bufSz = sizeof(bodyProtected);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&ctx, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_ALG);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_ALG_A128GCM);
+    }
+    if (ret == 0) {
+        bodyProtectedLen = ctx.idx;
+    }
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.buf = aad;
+    ctx.bufSz = sizeof(aad);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 3u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeTstr(&ctx, WOLFCOSE_CTX_ENCRYPT,
+                                 sizeof(WOLFCOSE_CTX_ENCRYPT));
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, bodyProtected, bodyProtectedLen);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, NULL, 0u);
+    }
+    if (ret == 0) {
+        aadLen = ctx.idx;
+        ret = wc_AesInit(&aes, NULL, INVALID_DEVID);
+    }
+    if (ret == 0) {
+        aesInited = 1;
+        ret = wc_AesGcmSetKey(&aes, cek, (word32)sizeof(cek));
+    }
+    if (ret == 0) {
+        ret = wc_AesGcmEncrypt(&aes, ciphertext, payload,
+            (word32)(sizeof(payload) - 1u), iv, (word32)sizeof(iv),
+            &ciphertext[sizeof(payload) - 1u], WOLFCOSE_AES_GCM_TAG_SZ,
+            aad, (word32)aadLen);
+    }
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.buf = msg;
+    ctx.bufSz = sizeof(msg);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeTag(&ctx, WOLFCOSE_TAG_ENCRYPT);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 4u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, bodyProtected, bodyProtectedLen);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&ctx, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_IV);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, iv, sizeof(iv));
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, ciphertext,
+                                 sizeof(payload) - 1u +
+                                 WOLFCOSE_AES_GCM_TAG_SZ);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 3u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, recipientProtected,
+                                 recipientProtectedLen);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&ctx, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_EPHEMERAL_KEY);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&ctx, 4u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, 1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_KTY_EC2);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, -1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_CRV_P256);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, -2);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, x, (size_t)xLen);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&ctx, -3);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, y, (size_t)yLen);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&ctx, NULL, 0u);
+    }
+    if (ret == 0) {
+        msgLen = ctx.idx;
+    }
+    TEST_ASSERT(ret == 0, "ecdh-es long protected peer message encode");
+
+    (void)wc_CoseKey_Init(&recipientKey);
+    if (ret == 0) {
+        ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256,
+                                &recipientEcc);
+    }
+    if (ret == 0) {
+        recipientKey.hasPrivate = 1u;
+        recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+        recipient.key = &recipientKey;
+        recipient.kid = NULL;
+        recipient.kidLen = 0u;
+        (void)XMEMSET(&hdr, 0, sizeof(hdr));
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, msgLen,
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+    }
+    TEST_ASSERT(ret == 0, "ecdh-es long protected peer decrypt");
+    TEST_ASSERT((ret == 0) && (plaintextLen == (sizeof(payload) - 1u)) &&
+                (XMEMCMP(plaintext, payload, plaintextLen) == 0),
+                "ecdh-es long protected peer plaintext");
+
+    wc_CoseKey_Free(&recipientKey);
+    if (aesInited != 0) {
+        (void)wc_AesFree(&aes);
+    }
+    if (ephemeralInited != 0) {
+        (void)wc_ecc_free(&ephemeralEcc);
+    }
+    if (recipientInited != 0) {
+        (void)wc_ecc_free(&recipientEcc);
+    }
+    if (rngInited != 0) {
+        (void)wc_FreeRng(&rng);
+    }
 }
 
 /**
@@ -8704,6 +10884,7 @@ static void test_cose_encrypt_ecdh_es_p384(void)
     WOLFCOSE_RECIPIENT recipient;
     WOLFCOSE_HDR hdr;
     ecc_key recipientEcc;
+    ecc_key mismatchedEcc;
     WC_RNG rng;
     int ret;
     uint8_t out[512];
@@ -8726,6 +10907,11 @@ static void test_cose_encrypt_ecdh_es_p384(void)
 
     ret = wc_ecc_make_key(&rng, 48, &recipientEcc);
     TEST_ASSERT(ret == 0, "ecdh-es p384 make key");
+
+    ret = wc_ecc_init(&mismatchedEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es mismatched ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &mismatchedEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es mismatched make key");
 
     /* Set up recipient's public key for encryption */
     (void)wc_CoseKey_Init(&recipientKey);
@@ -8756,6 +10942,26 @@ static void test_cose_encrypt_ecdh_es_p384(void)
         &rng);
     TEST_ASSERT(ret == 0, "ecdh-es p384 encrypt");
 
+    ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256,
+                             &mismatchedEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es set mismatched key");
+    recipientKey.crv = WOLFCOSE_CRV_P384;
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wc_CoseEncrypt_Decrypt(
+        &recipient, 0,
+        out, outLen,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "ecdh-es decrypt rejects mismatched recipient curve");
+
+    ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P384,
+                             &recipientEcc);
+    TEST_ASSERT(ret == 0, "ecdh-es restore p384 key");
+
     /* Set up recipient with private key for decryption */
     recipientKey.hasPrivate = 1;
 
@@ -8776,6 +10982,7 @@ static void test_cose_encrypt_ecdh_es_p384(void)
     /* Clean up */
     wc_CoseKey_Free(&recipientKey);
     (void)wc_ecc_free(&recipientEcc);
+    (void)wc_ecc_free(&mismatchedEcc);
     (void)wc_FreeRng(&rng);
 }
 
@@ -8987,6 +11194,133 @@ static void test_cose_encrypt_a128kw(void)
     (void)wc_FreeRng(&rng);
 }
 
+static void test_cose_encrypt_a128kw_unprotected_alg(void)
+{
+    WOLFCOSE_KEY kek;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX ctx;
+    WC_RNG rng;
+    const uint8_t kekData[16] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F
+    };
+    const uint8_t payload[] = "A128KW unprotected algorithm";
+    uint8_t iv[12] = {0};
+    uint8_t scratch[256];
+    uint8_t out[512];
+    uint8_t conformant[512];
+    uint8_t plaintext[128];
+    size_t outLen = 0u;
+    size_t conformantLen = 0u;
+    size_t plaintextLen = 0u;
+    size_t count = 0u;
+    size_t recipientHdrStart = 0u;
+    size_t recipientSuffix = 0u;
+    const uint8_t* protectedData = NULL;
+    size_t protectedLen = 0u;
+    uint64_t tag = 0u;
+    int ret;
+
+    TEST_LOG("  [Encrypt A128KW unprotected recipient algorithm]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "a128kw unprotected rng init");
+    (void)wc_CoseKey_Init(&kek);
+    ret = wc_CoseKey_SetSymmetric(&kek, kekData, sizeof(kekData));
+    TEST_ASSERT(ret == 0, "a128kw unprotected set kek");
+    recipient.algId = WOLFCOSE_ALG_A128KW;
+    recipient.key = &kek;
+    recipient.kid = NULL;
+    recipient.kidLen = 0u;
+
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1u,
+        WOLFCOSE_ALG_A128GCM, iv, sizeof(iv),
+        payload, sizeof(payload) - 1u,
+        NULL, 0u, NULL, 0u,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == 0, "a128kw unprotected base encrypt");
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.cbuf = out;
+    ctx.bufSz = outLen;
+    if ((ret == 0) && (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
+        ret = wc_CBOR_DecodeTag(&ctx, &tag);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+    }
+    if ((ret == 0) && (count != 4u)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+    }
+    if ((ret == 0) && (count != 1u)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+    }
+    if ((ret == 0) && (count != 3u)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == 0) {
+        recipientHdrStart = ctx.idx;
+        ret = wc_CBOR_DecodeBstr(&ctx, &protectedData, &protectedLen);
+    }
+    if ((ret == 0) && ((protectedLen != 3u) ||
+        (protectedData[0] != 0xA1u) || (protectedData[1] != 0x01u) ||
+        (protectedData[2] != 0x22u))) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeMapStart(&ctx, &count);
+    }
+    if ((ret == 0) && (count != 0u)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == 0) {
+        recipientSuffix = ctx.idx;
+        conformantLen = recipientHdrStart + 4u + (outLen - recipientSuffix);
+        if (conformantLen > sizeof(conformant)) {
+            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+        }
+    }
+    TEST_ASSERT(ret == 0, "a128kw unprotected locate recipient headers");
+    if (ret == 0) {
+        (void)XMEMCPY(conformant, out, recipientHdrStart);
+        conformant[recipientHdrStart] = 0x40u;
+        conformant[recipientHdrStart + 1u] = 0xA1u;
+        conformant[recipientHdrStart + 2u] = 0x01u;
+        conformant[recipientHdrStart + 3u] = 0x22u;
+        (void)XMEMCPY(&conformant[recipientHdrStart + 4u],
+                      &out[recipientSuffix], outLen - recipientSuffix);
+
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u,
+            conformant, conformantLen,
+            NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == 0, "a128kw unprotected decrypt");
+        TEST_ASSERT((plaintextLen == (sizeof(payload) - 1u)) &&
+                    (XMEMCMP(plaintext, payload, plaintextLen) == 0),
+                    "a128kw unprotected payload");
+    }
+
+    wc_CoseKey_Free(&kek);
+    (void)wc_FreeRng(&rng);
+}
+
 static void test_cose_encrypt_kw_mutated_recipient_alg_pin(void)
 {
     WOLFCOSE_KEY kek;
@@ -9066,11 +11400,20 @@ static void test_cose_encrypt_a128kw_multi_recipient(void)
     int ret;
     uint8_t out[512];
     size_t outLen;
+    uint8_t mixed[512];
+    size_t mixedLen = 0u;
     uint8_t scratch[512];
     uint8_t plain1[64];
     uint8_t plain2[64];
     size_t plain1Len = 0;
     size_t plain2Len = 0;
+    WOLFCOSE_CBOR_CTX ctx;
+    uint64_t tag = 0u;
+    size_t count = 0u;
+    const uint8_t* recipientProtected = NULL;
+    size_t recipientProtectedLen = 0u;
+    size_t protectedHeadOffset = 0u;
+    size_t protectedDataOffset = 0u;
     const uint8_t payload[] = "Multi-KW payload";
     static const uint8_t kwR0Kid[] = { 'k', 'w', '-', 'r', '0' };
     static const uint8_t kwR1Kid[] = { 'k', 'w', '-', 'r', '1' };
@@ -9144,6 +11487,90 @@ static void test_cose_encrypt_a128kw_multi_recipient(void)
     TEST_ASSERT(plain2Len == plain1Len, "kw-multi same len");
     TEST_ASSERT(memcmp(plain1, plain2, plain1Len) == 0,
                 "kw-multi same plaintext");
+
+    /* A selected AES-KW recipient may coexist with an unselected transport
+     * algorithm that wolfCOSE does not implement. Change recipient 1 from
+     * A128KW (-3) to RSAES-OAEP w/ SHA-256 (-41) without touching recipient 0.
+     */
+    if (ret == 0) {
+        (void)XMEMSET(&ctx, 0, sizeof(ctx));
+        ctx.cbuf = out;
+        ctx.bufSz = outLen;
+        if (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG) {
+            ret = wc_CBOR_DecodeTag(&ctx, &tag);
+        }
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+    }
+    for (count = 0u; (ret == 0) && (count < 3u); count++) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+    }
+    if ((ret == 0) && (count == 2u)) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    else if (ret == 0) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
+    }
+    if ((ret == 0) && (count == 3u)) {
+        protectedHeadOffset = ctx.idx;
+        ret = wc_CBOR_DecodeBstr(&ctx, &recipientProtected,
+                                 &recipientProtectedLen);
+    }
+    else if (ret == 0) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if ((ret == 0) && (recipientProtectedLen == 3u) &&
+        (recipientProtected[0] == 0xA1u) &&
+        (recipientProtected[1] == 0x01u) &&
+        (recipientProtected[2] == 0x22u) &&
+        (outLen < sizeof(mixed))) {
+        protectedDataOffset = (size_t)(recipientProtected - out);
+        (void)XMEMCPY(mixed, out, outLen);
+        (void)XMEMMOVE(&mixed[protectedDataOffset + 4u],
+                       &mixed[protectedDataOffset + 3u],
+                       outLen - (protectedDataOffset + 3u));
+        mixed[protectedHeadOffset] = 0x44u;
+        mixed[protectedDataOffset + 2u] = 0x38u;
+        mixed[protectedDataOffset + 3u] = 0x28u;
+        mixedLen = outLen + 1u;
+    }
+    else if (ret == 0) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    TEST_ASSERT(ret == 0, "kw-multi patch unsupported transport sibling");
+
+    if (ret == 0) {
+        plain1Len = 0u;
+        ret = wc_CoseEncrypt_Decrypt(
+            &recipients[0], 0, mixed, mixedLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr,
+            plain1, sizeof(plain1), &plain1Len);
+        TEST_ASSERT(ret == 0,
+                    "kw-multi ignores unsupported transport sibling");
+        TEST_ASSERT((plain1Len == sizeof(payload) - 1u) &&
+                    (XMEMCMP(plain1, payload, plain1Len) == 0),
+                    "kw-multi transport sibling plaintext");
+    }
+
+    if (ret == 0) {
+        mixed[protectedDataOffset + 3u] = 0x1Au; /* ECDH-SS + HKDF-256 */
+        plain1Len = 0u;
+        ret = wc_CoseEncrypt_Decrypt(
+            &recipients[0], 0, mixed, mixedLen,
+            NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr,
+            plain1, sizeof(plain1), &plain1Len);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                    "kw-multi rejects direct key-agreement sibling");
+    }
 
     /* Crossing the KEK index must fail because the wrapped CEK at
      * index 0 was wrapped under kek1, not kek2. */
@@ -9567,9 +11994,8 @@ static void test_cose_mac_multi_recipient(void)
 
 /**
  * wc_CoseMac_Verify must enforce the caller's recipient->algId policy against
- * the on-wire recipient alg (direct-keyed messages have no recipient alg, so it
- * normalizes to WOLFCOSE_ALG_DIRECT). A caller demanding a non-direct mode must
- * not silently verify a direct-keyed message.
+ * the mandatory on-wire recipient alg. A caller demanding a non-direct mode
+ * must not silently verify a direct-keyed message.
  */
 static void test_cose_mac_verify_algid_policy(void)
 {
@@ -9627,6 +12053,361 @@ static void test_cose_mac_verify_algid_policy(void)
         scratch, sizeof(scratch),
         &hdr, &decPayload, &decPayloadLen);
     TEST_ASSERT(ret == 0, "mac verify accepts unset algId");
+
+    wc_CoseKey_Free(&key);
+}
+
+static void test_cose_mac_verify_unprotected_body_alg(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_HDR hdr;
+    Hmac hmac;
+    const uint8_t keyData[32] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
+    };
+    const uint8_t payloadData[] = "unprotected body alg";
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    uint8_t macStruct[128];
+    size_t macStructLen = 0;
+    uint8_t tag[WC_SHA256_DIGEST_SIZE];
+    uint8_t msg[256];
+    uint8_t scratch[256];
+    int ret;
+
+    TEST_LOG("  [Mac_Verify unprotected body alg]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "unprotected body alg key set");
+    key.alg = WOLFCOSE_ALG_HMAC_256_256;
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wolfCose_BuildToBeSignedMaced(
+        WOLFCOSE_CTX_MAC, sizeof(WOLFCOSE_CTX_MAC),
+        NULL, 0, NULL, 0, NULL, 0,
+        payloadData, sizeof(payloadData) - 1,
+        macStruct, sizeof(macStruct), &macStructLen);
+    TEST_ASSERT(ret == 0, "unprotected body alg structure");
+    ret = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
+    TEST_ASSERT(ret == 0, "unprotected body alg hmac init");
+    if (ret == 0) {
+        ret = wc_HmacSetKey(&hmac, WC_SHA256, keyData, sizeof(keyData));
+    }
+    if (ret == 0) {
+        ret = wc_HmacUpdate(&hmac, macStruct, (word32)macStructLen);
+    }
+    if (ret == 0) {
+        ret = wc_HmacFinal(&hmac, tag);
+    }
+    TEST_ASSERT(ret == 0, "unprotected body alg tag");
+    (void)wc_HmacFree(&hmac);
+
+    enc.buf = msg;
+    enc.bufSz = sizeof(msg);
+    enc.idx = 0;
+    ret = wc_CBOR_EncodeTag(&enc, WOLFCOSE_TAG_MAC);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 5u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, NULL, 0);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_ALG);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_HMAC_256_256);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, payloadData,
+            sizeof(payloadData) - 1);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, tag, sizeof(tag));
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeArrayStart(&enc, 3u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, NULL, 0);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeMapStart(&enc, 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_ALG);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_DIRECT);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, NULL, 0);
+    }
+    TEST_ASSERT(ret == 0, "unprotected body alg message");
+
+    ret = wc_CoseMac_Verify(&recipient, 0, msg, enc.idx,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == 0, "pinned unprotected body alg accepted");
+
+    key.alg = WOLFCOSE_ALG_UNSET;
+    ret = wc_CoseMac_Verify(&recipient, 0, msg, enc.idx,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "unpinned unprotected body alg rejected");
+
+    wc_CoseKey_Free(&key);
+}
+
+static void test_cose_mac_rejects_float_payload(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_HDR hdr;
+    Hmac hmac;
+    const uint8_t keyData[32] = {0};
+    const uint8_t detached[] = "detached float payload";
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    uint8_t protectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
+    size_t protectedLen = 0;
+    uint8_t macStruct[128];
+    size_t macStructLen = 0;
+    uint8_t tag[WC_SHA256_DIGEST_SIZE];
+    uint8_t msg[256];
+    uint8_t scratch[256];
+    static const uint8_t floatPayloads[3][9] = {
+        {0xF9u, 0x00u, 0x16u},
+        {0xFAu, 0x00u, 0x00u, 0x00u, 0x16u},
+        {0xFBu, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x16u}
+    };
+    static const size_t floatLens[3] = {3u, 5u, 9u};
+    size_t i;
+    int ret;
+
+    TEST_LOG("  [Mac_Verify rejects float payload]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "float payload key set");
+    key.alg = WOLFCOSE_ALG_HMAC_256_256;
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wolfCose_EncodeProtectedHdr(WOLFCOSE_ALG_HMAC_256_256,
+        protectedBuf, sizeof(protectedBuf), &protectedLen);
+    TEST_ASSERT(ret == 0, "float payload protected header");
+    ret = wolfCose_BuildToBeSignedMaced(
+        WOLFCOSE_CTX_MAC, sizeof(WOLFCOSE_CTX_MAC),
+        protectedBuf, protectedLen, NULL, 0, NULL, 0,
+        detached, sizeof(detached) - 1,
+        macStruct, sizeof(macStruct), &macStructLen);
+    TEST_ASSERT(ret == 0, "float payload MAC structure");
+    ret = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
+    TEST_ASSERT(ret == 0, "float payload hmac init");
+    if (ret == 0) {
+        ret = wc_HmacSetKey(&hmac, WC_SHA256, keyData, sizeof(keyData));
+    }
+    if (ret == 0) {
+        ret = wc_HmacUpdate(&hmac, macStruct, (word32)macStructLen);
+    }
+    if (ret == 0) {
+        ret = wc_HmacFinal(&hmac, tag);
+    }
+    TEST_ASSERT(ret == 0, "float payload tag");
+    (void)wc_HmacFree(&hmac);
+
+    for (i = 0; i < 3u; i++) {
+        enc.buf = msg;
+        enc.bufSz = sizeof(msg);
+        enc.idx = 0;
+        ret = wc_CBOR_EncodeTag(&enc, WOLFCOSE_TAG_MAC);
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeArrayStart(&enc, 5u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, protectedBuf, protectedLen);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeMapStart(&enc, 0u);
+        }
+        if ((ret == 0) && ((enc.idx + floatLens[i]) <= enc.bufSz)) {
+            (void)memcpy(&msg[enc.idx], floatPayloads[i], floatLens[i]);
+            enc.idx += floatLens[i];
+        }
+        else if (ret == 0) {
+            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, tag, sizeof(tag));
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeArrayStart(&enc, 1u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeArrayStart(&enc, 3u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, NULL, 0);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeMapStart(&enc, 1u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_ALG);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_DIRECT);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, NULL, 0);
+        }
+        TEST_ASSERT(ret == 0, "float payload message");
+
+        ret = wc_CoseMac_Verify(&recipient, 0, msg, enc.idx,
+            detached, sizeof(detached) - 1, NULL, 0,
+            scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE,
+                    "Mac_Verify rejects float payload");
+    }
+
+    wc_CoseKey_Free(&key);
+}
+
+static void test_cose_mac_rejects_float_recipient_ciphertext(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    const uint8_t keyData[32] = {0};
+    const uint8_t payloadData[] = "float recipient ciphertext";
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t msg[272];
+    size_t msgLen;
+    uint8_t scratch[256];
+    static const uint8_t floatValues[3][9] = {
+        {0xF9u, 0x00u, 0x16u},
+        {0xFAu, 0x00u, 0x00u, 0x00u, 0x16u},
+        {0xFBu, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x16u}
+    };
+    static const size_t floatLens[3] = {3u, 5u, 9u};
+    size_t i;
+    int ret;
+
+    TEST_LOG("  [Mac_Verify rejects float recipient ciphertext]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "float recipient key set");
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payloadData, sizeof(payloadData) - 1,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "float recipient base message");
+    TEST_ASSERT((outLen > 0u) && (out[outLen - 1u] == 0x40u),
+                "float recipient ciphertext is empty bstr");
+    if ((ret != 0) || (outLen == 0u) || (out[outLen - 1u] != 0x40u)) {
+        wc_CoseKey_Free(&key);
+        return;
+    }
+
+    for (i = 0; i < 3u; i++) {
+        (void)memcpy(msg, out, outLen - 1u);
+        (void)memcpy(&msg[outLen - 1u], floatValues[i], floatLens[i]);
+        msgLen = (outLen - 1u) + floatLens[i];
+
+        ret = wc_CoseMac_Verify(&recipient, 0, msg, msgLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch),
+            &hdr, &payload, &payloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE,
+                    "Mac_Verify rejects float recipient ciphertext");
+    }
+
+    wc_CoseKey_Free(&key);
+}
+
+static void test_cose_mac_rejects_nonempty_recipient_ciphertext(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    const uint8_t keyData[32] = {0};
+    const uint8_t payloadData[] = "nonempty recipient ciphertext";
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t msg[257];
+    uint8_t scratch[256];
+    int ret;
+
+    TEST_LOG("  [Mac_Verify rejects nonempty recipient ciphertext]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "nonempty recipient key set");
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payloadData, sizeof(payloadData) - 1,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == 0, "nonempty recipient base message");
+    TEST_ASSERT((outLen > 0u) && (out[outLen - 1u] == 0x40u),
+                "nonempty recipient ciphertext starts empty");
+    if ((ret != 0) || (outLen == 0u) || (out[outLen - 1u] != 0x40u)) {
+        wc_CoseKey_Free(&key);
+        return;
+    }
+
+    (void)memcpy(msg, out, outLen - 1u);
+    msg[outLen - 1u] = 0x41u;
+    msg[outLen] = 0xA5u;
+
+    ret = wc_CoseMac_Verify(&recipient, 0, msg, outLen + 1u,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "Mac_Verify rejects nonempty recipient ciphertext");
+
+    (void)memcpy(msg, out, outLen);
+    msg[outLen - 1u] = WOLFCOSE_CBOR_NULL;
+
+    ret = wc_CoseMac_Verify(&recipient, 0, msg, outLen,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "Mac_Verify accepts null recipient ciphertext");
 
     wc_CoseKey_Free(&key);
 }
@@ -9697,13 +12478,22 @@ static void test_cose_mac_multi_recipient_direct_empty_protected(void)
     TEST_ASSERT(ret == 0 && recipCount == 2, "mac recipients array");
 
     for (i = 0; i < recipCount; i++) {
+        WOLFCOSE_HDR recipHdr;
+        WOLFCOSE_HDR_STATE recipState;
+
         ret = wc_CBOR_DecodeArrayStart(&ctx, &arrCount);
         TEST_ASSERT(ret == 0 && arrCount == 3, "recipient array");
         ret = wc_CBOR_DecodeBstr(&ctx, &prot, &protLen);
         TEST_ASSERT(ret == 0, "recipient protected decode");
         TEST_ASSERT(protLen == 0, "direct recipient protected empty");
-        ret = wc_CBOR_Skip(&ctx);
+        (void)XMEMSET(&recipHdr, 0, sizeof(recipHdr));
+        ret = wolfCose_DecodeProtectedHdr(prot, protLen, &recipHdr,
+                                          &recipState);
+        TEST_ASSERT(ret == 0, "recipient protected header");
+        ret = wolfCose_DecodeUnprotectedHdr(&ctx, &recipHdr, &recipState);
         TEST_ASSERT(ret == 0, "recipient unprotected");
+        TEST_ASSERT(recipHdr.alg == WOLFCOSE_ALG_DIRECT,
+                    "direct recipient unprotected alg");
         ret = wc_CBOR_Skip(&ctx);
         TEST_ASSERT(ret == 0, "recipient cek");
     }
@@ -12139,6 +14929,12 @@ static void test_cose_error_paths(void)
 
         wc_ecc_init(&eccKey);
         (void)wc_CoseKey_Init(&decodedKey);
+
+        ret = wc_CoseKey_Decode(&decodedKey, eccNoCoords, sizeof(eccNoCoords));
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+            "metadata-only ecc key missing material rejected");
+
+        (void)wc_CoseKey_Init(&decodedKey);
         (void)wc_CoseKey_SetEcc(&decodedKey, WOLFCOSE_CRV_P256, &eccKey);
 
         ret = wc_CoseKey_Decode(&decodedKey, eccNoCoords, sizeof(eccNoCoords));
@@ -13092,6 +15888,75 @@ static void test_cose_oversized_int_narrowing(void)
                 "CoseKey_Decode rejects oversized kty");
 }
 
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL) && \
+    (defined(WOLFCOSE_HAVE_EDDSA) || \
+     defined(WOLFCOSE_HAVE_RSA_PRIVATE_KEY))
+static void test_cose_key_word32_overflow_guard(void)
+{
+    WOLFCOSE_KEY key;
+#ifdef WOLFCOSE_HAVE_EDDSA
+    ed25519_key decodedKey;
+    size_t hugeLen = (size_t)0xFFFFFFFFUL + 33u;
+#endif
+    int ret;
+#ifdef WOLFCOSE_HAVE_EDDSA
+    uint8_t keyData[15u + ED25519_PUB_KEY_SIZE] = {
+        0xA3u,               /* map(3) */
+        0x01u, 0x01u,        /* kty: OKP */
+        0x20u, 0x06u,        /* crv: Ed25519 */
+        0x21u,               /* x */
+        0x5Bu,               /* bstr with eight-byte length */
+        0x00u, 0x00u, 0x00u, 0x01u, 0x00u, 0x00u, 0x00u, 0x20u,
+        /* Valid Ed25519 public key prefix. */
+        0xD7u, 0x5Au, 0x98u, 0x01u, 0x82u, 0xB1u, 0x0Au, 0xB7u,
+        0xD5u, 0x4Bu, 0xFEu, 0xD3u, 0xC9u, 0x64u, 0x07u, 0x3Au,
+        0x0Eu, 0xE1u, 0x72u, 0xF3u, 0xDAu, 0xA6u, 0x23u, 0x25u,
+        0xAFu, 0x02u, 0x1Au, 0x68u, 0xF7u, 0x07u, 0x51u, 0x1Au
+    };
+#endif
+#ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
+    /* {1: RSA, -1: h'01', -2: h'03', -5: h'<UINT32_MAX+2>'}.
+     * Only the first q byte is physically present. Decode uses the synthetic
+     * claimed size for bounds accounting and must reject q before import. */
+    uint8_t rsaKeyData[20] = {
+        0xA4u,
+        0x01u, 0x03u,
+        0x20u, 0x41u, 0x01u,
+        0x21u, 0x41u, 0x03u,
+        0x24u, 0x5Bu,
+        0x00u, 0x00u, 0x00u, 0x01u, 0x00u, 0x00u, 0x00u, 0x01u,
+        0x00u
+    };
+#endif
+
+    TEST_LOG("  [COSE_Key word32 length guard]\n");
+
+#ifdef WOLFCOSE_HAVE_EDDSA
+    ret = wc_ed25519_init(&decodedKey);
+    TEST_ASSERT(ret == 0, "key length guard destination init");
+    if (ret == 0) {
+        (void)wc_CoseKey_Init(&key);
+        (void)wc_CoseKey_SetEd25519(&key, &decodedKey);
+
+        /* The declared bstr is larger than word32 but truncates to the valid
+         * public-key prefix size. The guard must reject it before import; no
+         * byte beyond the supplied prefix is accessed. */
+        ret = wc_CoseKey_Decode(&key, keyData, 15u + hugeLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                    "key decode rejects oversized bstr component");
+        (void)wc_ed25519_free(&decodedKey);
+    }
+#endif
+#ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, rsaKeyData, 19u +
+                            ((size_t)0xFFFFFFFFUL + 2u));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "key decode rejects oversized RSA CRT component");
+#endif
+}
+#endif /* 64-bit size_t and an import with word32 component lengths */
+
 #if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
 static void test_cose_sign_dup_signer_unprot_hdr(void)
 {
@@ -13109,6 +15974,14 @@ static void test_cose_sign_dup_signer_unprot_hdr(void)
      * [ h'', {}, 'x', [ [ h'A10126', {4:h'01',4:h'02'}, h'0000' ] ] ] */
     uint8_t msg[] = {
         0x84u, 0x40u, 0xA0u, 0x41u, 0x78u, 0x81u,
+        0x83u, 0x43u, 0xA1u, 0x01u, 0x26u,
+        0xA2u, 0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
+        0x42u, 0x00u, 0x00u
+    };
+    uint8_t unselectedMsg[] = {
+        0x84u, 0x40u, 0xA0u, 0x41u, 0x78u, 0x82u,
+        0x83u, 0x43u, 0xA1u, 0x01u, 0x26u, 0xA0u,
+        0x42u, 0x00u, 0x00u,
         0x83u, 0x43u, 0xA1u, 0x01u, 0x26u,
         0xA2u, 0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
         0x42u, 0x00u, 0x00u
@@ -13134,6 +16007,12 @@ static void test_cose_sign_dup_signer_unprot_hdr(void)
             &hdr, &payload, &payloadLen);
         TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                     "dup signer unprotected label rejected");
+
+        ret = wc_CoseSign_Verify(&key, 0, unselectedMsg,
+            sizeof(unselectedMsg), NULL, 0, NULL, 0,
+            scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL,
+                    "dup label in unselected signer ignored");
     }
 
     if (eccInited != 0) { (void)wc_ecc_free(&eccKey); }
@@ -13163,6 +16042,42 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
         0xA2u, 0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
         0xF6u
     };
+    uint8_t unselectedMsg[] = {
+        0x85u, 0x43u, 0xA1u, 0x01u, 0x05u, 0xA0u, 0x41u, 0x78u,
+        0x58u, 0x20u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x82u,
+        0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x83u, 0x40u,
+        0xA3u, 0x01u, 0x25u,
+        0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
+        0x40u
+    };
+    /* Valid four-element recipients appear on both sides of the selected
+     * recipient. Their nested direct recipients must also be decoded. */
+    uint8_t nestedSiblings[] = {
+        0x85u, 0x43u, 0xA1u, 0x01u, 0x05u, 0xA0u, 0x41u, 0x78u,
+        0x58u, 0x20u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x83u,
+        0x84u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x84u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
+    };
+    uint8_t tstrSibling[] = {
+        0x85u, 0x43u, 0xA1u, 0x01u, 0x05u, 0xA0u, 0x41u, 0x78u,
+        0x58u, 0x20u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x82u,
+        0x83u, 0x40u, 0xA2u, 0x61u, 0x78u, 0x00u,
+        0x01u, 0x25u, 0x40u,
+        0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
+    };
 
     TEST_LOG("  [Mac multi dup recipient unprotected label]\n");
 
@@ -13179,6 +16094,24 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
         &hdr, &payload, &payloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "dup recipient unprotected label rejected (mac)");
+
+    ret = wc_CoseMac_Verify(&recipient, 0, unselectedMsg,
+        sizeof(unselectedMsg), NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL,
+                "dup label in unselected recipient ignored (mac)");
+
+    ret = wc_CoseMac_Verify(&recipient, 1, nestedSiblings,
+        sizeof(nestedSiblings), NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL,
+                "nested unselected recipients accepted (mac)");
+
+    ret = wc_CoseMac_Verify(&recipient, 1, tstrSibling,
+        sizeof(tstrSibling), NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL,
+                "tstr field in unselected recipient accepted (mac)");
 }
 
 /**
@@ -13209,6 +16142,13 @@ static void test_cose_mac_verify_rejects_keydist_recipient(void)
         0xA0u,
         0xF6u
     };
+    uint8_t missingAlg[] = {
+        0x85u, 0x43u, 0xA1u, 0x01u, 0x05u, 0xA0u, 0x41u, 0x78u,
+        0x58u, 0x20u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x81u, 0x83u, 0x40u, 0xA0u, 0x40u
+    };
 
     TEST_LOG("  [Mac verify rejects key-distribution recipient]\n");
 
@@ -13225,6 +16165,14 @@ static void test_cose_mac_verify_rejects_keydist_recipient(void)
         &hdr, &payload, &payloadLen);
     TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED,
                 "mac verify rejects key-distribution recipient alg");
+
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    ret = wc_CoseMac_Verify(&recipient, 0, missingAlg, sizeof(missingAlg),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "mac verify rejects missing recipient alg");
 
     wc_CoseKey_Free(&key);
 }
@@ -13254,6 +16202,45 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         0xA2u, 0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
         0xF6u
     };
+    uint8_t unselectedMsg[] = {
+        0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
+        0xA1u, 0x05u, 0x4Cu,
+        0,0,0,0,0,0,0,0,0,0,0,0,
+        0x50u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x82u,
+        0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x83u, 0x40u,
+        0xA3u, 0x01u, 0x25u,
+        0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
+        0x40u
+    };
+    /* Valid four-element recipients appear on both sides of the selected
+     * recipient. Their nested direct recipients must also be decoded. */
+    uint8_t nestedSiblings[] = {
+        0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
+        0xA1u, 0x05u, 0x4Cu,
+        0,0,0,0,0,0,0,0,0,0,0,0,
+        0x50u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x83u,
+        0x84u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x84u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
+    };
+    uint8_t tstrSibling[] = {
+        0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
+        0xA1u, 0x05u, 0x4Cu,
+        0,0,0,0,0,0,0,0,0,0,0,0,
+        0x50u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x82u,
+        0x83u, 0x40u, 0xA2u, 0x61u, 0x78u, 0x00u,
+        0x01u, 0x25u, 0x40u,
+        0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
+    };
 
     TEST_LOG("  [Encrypt multi dup recipient unprotected label]\n");
 
@@ -13270,6 +16257,27 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         &hdr, plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "dup recipient unprotected label rejected (encrypt)");
+
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0, unselectedMsg,
+        sizeof(unselectedMsg), NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL,
+                "dup label in unselected recipient ignored (encrypt)");
+
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 1, nestedSiblings,
+        sizeof(nestedSiblings), NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL,
+                "nested unselected recipients accepted (encrypt)");
+
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 1, tstrSibling,
+        sizeof(tstrSibling), NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL,
+                "tstr field in unselected recipient accepted (encrypt)");
 }
 
 static void test_cose_encrypt_direct_empty_protected(void)
@@ -13292,6 +16300,10 @@ static void test_cose_encrypt_direct_empty_protected(void)
     size_t i;
     size_t n = 0;
     uint64_t tag = 0;
+    const uint8_t* recipProt = NULL;
+    size_t recipProtLen = 0;
+    WOLFCOSE_HDR recipHdr;
+    WOLFCOSE_HDR_STATE recipState;
 
     TEST_LOG("  [Encrypt direct alg empty protected]\n");
 
@@ -13335,6 +16347,19 @@ static void test_cose_encrypt_direct_empty_protected(void)
         }
         TEST_ASSERT((ret == 0) && (out[ctx.idx] == 0x40u),
                     "direct recipient protected is empty bstr");
+        if (ret == 0) {
+            ret = wc_CBOR_DecodeBstr(&ctx, &recipProt, &recipProtLen);
+        }
+        (void)XMEMSET(&recipHdr, 0, sizeof(recipHdr));
+        if (ret == 0) {
+            ret = wolfCose_DecodeProtectedHdr(recipProt, recipProtLen,
+                                              &recipHdr, &recipState);
+        }
+        if (ret == 0) {
+            ret = wolfCose_DecodeUnprotectedHdr(&ctx, &recipHdr, &recipState);
+        }
+        TEST_ASSERT((ret == 0) && (recipHdr.alg == WOLFCOSE_ALG_DIRECT),
+                    "direct recipient alg is unprotected");
     }
 
     if (ret == 0) {
@@ -13377,6 +16402,19 @@ static void test_cose_encrypt_recipient_alg_checks(void)
         0x50u, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
         0x81u, 0x83u, 0x40u, 0xA0u, 0xF6u
     };
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
+    defined(HAVE_HKDF)
+    /* ECDH-ES declared only in the recipient unprotected bucket, without an
+     * ephemeral key. It must not fall through to direct symmetric decrypt. */
+    uint8_t unprotectedEcdh[] = {
+        0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
+        0xA1u, 0x05u, 0x4Cu, 0,0,0,0,0,0,0,0,0,0,0,0,
+        0x50u, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x81u, 0x83u, 0x40u,
+        0xA1u, 0x01u, 0x38u, 0x18u, /* {alg: ECDH-ES + HKDF-256} */
+        0x40u
+    };
+#endif
 
     TEST_LOG("  [Encrypt recipient alg checks]\n");
 
@@ -13407,6 +16445,200 @@ static void test_cose_encrypt_recipient_alg_checks(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                 "recipient algId policy enforced");
+
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0, direct, sizeof(direct),
+        NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "missing recipient alg rejected");
+
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
+    defined(HAVE_HKDF)
+    recipient.algId = WOLFCOSE_ALG_UNSET;
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0, unprotectedEcdh,
+        sizeof(unprotectedEcdh), NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "unparsed unprotected ECDH recipient rejected");
+#endif
+}
+
+static void test_cose_encrypt_direct_recipient_value(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    uint8_t cek[16] = {0};
+    uint8_t iv[12] = {0};
+    uint8_t scratch[512];
+    uint8_t out[256];
+    uint8_t msg[258];
+    uint8_t plaintext[64];
+    size_t outLen = 0u;
+    size_t plaintextLen = 0u;
+    const uint8_t payload[] = "direct recipient value";
+    int ret;
+
+    TEST_LOG("  [Encrypt direct recipient transported-key value]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    (void)wc_CoseKey_SetSymmetric(&key, cek, sizeof(cek));
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0u;
+
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1u,
+        WOLFCOSE_ALG_A128GCM, iv, sizeof(iv),
+        payload, sizeof(payload) - 1u,
+        NULL, 0u, NULL, 0u,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, NULL);
+    TEST_ASSERT(ret == 0, "direct value base encrypt");
+    TEST_ASSERT((outLen > 0u) && (out[outLen - 1u] == 0x40u),
+                "direct value base empty bstr");
+    if ((ret != 0) || (outLen == 0u) || (out[outLen - 1u] != 0x40u)) {
+        wc_CoseKey_Free(&key);
+        return;
+    }
+
+    (void)XMEMCPY(msg, out, outLen);
+    msg[outLen - 1u] = WOLFCOSE_CBOR_NULL;
+    plaintextLen = 0u;
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, outLen,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) &&
+                (plaintextLen == (sizeof(payload) - 1u)) &&
+                (XMEMCMP(plaintext, payload, plaintextLen) == 0),
+                "direct value accepts null");
+
+    (void)XMEMCPY(msg, out, outLen);
+    msg[outLen - 1u] = 0x00u;
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, outLen,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE,
+                "direct value rejects integer");
+
+    (void)XMEMCPY(msg, out, outLen);
+    msg[outLen - 1u] = 0x41u;
+    msg[outLen] = 0xA5u;
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, outLen + 1u,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "direct value rejects nonempty bstr");
+
+    wc_CoseKey_Free(&key);
+}
+
+static void test_cose_encrypt_rejects_float_ciphertext(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX ctx;
+    const uint8_t cek[16] = {0};
+    const uint8_t iv[12] = {0};
+    const uint8_t payload[] = "float ciphertext";
+    const uint8_t* protectedData = NULL;
+    const uint8_t* detachedCt = NULL;
+    size_t protectedLen = 0u;
+    size_t detachedCtLen = 0u;
+    uint8_t scratch[512];
+    uint8_t out[256];
+    uint8_t msg[272];
+    uint8_t plaintext[64];
+    size_t outLen = 0u;
+    size_t plaintextLen = 0u;
+    size_t arrayCount = 0u;
+    size_t ciphertextStart = 0u;
+    size_t ciphertextEnd = 0u;
+    size_t suffixLen = 0u;
+    uint64_t tag = 0u;
+    static const uint8_t floatValues[3][9] = {
+        {0xF9u, 0x00u, 0x16u},
+        {0xFAu, 0x00u, 0x00u, 0x00u, 0x16u},
+        {0xFBu, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x16u}
+    };
+    static const size_t floatLens[3] = {3u, 5u, 9u};
+    size_t i;
+    int ret;
+
+    TEST_LOG("  [Encrypt rejects float ciphertext]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, cek, sizeof(cek));
+    TEST_ASSERT(ret == 0, "float ciphertext key set");
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0u;
+
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1u,
+        WOLFCOSE_ALG_A128GCM, iv, sizeof(iv),
+        payload, sizeof(payload) - 1u,
+        NULL, 0u, NULL, 0u,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, NULL);
+    TEST_ASSERT(ret == 0, "float ciphertext base encrypt");
+
+    ctx.cbuf = out;
+    ctx.bufSz = outLen;
+    ctx.idx = 0u;
+    if ((ret == 0) && (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
+        ret = wc_CBOR_DecodeTag(&ctx, &tag);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &arrayCount);
+    }
+    if ((ret == 0) && (arrayCount != 4u)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &protectedData, &protectedLen);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_Skip(&ctx);
+    }
+    if (ret == 0) {
+        ciphertextStart = ctx.idx;
+        ret = wc_CBOR_DecodeBstr(&ctx, &detachedCt, &detachedCtLen);
+        ciphertextEnd = ctx.idx;
+    }
+    if ((ret == 0) && (ciphertextEnd <= outLen)) {
+        suffixLen = outLen - ciphertextEnd;
+    }
+    else {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    TEST_ASSERT(ret == 0, "float ciphertext locate body");
+    if (ret != 0) {
+        wc_CoseKey_Free(&key);
+        return;
+    }
+
+    for (i = 0u; i < 3u; i++) {
+        size_t msgLen;
+
+        (void)XMEMCPY(msg, out, ciphertextStart);
+        (void)XMEMCPY(&msg[ciphertextStart], floatValues[i], floatLens[i]);
+        (void)XMEMCPY(&msg[ciphertextStart + floatLens[i]],
+                      &out[ciphertextEnd], suffixLen);
+        msgLen = ciphertextStart + floatLens[i] + suffixLen;
+        plaintextLen = 0u;
+
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, msgLen,
+            detachedCt, detachedCtLen, NULL, 0u,
+            scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE,
+                    "Encrypt rejects float ciphertext");
+    }
+
+    wc_CoseKey_Free(&key);
 }
 
 static void test_cose_encrypt_multi_per_recipient(void)
@@ -13423,6 +16655,7 @@ static void test_cose_encrypt_multi_per_recipient(void)
     size_t plaintextLen;
     int ret;
     size_t r;
+    size_t algOffsets[2] = {0u, 0u};
     const uint8_t payload[] = "multi recipient direct";
 
     TEST_LOG("  [Encrypt multi per-recipient roundtrip]\n");
@@ -13442,6 +16675,12 @@ static void test_cose_encrypt_multi_per_recipient(void)
         scratch, sizeof(scratch), out, sizeof(out), &outLen, NULL);
     TEST_ASSERT(ret == 0, "multi encrypt create");
 
+    for (r = 0u; (ret == 0) && (r < 2u); r++) {
+        ret = find_recipient_direct_alg(out, outLen, 3u, r,
+                                        &algOffsets[r]);
+        TEST_ASSERT(ret == 0, "locate direct encrypt recipient alg");
+    }
+
     /* Every encoded recipient must decrypt to the original plaintext. */
     for (r = 0; (ret == 0) && (r < 2u); r++) {
         memset(&hdr, 0, sizeof(hdr));
@@ -13455,6 +16694,24 @@ static void test_cose_encrypt_multi_per_recipient(void)
                     (memcmp(plaintext, payload, plaintextLen) == 0),
                     "multi recipient payload match");
     }
+
+    if (ret == 0) {
+        out[algOffsets[1]] = 0x22u; /* A128KW */
+        ret = wc_CoseEncrypt_Decrypt(&recipients[0], 0, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                    "encrypt rejects later mixed recipient mode");
+        out[algOffsets[1]] = 0x25u; /* direct */
+        ret = WOLFCOSE_SUCCESS;
+        out[algOffsets[0]] = 0x22u; /* A128KW */
+        ret = wc_CoseEncrypt_Decrypt(&recipients[1], 1, out, outLen,
+            NULL, 0, NULL, 0, scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                    "encrypt rejects earlier mixed recipient mode");
+        out[algOffsets[0]] = 0x25u; /* direct */
+    }
 }
 #endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
@@ -13463,9 +16720,11 @@ static void test_cose_protected_hdr_content_type(void)
     int ret;
     WOLFCOSE_HDR hdr;
     WOLFCOSE_HDR_STATE hdrState;
+    WOLFCOSE_CBOR_CTX ctx;
     uint8_t ctHdr[] = {0xA1u, 0x03u, 0x18u, 0x32u}; /* {3: 50} */
     uint8_t ctTstr[] = {0xA1u, 0x03u, 0x69u,
                          'a','p','p','l','i','c','a','t','e'};
+    uint8_t ctNegative[] = {0xA1u, 0x03u, 0x20u}; /* {3: -1} */
 
     TEST_LOG("  [Protected Header: content-type]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -13474,12 +16733,62 @@ static void test_cose_protected_hdr_content_type(void)
                 "DecodeProtectedHdr content-type uint");
     TEST_ASSERT(hdr.contentType == 50,
                 "DecodeProtectedHdr stores content-type");
+    TEST_ASSERT((hdr.flags &
+                 WOLFCOSE_HDR_FLAG_CONTENT_TYPE_UNPROTECTED) == 0u,
+                "protected content-type marked authenticated");
 
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(ctTstr, sizeof(ctTstr), &hdr,
                                       &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr tolerates tstr content-type");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(ctNegative, sizeof(ctNegative), &hdr,
+                                      &hdrState);
+    TEST_ASSERT(ret != WOLFCOSE_SUCCESS,
+                "DecodeProtectedHdr rejects negative content-type");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(NULL, 0, &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "initialize empty protected header state");
+    ctx.cbuf = ctHdr;
+    ctx.bufSz = sizeof(ctHdr);
+    ctx.idx = 0;
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeUnprotectedHdr content-type uint");
+    TEST_ASSERT(hdr.contentType == 50,
+                "DecodeUnprotectedHdr stores content-type");
+    TEST_ASSERT((hdr.flags &
+                 WOLFCOSE_HDR_FLAG_CONTENT_TYPE_UNPROTECTED) != 0u,
+                "unprotected content-type provenance retained");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(NULL, 0, &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "reinitialize empty protected header state");
+    ctx.cbuf = ctTstr;
+    ctx.bufSz = sizeof(ctTstr);
+    ctx.idx = 0;
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "DecodeUnprotectedHdr tolerates tstr content-type");
+    TEST_ASSERT((hdr.flags &
+                 WOLFCOSE_HDR_FLAG_CONTENT_TYPE_UNPROTECTED) != 0u,
+                "unprotected tstr content-type provenance retained");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(NULL, 0, &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "reinitialize protected state for invalid content-type");
+    ctx.cbuf = ctNegative;
+    ctx.bufSz = sizeof(ctNegative);
+    ctx.idx = 0;
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
+    TEST_ASSERT(ret != WOLFCOSE_SUCCESS,
+                "DecodeUnprotectedHdr rejects negative content-type");
 }
 
 static void test_cose_protected_hdr_tstr_label(void)
@@ -13686,9 +16995,27 @@ static void test_cose_sign1_alg_curve_mismatch(void)
     TEST_ASSERT(ret == 0, "ecc keygen P-256");
 
     (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P384, &eccKey);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "reject P-256 key declared as P-384");
+
     ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
     TEST_ASSERT(ret == 0, "set ECC key P-256");
 
+    /* Do not trust a declaration changed after key attachment. */
+    key.crv = WOLFCOSE_CRV_P384;
+    ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES384,
+        NULL, 0,
+        payload, sizeof(payload) - 1,
+        NULL, 0,
+        NULL, 0,
+        scratch, sizeof(scratch),
+        out, sizeof(out), &outLen,
+        &rng);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "Sign1 rejects mismatched attached ECC curve");
+
+    key.crv = WOLFCOSE_CRV_P256;
     /* Ask for ES384 with a P-256 key -> bad alg */
     ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES384,
         NULL, 0,
@@ -14171,6 +17498,16 @@ static void test_cose_build_sig_structure_context(void)
     TEST_ASSERT(sizeof(WOLFCOSE_CTX_MAC) == 3u &&
                 memcmp(WOLFCOSE_CTX_MAC, "MAC", 3) == 0,
                 "MAC context constant bytes");
+
+    ret = wolfCose_BuildToBeSignedMaced(
+        WOLFCOSE_CTX_SIGNATURE1, sizeof(WOLFCOSE_CTX_SIGNATURE1),
+        protectedHdr, sizeof(protectedHdr),
+        NULL, 0u,
+        NULL, 1u,
+        payload, sizeof(payload),
+        scratch, sizeof(scratch), &structLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+                "auth structure null aad with length rejected");
 }
 
 /* ----- Coverage boost: exercise multi-signer / multi-recipient paths
@@ -14573,7 +17910,12 @@ static void test_cose_key_kid_alg_roundtrip(void)
     (void)wc_CoseKey_Init(&dstKey);
     (void)wc_CoseKey_SetEcc(&dstKey, WOLFCOSE_CRV_P256, &dstEcc);
     ret = wc_CoseKey_Decode(&dstKey, encoded, encodedLen);
+#ifdef WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
+    TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED,
+                "key kidAlg private backend rejected");
+#else
     TEST_ASSERT(ret == 0, "key kidAlg decode");
+#endif
     TEST_ASSERT(dstKey.alg == WOLFCOSE_ALG_ES256,
                 "key kidAlg alg preserved");
     TEST_ASSERT(dstKey.kidLen == sizeof(kid) - 1,
@@ -15130,6 +18472,86 @@ static void test_cose_mac0_verify_short_key_rejected(void)
 }
 #endif
 
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL) && \
+    defined(WOLFCOSE_HAVE_HMAC256) && \
+    defined(WOLFCOSE_MAC0_CREATE) && defined(WOLFCOSE_MAC0_VERIFY) && \
+    defined(WOLFCOSE_MAC_CREATE) && defined(WOLFCOSE_MAC_VERIFY)
+static void test_cose_hmac_oversized_key_rejected(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    uint8_t keyData[32] = {0};
+    const uint8_t payloadData[] = "oversized HMAC key";
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0;
+    uint8_t mac0[256];
+    size_t mac0Len = 0;
+    uint8_t mac[256];
+    size_t macLen = 0;
+    uint8_t out[256];
+    size_t outLen = 0;
+    uint8_t scratch[256];
+    int ret;
+
+    TEST_LOG("  [HMAC oversized key rejected]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "oversized HMAC base key set");
+    recipient.algId = WOLFCOSE_ALG_DIRECT;
+    recipient.key = &key;
+    recipient.kid = NULL;
+    recipient.kidLen = 0;
+
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0, payloadData, sizeof(payloadData) - 1,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        mac0, sizeof(mac0), &mac0Len);
+    TEST_ASSERT(ret == 0, "oversized HMAC Mac0 baseline");
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payloadData, sizeof(payloadData) - 1,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        mac, sizeof(mac), &macLen);
+    TEST_ASSERT(ret == 0, "oversized HMAC Mac baseline");
+    if ((ret != 0) || (mac0Len == 0u) || (macLen == 0u)) {
+        wc_CoseKey_Free(&key);
+        return;
+    }
+
+    key.key.symm.keyLen = (size_t)UINT32_MAX + 1u;
+
+    ret = wc_CoseMac0_Create(&key, WOLFCOSE_ALG_HMAC_256_256,
+        NULL, 0, payloadData, sizeof(payloadData) - 1,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac0_Create rejects oversized HMAC key");
+
+    ret = wc_CoseMac0_Verify(&key, mac0, mac0Len,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac0_Verify rejects oversized HMAC key");
+
+    outLen = 0;
+    ret = wc_CoseMac_Create(&recipient, 1, WOLFCOSE_ALG_HMAC_256_256,
+        payloadData, sizeof(payloadData) - 1,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        out, sizeof(out), &outLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac_Create rejects oversized HMAC key");
+
+    ret = wc_CoseMac_Verify(&recipient, 0, mac, macLen,
+        NULL, 0, NULL, 0, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "Mac_Verify rejects oversized HMAC key");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
 #if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_CREATE)
 static void test_cose_mac0_create_key_alg_mismatch(void)
 {
@@ -15158,6 +18580,88 @@ static void test_cose_mac0_create_key_alg_mismatch(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                 "Mac0_Create rejects key->alg mismatch");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_VERIFY)
+static void test_cose_mac0_verify_unprotected_alg(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_HDR hdr;
+    Hmac hmac;
+    const uint8_t keyData[32] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
+    };
+    const uint8_t payloadData[] = "unprotected Mac0 alg";
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0u;
+    uint8_t macStruct[128];
+    size_t macStructLen = 0u;
+    uint8_t tag[WC_SHA256_DIGEST_SIZE];
+    uint8_t msg[256];
+    uint8_t scratch[256];
+    int ret;
+
+    TEST_LOG("  [Mac0_Verify unprotected alg]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "unprotected Mac0 alg key set");
+    key.alg = WOLFCOSE_ALG_HMAC_256_256;
+
+    ret = wolfCose_BuildToBeSignedMaced(
+        WOLFCOSE_CTX_MAC0, sizeof(WOLFCOSE_CTX_MAC0),
+        NULL, 0u, NULL, 0u, NULL, 0u,
+        payloadData, sizeof(payloadData) - 1u,
+        macStruct, sizeof(macStruct), &macStructLen);
+    TEST_ASSERT(ret == 0, "unprotected Mac0 alg structure");
+    ret = wc_HmacInit(&hmac, NULL, INVALID_DEVID);
+    TEST_ASSERT(ret == 0, "unprotected Mac0 alg hmac init");
+    if (ret == 0) {
+        ret = wc_HmacSetKey(&hmac, WC_SHA256, keyData, sizeof(keyData));
+    }
+    if (ret == 0) {
+        ret = wc_HmacUpdate(&hmac, macStruct, (word32)macStructLen);
+    }
+    if (ret == 0) { ret = wc_HmacFinal(&hmac, tag); }
+    TEST_ASSERT(ret == 0, "unprotected Mac0 alg tag");
+    (void)wc_HmacFree(&hmac);
+
+    enc.buf = msg;
+    enc.bufSz = sizeof(msg);
+    enc.idx = 0u;
+    if (ret == 0) { ret = wc_CBOR_EncodeTag(&enc, WOLFCOSE_TAG_MAC0); }
+    if (ret == 0) { ret = wc_CBOR_EncodeArrayStart(&enc, 4u); }
+    if (ret == 0) { ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u); }
+    if (ret == 0) { ret = wc_CBOR_EncodeMapStart(&enc, 1u); }
+    if (ret == 0) { ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_ALG); }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_HMAC_256_256);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, payloadData,
+                                 sizeof(payloadData) - 1u);
+    }
+    if (ret == 0) { ret = wc_CBOR_EncodeBstr(&enc, tag, sizeof(tag)); }
+    TEST_ASSERT(ret == 0, "unprotected Mac0 alg message");
+
+    ret = wc_CoseMac0_Verify(&key, msg, enc.idx,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == 0, "pinned unprotected Mac0 alg accepted");
+
+    key.alg = WOLFCOSE_ALG_UNSET;
+    ret = wc_CoseMac0_Verify(&key, msg, enc.idx,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "unpinned unprotected Mac0 alg rejected");
 
     wc_CoseKey_Free(&key);
 }
@@ -15192,6 +18696,102 @@ static void test_cose_encrypt0_key_alg_mismatch(void)
         out, sizeof(out), &outLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                 "Encrypt0_Encrypt rejects key->alg mismatch");
+
+    wc_CoseKey_Free(&key);
+}
+#endif
+
+#if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
+static void test_cose_encrypt0_decrypt_unprotected_alg(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_HDR hdr;
+    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX aadEnc;
+    Aes aes;
+    const uint8_t keyData[16] = {
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
+    };
+    const uint8_t iv[WOLFCOSE_AES_GCM_NONCE_SZ] = {
+        0x20, 0x21, 0x22, 0x23, 0x24, 0x25,
+        0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B
+    };
+    const uint8_t payloadData[] = "unprotected Encrypt0 alg";
+    uint8_t ciphertext[sizeof(payloadData) - 1u + WOLFCOSE_AES_GCM_TAG_SZ];
+    uint8_t aad[32];
+    uint8_t msg[256];
+    uint8_t scratch[256];
+    uint8_t plaintext[64];
+    size_t plaintextLen = 0u;
+    int aesInited = 0;
+    int ret;
+
+    TEST_LOG("  [Encrypt0_Decrypt unprotected alg]\n");
+
+    aadEnc.buf = aad;
+    aadEnc.bufSz = sizeof(aad);
+    aadEnc.idx = 0u;
+    ret = wc_CBOR_EncodeArrayStart(&aadEnc, 3u);
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeTstr(&aadEnc, WOLFCOSE_CTX_ENCRYPT0,
+                                 sizeof(WOLFCOSE_CTX_ENCRYPT0));
+    }
+    if (ret == 0) { ret = wc_CBOR_EncodeBstr(&aadEnc, NULL, 0u); }
+    if (ret == 0) { ret = wc_CBOR_EncodeBstr(&aadEnc, NULL, 0u); }
+    TEST_ASSERT(ret == 0, "unprotected Encrypt0 alg Enc_structure");
+
+    if (ret == 0) {
+        ret = wc_AesInit(&aes, NULL, INVALID_DEVID);
+        if (ret == 0) {
+            aesInited = 1;
+            ret = wc_AesGcmSetKey(&aes, keyData, sizeof(keyData));
+        }
+    }
+    if (ret == 0) {
+        ret = wc_AesGcmEncrypt(&aes, ciphertext, payloadData,
+            (word32)(sizeof(payloadData) - 1u), iv, (word32)sizeof(iv),
+            &ciphertext[sizeof(payloadData) - 1u],
+            (word32)WOLFCOSE_AES_GCM_TAG_SZ, aad, (word32)aadEnc.idx);
+    }
+    TEST_ASSERT(ret == 0, "unprotected Encrypt0 alg encrypt");
+    if (aesInited != 0) { (void)wc_AesFree(&aes); }
+
+    enc.buf = msg;
+    enc.bufSz = sizeof(msg);
+    enc.idx = 0u;
+    if (ret == 0) { ret = wc_CBOR_EncodeTag(&enc, WOLFCOSE_TAG_ENCRYPT0); }
+    if (ret == 0) { ret = wc_CBOR_EncodeArrayStart(&enc, 3u); }
+    if (ret == 0) { ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u); }
+    if (ret == 0) { ret = wc_CBOR_EncodeMapStart(&enc, 2u); }
+    if (ret == 0) { ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_ALG); }
+    if (ret == 0) { ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_A128GCM); }
+    if (ret == 0) { ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_IV); }
+    if (ret == 0) { ret = wc_CBOR_EncodeBstr(&enc, iv, sizeof(iv)); }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, ciphertext, sizeof(ciphertext));
+    }
+    TEST_ASSERT(ret == 0, "unprotected Encrypt0 alg message");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetSymmetric(&key, keyData, sizeof(keyData));
+    TEST_ASSERT(ret == 0, "unprotected Encrypt0 alg key set");
+    key.alg = WOLFCOSE_ALG_A128GCM;
+
+    ret = wc_CoseEncrypt0_Decrypt(&key, msg, enc.idx,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+        &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == 0, "pinned unprotected Encrypt0 alg accepted");
+    TEST_ASSERT((plaintextLen == (sizeof(payloadData) - 1u)) &&
+                (XMEMCMP(plaintext, payloadData, plaintextLen) == 0),
+                "unprotected Encrypt0 alg payload");
+
+    key.alg = WOLFCOSE_ALG_UNSET;
+    ret = wc_CoseEncrypt0_Decrypt(&key, msg, enc.idx,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+        &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "unpinned unprotected Encrypt0 alg rejected");
 
     wc_CoseKey_Free(&key);
 }
@@ -15293,6 +18893,87 @@ static void test_cose_sign1_verify_key_alg_mismatch(void)
 
     wc_CoseKey_Free(&signKey);
     wc_CoseKey_Free(&verifyKey);
+    (void)wc_ecc_free(&eccKey);
+    (void)wc_FreeRng(&rng);
+}
+
+static void test_cose_sign1_verify_unprotected_alg(void)
+{
+    WOLFCOSE_KEY key;
+    ecc_key eccKey;
+    WC_RNG rng;
+    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_HDR hdr;
+    const uint8_t payloadData[] = "unprotected Sign1 alg";
+    const uint8_t* payload = NULL;
+    size_t payloadLen = 0u;
+    uint8_t sigStruct[128];
+    size_t sigStructLen = 0u;
+    uint8_t hash[WC_SHA256_DIGEST_SIZE];
+    uint8_t signature[64];
+    size_t signatureLen = sizeof(signature);
+    uint8_t msg[256];
+    uint8_t scratch[256];
+    int ret;
+
+    TEST_LOG("  [Sign1_Verify unprotected alg]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == 0, "unprotected Sign1 alg rng");
+    ret = wc_ecc_init(&eccKey);
+    TEST_ASSERT(ret == 0, "unprotected Sign1 alg ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &eccKey);
+    TEST_ASSERT(ret == 0, "unprotected Sign1 alg keygen");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccKey);
+    TEST_ASSERT(ret == 0, "unprotected Sign1 alg key set");
+    key.alg = WOLFCOSE_ALG_ES256;
+
+    ret = wolfCose_BuildToBeSignedMaced(
+        WOLFCOSE_CTX_SIGNATURE1, sizeof(WOLFCOSE_CTX_SIGNATURE1),
+        NULL, 0u, NULL, 0u, NULL, 0u,
+        payloadData, sizeof(payloadData) - 1u,
+        sigStruct, sizeof(sigStruct), &sigStructLen);
+    TEST_ASSERT(ret == 0, "unprotected Sign1 alg structure");
+    ret = wc_Hash(WC_HASH_TYPE_SHA256, sigStruct, (word32)sigStructLen,
+                  hash, sizeof(hash));
+    TEST_ASSERT(ret == 0, "unprotected Sign1 alg hash");
+    ret = wolfCose_EccSignRaw(hash, sizeof(hash), signature, &signatureLen,
+        32u, WC_HASH_TYPE_SHA256, &rng, &eccKey);
+    TEST_ASSERT(ret == 0, "unprotected Sign1 alg signature");
+
+    enc.buf = msg;
+    enc.bufSz = sizeof(msg);
+    enc.idx = 0u;
+    ret = wc_CBOR_EncodeTag(&enc, WOLFCOSE_TAG_SIGN1);
+    if (ret == 0) { ret = wc_CBOR_EncodeArrayStart(&enc, 4u); }
+    if (ret == 0) { ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u); }
+    if (ret == 0) { ret = wc_CBOR_EncodeMapStart(&enc, 1u); }
+    if (ret == 0) { ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_ALG); }
+    if (ret == 0) { ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ES256); }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, payloadData,
+                                 sizeof(payloadData) - 1u);
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_EncodeBstr(&enc, signature, signatureLen);
+    }
+    TEST_ASSERT(ret == 0, "unprotected Sign1 alg message");
+
+    ret = wc_CoseSign1_Verify(&key, msg, enc.idx,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == 0, "pinned unprotected Sign1 alg accepted");
+
+    key.alg = WOLFCOSE_ALG_UNSET;
+    ret = wc_CoseSign1_Verify(&key, msg, enc.idx,
+        NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+        &hdr, &payload, &payloadLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "unpinned unprotected Sign1 alg rejected");
+
+    wc_CoseKey_Free(&key);
     (void)wc_ecc_free(&eccKey);
     (void)wc_FreeRng(&rng);
 }
@@ -15449,6 +19130,8 @@ static void test_cose_key_decode_symmetric_missing_k(void)
     int ret;
     /* {1: 4} -> kty=Symmetric but no k label (-1). */
     uint8_t noK[] = {0xA1u, 0x01u, 0x04u};
+    /* {1: 4, -1: h''} -> kty=Symmetric with an empty k value. */
+    uint8_t emptyK[] = {0xA2u, 0x01u, 0x04u, 0x20u, 0x40u};
 
     TEST_LOG("  [CoseKey_Decode symmetric without k]\n");
 
@@ -15456,6 +19139,11 @@ static void test_cose_key_decode_symmetric_missing_k(void)
     ret = wc_CoseKey_Decode(&key, noK, sizeof(noK));
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "CoseKey_Decode rejects symmetric w/o k");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, emptyK, sizeof(emptyK));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "CoseKey_Decode rejects empty symmetric k");
 }
 
 #if defined(WOLFCOSE_HAVE_ES256)
@@ -15726,19 +19414,22 @@ static void test_internal_helpers(void)
         ecc_key dummyKey;
 
         /* EccSignRaw with NULL parameters */
-        ret = wolfCose_EccSignRaw(NULL, 32, sigBuf, &sigLen, 32, NULL, NULL);
+        ret = wolfCose_EccSignRaw(NULL, 32, sigBuf, &sigLen, 32,
+                                  WC_HASH_TYPE_SHA256, NULL, NULL);
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "EccSignRaw NULL hash");
 
-        ret = wolfCose_EccSignRaw(hash, 32, NULL, &sigLen, 32, NULL, NULL);
+        ret = wolfCose_EccSignRaw(hash, 32, NULL, &sigLen, 32,
+                                  WC_HASH_TYPE_SHA256, NULL, NULL);
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "EccSignRaw NULL sigBuf");
 
-        ret = wolfCose_EccSignRaw(hash, 32, sigBuf, NULL, 32, NULL, NULL);
+        ret = wolfCose_EccSignRaw(hash, 32, sigBuf, NULL, 32,
+                                  WC_HASH_TYPE_SHA256, NULL, NULL);
         TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "EccSignRaw NULL sigLen");
 
         /* EccSignRaw with buffer too small */
         sigLen = 10;  /* Too small for 64-byte sig */
-        ret = wolfCose_EccSignRaw(hash, 32, sigBuf, &sigLen, 32, &dummyRng,
-                                  &dummyKey);
+        ret = wolfCose_EccSignRaw(hash, 32, sigBuf, &sigLen, 32,
+                                  WC_HASH_TYPE_SHA256, &dummyRng, &dummyKey);
         TEST_ASSERT(ret == WOLFCOSE_E_BUFFER_TOO_SMALL, "EccSignRaw buf small");
 
         /* EccVerifyRaw with NULL parameters */
@@ -16163,6 +19854,48 @@ static void test_force_failure_crypto(void)
         (void)wc_ed25519_free(&edKey);
         wc_CoseKey_Free(&key);
     }
+
+    /* Verify private-only import is rolled back if public derivation fails. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY decodedKey;
+        ed25519_key decodedEdKey;
+        WOLFCOSE_CBOR_CTX enc;
+        uint8_t keyBuf[128];
+        uint8_t seed[ED25519_KEY_SIZE] = {1u};
+        size_t i;
+        int cleared = 1;
+
+        enc.buf = keyBuf;
+        enc.bufSz = sizeof(keyBuf);
+        enc.idx = 0;
+        (void)wc_CBOR_EncodeMapStart(&enc, 3);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_ED25519);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_D);
+        (void)wc_CBOR_EncodeBstr(&enc, seed, sizeof(seed));
+
+        (void)wc_ed25519_init(&decodedEdKey);
+        (void)wc_CoseKey_Init(&decodedKey);
+        (void)wc_CoseKey_SetEd25519(&decodedKey, &decodedEdKey);
+        wolfForceFailure_Set(WOLF_FAIL_ED25519_MAKE_PUB);
+        ret = wc_CoseKey_Decode(&decodedKey, keyBuf, enc.idx);
+        TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO,
+                    "Ed25519 make public forced failure");
+        for (i = 0; i < ED25519_KEY_SIZE; i++) {
+            if (decodedEdKey.k[i] != 0u) {
+                cleared = 0;
+            }
+        }
+        TEST_ASSERT(cleared == 1, "Ed25519 failed derivation clears seed");
+        TEST_ASSERT(decodedEdKey.privKeySet == 0,
+                    "Ed25519 failed derivation clears private flag");
+        TEST_ASSERT(decodedKey.hasPrivate == 0,
+                    "Ed25519 failed derivation leaves wrapper public");
+        (void)wc_ed25519_free(&decodedEdKey);
+    }
 #endif /* WOLFCOSE_HAVE_EDDSA */
 
 #if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
@@ -16436,6 +20169,48 @@ static void test_force_failure_crypto(void)
         (void)wc_ed448_free(&edKey);
         wc_CoseKey_Free(&key);
     }
+
+    /* Verify private-only import is rolled back if public derivation fails. */
+    /* empty-brace-scan: allow - test-local temporary scope */
+    {
+        WOLFCOSE_KEY decodedKey;
+        ed448_key decodedEdKey;
+        WOLFCOSE_CBOR_CTX enc;
+        uint8_t keyBuf[128];
+        uint8_t seed[ED448_KEY_SIZE] = {1u};
+        size_t i;
+        int cleared = 1;
+
+        enc.buf = keyBuf;
+        enc.bufSz = sizeof(keyBuf);
+        enc.idx = 0;
+        (void)wc_CBOR_EncodeMapStart(&enc, 3);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_CRV);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_CRV_ED448);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_D);
+        (void)wc_CBOR_EncodeBstr(&enc, seed, sizeof(seed));
+
+        (void)wc_ed448_init(&decodedEdKey);
+        (void)wc_CoseKey_Init(&decodedKey);
+        (void)wc_CoseKey_SetEd448(&decodedKey, &decodedEdKey);
+        wolfForceFailure_Set(WOLF_FAIL_ED448_MAKE_PUB);
+        ret = wc_CoseKey_Decode(&decodedKey, keyBuf, enc.idx);
+        TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO,
+                    "Ed448 make public forced failure");
+        for (i = 0; i < ED448_KEY_SIZE; i++) {
+            if (decodedEdKey.k[i] != 0u) {
+                cleared = 0;
+            }
+        }
+        TEST_ASSERT(cleared == 1, "Ed448 failed derivation clears seed");
+        TEST_ASSERT(decodedEdKey.privKeySet == 0,
+                    "Ed448 failed derivation clears private flag");
+        TEST_ASSERT(decodedKey.hasPrivate == 0,
+                    "Ed448 failed derivation leaves wrapper public");
+        (void)wc_ed448_free(&decodedEdKey);
+    }
 #endif /* WOLFCOSE_HAVE_ED448 */
 
 #if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_HKDF)
@@ -16513,7 +20288,15 @@ static void test_force_failure_crypto(void)
                                         &decodedEccKey);
                 wolfForceFailure_Set(WOLF_FAIL_ECC_IMPORT_X963);
                 ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
+#ifdef WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
+                TEST_ASSERT(ret == WOLFCOSE_E_UNSUPPORTED,
+                            "ECC import backend rejected before failure hook");
+                TEST_ASSERT(wolfForceFailure_Get() == WOLF_FAIL_ECC_IMPORT_X963,
+                            "ECC backend rejection preserves failure hook");
+                wolfForceFailure_Clear();
+#else
                 TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ECC import forced failure");
+#endif
                 (void)wc_ecc_free(&decodedEccKey);
             }
         }
@@ -16603,6 +20386,11 @@ static void test_force_failure_crypto(void)
         uint8_t keyBuf[8192];
         uint8_t impSeed[WOLFCOSE_MLDSA_SEED_SZ];
         size_t keyLen;
+        wc_Shake emptyShake = {0};
+#if !defined(WOLFSSL_MLDSA_DYNAMIC_KEYS)
+        size_t i;
+#endif
+        int privateCleared = 1;
         WOLFCOSE_KEY decodedKey;
         wc_MlDsaKey decodedDlKey;
 
@@ -16625,14 +20413,67 @@ static void test_force_failure_crypto(void)
             ret = wc_CoseKey_Encode(&key, keyBuf, sizeof(keyBuf), &keyLen);
             if (ret == 0) {
                 /* Test ML-DSA import failure - must pre-allocate internal key */
-                wc_MlDsaKey_Init(&decodedDlKey, NULL, INVALID_DEVID);
+                wc_MlDsaKey_Init(&decodedDlKey, (void*)&decodedKey,
+                    INVALID_DEVID);
+#ifdef WOLF_CRYPTO_CB
+                decodedDlKey.devCtx = (void*)&dlKey;
+#endif
+#ifdef WOLF_PRIVATE_KEY_ID
+                decodedDlKey.id[0] = 0x5au;
+                decodedDlKey.idLen = 1;
+#endif
                 wc_MlDsaKey_SetParams(&decodedDlKey, WC_ML_DSA_44);
-                (void)wc_CoseKey_Init(&decodedKey);
-                (void)wc_CoseKey_SetMlDsa(&decodedKey, WOLFCOSE_ALG_ML_DSA_44,
-                                          &decodedDlKey);
-                wolfForceFailure_Set(WOLF_FAIL_MLDSA_IMPORT_PRIV);
-                ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
-                TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO, "ML-DSA import priv forced failure");
+                ret = wc_MlDsaKey_MakeKeyFromSeed(&decodedDlKey, impSeed);
+                TEST_ASSERT(ret == 0, "ML-DSA rollback key setup");
+                if (ret == 0) {
+                    (void)wc_CoseKey_Init(&decodedKey);
+                    (void)wc_CoseKey_SetMlDsa(&decodedKey,
+                        WOLFCOSE_ALG_ML_DSA_44, &decodedDlKey);
+                    wolfForceFailure_Set(WOLF_FAIL_MLDSA_IMPORT_PRIV);
+                    ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
+                    TEST_ASSERT(ret == WOLFCOSE_E_CRYPTO,
+                                "ML-DSA import priv forced failure");
+                    TEST_ASSERT(XMEMCMP(&decodedDlKey.shake, &emptyShake,
+                                sizeof(emptyShake)) == 0,
+                                "ML-DSA failed decode clears SHAKE state");
+#if defined(WOLFSSL_MLDSA_DYNAMIC_KEYS)
+                    privateCleared = (decodedDlKey.k == NULL) ? 1 : 0;
+#else
+                    for (i = 0u; i < sizeof(decodedDlKey.k); i++) {
+                        if (decodedDlKey.k[i] != 0u) {
+                            privateCleared = 0;
+                        }
+                    }
+#endif
+                    TEST_ASSERT(privateCleared == 1,
+                                "ML-DSA failed decode clears private key");
+                    TEST_ASSERT(decodedDlKey.prvKeySet == 0u,
+                                "ML-DSA failed decode clears private flag");
+                    TEST_ASSERT((decodedKey.hasPrivate == 0u) &&
+                                (decodedKey.mldsaSeed == NULL) &&
+                                (decodedKey.mldsaSeedLen == 0u),
+                                "ML-DSA failed decode clears wrapper state");
+                    TEST_ASSERT((decodedKey.attachedType ==
+                                    WOLFCOSE_ATT_MLDSA) &&
+                                (decodedKey.key.mldsa == &decodedDlKey),
+                                "ML-DSA failed decode preserves attachment");
+                    TEST_ASSERT(decodedDlKey.heap == (void*)&decodedKey,
+                                "ML-DSA failed decode preserves heap hint");
+#ifdef WOLF_CRYPTO_CB
+                    TEST_ASSERT(decodedDlKey.devCtx == (void*)&dlKey,
+                                "ML-DSA failed decode preserves device context");
+#endif
+#ifdef WOLF_PRIVATE_KEY_ID
+                    TEST_ASSERT((decodedDlKey.idLen == 1) &&
+                                (decodedDlKey.id[0] == 0x5au),
+                                "ML-DSA failed decode preserves key identifier");
+#endif
+                    ret = wc_CoseKey_Decode(&decodedKey, keyBuf, keyLen);
+                    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) &&
+                                (decodedKey.hasPrivate == 1u) &&
+                                (decodedKey.key.mldsa == &decodedDlKey),
+                                "ML-DSA failed decode key is reusable");
+                }
                 (void)wc_MlDsaKey_Free(&decodedDlKey);
             }
         }
@@ -19775,6 +23616,9 @@ int test_cose(void)
 #if defined(WOLFCOSE_HAVE_ES384) || defined(WOLFCOSE_HAVE_ES512)
     test_cose_key_encode_ecc_raw_curves();
 #endif
+#ifdef WOLFCOSE_HAVE_ES384
+    test_cose_key_encode_ecc_curve_mismatch();
+#endif
 #endif
     test_cose_key_encode_size_exact();
 #if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448) || \
@@ -19791,6 +23635,12 @@ int test_cose(void)
     test_cose_key_ed25519();
 #endif
     test_cose_key_symmetric();
+#if defined(WOLFCOSE_KEY_DECODE)
+    test_cose_key_operations();
+    test_cose_key_akp_alg_metadata();
+    test_cose_key_akp_public_metadata();
+    test_cose_key_akp_seed_metadata();
+#endif
 #if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFSSL_KEY_GEN)
     test_cose_key_rsa();
     test_cose_key_rsa_scratch_scrubbed();
@@ -19870,6 +23720,7 @@ int test_cose(void)
 #ifdef WOLFCOSE_HAVE_AESCCM
     test_cose_encrypt0_aes_ccm();
     test_cose_aes_ccm_all_params();
+    test_cose_aes_ccm_l2_payload_limit();
 #endif
 
     /* RSA-PSS signature tests */
@@ -19877,6 +23728,11 @@ int test_cose(void)
     test_cose_sign1_pss("PS256", WOLFCOSE_ALG_PS256);
     test_cose_sign1_pss("PS384", WOLFCOSE_ALG_PS384);
     test_cose_sign1_pss("PS512", WOLFCOSE_ALG_PS512);
+    test_cose_rsa_pss_minimum_key_size();
+#endif
+#if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFCOSE_SIGN1_SIGN) && \
+    (defined(WOLF_CRYPTO_CB) || defined(WOLFSSL_MICROCHIP_TA100))
+    test_cose_rsa_pss_opaque_key_size();
 #endif
 
     /* ML-DSA signature tests */
@@ -19889,6 +23745,7 @@ int test_cose(void)
 
     /* Mac0 basic tests */
 #if defined(WOLFCOSE_HAVE_HMAC256)
+    test_cose_mac_wrong_tag_lengths();
     test_cose_mac0_hmac256();
     test_cose_mac0_short_hmac_key();
 #ifdef WOLFCOSE_MAC
@@ -19940,6 +23797,7 @@ int test_cose(void)
     test_cose_sign_ml_dsa_level_mismatch();
 #endif
     test_cose_sign_verify_key_alg_mismatch();
+    test_cose_sign_verify_unprotected_alg();
     test_cose_encrypt0_decrypt_key_alg_mismatch();
     test_cose_mac0_verify_key_alg_mismatch();
     test_cose_sign_with_aad();
@@ -19956,13 +23814,16 @@ int test_cose(void)
     test_cose_encrypt_with_aad();
     test_cose_encrypt_a256gcm();
     test_cose_encrypt_direct_key_alg_pin_roundtrip();
+    test_cose_encrypt_unprotected_body_alg();
     test_cose_encrypt_unset_alg_rejected();
     test_cose_encrypt_direct_alg_id_key_alg_roundtrip();
     test_cose_encrypt_direct_multi_key_alg_mismatch();
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
     test_cose_encrypt_ecdh_es_kid_and_alg_pin();
     test_cose_encrypt_ecdh_es_ephemeral_crv_narrowing();
+    test_cose_encrypt_ecdh_es_malformed_ephemeral_point();
     test_cose_encrypt_ecdh_es_hkdf_256();
+    test_cose_encrypt_ecdh_es_long_recipient_protected();
     test_cose_encrypt_ecdh_es_wrong_key();
     test_cose_encrypt_ecdh_es_p384();
     test_cose_encrypt_ecdh_es_wrong_key_type();
@@ -19971,6 +23832,7 @@ int test_cose(void)
 #endif
 #endif
     test_cose_encrypt_a128kw();
+    test_cose_encrypt_a128kw_unprotected_alg();
     test_cose_encrypt_a128kw_multi_recipient();
     test_cose_encrypt_a192kw();
     test_cose_encrypt_a256kw();
@@ -19986,6 +23848,10 @@ int test_cose(void)
 #if defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)
     test_cose_mac_multi_recipient();
     test_cose_mac_verify_algid_policy();
+    test_cose_mac_verify_unprotected_body_alg();
+    test_cose_mac_rejects_float_payload();
+    test_cose_mac_rejects_float_recipient_ciphertext();
+    test_cose_mac_rejects_nonempty_recipient_ciphertext();
     test_cose_mac_multi_recipient_direct_empty_protected();
     test_cose_mac_multi_recipient_key_alg_mismatch();
     test_cose_mac_with_aad();
@@ -20079,6 +23945,11 @@ int test_cose(void)
     test_cose_protected_hdr_trailing();
     test_cose_protected_hdr_kid();
     test_cose_oversized_int_narrowing();
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL) && \
+    (defined(WOLFCOSE_HAVE_EDDSA) || \
+     defined(WOLFCOSE_HAVE_RSA_PRIVATE_KEY))
+    test_cose_key_word32_overflow_guard();
+#endif
 #if defined(WOLFCOSE_SIGN) && defined(WOLFCOSE_HAVE_ES256)
     test_cose_sign_dup_signer_unprot_hdr();
 #endif
@@ -20090,6 +23961,8 @@ int test_cose(void)
     test_cose_encrypt_dup_recipient_unprot_hdr();
     test_cose_encrypt_direct_empty_protected();
     test_cose_encrypt_recipient_alg_checks();
+    test_cose_encrypt_direct_recipient_value();
+    test_cose_encrypt_rejects_float_ciphertext();
     test_cose_encrypt_multi_per_recipient();
 #endif
     test_cose_protected_hdr_content_type();
@@ -20181,12 +24054,25 @@ int test_cose(void)
     defined(WOLFCOSE_MAC0_VERIFY)
     test_cose_mac0_verify_short_key_rejected();
 #endif
+#if defined(WOLFCOSE_HAVE_HMAC256) && defined(WOLFCOSE_MAC0_VERIFY)
+    test_cose_mac0_verify_unprotected_alg();
+#endif
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL) && \
+    defined(WOLFCOSE_HAVE_HMAC256) && \
+    defined(WOLFCOSE_MAC0_CREATE) && defined(WOLFCOSE_MAC0_VERIFY) && \
+    defined(WOLFCOSE_MAC_CREATE) && defined(WOLFCOSE_MAC_VERIFY)
+    test_cose_hmac_oversized_key_rejected();
+#endif
 #if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
     test_cose_encrypt0_key_alg_mismatch();
+#endif
+#if defined(WOLFCOSE_HAVE_AESGCM) && defined(WOLFCOSE_ENCRYPT0_DECRYPT)
+    test_cose_encrypt0_decrypt_unprotected_alg();
 #endif
 #if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN1_SIGN)
     test_cose_sign1_key_alg_mismatch();
     test_cose_sign1_verify_key_alg_mismatch();
+    test_cose_sign1_verify_unprotected_alg();
     test_cose_sign1_both_payloads();
 #endif
 #if defined(WOLFCOSE_MAC0_CREATE) && defined(WOLFCOSE_HAVE_HMAC256)
