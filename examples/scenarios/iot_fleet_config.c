@@ -312,7 +312,7 @@ int main(void)
     }
 
     /* Each device decrypts */
-    for (i = 0; i < NUM_DEVICES && ret == 0; i++) {
+    for (i = 0; (i < NUM_DEVICES) && (ret == 0); i++) {
         ret = device_decrypt_config(i, encryptedMsg, encryptedLen,
             plaintext, sizeof(plaintext), &plaintextLen);
 

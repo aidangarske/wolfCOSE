@@ -80,6 +80,8 @@ Used with COSE_Encrypt and COSE_Mac for multi-recipient messages:
 | ECDH-ES+A192KW | -30 | `HAVE_ECC && HAVE_HKDF && HAVE_AES_KEYWRAP` | ECDH + Key Wrap |
 | ECDH-ES+A256KW | -31 | `HAVE_ECC && HAVE_HKDF && HAVE_AES_KEYWRAP` | ECDH + Key Wrap |
 
+AES Key Wrap-based algorithms also require wolfSSL 5.9.0 or later.
+
 ## Key Types
 
 | COSE kty | Value | Guard | Algorithms |
@@ -153,6 +155,10 @@ wolfCOSE defines these constants in `wolfcose.h`:
 #define WOLFCOSE_ALG_A128KW             (-3)
 #define WOLFCOSE_ALG_A192KW             (-4)
 #define WOLFCOSE_ALG_A256KW             (-5)
+#define WOLFCOSE_ALG_DIRECT_HKDF_SHA_256 (-10)
+#define WOLFCOSE_ALG_DIRECT_HKDF_SHA_512 (-11)
+#define WOLFCOSE_ALG_DIRECT_HKDF_AES_128 (-12)
+#define WOLFCOSE_ALG_DIRECT_HKDF_AES_256 (-13)
 #define WOLFCOSE_ALG_ECDH_ES_HKDF_256   (-25)
 #define WOLFCOSE_ALG_ECDH_ES_HKDF_512   (-26)
 

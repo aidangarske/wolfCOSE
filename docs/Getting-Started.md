@@ -6,7 +6,12 @@ This guide covers prerequisites, building wolfCOSE, and basic usage examples.
 
 ### wolfSSL Installation
 
-wolfCOSE requires wolfSSL 5.x with the appropriate algorithms enabled. Here's a full-featured build:
+wolfCOSE requires wolfSSL 5.8.0 or later with the appropriate algorithms
+enabled. AES Key Wrap requires wolfSSL 5.9.0 or later because that release
+uses a constant-time integrity comparison during unwrap. ML-DSA requires a
+wolfSSL release newer than 5.9.1.
+
+Here is a full-featured build using a release that meets those feature floors:
 
 ```bash
 cd wolfssl
@@ -52,7 +57,7 @@ You can enable only the algorithms you need:
 | AES-CCM encryption | `--enable-aesccm` |
 | ChaCha20-Poly1305 | `--enable-chacha --enable-poly1305` |
 | ECDH-ES key agreement | `--enable-ecc --enable-hkdf` |
-| AES Key Wrap | `--enable-aeskeywrap` |
+| AES Key Wrap | `--enable-aeskeywrap` (wolfSSL 5.9.0+) |
 | RSA-PSS signing | `--enable-rsapss --enable-keygen` |
 | ML-DSA (post-quantum) | `--enable-mldsa` |
 | AES-MAC | `--enable-aescbc` |

@@ -16,12 +16,14 @@ permissions:
 
 jobs:
   # Resolve the latest -stable wolfSSL tag at run time so we don't have to
-  # bump this workflow every release. Floor (v5.8.0) and master are fixed:
-  # v5.8.0 is the first release with the public wc_ForceZero symbol and the
-  # current set of FIPS-204 final ML-DSA APIs wolfCOSE depends on; master
-  # surfaces upstream drift on the nightly run. Master is tested both classic
-  # and with ML-DSA/PQC; latest-stable gains an explicit PQC row automatically
-  # once it is newer than v5.9.1-stable (i.e. when 5.9.2 ships).
+  # bump this workflow every release. The base floor (v5.8.0), AES Key Wrap
+  # floor (v5.9.0), and master are fixed:
+  # v5.8.0 is the first release with the public wc_ForceZero symbol. AES Key
+  # Wrap is disabled on that row because its constant-time integrity check
+  # requires wolfSSL 5.9.0 or later. Master surfaces upstream drift on the
+  # nightly run. Master is tested both classic and with ML-DSA/PQC;
+  # latest-stable gains an explicit PQC row automatically once it is newer
+  # than v5.9.1-stable (i.e. when 5.9.2 ships).
   discover-versions:
     name: Resolve wolfSSL version matrix
     runs-on: ubuntu-latest
@@ -60,7 +62,8 @@ jobs:
           # non-PQC build is still exercised on the same wolfSSL.
           MATRIX=$(jq -nc --arg latest "$LATEST" --argjson latest_pqc "$LATEST_PQC" '{
             include: ([
-              {"wolfssl-version":"v5.8.0-stable","wolfssl-ref":"v5.8.0-stable","cache-key":"wolfssl-nopqc-v5.8.0-v1","pqc":false},
+              {"wolfssl-version":"v5.8.0-stable","wolfssl-ref":"v5.8.0-stable","cache-key":"wolfssl-nopqc-v5.8.0-v2","pqc":false},
+              {"wolfssl-version":"v5.9.0-stable","wolfssl-ref":"v5.9.0-stable","cache-key":"wolfssl-nopqc-v5.9.0-v1","pqc":false},
               {"wolfssl-version":$latest,"wolfssl-ref":$latest,"cache-key":("wolfssl-nopqc-" + $latest + "-v1"),"pqc":false},
               {"wolfssl-version":"master","wolfssl-ref":"master","cache-key":"","pqc":false},
               {"wolfssl-version":"master","wolfssl-ref":"master","cache-key":"","pqc":true}
@@ -111,11 +114,16 @@ jobs:
         else
           PQC_FLAGS=""
         fi
+        if [ "${{ matrix.wolfssl-version }}" = "v5.8.0-stable" ]; then
+          AESWRAP_FLAGS=""
+        else
+          AESWRAP_FLAGS="--enable-aeskeywrap"
+        fi
         ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
                     --enable-curve25519 --enable-curve448 \
                     --enable-aesgcm --enable-aesccm --enable-aescbc \
                     --enable-sha384 --enable-sha512 \
-                    --enable-keygen --enable-hkdf --enable-aeskeywrap \
+                    --enable-keygen --enable-hkdf $AESWRAP_FLAGS \
                     --enable-chacha --enable-poly1305 \
                     $PQC_FLAGS --enable-rsapss \
                     --prefix=$HOME/wolfssl-install
@@ -127,6 +135,34 @@ jobs:
         export WOLFSSL_DIR=$HOME/wolfssl-install
         make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Verify legacy AES Key Wrap rejection
+      if: matrix.wolfssl-version == 'v5.8.0-stable'
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        POLICY_LOG=/tmp/wolfcose-aeswrap-policy.log
+        POLICY_BASE_FLAGS="-std=c99 -x c -fsyntax-only -Wno-error -DWOLFSSL_NO_OPTIONS_H -DHAVE_AES_KEYWRAP -DWOLFSSL_AES_DIRECT -I./include -isystem $WOLFSSL_DIR/include"
+        if cc $POLICY_BASE_FLAGS -DWOLFCOSE_ENABLE_AESWRAP \
+              include/wolfcose/settings.h >"$POLICY_LOG" 2>&1; then
+          echo "::error::wolfSSL 5.8.0 unexpectedly enabled AES Key Wrap"
+          exit 1
+        fi
+        if ! grep -q "AES Key Wrap requires wolfSSL 5.9.0 or later" "$POLICY_LOG"; then
+          cat "$POLICY_LOG"
+          echo "::error::legacy AES Key Wrap failed for an unexpected reason"
+          exit 1
+        fi
+        if ! cc $POLICY_BASE_FLAGS -DWOLFCOSE_NO_AESWRAP \
+              include/wolfcose/settings.h >/dev/null 2>&1; then
+          echo "::error::WOLFCOSE_NO_AESWRAP did not disable legacy Key Wrap"
+          exit 1
+        fi
+        if ! cc $POLICY_BASE_FLAGS -DWOLFCOSE_ENABLE_AESWRAP \
+              -DWOLFCOSE_NO_RECIPIENTS \
+              include/wolfcose/settings.h >/dev/null 2>&1; then
+          echo "::error::disabled recipients unexpectedly require new AES Key Wrap"
+          exit 1
+        fi
 
     - name: Run unit tests
       run: |

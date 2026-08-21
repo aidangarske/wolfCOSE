@@ -47,6 +47,7 @@ typedef enum {
     WOLF_FAIL_ECC_VERIFY,            /* wc_ecc_verify_hash */
     WOLF_FAIL_ECC_EXPORT_X963,       /* wc_ecc_export_x963 */
     WOLF_FAIL_ECC_IMPORT_X963,       /* wc_ecc_import_x963 */
+    WOLF_FAIL_ECC_IMPORT_PRIVATE_POST, /* after private-only ECC import */
     WOLF_FAIL_ECC_EXPORT_PRIVATE,    /* wc_ecc_export_private_only */
 
     /* RSA failures */
@@ -64,12 +65,14 @@ typedef enum {
     WOLF_FAIL_ED25519_EXPORT_PRIV,   /* wc_ed25519_export_private_only */
     WOLF_FAIL_ED25519_IMPORT_PUB,    /* wc_ed25519_import_public */
     WOLF_FAIL_ED25519_IMPORT_PRIV,   /* wc_ed25519_import_private_key */
+    WOLF_FAIL_ED25519_MAKE_PUB,      /* wc_ed25519_make_public */
     WOLF_FAIL_ED448_SIGN,            /* wc_ed448_sign_msg */
     WOLF_FAIL_ED448_VERIFY,          /* wc_ed448_verify_msg */
     WOLF_FAIL_ED448_EXPORT_PUB,      /* wc_ed448_export_public */
     WOLF_FAIL_ED448_EXPORT_PRIV,     /* wc_ed448_export_private_only */
     WOLF_FAIL_ED448_IMPORT_PUB,      /* wc_ed448_import_public */
     WOLF_FAIL_ED448_IMPORT_PRIV,     /* wc_ed448_import_private_key */
+    WOLF_FAIL_ED448_MAKE_PUB,        /* wc_ed448_make_public */
 
     /* ML-DSA failures */
     WOLF_FAIL_MLDSA_SIGN,        /* wc_MlDsaKey_SignCtx */

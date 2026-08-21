@@ -388,7 +388,7 @@ int wc_CBOR_EncodeFloat(WOLFCOSE_CBOR_CTX* ctx, float val)
         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
     }
     else {
-        (void)XMEMCPY(&bits, &val, sizeof(bits));
+        (void)XMEMCPY((void*)&bits, (const void*)&val, sizeof(bits));
         ctx->buf[ctx->idx] = (uint8_t)((WOLFCOSE_CBOR_SIMPLE << 5) |
                                          WOLFCOSE_CBOR_AI_FLOAT32);
         wolfCose_StoreBE32(&ctx->buf[ctx->idx + 1u], bits);
@@ -410,7 +410,7 @@ int wc_CBOR_EncodeDouble(WOLFCOSE_CBOR_CTX* ctx, double val)
         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
     }
     else {
-        (void)XMEMCPY(&bits, &val, sizeof(bits));
+        (void)XMEMCPY((void*)&bits, (const void*)&val, sizeof(bits));
         ctx->buf[ctx->idx] = (uint8_t)((WOLFCOSE_CBOR_SIMPLE << 5) |
                                          WOLFCOSE_CBOR_AI_FLOAT64);
         wolfCose_StoreBE64(&ctx->buf[ctx->idx + 1u], bits);
@@ -773,12 +773,12 @@ int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label, const uint8_t* text,
              * difference. Same OR-accumulate shape as the MAC tag compare in
              * wolfcose.c; volatile keeps the loop from becoming an early
              * exit. */
-            volatile unsigned int diff = 0;
+            volatile uint32_t diff = 0u;
             size_t i;
 
             for (i = 0u; i < textLen; i++) {
-                diff |= (unsigned int)label->text[i] ^
-                        (unsigned int)text[i];
+                diff |= ((uint32_t)label->text[i] ^
+                         (uint32_t)text[i]);
             }
             if (diff == 0u) {
                 match = 1;

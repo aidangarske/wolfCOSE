@@ -34,6 +34,23 @@
     #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #endif
 
+/* ECC private-material import is unavailable when wolfCrypt uses an
+ * incompatible math layout or cannot roll back accepted or provisioned key
+ * material. */
+#if defined(HAVE_ECC) && defined(WOLFCOSE_KEY_DECODE) && \
+    (defined(WOLFSSL_CRYPTOCELL) || defined(WOLFSSL_QNX_CAAM) || \
+     defined(WOLFSSL_IMXRT1170_CAAM) || \
+     defined(WOLFSSL_SILABS_SE_ACCEL) || \
+     defined(WOLFSSL_MAXQ10XX_CRYPTO) || \
+     (defined(ALT_ECC_SIZE) && defined(USE_FAST_MATH) && \
+      defined(HAVE_WOLF_BIGINT)) || \
+     (defined(WOLF_CRYPTO_CB) && defined(WOLF_CRYPTO_CB_SETKEY) && \
+      defined(WOLF_CRYPTO_CB_FIND)) || \
+     (defined(WOLFCOSE_FORCE_FAILURE) && \
+      defined(WOLFCOSE_TEST_NONTRANSACTIONAL_ECC_IMPORT)))
+    #define WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -288,6 +305,7 @@ WOLFCOSE_LOCAL int wolfCose_HmacType(int32_t alg, int* hmacType);
  * \param sigBuf   Output: raw r||s signature.
  * \param sigLen   In/Out: buffer size / bytes written.
  * \param coordSz  Coordinate size for this curve (e.g., 32 for P-256).
+ * \param hashType Hash type for optional deterministic k generation.
  * \param rng      Initialized WC_RNG.
  * \param eccKey   Caller-owned ECC key with private key.
  * \return WOLFCOSE_SUCCESS or negative error code.
@@ -296,6 +314,7 @@ WOLFCOSE_LOCAL int wolfCose_HmacType(int32_t alg, int* hmacType);
 WOLFCOSE_LOCAL int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
                                         uint8_t* sigBuf, size_t* sigLen,
                                         size_t coordSz,
+                                        enum wc_HashType hashType,
                                         WC_RNG* rng, ecc_key* eccKey);
 #endif /* WOLFCOSE_SIGN1_SIGN || WOLFCOSE_SIGN_SIGN */
 

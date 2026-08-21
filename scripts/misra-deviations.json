@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "deviations": [
+    {
+      "id": "D-11.5-001",
+      "rule": "11.5",
+      "path": "src/wolfcose.c",
+      "symbol": "wolfCose_ForceZero",
+      "anchors": [
+        "volatile unsigned char* p = (volatile unsigned char*)mem;"
+      ],
+      "expected": 1
+    },
+    {
+      "id": "D-19.2-001",
+      "rule": "19.2",
+      "path": "include/wolfcose/wolfcose.h",
+      "symbol": "WOLFCOSE_KEY",
+      "anchors": [
+        "    union {",
+        "    } key;"
+      ],
+      "expected": 2,
+      "range_sha256": "5ea3030e1870253ae4805cb405bf516807cac046c242467fe45648727321b261"
+    }
+  ]
+}

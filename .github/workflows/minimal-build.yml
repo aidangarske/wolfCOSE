@@ -22,9 +22,19 @@ jobs:
           - name: ECC-only
             wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-sha384 --enable-sha512 --enable-lowresource --enable-sp-math-all --disable-dh --disable-rsa --disable-aescbc --disable-sha --disable-md5 --disable-chacha --disable-poly1305 --disable-errorstrings"
             cache_key: wolfssl-ecc-only-v5
+          - name: Deterministic ECDSA
+            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-sha384 --enable-sha512 --enable-lowresource --enable-sp-math-all --disable-dh --disable-rsa --disable-aescbc --disable-sha --disable-md5 --disable-chacha --disable-poly1305 --disable-errorstrings"
+            wolfssl_cppflags: "-DWOLFSSL_ECDSA_DETERMINISTIC_K -DWOLFSSL_NO_MALLOC"
+            cache_key: wolfssl-ecc-deterministic-v2
+            cose_flags: "-DWOLFCOSE_ENABLE_DETERMINISTIC_ECDSA"
+          - name: ECC fastmath ALT with bigint
+            wolfssl_flags: "--enable-cryptonly --enable-ecc --enable-aesgcm --enable-keygen --enable-sha384 --enable-sha512 --enable-fastmath --enable-lowresource --enable-asynccrypt --disable-dh --disable-rsa --disable-sha --disable-md5 --disable-chacha --disable-poly1305 --disable-errorstrings --disable-shared --enable-static"
+            cache_key: wolfssl-ecc-fast-alt-bigint-v1
+            compile_only: true
           - name: EdDSA-only
-            wolfssl_flags: "--enable-cryptonly --enable-ed25519 --enable-curve25519 --enable-sha512 --enable-lowresource --disable-dh --disable-rsa --disable-errorstrings"
-            cache_key: wolfssl-eddsa-only-v6
+            wolfssl_flags: "--enable-cryptonly --disable-ecc --enable-ed25519 --enable-curve25519 --enable-sha512 --enable-lowresource --disable-dh --disable-rsa --disable-errorstrings"
+            cache_key: wolfssl-eddsa-only-v7
+            skip_tool_test: true
           - name: Ed448-only
             wolfssl_flags: "--enable-cryptonly --enable-ed448 --enable-sha512 --enable-lowresource --disable-dh --disable-rsa --disable-errorstrings"
             cache_key: wolfssl-ed448-only-v3
@@ -32,8 +42,9 @@ jobs:
             wolfssl_flags: "--enable-cryptonly --enable-aesgcm --enable-aesccm --enable-chacha --enable-poly1305 --enable-lowresource --disable-dh --disable-rsa --disable-errorstrings"
             cache_key: wolfssl-aead-only-v6
           - name: RSA-PSS-only
-            wolfssl_flags: "--enable-cryptonly --enable-rsapss --enable-keygen --enable-sha384 --enable-sha512 --enable-lowresource --disable-dh --disable-errorstrings"
-            cache_key: wolfssl-rsa-only-v6
+            wolfssl_flags: "--enable-cryptonly --enable-rsapss --enable-keygen --enable-sha384 --enable-sha512 --enable-lowresource --disable-ecc --disable-dh --disable-errorstrings"
+            cache_key: wolfssl-rsa-only-v7
+            skip_tool_test: true
           - name: PQ (ML-DSA) only
             wolfssl_flags: "--enable-cryptonly --enable-mldsa --disable-dh --disable-rsa --disable-errorstrings"
             cache_key: wolfssl-pq-only-v4
@@ -77,18 +88,21 @@ jobs:
         git clone --depth 1 https://github.com/wolfSSL/wolfssl.git wolfssl-minimal-src
         cd wolfssl-minimal-src
         ./autogen.sh
+        export CPPFLAGS="${{ matrix.wolfssl_cppflags }}"
         ./configure ${{ matrix.wolfssl_flags }} \
                     --prefix=$HOME/wolfssl-minimal
         make -j$(nproc)
         make install
 
     - name: Build wolfCOSE
+      if: matrix.compile_only != true
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-minimal
         make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion ${{ matrix.cose_flags }} -I./include -isystem $WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run unit tests
+      if: matrix.compile_only != true
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-minimal
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
@@ -96,8 +110,25 @@ jobs:
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run tool round-trip test
+      if: matrix.compile_only != true && matrix.skip_tool_test != true
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-minimal
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
         make tool-test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion ${{ matrix.cose_flags }} -I./include -isystem $WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Compile wolfCOSE policy profile
+      if: matrix.compile_only == true
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-minimal
+        for macro in ALT_ECC_SIZE USE_FAST_MATH HAVE_WOLF_BIGINT; do
+          if ! grep -Eq "^#define[[:space:]]+$macro([[:space:]]|$)" \
+                  "$WOLFSSL_DIR/include/wolfssl/options.h"; then
+            echo "::error::Expected $macro in wolfSSL options.h"
+            exit 1
+          fi
+        done
+        cc -std=c99 -pedantic-errors -Werror -Wall -Wextra -Wshadow \
+           -Wconversion -Wvla -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 \
+           -I./include -isystem $WOLFSSL_DIR/include -fsyntax-only \
+           src/wolfcose.c tests/test_cose.c

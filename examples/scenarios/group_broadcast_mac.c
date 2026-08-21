@@ -374,7 +374,7 @@ int main(void)
     }
 
     /* Each subscriber verifies */
-    for (i = 0; i < NUM_SUBSCRIBERS && ret == 0; i++) {
+    for (i = 0; (i < NUM_SUBSCRIBERS) && (ret == 0); i++) {
         ret = subscriber_verify_broadcast(i, macMsg, macMsgLen);
         if (ret == 0) {
             printf("\n");

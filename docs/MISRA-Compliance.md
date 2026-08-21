@@ -63,42 +63,33 @@ MISRA C:2023 is essentially MISRA C:2012 plus Amendments 1-4. Since free tooling
 | Data Flow | Low (~30%) | Medium (~50%) | 100% |
 | Std Lib Safety | Low (~20%) | Medium (~60%) | 100% |
 
-## Known Deviations in wolfCOSE
+## MISRA C:2012 Rule Enforcement
 
-wolfCOSE has the following documented MISRA C:2012 deviations. Each is suppressed in CI via `cppcheck --suppress` and justified below.
+The MISRA C:2012 workflow does not suppress any project rule IDs. It retains
+the raw analyzer output, separately reports approved deviations and proven
+analyzer limitations, and fails every undeviated finding in `src/` or
+`include/wolfcose/`. The remaining cppcheck suppressions only exclude generic
+analyzer diagnostics and findings inside third-party wolfSSL headers.
 
-### Rule 2.5: Unused Macro Definitions
+The analyzer includes `tests/misra_consumer.c` as a downstream translation
+unit. This gives public APIs and public constants a real external use for Rules
+8.7 and 2.5 without linking analyzer-only code into the library. For Rule 2.5,
+cppcheck does not count a macro used only by an `#if` or `#ifdef`; the report
+classifier accepts that limitation only after finding the exact macro in a
+tracked conditional preprocessing directive.
 
-**Location:** `include/wolfcose/wolfcose.h` (feature gate macros)
+### Approved deviations
 
-**Justification:** wolfCOSE feature-gate macros (`WOLFCOSE_SIGN1`, `WOLFCOSE_SIGN1_SIGN`, etc.) are defined conditionally via `#if !defined(NO_X) && !defined(X)` guards. When the CI passes both parent and child `-D` flags on the command line (e.g., `-DWOLFCOSE_SIGN1 -DWOLFCOSE_SIGN1_SIGN`), the child macro is pre-defined and the header guard skips the `#define`. cppcheck sees the guarded-away `#define` as "unused" — a false positive caused by the CI passing explicit flags for cppcheck path coverage.
+| ID | Rule | Location | Rationale and validation |
+|----|------|----------|--------------------------|
+| D-11.5-001 | 11.5 | `wolfCose_ForceZero` | Converting the caller's object pointer to a volatile character pointer is the standard C mechanism for securely erasing its object representation. Character access is alignment-safe and the function allocates no memory. `make zeroize-test`, `make zero-alloc-check`, and `make c99-check` validate the implementation. |
+| D-19.2-001 | 19.2 | `WOLFCOSE_KEY.key` | The public, discriminated union preserves the established ABI and embedded-memory footprint. `kty` and `attachedType` govern member access. Replacing it with a structure would break ABI and increase RAM. The full tests exercise the supported members, and CI anchors the deviation to the exact union boundaries. |
 
-### Rule 8.7: Could Be Defined with Internal Linkage
-
-**Location:** `src/wolfcose.c:wolfCose_SigSize()`
-
-**Justification:** `wolfCose_SigSize()` is declared `WOLFCOSE_LOCAL` in `wolfcose_internal.h` and called from `tests/test_cose.c` for unit testing. cppcheck only scans `src/` and `include/`, so it does not see the test file usage and incorrectly reports the function could be `static`. Making it `static` would break the test suite.
-
-### Rule 11.8: Cast Removes Const Qualification
-
-**Location:** `src/wolfcose.c` (ECC/ECDH wolfSSL API calls)
-
-**Justification:** wolfSSL's ECC APIs (`wc_ecc_set_rng`, `wc_ecc_shared_secret`, `wc_ecc_sign_hash`, `wc_ecc_verify_hash`) take non-const `ecc_key*` parameters even for operations that do not modify the key data. wolfCOSE's public API correctly uses `const` qualifiers on key parameters (e.g., `const WOLFCOSE_KEY* key`) to communicate that keys are not modified. However, when passing the internal `ecc_key*` from a const `WOLFCOSE_KEY` to wolfSSL, cppcheck flags the implicit const-to-non-const conversion through the union member access chain. This is a wolfSSL API design limitation that wolfCOSE preserves const-correctness at its own API boundary but cannot enforce it through wolfSSL's non-const function signatures.
-
-### Rule 19.2: Union Type Used
-
-**Location:** `include/wolfcose/wolfcose.h:WOLFCOSE_KEY` struct (lines 443-464)
-
-**Justification:** The `WOLFCOSE_KEY` struct uses a tagged union to hold pointers to wolfCrypt key types (`ecc_key*`, `ed25519_key*`, `ed448_key*`, `RsaKey*`, `wc_MlDsaKey*`, symmetric key bytes). The `kty` field discriminates the active union member. This is the standard C pattern for polymorphic types and is fundamental to supporting a multi-algorithm COSE library without dynamic allocation. Replacing the union would require either:
-- `void*` pointers (less type-safe, violates Rule 11.5)
-- Separate functions per algorithm (massive API bloat)
-- Dynamic allocation (violates the zero-allocation design constraint)
-
-### Rule 21.15: Overlapping Memory in Copy
-
-**Location:** `src/wolfcose.c:wolfCose_EccSignRaw()` (XMEMMOVE calls)
-
-**Justification:** `XMEMMOVE` (`memmove`) is used intentionally for overlapping memory regions when right-justifying ECC r/s signature components within a single buffer. The signature buffer contains `r||s` where `r` or `s` may be shorter than the coordinate size and needs to be shifted right with zero-padding. `memmove` is the correct function for this — it handles overlapping source and destination by design. cppcheck flags the overlap as a potential issue, but this is the intended behavior per RFC 8152 Section 8.1.
+`scripts/misra-deviations.json` identifies only these source locations. The
+classifier also pins a hash of the public union declaration. It fails if an
+expected diagnostic disappears, an anchor or approved declaration changes, or
+an additional finding of either rule appears, so a deviation cannot silently
+broaden or become stale.
 
 ## MISRA C:2023 Deviations (clang-tidy)
 
@@ -108,7 +99,7 @@ The following clang-tidy checks are suppressed in the MISRA 2023 workflow. GCC s
 
 **Location:** `src/wolfcose.c` (algorithm dispatch switches)
 
-**Justification:** Different COSE algorithms intentionally map to the same wolfCrypt value. For example, ES512 and EdDSA both use `WC_HASH_TYPE_SHA512`, and A128GCM/A192GCM share the same nonce length. The switch branches are not bugs — they represent distinct algorithm IDs with identical cryptographic parameters.
+**Justification:** Different COSE algorithms intentionally map to the same wolfCrypt value. For example, ES512 and EdDSA both use `WC_HASH_TYPE_SHA512`, and A128GCM/A192GCM share the same nonce length. The switch branches are not bugs; they represent distinct algorithm IDs with identical cryptographic parameters.
 
 ### bugprone-easily-swappable-parameters: Adjacent Parameters of Similar Types
 
@@ -120,25 +111,25 @@ The following clang-tidy checks are suppressed in the MISRA 2023 workflow. GCC s
 
 `examples/` and `tests/` are runnable demonstration and test programs, not part of the shippable library, and are held to the same style rules where it keeps them useful as reference implementations. They are clean of the rules the library observes (no `goto`, fixed-length-coordinate checks, const-qualified literal payloads, braced statement bodies, unsigned size arithmetic, explicit precedence). The remaining deviations are inherent to runnable demos:
 
-### Rule 21.6 — Standard I/O (and 17.7 on its return value)
+### Rule 21.6: Standard I/O (and 17.7 on its return value)
 
 **Location:** `examples/`, `tests/`.
 
 **Justification:** Demos and test harnesses print human-readable status and PASS/FAIL to the console with `printf`/`fprintf`; the ignored return value (Rule 17.7) is part of the same console-output use. A real integration replaces this one call with a platform output routine. Library code under `src/` uses no standard I/O.
 
-### Rule 15.5 — Multiple return / single point of exit
+### Rule 15.5: Multiple return / single point of exit
 
 **Location:** `examples/`, `tests/`.
 
 **Justification:** Demonstration code uses early returns for linear, readable top-to-bottom flow. The library itself observes single-exit with cascading `if (ret == 0)` and a single `return`.
 
-### Rule 2.5 — Unused macro definitions
+### Rule 2.5: Unused macro definitions
 
 **Location:** `examples/`, `tests/`.
 
 **Justification:** Same false positive as the library: CI passes explicit `-D` feature flags so cppcheck checks one code path, which makes the guarded-away feature `#define`s look unused.
 
-### Rules 8.6 / 5.9 / 8.9 — External/internal identifier definitions
+### Rules 8.6 / 5.9 / 8.9: External/internal identifier definitions
 
 **Location:** `examples/`.
 

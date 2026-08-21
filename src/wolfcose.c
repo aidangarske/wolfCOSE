@@ -94,6 +94,245 @@ WOLFCOSE_LOCAL void wolfCose_ForceZero(void* mem, size_t len)
 #endif
 }
 
+#if defined(WOLFCOSE_HAVE_MLDSA) && defined(WOLFCOSE_KEY_DECODE) && \
+    !defined(WOLFSSL_MLDSA_NO_MAKE_KEY) && \
+    !defined(WOLFSSL_MLDSA_ASSIGN_KEY)
+/* Clear a failed software import without freeing the caller-owned key object.
+ * SetParams releases dynamic key buffers and caches while preserving heap,
+ * device and private-key identifier configuration. Wipe the private buffer
+ * here as well so cleanup does not depend on allocator behavior; static key
+ * buffers need it because wolfCrypt deliberately retains their storage. */
+static void wolfCose_MlDsaImportRollback(wc_MlDsaKey* key, byte level)
+{
+#if defined(WOLFSSL_MLDSA_DYNAMIC_KEYS)
+    if ((key->k != NULL) && (key->kSz > 0u)) {
+        (void)wolfCose_ForceZero(key->k, (size_t)key->kSz);
+    }
+#else
+    (void)wolfCose_ForceZero(key->k, sizeof(key->k));
+#endif
+#if defined(WC_MLDSA_FIXED_ARRAY) && \
+    defined(WC_MLDSA_CACHE_PRIV_VECTORS)
+    (void)wolfCose_ForceZero(key->s1, sizeof(key->s1));
+    (void)wolfCose_ForceZero(key->s2, sizeof(key->s2));
+    (void)wolfCose_ForceZero(key->t0, sizeof(key->t0));
+#endif
+#ifndef USE_INTEL_SPEEDUP
+    wc_Shake256_Free(&key->shake);
+#endif
+    (void)wolfCose_ForceZero(&key->shake, sizeof(key->shake));
+    (void)wc_MlDsaKey_SetParams(key, level);
+}
+#endif /* MLDSA && KEY_DECODE && !NO_MAKE_KEY && !ASSIGN_KEY */
+
+#if defined(HAVE_ECC) && defined(WOLFCOSE_KEY_DECODE)
+/* Clear initialized multiprecision storage without releasing it. wolfSSL's
+ * MP cleanup symbols are not exported by every supported build. */
+#if !defined(ALT_ECC_SIZE) && !defined(WOLFSSL_SP_MATH_ALL) && \
+    !defined(WOLFSSL_SP_MATH) && !defined(USE_FAST_MATH)
+static void wolfCose_MpClearDigits(mp_digit* digits, size_t digitCount)
+{
+    if ((digits != NULL) && (digitCount > 0u) &&
+        (digitCount <= ((size_t)-1 / sizeof(digits[0])))) {
+        (void)wolfCose_ForceZero(digits,
+            digitCount * sizeof(digits[0]));
+    }
+}
+#endif
+
+#ifdef ALT_ECC_SIZE
+/* ALT_ECC_SIZE points ecc_key members at smaller alt_fp_int objects. Access
+ * that real layout directly so a full-size mp_int view cannot run past it. */
+static int wolfCose_AltMpValueIsZero(const alt_fp_int* value)
+{
+    int isZero = 0;
+
+    if ((value != NULL) && ((size_t)value->used == 0u)) {
+        isZero = 1;
+    }
+
+    return isZero;
+}
+
+static void wolfCose_AltMpClearValue(alt_fp_int* value)
+{
+    if (value != NULL) {
+        (void)wolfCose_ForceZero(value->dp, sizeof(value->dp));
+#if defined(HAVE_WOLF_BIGINT) && !defined(USE_FAST_MATH)
+        if ((value->raw.buf != NULL) && (value->raw.len > 0u)) {
+            (void)wolfCose_ForceZero(value->raw.buf, value->raw.len);
+        }
+#endif
+        value->used = 0;
+#if defined(USE_FAST_MATH) || defined(WOLFSSL_SP_INT_NEGATIVE)
+        value->sign = MP_ZPOS;
+#endif
+    }
+}
+#else
+static int wolfCose_MpValueIsZero(const mp_int* value)
+{
+    int isZero = 0;
+
+    if ((value != NULL) && ((size_t)value->used == 0u)) {
+        isZero = 1;
+    }
+
+    return isZero;
+}
+
+static void wolfCose_MpClearValue(mp_int* value)
+{
+    if (value != NULL) {
+#if defined(WOLFSSL_SP_MATH_ALL) || defined(WOLFSSL_SP_MATH) || \
+    defined(USE_FAST_MATH)
+        (void)wolfCose_ForceZero(value->dp, sizeof(value->dp));
+#else
+        if (value->alloc > 0) {
+            wolfCose_MpClearDigits(value->dp, (size_t)value->alloc);
+        }
+#endif
+#ifdef HAVE_WOLF_BIGINT
+        if ((value->raw.buf != NULL) && (value->raw.len > 0u)) {
+            (void)wolfCose_ForceZero(value->raw.buf, value->raw.len);
+        }
+#endif
+        value->used = 0;
+#if defined(USE_FAST_MATH) || defined(USE_INTEGER_HEAP_MATH) || \
+    defined(WOLFSSL_SP_INT_NEGATIVE)
+        value->sign = MP_ZPOS;
+#endif
+    }
+}
+#endif /* ALT_ECC_SIZE */
+
+static int wolfCose_EccPrivateValuesAreZero(const ecc_key* ecc)
+{
+    int areZero;
+
+#ifdef ALT_ECC_SIZE
+    areZero = wolfCose_AltMpValueIsZero(&ecc->ka[0]);
+    #ifdef WOLFSSL_ECC_BLIND_K
+    if (wolfCose_AltMpValueIsZero(&ecc->kba[0]) == 0) {
+        areZero = 0;
+    }
+    if (wolfCose_AltMpValueIsZero(&ecc->kua[0]) == 0) {
+        areZero = 0;
+    }
+    #endif
+#else
+    areZero = wolfCose_MpValueIsZero(ecc->k);
+    #ifdef WOLFSSL_ECC_BLIND_K
+    if (wolfCose_MpValueIsZero(ecc->kb) == 0) {
+        areZero = 0;
+    }
+    if (wolfCose_MpValueIsZero(ecc->ku) == 0) {
+        areZero = 0;
+    }
+    #endif
+#endif
+
+    return areZero;
+}
+
+static void wolfCose_EccClearPrivateValues(ecc_key* ecc)
+{
+#ifdef ALT_ECC_SIZE
+    wolfCose_AltMpClearValue(&ecc->ka[0]);
+    #ifdef WOLFSSL_ECC_BLIND_K
+    wolfCose_AltMpClearValue(&ecc->kba[0]);
+    wolfCose_AltMpClearValue(&ecc->kua[0]);
+    #endif
+#else
+    wolfCose_MpClearValue(ecc->k);
+    #ifdef WOLFSSL_ECC_BLIND_K
+    wolfCose_MpClearValue(ecc->kb);
+    wolfCose_MpClearValue(ecc->ku);
+    #endif
+#endif
+}
+
+static int wolfCose_EccPrivateImportSupported(const ecc_key* ecc)
+{
+    int supported = 1;
+
+    (void)ecc;
+
+#ifdef WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
+    supported = 0;
+#else
+    #if defined(WOLF_CRYPTO_CB) && defined(WOLF_CRYPTO_CB_SETKEY)
+    if (ecc->devId != INVALID_DEVID) {
+        supported = 0;
+    }
+    #endif
+#endif
+
+    return supported;
+}
+
+typedef struct WOLFCOSE_ECC_IMPORT_STATE {
+    int type;
+    int idx;
+    int state;
+    const ecc_set_type* dp;
+} WOLFCOSE_ECC_IMPORT_STATE;
+
+static int wolfCose_EccPrivateImportBegin(ecc_key* ecc,
+    WOLFCOSE_ECC_IMPORT_STATE* saved)
+{
+    int ret = WOLFCOSE_SUCCESS;
+
+    saved->type = ecc->type;
+    saved->idx = ecc->idx;
+    saved->state = ecc->state;
+    saved->dp = ecc->dp;
+
+    /* wolfCrypt has no transactional ECC-key replacement API. Require an
+     * initialized but empty destination so a failed import cannot overwrite
+     * caller-owned key or custom-curve state. */
+    if ((saved->type != 0) || (saved->idx != 0) || (saved->state != 0) ||
+        (saved->dp != NULL)
+#ifdef WOLFSSL_CUSTOM_CURVES
+        || (ecc->deallocSet != 0)
+#endif
+        ) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+#ifdef ALT_ECC_SIZE
+    else if (((const void*)ecc->k != (const void*)&ecc->ka[0])
+    #ifdef WOLFSSL_ECC_BLIND_K
+             || ((const void*)ecc->kb != (const void*)&ecc->kba[0])
+             || ((const void*)ecc->ku != (const void*)&ecc->kua[0])
+    #endif
+             ) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+#endif
+    else if (wolfCose_EccPrivateValuesAreZero(ecc) == 0) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if (wolfCose_EccPrivateImportSupported(ecc) == 0) {
+        ret = WOLFCOSE_E_UNSUPPORTED;
+    }
+    else {
+        /* No action required */
+    }
+
+    return ret;
+}
+
+static void wolfCose_EccPrivateImportRollback(ecc_key* ecc,
+    const WOLFCOSE_ECC_IMPORT_STATE* saved)
+{
+    wolfCose_EccClearPrivateValues(ecc);
+    ecc->type = saved->type;
+    ecc->idx = saved->idx;
+    ecc->state = saved->state;
+    ecc->dp = saved->dp;
+}
+#endif /* HAVE_ECC && WOLFCOSE_KEY_DECODE */
+
 /* On a failed verify/decrypt, clear the header so unauthenticated metadata is
  * not exposed to callers that inspect hdr without gating on the return code. */
 #if defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_SIGN_VERIFY) || \
@@ -322,6 +561,47 @@ int wolfCose_CrvToWcCurve(int32_t crv, int* wcCrv)
     }
     return ret;
 }
+
+static int wolfCose_EccKeyCheckCurve(int32_t crv, ecc_key* eccKey)
+{
+    int ret = WOLFCOSE_SUCCESS;
+    int expectedCrv = ECC_CURVE_INVALID;
+    int actualSz = 0;
+    size_t expectedSz = 0;
+
+    if (eccKey == NULL) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_CrvToWcCurve(crv, &expectedCrv);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_CrvKeySize(crv, &expectedSz);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        actualSz = wc_ecc_size(eccKey);
+        /* An initialized, empty key may be attached as a decode target. */
+        if (actualSz != 0) {
+            if ((actualSz < 0) || ((size_t)actualSz != expectedSz)) {
+                ret = WOLFCOSE_E_COSE_BAD_ALG;
+            }
+        }
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (actualSz != 0) &&
+        (eccKey->dp != NULL)) {
+        int actualCrv = wc_ecc_get_curve_id(eccKey->idx);
+
+        if (actualCrv == (int)ECC_CURVE_INVALID) {
+            actualCrv = wc_ecc_get_curve_id_from_dp_params(eccKey->dp);
+        }
+        if ((actualCrv == (int)ECC_CURVE_INVALID) ||
+            (actualCrv != expectedCrv)) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+    }
+
+    return ret;
+}
 #endif
 
 /* ----- Internal: AEAD dispatch helpers (AES-GCM, ChaCha20-Poly1305, AES-CCM) ----- */
@@ -459,6 +739,32 @@ int wolfCose_AeadTagLen(int32_t alg, size_t* tagLen)
     return ret;
 }
 
+#if defined(WOLFCOSE_HAVE_AESCCM) && \
+    (defined(WOLFCOSE_ENCRYPT0_ENCRYPT) || \
+     defined(WOLFCOSE_ENCRYPT0_DECRYPT) || \
+     defined(WOLFCOSE_ENCRYPT_ENCRYPT) || \
+     defined(WOLFCOSE_ENCRYPT_DECRYPT))
+static int wolfCose_AeadCheckPayloadLen(int32_t alg, size_t payloadLen)
+{
+    int ret = WOLFCOSE_SUCCESS;
+
+    switch (alg) {
+        case WOLFCOSE_ALG_AES_CCM_16_64_128:   /* fall through */
+        case WOLFCOSE_ALG_AES_CCM_16_64_256:   /* fall through */
+        case WOLFCOSE_ALG_AES_CCM_16_128_128:  /* fall through */
+        case WOLFCOSE_ALG_AES_CCM_16_128_256:
+            if (payloadLen > (size_t)UINT16_MAX) {
+                ret = WOLFCOSE_E_INVALID_ARG;
+            }
+            break;
+        default:
+            break;
+    }
+
+    return ret;
+}
+#endif
+
 /* ----- Internal: HMAC helpers ----- */
 
 #if defined(WOLFCOSE_HAVE_HMAC)
@@ -531,6 +837,12 @@ static int wolfCose_HmacCheckKeyLen(int32_t alg, size_t keyLen)
     (void)alg;
     (void)keyLen;
 #endif
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (keyLen > (size_t)0xFFFFFFFFUL)) {
+        ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
+#endif
     return ret;
 }
 #endif /* MAC0/MAC create or verify */
@@ -542,13 +854,18 @@ static int wolfCose_HmacCheckKeyLen(int32_t alg, size_t keyLen)
 #if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN)
 int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
                          uint8_t* sigBuf, size_t* sigLen,
-                         size_t coordSz, WC_RNG* rng, ecc_key* eccKey)
+                         size_t coordSz, enum wc_HashType hashType,
+                         WC_RNG* rng, ecc_key* eccKey)
 {
     int ret;
     uint8_t derSig[ECC_MAX_SIG_SIZE];
     word32 derSigLen = (word32)sizeof(derSig);
     word32 rLen;
     word32 sLen;
+#ifdef WOLFCOSE_HAVE_DETERMINISTIC_ECDSA
+    byte savedDeterministic = 0u;
+    enum wc_HashType savedHashType = WC_HASH_TYPE_NONE;
+#endif
 
     if ((hash == NULL) || (sigBuf == NULL) || (sigLen == NULL) ||
         (rng == NULL) || (eccKey == NULL)) {
@@ -558,14 +875,41 @@ int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
     }
     else {
-        /* Sign producing DER-encoded signature */
-        INJECT_FAILURE(WOLF_FAIL_ECC_SIGN, -1,
-            ret = wc_ecc_sign_hash(hash, (word32)hashLen, derSig, &derSigLen,
-                                    rng, eccKey));
-        if (ret != 0) {
-            ret = WOLFCOSE_E_CRYPTO;
+#ifdef WOLFCOSE_HAVE_DETERMINISTIC_ECDSA
+        savedDeterministic = (byte)eccKey->deterministic;
+        savedHashType = eccKey->hashType;
+#if defined(WOLF_CRYPTO_CB) && !defined(WOLF_CRYPTO_CB_FIND)
+        if (eccKey->devId != INVALID_DEVID) {
+            ret = WOLFCOSE_E_UNSUPPORTED;
         }
-        else {
+        else
+#endif
+#if defined(WOLFSSL_SE050) && defined(WOLFSSL_SE050_ONLY_KEY_ID)
+        if (eccKey->keyIdSet != 0) {
+            ret = WOLFCOSE_E_UNSUPPORTED;
+        }
+        else
+#endif
+        {
+            ret = wc_ecc_set_deterministic_ex(eccKey, 1u, hashType);
+            if (ret != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+        }
+#else
+        (void)hashType;
+        ret = WOLFCOSE_SUCCESS;
+#endif
+        /* Sign producing DER-encoded signature */
+        if (ret == WOLFCOSE_SUCCESS) {
+            INJECT_FAILURE(WOLF_FAIL_ECC_SIGN, -1,
+                ret = wc_ecc_sign_hash(hash, (word32)hashLen, derSig,
+                                        &derSigLen, rng, eccKey));
+            if (ret != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
             /* Extract raw r and s from DER */
             rLen = (word32)coordSz;
             sLen = (word32)coordSz;
@@ -599,6 +943,10 @@ int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
             }
         }
         (void)wolfCose_ForceZero(derSig, sizeof(derSig));
+#ifdef WOLFCOSE_HAVE_DETERMINISTIC_ECDSA
+        eccKey->deterministic = savedDeterministic;
+        eccKey->hashType = savedHashType;
+#endif
     }
     return ret;
 }
@@ -847,6 +1195,7 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
     size_t i;
     int64_t label;
     int64_t intVal;
+    uint64_t contentTypeVal;
     uint32_t critLabels = 0u;
     int skipped;
 
@@ -942,13 +1291,13 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
                     ret = wc_CBOR_Skip(&ctx);
                 }
                 else {
-                    ret = wc_CBOR_DecodeInt(&ctx, &intVal);
+                    ret = wc_CBOR_DecodeUint(&ctx, &contentTypeVal);
                     if ((ret == WOLFCOSE_SUCCESS) &&
-                        (wolfCose_InInt32Range(intVal) == 0)) {
+                        (contentTypeVal > (uint64_t)INT32_MAX)) {
                         ret = WOLFCOSE_E_COSE_BAD_HDR;
                     }
                     if (ret == WOLFCOSE_SUCCESS) {
-                        hdr->contentType = (int32_t)intVal;
+                        hdr->contentType = (int32_t)contentTypeVal;
                     }
                 }
             }
@@ -1099,6 +1448,25 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
                     }
                 }
             }
+            else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (label == WOLFCOSE_HDR_CONTENT_TYPE)) {
+                hdr->flags |= WOLFCOSE_HDR_FLAG_CONTENT_TYPE_UNPROTECTED;
+                if ((ctx->idx < ctx->bufSz) &&
+                    (wc_CBOR_PeekType(ctx) == WOLFCOSE_CBOR_TSTR)) {
+                    ret = wc_CBOR_Skip(ctx);
+                }
+                else {
+                    uint64_t contentTypeVal;
+                    ret = wc_CBOR_DecodeUint(ctx, &contentTypeVal);
+                    if ((ret == WOLFCOSE_SUCCESS) &&
+                        (contentTypeVal > (uint64_t)INT32_MAX)) {
+                        ret = WOLFCOSE_E_COSE_BAD_HDR;
+                    }
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        hdr->contentType = (int32_t)contentTypeVal;
+                    }
+                }
+            }
             else {
                 if (ret == WOLFCOSE_SUCCESS) {
                     ret = wc_CBOR_Skip(ctx);
@@ -1118,6 +1486,196 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
     }
     return ret;
 }
+
+#if defined(WOLFCOSE_SIGN_VERIFY) || defined(WOLFCOSE_ENCRYPT_DECRYPT) || \
+    defined(WOLFCOSE_MAC_VERIFY)
+/* Decode only the algorithm from an unselected header map. Other labels and
+ * values are intentionally left to the application that selected the entry. */
+static int wolfCose_DecodeSkippedHdrAlg(WOLFCOSE_CBOR_CTX* ctx,
+    int32_t* alg, int* algFound)
+{
+    int ret;
+    size_t mapCount = 0u;
+    size_t i;
+
+    if ((ctx == NULL) || (alg == NULL) || (algFound == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        ret = wc_CBOR_DecodeMapStart(ctx, &mapCount);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (mapCount > ctx->bufSz)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+
+    for (i = 0u; (ret == WOLFCOSE_SUCCESS) && (i < mapCount); i++) {
+        WOLFCOSE_CBOR_LABEL label;
+
+        ret = wc_CBOR_DecodeLabel(ctx, &label);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (wc_CBOR_LabelIsInt(&label, WOLFCOSE_HDR_ALG) != 0)) {
+            if (*algFound != 0) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
+            }
+            else {
+                int64_t algVal;
+
+                *algFound = 1;
+                if ((ctx->idx < ctx->bufSz) &&
+                    (wc_CBOR_PeekType(ctx) == WOLFCOSE_CBOR_TSTR)) {
+                    ret = wc_CBOR_Skip(ctx);
+                }
+                else {
+                    ret = wc_CBOR_DecodeInt(ctx, &algVal);
+                    if ((ret == WOLFCOSE_SUCCESS) &&
+                        (wolfCose_InInt32Range(algVal) == 0)) {
+                        ret = WOLFCOSE_E_COSE_BAD_ALG;
+                    }
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        *alg = (int32_t)algVal;
+                    }
+                }
+            }
+        }
+        else if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_Skip(ctx);
+        }
+        else {
+            /* No action required */
+        }
+    }
+
+    return ret;
+}
+
+/* Decode the three fields shared by COSE_Signature and COSE_recipient. */
+static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
+    size_t maxArrayCount, size_t* arrayCount, int32_t* alg)
+{
+    int ret;
+    const uint8_t* protectedData = NULL;
+    size_t protectedLen = 0u;
+    int algFound = 0;
+
+    if ((ctx == NULL) || (arrayCount == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        *arrayCount = 0u;
+        if (alg != NULL) {
+            *alg = WOLFCOSE_ALG_UNSET;
+        }
+        ret = wc_CBOR_DecodeArrayStart(ctx, arrayCount);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((*arrayCount < 3u) || (*arrayCount > maxArrayCount))) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (alg == NULL)) {
+        size_t i;
+
+        for (i = 0u; (ret == WOLFCOSE_SUCCESS) && (i < 3u); i++) {
+            ret = wc_CBOR_Skip(ctx);
+        }
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL)) {
+        ret = wc_CBOR_DecodeBstr(ctx, &protectedData, &protectedLen);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL) &&
+        (protectedLen > 0u)) {
+        WOLFCOSE_CBOR_CTX protectedCtx;
+
+        (void)XMEMSET(&protectedCtx, 0, sizeof(protectedCtx));
+        protectedCtx.cbuf = protectedData;
+        protectedCtx.bufSz = protectedLen;
+        ret = wolfCose_DecodeSkippedHdrAlg(&protectedCtx, alg, &algFound);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (protectedCtx.idx != protectedCtx.bufSz)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL)) {
+        ret = wolfCose_DecodeSkippedHdrAlg(ctx, alg, &algFound);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL)) {
+        ret = wc_CBOR_Skip(ctx);
+    }
+
+    return ret;
+}
+
+#if defined(WOLFCOSE_SIGN_VERIFY)
+/* A COSE_Signature has exactly three fields. */
+static int wolfCose_DecodeSkippedSignature(WOLFCOSE_CBOR_CTX* ctx)
+{
+    size_t arrayCount = 0u;
+
+    return wolfCose_DecodeSkippedHeaderEntry(ctx, 3u, &arrayCount, NULL);
+}
+#endif
+
+#if defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY)
+/* Structurally validate one non-selected COSE_recipient and every nested
+ * recipient. Use an explicit bounded stack to avoid recursive C calls. */
+static int wolfCose_DecodeSkippedRecipient(WOLFCOSE_CBOR_CTX* ctx,
+    int32_t* recipientAlg)
+{
+    int ret;
+    size_t remaining = 1u;
+    size_t stack[WOLFCOSE_CBOR_MAX_DEPTH];
+    unsigned int depth = 0u;
+    int firstRecipient = 1;
+
+    if ((ctx == NULL) || (recipientAlg == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        *recipientAlg = WOLFCOSE_ALG_UNSET;
+        ret = WOLFCOSE_SUCCESS;
+    }
+
+    while ((ret == WOLFCOSE_SUCCESS) && (remaining > 0u)) {
+        size_t arrayCount = 0u;
+        int32_t decodedAlg = WOLFCOSE_ALG_UNSET;
+
+        ret = wolfCose_DecodeSkippedHeaderEntry(ctx, 4u, &arrayCount,
+                                                 &decodedAlg);
+        remaining--;
+        if ((ret == WOLFCOSE_SUCCESS) && (firstRecipient != 0)) {
+            *recipientAlg = decodedAlg;
+            firstRecipient = 0;
+        }
+
+        if ((ret == WOLFCOSE_SUCCESS) && (arrayCount == 4u)) {
+            size_t nestedCount = 0u;
+
+            ret = wc_CBOR_DecodeArrayStart(ctx, &nestedCount);
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                ((nestedCount == 0u) || (nestedCount > ctx->bufSz))) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
+            }
+            if ((ret == WOLFCOSE_SUCCESS) && (depth >=
+                    (unsigned int)WOLFCOSE_CBOR_MAX_DEPTH)) {
+                ret = WOLFCOSE_E_CBOR_DEPTH;
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                stack[depth] = remaining;
+                depth++;
+                remaining = nestedCount;
+            }
+        }
+
+        while ((ret == WOLFCOSE_SUCCESS) && (remaining == 0u) &&
+               (depth > 0u)) {
+            depth--;
+            remaining = stack[depth];
+        }
+    }
+
+    return ret;
+}
+#endif
+#endif
 
 /* ----- COSE Key API ----- */
 
@@ -1156,6 +1714,9 @@ int wc_CoseKey_SetEcc(WOLFCOSE_KEY* key, int32_t crv, ecc_key* eccKey)
      * than several layers later when a coordinate size is needed. */
     else if ((crv != WOLFCOSE_CRV_P256) && (crv != WOLFCOSE_CRV_P384) &&
              (crv != WOLFCOSE_CRV_P521)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if (wolfCose_EccKeyCheckCurve(crv, eccKey) != WOLFCOSE_SUCCESS) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
@@ -1306,6 +1867,14 @@ int wc_CoseKey_SetRsa(WOLFCOSE_KEY* key, RsaKey* rsaKey)
     return ret;
 }
 #endif /* WOLFCOSE_HAVE_RSAPSS */
+
+#ifdef WOLFCOSE_HAVE_RSAPSS
+/* Widest RSA public exponent wolfCOSE emits and the RFC 8230 RSA-PSS
+ * minimum modulus width. These are shared by COSE_Key encoding and message
+ * operations, including builds that disable COSE_Key encoding. */
+#define WOLFCOSE_RSA_E_MAX_SZ    8u
+#define WOLFCOSE_RSA_PSS_MIN_SZ  256u
+#endif
 
 int wc_CoseKey_SetSymmetric(WOLFCOSE_KEY* key, const uint8_t* data,
                              size_t dataLen)
@@ -1497,11 +2066,6 @@ static int wolfCose_EncodeKeyOptionalFields(WOLFCOSE_CBOR_CTX* ctx,
 }
 
 #ifdef WOLFCOSE_HAVE_RSAPSS
-/* Widest RSA public exponent wolfCOSE emits. Both wc_CoseKey_Encode_ex() and
- * wc_CoseKey_EncodeSize_ex() read e through a buffer this size, so the size
- * query fails on an oversized exponent exactly where the encoder does. */
-#define WOLFCOSE_RSA_E_MAX_SZ 8u
-
 /* Measure the RSA public exponent without mp_unsigned_bin_size(): that is
  * declared MP_API, which wolfSSL exports only when built with
  * WOLFSSL_PUBLIC_MP, so calling it here fails to link (undefined reference
@@ -1722,6 +2286,13 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
+                else if (((size_t)xLen != coordSz) ||
+                         ((size_t)yLen != coordSz)) {
+                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
+                }
+                else {
+                    /* No action required. */
+                }
             }
             if (ret == WOLFCOSE_SUCCESS) {
                 emitPriv = wolfCose_KeyEmitsPrivate(key, flags);
@@ -1732,6 +2303,12 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                                                      &dLen));
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
+                }
+                else if ((size_t)dLen != coordSz) {
+                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
+                }
+                else {
+                    /* No action required. */
                 }
             }
             if (ret == WOLFCOSE_SUCCESS) {
@@ -2405,14 +2982,19 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
 
 #ifdef HAVE_ECC
         if (key->kty == WOLFCOSE_KTY_EC2) {
+            ecc_key* eccKey = key->key.ecc;
             size_t coordSz = 0u;
             int emitPriv;
 
-            if (key->key.ecc == NULL) {
+            if (eccKey == NULL) {
                 ret = WOLFCOSE_E_INVALID_ARG;
             }
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wolfCose_CrvKeySize(key->crv, &coordSz);
+            }
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (wc_ecc_size(eccKey) != (int)coordSz)) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             emitPriv = (ret == WOLFCOSE_SUCCESS) ?
                 wolfCose_KeyEmitsPrivate(key, flags) : 0;
@@ -2443,18 +3025,19 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
 #endif /* HAVE_ECC */
 #ifdef WOLFCOSE_HAVE_RSAPSS
         if (key->kty == WOLFCOSE_KTY_RSA) {
+            RsaKey* rsaKey = key->key.rsa;
             size_t itemLen = 0u;
             size_t modSz = 0u;
             size_t eSz = 0u;
             int rsaPriv = 0;
             int rsaEncSz;
 
-            if (key->key.rsa == NULL) {
+            if (rsaKey == NULL) {
                 ret = WOLFCOSE_E_INVALID_ARG;
             }
             if (ret == WOLFCOSE_SUCCESS) {
                 /* Same value wc_RsaFlattenPublicKey() reports for n. */
-                rsaEncSz = wc_RsaEncryptSize(key->key.rsa);
+                rsaEncSz = wc_RsaEncryptSize(rsaKey);
                 if (rsaEncSz <= 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -2463,7 +3046,7 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
                 }
             }
             if (ret == WOLFCOSE_SUCCESS) {
-                ret = wolfCose_RsaExponentSize(key->key.rsa, &eSz);
+                ret = wolfCose_RsaExponentSize(rsaKey, &eSz);
             }
 #ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
             if ((ret == WOLFCOSE_SUCCESS) &&
@@ -2471,7 +3054,7 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
                 rsaPriv = 1;
 #ifdef WOLF_CRYPTO_CB
                 /* Device-backed keys have no local CRT to export. */
-                if (key->key.rsa->devId != INVALID_DEVID) {
+                if (rsaKey->devId != INVALID_DEVID) {
                     rsaPriv = 0;
                 }
 #endif
@@ -2520,11 +3103,12 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
 #endif /* WOLFCOSE_HAVE_RSAPSS */
 #ifdef WOLFCOSE_HAVE_MLDSA
         if (key->kty == WOLFCOSE_KTY_AKP) {
+            wc_MlDsaKey* mldsaKey = key->key.mldsa;
             size_t itemLen = 0u;
             size_t pubSz = 0u;
             int emitPriv = 0;
 
-            if (key->key.mldsa == NULL) {
+            if (mldsaKey == NULL) {
                 ret = WOLFCOSE_E_INVALID_ARG;
             }
             /* Read the FIPS 204 public key length from the key itself, not
@@ -2540,7 +3124,7 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
                     /* RFC 9964: alg is REQUIRED for AKP keys. */
                     ret = WOLFCOSE_E_COSE_BAD_ALG;
                 }
-                else if (wc_MlDsaKey_GetPubLen(key->key.mldsa,
+                else if (wc_MlDsaKey_GetPubLen(mldsaKey,
                                                &dlPubLen) != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -2662,6 +3246,10 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
 #endif /* WOLFCOSE_KEY_ENCODE */
 
 #if defined(WOLFCOSE_KEY_DECODE)
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+static int wolfCose_LenFitsWord32(size_t n);
+#endif
+
 /* Decoded kty/crv select the importer, so they must name the type the caller
  * attached; a non-NULL key.* union member cannot tell them apart. */
 static int wolfCose_KeyAttachedTypeCheck(const WOLFCOSE_KEY* key)
@@ -2786,6 +3374,10 @@ int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
                 if (ret == WOLFCOSE_SUCCESS) {
                     info->alg = (int32_t)algVal;
                 }
+            }
+            else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (label == WOLFCOSE_KEY_LABEL_KEY_OPS)) {
+                ret = WOLFCOSE_E_UNSUPPORTED;
             }
             else if ((ret == WOLFCOSE_SUCCESS) &&
                      (label == WOLFCOSE_KEY_LABEL_CRV)) {
@@ -2957,6 +3549,10 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 }
             }
             else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (label == WOLFCOSE_KEY_LABEL_KEY_OPS)) {
+                ret = WOLFCOSE_E_UNSUPPORTED;
+            }
+            else if ((ret == WOLFCOSE_SUCCESS) &&
                      (label == WOLFCOSE_KEY_LABEL_CRV)) {
                 /* -1: crv(uint/negint) for EC2/OKP, k(bstr) for Symmetric,
                  *     n(bstr) for RSA (RFC 8230).
@@ -3035,6 +3631,36 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
 
+#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
+        /* wolfCrypt key import APIs take word32 lengths. Reject every parsed
+         * component before any conversion can truncate it. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((wolfCose_LenFitsWord32(nLen) == 0) ||
+             (wolfCose_LenFitsWord32(xLen) == 0) ||
+             (wolfCose_LenFitsWord32(yLen) == 0) ||
+             (wolfCose_LenFitsWord32(dLen) == 0))) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+#ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((wolfCose_LenFitsWord32(qLen) == 0) ||
+             (wolfCose_LenFitsWord32(dpLen) == 0) ||
+             (wolfCose_LenFitsWord32(dqLen) == 0) ||
+             (wolfCose_LenFitsWord32(qiLen) == 0))) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+#endif
+#endif
+
+        /* An EC2 key must contain either a complete public point or a private
+         * scalar. Validate this independently of whether a wolfCrypt key is
+         * attached for import. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (key->kty == WOLFCOSE_KTY_EC2) &&
+            (((xData == NULL) || (yData == NULL)) && (dData == NULL))) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+
 #ifdef HAVE_ECC
         /* RFC 9053 Section 7.1.1: EC2 coordinates are fixed length with
          * leading zeros preserved. Reject any present coordinate that does not
@@ -3055,6 +3681,36 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             ret = wolfCose_KeyAttachedTypeCheck(key);
         }
 
+        /* RFC 9964 requires alg to select an ML-DSA parameter set. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (key->kty == WOLFCOSE_KTY_AKP) &&
+            (key->alg != WOLFCOSE_ALG_ML_DSA_44) &&
+            (key->alg != WOLFCOSE_ALG_ML_DSA_65) &&
+            (key->alg != WOLFCOSE_ALG_ML_DSA_87)) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+        /* RFC 9964 requires pub for both public and private AKP keys. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (key->kty == WOLFCOSE_KTY_AKP) && (nData == NULL)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+        /* RFC 9964 encodes an ML-DSA private key as a 32-byte seed. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (key->kty == WOLFCOSE_KTY_AKP) && (xData != NULL) &&
+            (xLen != WOLFCOSE_MLDSA_SEED_SZ)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+#ifdef WOLFSSL_MLDSA_NO_MAKE_KEY
+        /* This wolfSSL configuration has no private-seed expansion API.
+         * Metadata-only decode can still validate the representation, while
+         * an attached key cannot import it. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (key->kty == WOLFCOSE_KTY_AKP) && (xData != NULL) &&
+            (key->attachedType == WOLFCOSE_ATT_MLDSA)) {
+            ret = WOLFCOSE_E_UNSUPPORTED;
+        }
+#endif
+
         /* Import key data into wolfCrypt key structs */
         if (ret == WOLFCOSE_SUCCESS) {
 #ifdef HAVE_ECC
@@ -3065,15 +3721,31 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                      * private EC2 key, so accept {kty, crv, d} alone. */
                     if (dData != NULL) {
                         int wcCrv = 0;
-                        ret = wolfCose_CrvToWcCurve(key->crv, &wcCrv);
+                        WOLFCOSE_ECC_IMPORT_STATE importState;
+
+                        ret = wolfCose_EccPrivateImportBegin(key->key.ecc,
+                                                             &importState);
+                        if (ret == WOLFCOSE_SUCCESS) {
+                            ret = wolfCose_CrvToWcCurve(key->crv, &wcCrv);
+                        }
                         if (ret == WOLFCOSE_SUCCESS) {
                             INJECT_FAILURE(WOLF_FAIL_ECC_IMPORT_X963, -1,
                                 ret = wc_ecc_import_private_key_ex(dData,
                                     (word32)dLen, NULL, 0, key->key.ecc, wcCrv));
+#ifdef WOLFCOSE_FORCE_FAILURE
+                            if (ret == 0) {
+                                INJECT_FAILURE(
+                                    WOLF_FAIL_ECC_IMPORT_PRIVATE_POST, -1,
+                                    ret = WOLFCOSE_SUCCESS);
+                            }
+#endif
                             if (ret == 0) {
                                 key->hasPrivate = 1;
                             }
                             else {
+                                wolfCose_EccPrivateImportRollback(key->key.ecc,
+                                                                 &importState);
+                                key->hasPrivate = 0;
                                 ret = WOLFCOSE_E_CRYPTO;
                             }
                         }
@@ -3085,7 +3757,15 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                 else {
                     int wcCrv;
                     size_t coordSz = 0;
-                    ret = wolfCose_CrvToWcCurve(key->crv, &wcCrv);
+                    WOLFCOSE_ECC_IMPORT_STATE importState;
+
+                    if (dData != NULL) {
+                        ret = wolfCose_EccPrivateImportBegin(key->key.ecc,
+                                                             &importState);
+                    }
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        ret = wolfCose_CrvToWcCurve(key->crv, &wcCrv);
+                    }
                     if (ret == WOLFCOSE_SUCCESS) {
                         ret = wolfCose_CrvKeySize(key->crv, &coordSz);
                     }
@@ -3111,8 +3791,20 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                                         key->key.ecc,
                                         tmpX, tmpY, tmpD, wcCrv));
                                 (void)wolfCose_ForceZero(tmpD, sizeof(tmpD));
+#ifdef WOLFCOSE_FORCE_FAILURE
+                                if (ret == 0) {
+                                    INJECT_FAILURE(
+                                        WOLF_FAIL_ECC_IMPORT_PRIVATE_POST, -1,
+                                        ret = WOLFCOSE_SUCCESS);
+                                }
+#endif
                                 if (ret == 0) {
                                     key->hasPrivate = 1;
+                                }
+                                else {
+                                    wolfCose_EccPrivateImportRollback(
+                                        key->key.ecc, &importState);
+                                    key->hasPrivate = 0;
                                 }
                             }
                             else {
@@ -3123,7 +3815,8 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                             }
                         }
                         if ((ret != WOLFCOSE_SUCCESS) &&
-                            (ret != WOLFCOSE_E_INVALID_ARG)) {
+                            (ret != WOLFCOSE_E_INVALID_ARG) &&
+                            (ret != WOLFCOSE_E_UNSUPPORTED)) {
                             ret = WOLFCOSE_E_CRYPTO;
                         }
                     }
@@ -3181,8 +3874,10 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                  * 32-byte seed in xData. The ML-DSA level comes from alg. */
                 const uint8_t* akpPub = nData;
                 size_t akpPubLen = nLen;
+#ifndef WOLFSSL_MLDSA_NO_MAKE_KEY
                 const uint8_t* akpSeed = xData;
                 size_t akpSeedLen = xLen;
+#endif
                 byte dlLevel;
 
                 if (key->alg == WOLFCOSE_ALG_ML_DSA_44) {
@@ -3215,12 +3910,19 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     if (ret != 0) {
                         ret = WOLFCOSE_E_CRYPTO;
                     }
-                    else if (akpSeed != NULL) {
-                        /* Private key: the seed is authoritative and fully
-                         * determines the keypair, so the (RFC-required, already
-                         * present) pub is not cross-checked against it -- doing
-                         * so would need a multi-KB stack copy of the derived
-                         * public key, which the bounded-stack design avoids. */
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        /* Apply the parameter-set-specific public key import
+                         * checks before deriving a private key from its seed. */
+                        INJECT_FAILURE(WOLF_FAIL_MLDSA_IMPORT_PUB, -1,
+                            ret = wc_MlDsaKey_ImportPubRaw(
+                                key->key.mldsa, akpPub,
+                                (word32)akpPubLen));
+                        if (ret != 0) {
+                            ret = WOLFCOSE_E_CRYPTO;
+                        }
+                    }
+#ifndef WOLFSSL_MLDSA_NO_MAKE_KEY
+                    if ((ret == WOLFCOSE_SUCCESS) && (akpSeed != NULL)) {
                         if (akpSeedLen != WOLFCOSE_MLDSA_SEED_SZ) {
                             ret = WOLFCOSE_E_COSE_BAD_HDR;
                         }
@@ -3228,7 +3930,17 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                             INJECT_FAILURE(WOLF_FAIL_MLDSA_IMPORT_PRIV, -1,
                                 ret = wc_MlDsaKey_MakeKeyFromSeed(
                                     key->key.mldsa, akpSeed));
-                            if (ret == 0) {
+                            if ((ret == 0) &&
+                                (XMEMCMP(key->key.mldsa->p, akpPub,
+                                         akpPubLen) != 0)) {
+                                wolfCose_MlDsaImportRollback(
+                                    key->key.mldsa, dlLevel);
+                                key->hasPrivate = 0u;
+                                key->mldsaSeed = NULL;
+                                key->mldsaSeedLen = 0u;
+                                ret = WOLFCOSE_E_COSE_BAD_HDR;
+                            }
+                            else if (ret == 0) {
                                 key->hasPrivate = 1;
                                 /* Retain the seed (zero-copy into the input,
                                  * like kid) so a decode->encode round-trip can
@@ -3236,15 +3948,17 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                                 key->mldsaSeed = akpSeed;
                                 key->mldsaSeedLen = akpSeedLen;
                             }
-                            else { ret = WOLFCOSE_E_CRYPTO; }
+                            else {
+                                wolfCose_MlDsaImportRollback(
+                                    key->key.mldsa, dlLevel);
+                                key->hasPrivate = 0u;
+                                key->mldsaSeed = NULL;
+                                key->mldsaSeedLen = 0u;
+                                ret = WOLFCOSE_E_CRYPTO;
+                            }
                         }
                     }
-                    else {
-                        INJECT_FAILURE(WOLF_FAIL_MLDSA_IMPORT_PUB, -1,
-                            ret = wc_MlDsaKey_ImportPubRaw(
-                                key->key.mldsa, akpPub, (word32)akpPubLen));
-                        if (ret != 0) { ret = WOLFCOSE_E_CRYPTO; }
-                    }
+#endif
                 }
             }
             else
@@ -3271,8 +3985,17 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                                 ret = wc_ed25519_import_private_only(dData,
                                     (word32)dLen, key->key.ed25519));
                             if (ret == 0) {
-                                ret = wc_ed25519_make_public(key->key.ed25519,
-                                    key->key.ed25519->p, ED25519_PUB_KEY_SIZE);
+                                INJECT_FAILURE(WOLF_FAIL_ED25519_MAKE_PUB, -1,
+                                    ret = wc_ed25519_make_public(
+                                        key->key.ed25519,
+                                        key->key.ed25519->p,
+                                        ED25519_PUB_KEY_SIZE));
+                                if (ret != 0) {
+                                    (void)wolfCose_ForceZero(
+                                        key->key.ed25519->k,
+                                        ED25519_KEY_SIZE);
+                                    key->key.ed25519->privKeySet = 0;
+                                }
                             }
                         }
                         if (ret == 0) { key->hasPrivate = 1; }
@@ -3301,8 +4024,16 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                                 ret = wc_ed448_import_private_only(dData,
                                     (word32)dLen, key->key.ed448));
                             if (ret == 0) {
-                                ret = wc_ed448_make_public(key->key.ed448,
-                                    key->key.ed448->p, ED448_PUB_KEY_SIZE);
+                                INJECT_FAILURE(WOLF_FAIL_ED448_MAKE_PUB, -1,
+                                    ret = wc_ed448_make_public(
+                                        key->key.ed448,
+                                        key->key.ed448->p,
+                                        ED448_PUB_KEY_SIZE));
+                                if (ret != 0) {
+                                    (void)wolfCose_ForceZero(
+                                        key->key.ed448->k, ED448_KEY_SIZE);
+                                    key->key.ed448->privKeySet = 0;
+                                }
                             }
                         }
                         if (ret == 0) { key->hasPrivate = 1; }
@@ -3324,9 +4055,8 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 #endif /* WOLFCOSE_HAVE_EDDSA || WOLFCOSE_HAVE_ED448 */
             if (key->kty == WOLFCOSE_KTY_SYMMETRIC) {
                 /* nData holds the symmetric k value (parsed from label -1).
-                 * Reject the message when the mandatory k parameter is
-                 * absent so callers cannot end up with an empty key. */
-                if (nData == NULL) {
+                 * Reject a missing or empty mandatory k parameter. */
+                if ((nData == NULL) || (nLen == 0u)) {
                     ret = WOLFCOSE_E_COSE_BAD_HDR;
                 }
                 else {
@@ -3349,6 +4079,99 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
 #endif /* WOLFCOSE_KEY_DECODE */
 
 /* ----- Internal: RSA-PSS hash-to-MGF mapping ----- */
+#if defined(WOLFCOSE_HAVE_RSAPSS) && \
+    (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
+/* RFC 8230 Section 6.1 requires RSA-PSS keys of at least 2048 bits. */
+static int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
+                                   size_t* modulusLen)
+{
+    int ret = WOLFCOSE_SUCCESS;
+
+    if (key == NULL) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if ((key->kty != WOLFCOSE_KTY_RSA) ||
+             (key->attachedType != WOLFCOSE_ATT_RSA) ||
+             (key->key.rsa == NULL)) {
+        ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
+    else {
+        RsaKey* rsaKey = key->key.rsa;
+        int modulusSz = wc_RsaEncryptSize(rsaKey);
+        int opaqueKey = 0;
+
+#ifdef WOLF_CRYPTO_CB
+        if (rsaKey->devId != INVALID_DEVID) {
+            opaqueKey = 1;
+        }
+#endif
+#ifdef WOLFSSL_MICROCHIP_TA100
+        if ((rsaKey->rKeyH != 0u) || (rsaKey->uKeyH != 0u)) {
+            opaqueKey = 1;
+        }
+#endif
+        if (modulusSz < (int)WOLFCOSE_RSA_PSS_MIN_SZ) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        else if (modulusSz == (int)WOLFCOSE_RSA_PSS_MIN_SZ) {
+            int modulusMaterialized = 0;
+            uint8_t modulus[WOLFCOSE_RSA_PSS_MIN_SZ] = {0};
+            word32 modulusLen32 = (word32)sizeof(modulus);
+#if !defined(HAVE_ECC) && !defined(WOLFSSL_EXPORT_INT) && \
+    !defined(WOLFSSL_RSA_VERIFY_ONLY)
+            word32 exponentLen = (word32)sizeof(modulus);
+#endif
+#if defined(HAVE_ECC) || defined(WOLFSSL_EXPORT_INT)
+            int modulusExportRet = wc_export_int(&rsaKey->n, modulus,
+                &modulusLen32, (word32)sizeof(modulus),
+                WC_TYPE_UNSIGNED_BIN);
+#elif defined(WOLFSSL_RSA_VERIFY_ONLY)
+            int modulusExportRet = -1;
+#else
+            /* The modulus output overwrites the unused exponent output. */
+            int modulusExportRet = wc_RsaFlattenPublicKey(rsaKey,
+                modulus, &exponentLen, modulus, &modulusLen32);
+#endif
+            if (modulusExportRet == 0) {
+                if (modulusLen32 > (word32)sizeof(modulus)) {
+                    modulusMaterialized = 1;
+                }
+                else {
+                    size_t i = 0u;
+
+                    for (; i < (size_t)modulusLen32; i++) {
+                        if (modulus[i] != 0u) {
+                            modulusMaterialized = 1;
+                        }
+                    }
+                }
+            }
+            if (modulusMaterialized != 0) {
+                if ((modulusLen32 != (word32)sizeof(modulus)) ||
+                    ((modulus[0] & 0x80u) == 0u)) {
+                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
+                }
+            }
+            else if (opaqueKey == 0) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            else {
+                /* The backend-reported size is authoritative for an opaque
+                 * key whose modulus is unavailable to the caller. */
+            }
+        }
+        else {
+            /* A wider modulus is above the required minimum. */
+        }
+        if ((ret == WOLFCOSE_SUCCESS) && (modulusLen != NULL)) {
+            *modulusLen = (size_t)modulusSz;
+        }
+    }
+    return ret;
+}
+#endif /* WOLFCOSE_HAVE_RSAPSS && RSA-PSS operations */
+
 #if defined(WOLFCOSE_HAVE_RSAPSS) && \
     (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
      defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
@@ -3430,8 +4253,7 @@ int wolfCose_BuildToBeSignedMaced(
             ret = wc_CBOR_EncodeBstr(&ctx, signProtected, signProtectedLen);
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_CBOR_EncodeBstr(&ctx, extAad,
-                                      (extAad != NULL) ? extAadLen : 0u);
+            ret = wc_CBOR_EncodeBstr(&ctx, extAad, extAadLen);
         }
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wc_CBOR_EncodeBstr(&ctx, payload, payloadLen);
@@ -3478,8 +4300,7 @@ static int wolfCose_BuildEncStructure(
             ret = wc_CBOR_EncodeBstr(&ctx, bodyProtected, bodyProtectedLen);
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_CBOR_EncodeBstr(&ctx, extAad,
-                                      (extAad != NULL) ? extAadLen : 0u);
+            ret = wc_CBOR_EncodeBstr(&ctx, extAad, extAadLen);
         }
         if (ret == WOLFCOSE_SUCCESS) {
             *structLen = ctx.idx;
@@ -3667,11 +4488,14 @@ static int wolfCose_IsKeyWrapAlg(int32_t alg)
 /**
  * Build COSE_KDF_Context for ECDH key derivation (RFC 9053 Section 5.2).
  *
- * Simplified version: PartyUInfo and PartyVInfo are empty arrays.
- * SuppPubInfo contains only keyDataLength and empty protected header.
+ * PartyUInfo and PartyVInfo are each [nil, nil, nil]. SuppPubInfo contains
+ * keyDataLength and the caller-supplied recipient protected header, encoded
+ * as {1: algId} by the ECDH-ES callers.
  *
  * \param contentAlgId      Content encryption algorithm for derived key
  * \param keyDataLengthBits Key length in bits
+ * \param recipientProtected Encoded {1: algId} recipient protected header
+ * \param recipientProtectedLen Recipient protected header length
  * \param out               Output buffer
  * \param outSz             Output buffer size
  * \param outLen            Output: bytes written
@@ -3814,6 +4638,11 @@ static int wolfCose_EcdhEsDirect(int32_t alg,
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
     }
 
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_EccKeyCheckCurve(recipientPub->crv,
+                                         recipientPub->key.ecc);
+    }
+
     /* Determine hash type from algorithm */
     if (ret == WOLFCOSE_SUCCESS) {
         if (alg == WOLFCOSE_ALG_ECDH_ES_HKDF_256) {
@@ -3951,6 +4780,10 @@ static int wolfCose_EcdhEsDirect(int32_t alg,
  * \param ephemPubLen     Coordinate length
  * \param contentAlgId    Content encryption algorithm
  * \param cekLenBytes     Required CEK length in bytes
+ * \param recipientProtected Encoded recipient protected header
+ * \param recipientProtectedLen Recipient protected header length
+ * \param kdfContext      Scratch buffer for the encoded KDF context
+ * \param kdfContextSz    KDF context scratch buffer size
  * \param cekOut          Output: derived CEK
  * \param cekOutSz        CEK buffer size
  * \return WOLFCOSE_SUCCESS or error code
@@ -3964,6 +4797,8 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
                                       size_t cekLenBytes,
                                       const uint8_t* recipientProtected,
                                       size_t recipientProtectedLen,
+                                      uint8_t* kdfContext,
+                                      size_t kdfContextSz,
                                       uint8_t* cekOut, size_t cekOutSz)
 {
     int ret = WOLFCOSE_SUCCESS;
@@ -3971,7 +4806,6 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
     int ephemInited = 0;
     uint8_t sharedSecret[66];
     word32 sharedSecretLen = sizeof(sharedSecret);
-    uint8_t kdfContext[64];
     size_t kdfContextLen = 0;
     int hashType = 0;
     int wcCurve = 0;
@@ -3982,7 +4816,7 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
 
     /* Parameter validation */
     if ((recipientKey == NULL) || (ephemPubX == NULL) || (ephemPubY == NULL) ||
-        (cekOut == NULL)) {
+        (kdfContext == NULL) || (cekOut == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
 
@@ -3995,6 +4829,11 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
          (recipientKey->key.ecc == NULL) ||
          (recipientKey->hasPrivate != 1u))) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
+
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_EccKeyCheckCurve(recipientKey->crv,
+                                         recipientKey->key.ecc);
     }
 
     /* Determine hash type from algorithm */
@@ -4070,6 +4909,12 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
             if (eccRet != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
             }
+            else {
+                eccRet = wc_ecc_check_key(&ephemPub);
+                if (eccRet != 0) {
+                    ret = WOLFCOSE_E_COSE_BAD_HDR;
+                }
+            }
         }
     }
 
@@ -4100,7 +4945,7 @@ static int wolfCose_EcdhEsDirectRecv(int32_t alg,
         ret = wolfCose_KdfContextEncode(contentAlgId, cekLenBytes * 8u,
                                          recipientProtected,
                                          recipientProtectedLen,
-                                         kdfContext, sizeof(kdfContext),
+                                         kdfContext, kdfContextSz,
                                          &kdfContextLen);
     }
 
@@ -4317,10 +5162,61 @@ static int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
 
 #endif /* WOLFCOSE_ECDH_ES_DIRECT && HAVE_ECC && HAVE_HKDF */
 
+#if defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY)
+#define WOLFCOSE_RECIP_MODE_DIRECT_ENCRYPTION 1
+#define WOLFCOSE_RECIP_MODE_DIRECT_AGREEMENT  2
+#define WOLFCOSE_RECIP_MODE_KEY_TRANSPORT      3
+
+/* Enforce the recipient combinations allowed by RFC 9052 Section 8.5. */
+static int wolfCose_UpdateRecipientMode(int32_t alg, int* commonMode)
+{
+    int ret = WOLFCOSE_SUCCESS;
+    int mode = 0;
+
+    if (commonMode == NULL) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if (alg == WOLFCOSE_ALG_UNSET) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+    else if ((alg == WOLFCOSE_ALG_DIRECT) ||
+             (alg == WOLFCOSE_ALG_DIRECT_HKDF_SHA_256) ||
+             (alg == WOLFCOSE_ALG_DIRECT_HKDF_SHA_512) ||
+             (alg == WOLFCOSE_ALG_DIRECT_HKDF_AES_128) ||
+             (alg == WOLFCOSE_ALG_DIRECT_HKDF_AES_256)) {
+        mode = WOLFCOSE_RECIP_MODE_DIRECT_ENCRYPTION;
+    }
+    else if ((alg == WOLFCOSE_ALG_ECDH_ES_HKDF_256) ||
+             (alg == WOLFCOSE_ALG_ECDH_ES_HKDF_512) ||
+             (alg == WOLFCOSE_ALG_ECDH_SS_HKDF_256) ||
+             (alg == WOLFCOSE_ALG_ECDH_SS_HKDF_512)) {
+        mode = WOLFCOSE_RECIP_MODE_DIRECT_AGREEMENT;
+    }
+    else {
+        mode = WOLFCOSE_RECIP_MODE_KEY_TRANSPORT;
+    }
+
+    if ((ret == WOLFCOSE_SUCCESS) && (*commonMode == 0)) {
+        *commonMode = mode;
+    }
+    else if ((ret == WOLFCOSE_SUCCESS) &&
+             ((*commonMode != mode) ||
+              (mode == WOLFCOSE_RECIP_MODE_DIRECT_AGREEMENT))) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+    else {
+        /* No action required */
+    }
+
+    return ret;
+}
+#endif
+
 /* Only meaningful where size_t can exceed word32; on smaller-or-equal size_t
  * platforms the cast cannot truncate, so the guard and helper are omitted (and
  * the condition would otherwise be a compile-time constant). */
-#if (defined(WOLFCOSE_SIGN1) || defined(WOLFCOSE_SIGN) || \
+#if (defined(WOLFCOSE_KEY_DECODE) || defined(WOLFCOSE_SIGN1) || \
+     defined(WOLFCOSE_SIGN) || \
      defined(WOLFCOSE_MAC0) || defined(WOLFCOSE_MAC) || \
      defined(WOLFCOSE_ENCRYPT0) || defined(WOLFCOSE_ENCRYPT)) && \
     defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
@@ -4447,27 +5343,7 @@ static int wolfCose_SignSigLen(const WOLFCOSE_KEY* key, int32_t alg,
         case WOLFCOSE_ALG_PS512:
 #endif
         {
-            if ((key == NULL) || (key->kty != WOLFCOSE_KTY_RSA) ||
-                (key->attachedType != WOLFCOSE_ATT_RSA) ||
-                (key->key.rsa == NULL)) {
-                if (key == NULL) {
-                    ret = WOLFCOSE_E_INVALID_ARG;
-                }
-                else {
-                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
-                }
-            }
-            else {
-                int modSz = wc_RsaEncryptSize(key->key.rsa);
-
-                if (modSz <= 0) {
-                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
-                }
-                else {
-                    *expSigLen = (size_t)modSz;
-                    ret = WOLFCOSE_SUCCESS;
-                }
-            }
+            ret = wolfCose_RsaPssCheckKey(key, expSigLen);
         }
         break;
 #endif
@@ -5016,6 +5892,10 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
         }
 
         if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_EccKeyCheckCurve(key->crv, key->key.ecc);
+        }
+
+        if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_AlgToHashType(alg, &hashType);
         }
 
@@ -5043,7 +5923,7 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
             size_t rawSigLen = sizeof(sigBuf);
             ret = wolfCose_EccSignRaw(hashBuf, (size_t)digestSz,
                                        sigBuf, &rawSigLen, coordSz,
-                                       rng, key->key.ecc);
+                                       hashType, rng, key->key.ecc);
             if (ret == WOLFCOSE_SUCCESS) {
                 sigSz = rawSigLen;
             }
@@ -5058,9 +5938,7 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
         int digestSz = 0;
         int mgf = 0;
 
-        if ((key->kty != WOLFCOSE_KTY_RSA) || (key->key.rsa == NULL)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
-        }
+        ret = wolfCose_RsaPssCheckKey(key, NULL);
 
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_AlgToHashType(alg, &hashType);
@@ -5248,6 +6126,7 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     WOLFCOSE_HDR_STATE hdrState;
     const uint8_t* verifyPayload = NULL;
     size_t verifyPayloadLen = 0;
+    int algProtected = 0;
 
     if ((key == NULL) || (in == NULL) || (scratch == NULL) || (hdr == NULL) ||
         (payload == NULL) || (payloadLen == NULL)) {
@@ -5297,6 +6176,10 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_DecodeProtectedHdr(protectedData, protectedLen, hdr,
                                           &hdrState);
+        if (ret == WOLFCOSE_SUCCESS) {
+            algProtected = wolfCose_HdrStateContains(&hdrState,
+                                                      WOLFCOSE_HDR_ALG);
+        }
     }
 
     /* 2. Unprotected headers (map) */
@@ -5350,6 +6233,10 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
         (key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (key->alg == WOLFCOSE_ALG_UNSET) && (algProtected == 0)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
 
     if (ret == WOLFCOSE_SUCCESS) {
         /* Rebuild Sig_structure in scratch using appropriate payload */
@@ -5368,16 +6255,23 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
         }
 #ifdef WOLFCOSE_HAVE_EDDSA
         if ((ret == WOLFCOSE_SUCCESS) && (key->crv == WOLFCOSE_CRV_ED25519)) {
-            if (key->key.ed25519 == NULL) {
+            if (key->attachedType != WOLFCOSE_ATT_ED25519) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             else {
-                INJECT_FAILURE(WOLF_FAIL_ED25519_VERIFY, -1,
-                    ret = wc_ed25519_verify_msg(sigData, (word32)sigDataLen,
-                                                 scratch, (word32)sigStructLen,
-                                                 &verified, key->key.ed25519));
-                if (ret != 0) {
-                    ret = WOLFCOSE_E_CRYPTO;
+                ed25519_key* ed25519Key = key->key.ed25519;
+
+                if (ed25519Key == NULL) {
+                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
+                }
+                else {
+                    INJECT_FAILURE(WOLF_FAIL_ED25519_VERIFY, -1,
+                        ret = wc_ed25519_verify_msg(sigData,
+                            (word32)sigDataLen, scratch,
+                            (word32)sigStructLen, &verified, ed25519Key));
+                    if (ret != 0) {
+                        ret = WOLFCOSE_E_CRYPTO;
+                    }
                 }
             }
         }
@@ -5385,17 +6279,24 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
 #endif
 #ifdef WOLFCOSE_HAVE_ED448
         if ((ret == WOLFCOSE_SUCCESS) && (key->crv == WOLFCOSE_CRV_ED448)) {
-            if (key->key.ed448 == NULL) {
+            if (key->attachedType != WOLFCOSE_ATT_ED448) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             else {
-                INJECT_FAILURE(WOLF_FAIL_ED448_VERIFY, -1,
-                    ret = wc_ed448_verify_msg(sigData, (word32)sigDataLen,
-                                               scratch, (word32)sigStructLen,
-                                               &verified, key->key.ed448,
-                                               NULL, 0));
-                if (ret != 0) {
-                    ret = WOLFCOSE_E_CRYPTO;
+                ed448_key* ed448Key = key->key.ed448;
+
+                if (ed448Key == NULL) {
+                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
+                }
+                else {
+                    INJECT_FAILURE(WOLF_FAIL_ED448_VERIFY, -1,
+                        ret = wc_ed448_verify_msg(sigData,
+                            (word32)sigDataLen, scratch,
+                            (word32)sigStructLen, &verified, ed448Key,
+                            NULL, 0));
+                    if (ret != 0) {
+                        ret = WOLFCOSE_E_CRYPTO;
+                    }
                 }
             }
         }
@@ -5417,6 +6318,7 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((alg == WOLFCOSE_ALG_ES256) || (alg == WOLFCOSE_ALG_ES384) ||
          (alg == WOLFCOSE_ALG_ES512))) {
+        ecc_key* eccKey = NULL;
         int verified = 0;
         size_t coordSz = 0;
         enum wc_HashType hashType = WC_HASH_TYPE_NONE;
@@ -5442,6 +6344,10 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
             }
         }
         if (ret == WOLFCOSE_SUCCESS) {
+            eccKey = key->key.ecc;
+            ret = wolfCose_EccKeyCheckCurve(key->crv, eccKey);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_AlgToHashType(alg, &hashType);
         }
         if (ret == WOLFCOSE_SUCCESS) {
@@ -5464,7 +6370,7 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_EccVerifyRaw(sigData, sigDataLen,
                                          hashBuf, (size_t)digestSz,
-                                         coordSz, key->key.ecc, &verified);
+                                         coordSz, eccKey, &verified);
         }
         if ((ret == WOLFCOSE_SUCCESS) && (verified != 1)) {
             ret = WOLFCOSE_E_COSE_SIG_FAIL;
@@ -5476,14 +6382,14 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((alg == WOLFCOSE_ALG_PS256) || (alg == WOLFCOSE_ALG_PS384) ||
          (alg == WOLFCOSE_ALG_PS512))) {
+        RsaKey* rsaKey = NULL;
         enum wc_HashType hashType = WC_HASH_TYPE_NONE;
         int digestSz = 0;
         int mgf = 0;
 
-        if ((key->kty != WOLFCOSE_KTY_RSA) || (key->key.rsa == NULL)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
-        }
+        ret = wolfCose_RsaPssCheckKey(key, NULL);
         if (ret == WOLFCOSE_SUCCESS) {
+            rsaKey = key->key.rsa;
             ret = wolfCose_AlgToHashType(alg, &hashType);
         }
         if (ret == WOLFCOSE_SUCCESS) {
@@ -5517,7 +6423,7 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
                 ret = wc_RsaPSS_VerifyCheck(scratch, (word32)sigDataLen,
                                               scratch, (word32)scratchSz,
                                               hashBuf, (word32)digestSz,
-                                              hashType, mgf, key->key.rsa));
+                                              hashType, mgf, rsaKey));
             if (ret < 0) {
                 ret = WOLFCOSE_E_COSE_SIG_FAIL;
             }
@@ -5532,6 +6438,7 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((alg == WOLFCOSE_ALG_ML_DSA_44) || (alg == WOLFCOSE_ALG_ML_DSA_65) ||
          (alg == WOLFCOSE_ALG_ML_DSA_87))) {
+        wc_MlDsaKey* mldsaKey = NULL;
         int verified = 0;
 
         /* RFC 9964: AKP key whose level matches the algorithm. */
@@ -5539,9 +6446,10 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
             ret = wolfCose_MlDsaCheckKey(key, alg);
         }
         if (ret == WOLFCOSE_SUCCESS) {
+            mldsaKey = key->key.mldsa;
             INJECT_FAILURE(WOLF_FAIL_MLDSA_VERIFY, -1,
                 ret = wc_MlDsaKey_VerifyCtx(
-                    key->key.mldsa,
+                    mldsaKey,
                     sigData, (word32)sigDataLen,
                     NULL, 0,
                     scratch, (word32)sigStructLen,
@@ -5701,16 +6609,18 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
 
     /* Fail-fast key/alg checks before any hashing. */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < signerCount); i++) {
-        if ((signers[i].key == NULL) ||
-            (wolfCose_KeyCanSign(signers[i].key) == 0)) {
+        WOLFCOSE_KEY* signerKey = signers[i].key;
+
+        if ((signerKey == NULL) ||
+            (wolfCose_KeyCanSign(signerKey) == 0)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         else if (((signers[i].kid != NULL) && (signers[i].kidLen == 0u)) ||
                  ((signers[i].kid == NULL) && (signers[i].kidLen != 0u))) {
             ret = WOLFCOSE_E_INVALID_ARG;
         }
-        else if ((signers[i].key->alg != WOLFCOSE_ALG_UNSET) &&
-                 (signers[i].key->alg != signers[i].algId)) {
+        else if ((signerKey->alg != WOLFCOSE_ALG_UNSET) &&
+                 (signerKey->alg != signers[i].algId)) {
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
 #if defined(WOLFCOSE_EXT_SIGN)
@@ -5718,7 +6628,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
          * bindings below describe something that is not here. Matches the
          * order wc_CoseSign1_Sign uses, where the ext-sign branch precedes
          * the per-algorithm ones. */
-        else if (signers[i].key->signCb != NULL) {
+        else if (signerKey->signCb != NULL) {
             /* No action required */
         }
 #endif
@@ -5736,10 +6646,14 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             else {
                 expectedCrv = WOLFCOSE_CRV_P521;
             }
-            if (signers[i].key->kty != WOLFCOSE_KTY_EC2) {
+            if (signerKey->kty != WOLFCOSE_KTY_EC2) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
-            else if (signers[i].key->crv != expectedCrv) {
+            else if (signerKey->crv != expectedCrv) {
+                ret = WOLFCOSE_E_COSE_BAD_ALG;
+            }
+            else if (wolfCose_EccKeyCheckCurve(signerKey->crv,
+                        signerKey->key.ecc) != WOLFCOSE_SUCCESS) {
                 ret = WOLFCOSE_E_COSE_BAD_ALG;
             }
             else {
@@ -5749,7 +6663,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
 #endif
 #if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448)
         else if ((signers[i].algId == WOLFCOSE_ALG_EDDSA) &&
-                 (signers[i].key->kty != WOLFCOSE_KTY_OKP)) {
+                 (signerKey->kty != WOLFCOSE_KTY_OKP)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
 #endif
@@ -5757,7 +6671,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         else if (((signers[i].algId == WOLFCOSE_ALG_PS256) ||
                   (signers[i].algId == WOLFCOSE_ALG_PS384) ||
                   (signers[i].algId == WOLFCOSE_ALG_PS512)) &&
-                 (signers[i].key->kty != WOLFCOSE_KTY_RSA)) {
+                 (signerKey->kty != WOLFCOSE_KTY_RSA)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
 #endif
@@ -5766,7 +6680,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         else if (((signers[i].algId == WOLFCOSE_ALG_ML_DSA_44) ||
                   (signers[i].algId == WOLFCOSE_ALG_ML_DSA_65) ||
                   (signers[i].algId == WOLFCOSE_ALG_ML_DSA_87)) &&
-                 (wolfCose_MlDsaCheckKey(signers[i].key, signers[i].algId)
+                 (wolfCose_MlDsaCheckKey(signerKey, signers[i].algId)
                       != WOLFCOSE_SUCCESS)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
@@ -5823,6 +6737,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
     /* Create each COSE_Signature */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < signerCount); i++) {
         const WOLFCOSE_SIGNATURE* signer = &signers[i];
+        WOLFCOSE_KEY* signerKey = signer->key;
         enum wc_HashType hashType = WC_HASH_TYPE_NONE;
         size_t hashLen = 0;
         const uint8_t* sigPtr = sigBuf;
@@ -5835,7 +6750,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
          * without a pre-hash so the hash type lookup is skipped. */
         if ((ret == WOLFCOSE_SUCCESS) &&
 #if defined(WOLFCOSE_EXT_SIGN)
-            (signer->key->signCb == NULL) &&
+            (signerKey->signCb == NULL) &&
 #endif
             (signer->algId != WOLFCOSE_ALG_ML_DSA_44) &&
             (signer->algId != WOLFCOSE_ALG_ML_DSA_65) &&
@@ -5866,7 +6781,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
          * does its own hashing inside wolfCose_ExtSign. */
         if ((ret == WOLFCOSE_SUCCESS) &&
 #if defined(WOLFCOSE_EXT_SIGN)
-            (signer->key->signCb == NULL) &&
+            (signerKey->signCb == NULL) &&
 #endif
             (signer->algId != WOLFCOSE_ALG_EDDSA) &&
             (signer->algId != WOLFCOSE_ALG_ML_DSA_44) &&
@@ -5888,7 +6803,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
 
         /* Sign the hash */
 #if defined(WOLFCOSE_EXT_SIGN)
-        if ((ret == WOLFCOSE_SUCCESS) && (signer->key->signCb != NULL)) {
+        if ((ret == WOLFCOSE_SUCCESS) && (signerKey->signCb != NULL)) {
             size_t extSigLen = 0;
             size_t sigOff = 0;
             int extPreHash = 0;
@@ -5903,7 +6818,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
                 }
             }
             if (ret == WOLFCOSE_SUCCESS) {
-                ret = wolfCose_ExtSign(signer->key, signer->algId,
+                ret = wolfCose_ExtSign(signerKey, signer->algId,
                                         scratch, sigStructLen,
                                         &scratch[sigOff],
                                         scratchSz - sigOff, &extSigLen);
@@ -5921,12 +6836,13 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
              (signer->algId == WOLFCOSE_ALG_ES384) ||
              (signer->algId == WOLFCOSE_ALG_ES512))) {
             size_t coordSz = 0;
-            ret = wolfCose_CrvKeySize(signer->key->crv, &coordSz);
+            ret = wolfCose_CrvKeySize(signerKey->crv, &coordSz);
             if (ret == WOLFCOSE_SUCCESS) {
                 sigSz = coordSz * 2u;
                 ret = wolfCose_EccSignRaw(hashBuf, hashLen,
                                            sigBuf, &sigSz, coordSz,
-                                           rng, signer->key->key.ecc);
+                                           hashType, rng,
+                                           signerKey->key.ecc);
             }
         }
         else
@@ -5936,14 +6852,14 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             (signer->algId == WOLFCOSE_ALG_EDDSA)) {
             word32 edSigSz = (word32)sizeof(sigBuf);
 #ifdef WOLFCOSE_HAVE_EDDSA
-            if (signer->key->crv == WOLFCOSE_CRV_ED25519) {
-                if (signer->key->key.ed25519 == NULL) {
+            if (signerKey->crv == WOLFCOSE_CRV_ED25519) {
+                if (signerKey->key.ed25519 == NULL) {
                     ret = WOLFCOSE_E_COSE_KEY_TYPE;
                 }
                 else {
                     ret = wc_ed25519_sign_msg(scratch, (word32)sigStructLen,
                                                sigBuf, &edSigSz,
-                                               signer->key->key.ed25519);
+                                               signerKey->key.ed25519);
                     if (ret != 0) {
                         ret = WOLFCOSE_E_CRYPTO;
                     }
@@ -5955,14 +6871,14 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             else
 #endif
 #ifdef WOLFCOSE_HAVE_ED448
-            if (signer->key->crv == WOLFCOSE_CRV_ED448) {
-                if (signer->key->key.ed448 == NULL) {
+            if (signerKey->crv == WOLFCOSE_CRV_ED448) {
+                if (signerKey->key.ed448 == NULL) {
                     ret = WOLFCOSE_E_COSE_KEY_TYPE;
                 }
                 else {
                     ret = wc_ed448_sign_msg(scratch, (word32)sigStructLen,
                                              sigBuf, &edSigSz,
-                                             signer->key->key.ed448, NULL, 0);
+                                             signerKey->key.ed448, NULL, 0);
                     if (ret != 0) {
                         ret = WOLFCOSE_E_CRYPTO;
                     }
@@ -5985,9 +6901,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
              (signer->algId == WOLFCOSE_ALG_PS384) ||
              (signer->algId == WOLFCOSE_ALG_PS512))) {
             int mgf = 0;
-            if (signer->key->key.rsa == NULL) {
-                ret = WOLFCOSE_E_COSE_KEY_TYPE;
-            }
+            ret = wolfCose_RsaPssCheckKey(signerKey, NULL);
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wolfCose_HashToMgf(hashType, &mgf);
             }
@@ -5998,7 +6912,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
                 ret = wc_RsaPSS_Sign_ex(hashBuf, (word32)hashLen,
                                           scratch, rsaSigLen,
                                           hashType, mgf, (int)hashLen,
-                                          signer->key->key.rsa, rng);
+                                          signerKey->key.rsa, rng);
                 if (ret <= 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -6019,7 +6933,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             size_t expectedSigSz = 0;
             /* RFC 9964: AKP key whose level matches the algorithm. */
             if (ret == WOLFCOSE_SUCCESS) {
-                ret = wolfCose_MlDsaCheckKey(signer->key, signer->algId);
+                ret = wolfCose_MlDsaCheckKey(signerKey, signer->algId);
             }
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wolfCose_SigSize(signer->algId, &expectedSigSz);
@@ -6032,7 +6946,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             if (ret == WOLFCOSE_SUCCESS) {
                 word32 dlSigLen = (word32)expectedSigSz;
                 ret = wc_MlDsaKey_SignCtx(
-                    signer->key->key.mldsa, NULL, 0,
+                    signerKey->key.mldsa, NULL, 0,
                     &scratch[sigStructLen], &dlSigLen,
                     scratch, (word32)sigStructLen, rng);
                 if (ret != 0) {
@@ -6163,6 +7077,7 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
     WOLFCOSE_HDR signerHdr;
     WOLFCOSE_HDR_STATE hdrState;
     WOLFCOSE_HDR_STATE signerHdrState;
+    int signerAlgProtected = 0;
 
     if ((verifyKey == NULL) || (in == NULL) || (scratch == NULL) || (hdr == NULL) ||
         (payload == NULL) || (payloadLen == NULL)) {
@@ -6254,7 +7169,7 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
 
     /* Skip to the requested signer */
     for (i = 0; (i < signerIndex) && (ret == WOLFCOSE_SUCCESS); i++) {
-        ret = wc_CBOR_Skip(&ctx);
+        ret = wolfCose_DecodeSkippedSignature(&ctx);
     }
 
     /* Parse the target COSE_Signature: [protected, unprotected, signature] */
@@ -6275,15 +7190,9 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         ret = wolfCose_DecodeProtectedHdr(signerProtectedData, signerProtectedLen,
                                           &signerHdr, &signerHdrState);
         if (ret == WOLFCOSE_SUCCESS) {
-            alg = signerHdr.alg;
+            signerAlgProtected = wolfCose_HdrStateContains(&signerHdrState,
+                WOLFCOSE_HDR_ALG);
         }
-    }
-
-    /* Honour the verifyKey->alg pin. */
-    if ((ret == WOLFCOSE_SUCCESS) &&
-        (verifyKey->alg != WOLFCOSE_ALG_UNSET) &&
-        (verifyKey->alg != alg)) {
-        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
     /* Signer unprotected headers. Decode with duplicate-label tracking so a
@@ -6291,6 +7200,23 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
      * signer protected bucket) is rejected. */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_DecodeUnprotectedHdr(&ctx, &signerHdr, &signerHdrState);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        alg = signerHdr.alg;
+    }
+
+    /* An unprotected alg is safe only when constrained by key policy. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (verifyKey->alg == WOLFCOSE_ALG_UNSET) &&
+        (signerAlgProtected == 0)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+
+    /* Honour the verifyKey->alg pin. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (verifyKey->alg != WOLFCOSE_ALG_UNSET) &&
+        (verifyKey->alg != alg)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
     /* Signature */
@@ -6301,7 +7227,7 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
     /* Skip remaining signers, then reject trailing data (RFC 8949 5.3.1). */
     for (i = signerIndex + 1u; (i < signatureCount) && (ret == WOLFCOSE_SUCCESS);
          i++) {
-        ret = wc_CBOR_Skip(&ctx);
+        ret = wolfCose_DecodeSkippedSignature(&ctx);
     }
     if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
         ret = WOLFCOSE_E_CBOR_MALFORMED;
@@ -6355,6 +7281,7 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((alg == WOLFCOSE_ALG_ES256) || (alg == WOLFCOSE_ALG_ES384) ||
          (alg == WOLFCOSE_ALG_ES512))) {
+        ecc_key* eccKey = NULL;
         int verified = 0;
         size_t coordSz = 0;
         int32_t expectedCrv;
@@ -6374,12 +7301,17 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
         if (ret == WOLFCOSE_SUCCESS) {
+            eccKey = verifyKey->key.ecc;
+            ret = wolfCose_EccKeyCheckCurve(verifyKey->crv,
+                                             eccKey);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_CrvKeySize(verifyKey->crv, &coordSz);
         }
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_EccVerifyRaw(signature, signatureLen,
                                          hashBuf, hashLen, coordSz,
-                                         verifyKey->key.ecc, &verified);
+                                         eccKey, &verified);
         }
         if ((ret == WOLFCOSE_SUCCESS) && (verified != 1)) {
             ret = WOLFCOSE_E_COSE_SIG_FAIL;
@@ -6396,13 +7328,15 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
 #ifdef WOLFCOSE_HAVE_EDDSA
         if ((ret == WOLFCOSE_SUCCESS) &&
             (verifyKey->crv == WOLFCOSE_CRV_ED25519)) {
-            if (verifyKey->key.ed25519 == NULL) {
+            ed25519_key* ed25519Key = verifyKey->key.ed25519;
+
+            if (ed25519Key == NULL) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             else {
                 ret = wc_ed25519_verify_msg(signature, (word32)signatureLen,
                                              scratch, (word32)sigStructLen,
-                                             &verified, verifyKey->key.ed25519);
+                                             &verified, ed25519Key);
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -6413,13 +7347,15 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
 #ifdef WOLFCOSE_HAVE_ED448
         if ((ret == WOLFCOSE_SUCCESS) &&
             (verifyKey->crv == WOLFCOSE_CRV_ED448)) {
-            if (verifyKey->key.ed448 == NULL) {
+            ed448_key* ed448Key = verifyKey->key.ed448;
+
+            if (ed448Key == NULL) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             else {
                 ret = wc_ed448_verify_msg(signature, (word32)signatureLen,
                                            scratch, (word32)sigStructLen,
-                                           &verified, verifyKey->key.ed448,
+                                           &verified, ed448Key,
                                            NULL, 0);
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
@@ -6444,12 +7380,11 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((alg == WOLFCOSE_ALG_PS256) || (alg == WOLFCOSE_ALG_PS384) ||
          (alg == WOLFCOSE_ALG_PS512))) {
+        RsaKey* rsaKey = NULL;
         int mgf = 0;
-        if ((verifyKey->kty != WOLFCOSE_KTY_RSA) ||
-            (verifyKey->key.rsa == NULL)) {
-            ret = WOLFCOSE_E_COSE_KEY_TYPE;
-        }
+        ret = wolfCose_RsaPssCheckKey(verifyKey, NULL);
         if (ret == WOLFCOSE_SUCCESS) {
+            rsaKey = verifyKey->key.rsa;
             ret = wolfCose_HashToMgf(hashType, &mgf);
         }
         if (ret == WOLFCOSE_SUCCESS) {
@@ -6462,7 +7397,7 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
             ret = wc_RsaPSS_VerifyCheck(scratch, (word32)signatureLen,
                                           scratch, (word32)scratchSz,
                                           hashBuf, (word32)hashLen,
-                                          hashType, mgf, verifyKey->key.rsa);
+                                          hashType, mgf, rsaKey);
             if (ret < 0) {
                 ret = WOLFCOSE_E_COSE_SIG_FAIL;
             }
@@ -6477,14 +7412,16 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((alg == WOLFCOSE_ALG_ML_DSA_44) || (alg == WOLFCOSE_ALG_ML_DSA_65) ||
          (alg == WOLFCOSE_ALG_ML_DSA_87))) {
+        wc_MlDsaKey* mldsaKey = NULL;
         int verified = 0;
         /* RFC 9964: AKP key whose level matches the algorithm. */
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_MlDsaCheckKey(verifyKey, alg);
         }
         if (ret == WOLFCOSE_SUCCESS) {
+            mldsaKey = verifyKey->key.mldsa;
             ret = wc_MlDsaKey_VerifyCtx(
-                verifyKey->key.mldsa,
+                mldsaKey,
                 signature, (word32)signatureLen,
                 NULL, 0,
                 scratch, (word32)sigStructLen,
@@ -6628,6 +7565,12 @@ int wc_CoseEncrypt0_Encrypt(const WOLFCOSE_KEY* key, int32_t alg,
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_AeadTagLen(alg, &aeadTagLen);
     }
+
+#ifdef WOLFCOSE_HAVE_AESCCM
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_AeadCheckPayloadLen(alg, payloadLen);
+    }
+#endif
 
     /* For detached mode, need detachedLen output and sufficient buffer */
     if ((ret == WOLFCOSE_SUCCESS) && (isDetached != 0) && ((detachedLen == NULL) ||
@@ -6947,6 +7890,7 @@ int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
     size_t aeadTagLen = 0;
     size_t payloadSz = 0;
     int32_t alg = 0;
+    int algProtected = 0;
 
     if ((key == NULL) || (in == NULL) || (scratch == NULL) || (hdr == NULL) ||
         (plaintext == NULL) || (plaintextLen == NULL)) {
@@ -7001,6 +7945,10 @@ int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_DecodeProtectedHdr(protectedData, protectedLen, hdr,
                                           &hdrState);
+        if (ret == WOLFCOSE_SUCCESS) {
+            algProtected = wolfCose_HdrStateContains(&hdrState,
+                                                      WOLFCOSE_HDR_ALG);
+        }
     }
 
     /* 2. Unprotected headers */
@@ -7043,6 +7991,10 @@ int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
         (key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (key->alg == WOLFCOSE_ALG_UNSET) && (algProtected == 0)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
 
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_AeadKeyLen(alg, &aeadKeyLen);
@@ -7063,7 +8015,13 @@ int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
     /* Payload size = ciphertext minus tag */
     if (ret == WOLFCOSE_SUCCESS) {
         payloadSz = ciphertextLen - aeadTagLen;
-        if (payloadSz > plaintextSz) {
+#ifdef WOLFCOSE_HAVE_AESCCM
+        if (wolfCose_AeadCheckPayloadLen(alg, payloadSz) !=
+                WOLFCOSE_SUCCESS) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+#endif
+        if ((ret == WOLFCOSE_SUCCESS) && (payloadSz > plaintextSz)) {
             ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
         }
     }
@@ -7216,8 +8174,10 @@ int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
  * Supports HMAC (RFC 9053 Section 3.1) and AES-CBC-MAC (RFC 9053 Section 3.2)
  * ----- */
 
-#if defined(WOLFCOSE_MAC0) && (defined(WOLFCOSE_HAVE_HMAC) || defined(WOLFCOSE_HAVE_AESMAC))
+#if (defined(WOLFCOSE_MAC0) || defined(WOLFCOSE_MAC)) && \
+    (defined(WOLFCOSE_HAVE_HMAC) || defined(WOLFCOSE_HAVE_AESMAC))
 
+#if defined(WOLFCOSE_MAC0)
 /**
  * Build the MAC_structure for COSE_Mac0 (wrapper for unified builder):
  *   ["MAC0", body_protected, external_aad, payload]
@@ -7240,6 +8200,7 @@ static int wolfCose_BuildMacStructure(const uint8_t* protectedHdr,
         payload, payloadLen,
         scratch, scratchSz, structLen);
 }
+#endif
 
 /**
  * Get MAC tag size for a COSE MAC algorithm (HMAC or AES-CBC-MAC).
@@ -7428,23 +8389,34 @@ static int wolfCose_AesCbcMac(const uint8_t* key, size_t keyLen,
 }
 #endif /* WOLFCOSE_HAVE_AESMAC */
 
+#ifdef WOLFCOSE_HAVE_HMAC
 /**
  * Check if algorithm is HMAC-based.
  */
 static int wolfCose_IsHmacAlg(int32_t alg)
 {
-    return ((0)
+    int isHmac = 0;
+
+    switch (alg) {
 #ifdef WOLFCOSE_HAVE_HMAC256
-         || (alg == WOLFCOSE_ALG_HMAC_256_256)
+        case WOLFCOSE_ALG_HMAC_256_256:
 #endif
 #ifdef WOLFCOSE_HAVE_HMAC384
-         || (alg == WOLFCOSE_ALG_HMAC_384_384)
+        case WOLFCOSE_ALG_HMAC_384_384:
 #endif
 #ifdef WOLFCOSE_HAVE_HMAC512
-         || (alg == WOLFCOSE_ALG_HMAC_512_512)
+        case WOLFCOSE_ALG_HMAC_512_512:
 #endif
-    ) ? 1 : 0;
+            isHmac = 1;
+            break;
+        default:
+            /* No action required. */
+            break;
+    }
+
+    return isHmac;
 }
+#endif /* WOLFCOSE_HAVE_HMAC */
 
 #ifdef WOLFCOSE_HAVE_AESMAC
 /**
@@ -7724,6 +8696,7 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
     WOLFCOSE_HDR_STATE hdrState;
     const uint8_t* verifyPayload = NULL;
     size_t verifyPayloadLen = 0;
+    int algProtected = 0;
 
     if ((key == NULL) || (in == NULL) || (scratch == NULL) || (hdr == NULL) ||
         (payload == NULL) || (payloadLen == NULL)) {
@@ -7777,6 +8750,10 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_DecodeProtectedHdr(protectedData, protectedLen, hdr,
                                           &hdrState);
+        if (ret == WOLFCOSE_SUCCESS) {
+            algProtected = wolfCose_HdrStateContains(&hdrState,
+                                                      WOLFCOSE_HDR_ALG);
+        }
     }
 
     /* 2. Unprotected headers (map) */
@@ -7827,6 +8804,10 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
         if ((key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (key->alg == WOLFCOSE_ALG_UNSET) && (algProtected == 0)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_MacTagSize(alg, &expectedTagSz);
@@ -7946,7 +8927,7 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
 }
 #endif /* WOLFCOSE_MAC0_VERIFY */
 
-#endif /* WOLFCOSE_MAC0 && (WOLFCOSE_HAVE_HMAC || WOLFCOSE_HAVE_AESMAC) */
+#endif /* (WOLFCOSE_MAC0 || WOLFCOSE_MAC) && MAC algorithm */
 
 /* ----- COSE_Encrypt Multi-Recipient API (RFC 9052 Section 5.1) ----- */
 
@@ -7997,11 +8978,12 @@ static int wolfCose_ValidateRecipientKeyAlg(const WOLFCOSE_KEY* key,
  * wc_CoseEncrypt_Encrypt - Create a COSE_Encrypt message (RFC 9052 Section 5.1)
  *
  * Structure: [Headers, ciphertext, recipients: [+ COSE_recipient]]
- * Each COSE_recipient: [Headers, wrapped_cek]
+ * Each COSE_recipient: [protected, unprotected, ciphertext]
  *
- * For simplicity, this implementation uses direct key (no key wrap):
- * - The content encryption key (CEK) is pre-shared or derived externally
- * - Recipients array contains header-only entries with no wrapped key
+ * Recipient key management supports direct, AES Key Wrap, and ECDH-ES direct
+ * modes when enabled. Direct uses a pre-shared CEK. AES Key Wrap generates one
+ * CEK and wraps it separately for each recipient. ECDH-ES derives the CEK for
+ * one recipient and carries the ephemeral public key in its unprotected header.
  */
 int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
     size_t recipientCount,
@@ -8100,6 +9082,12 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         ret = wolfCose_AeadTagLen(contentAlgId, &aeadTagLen);
     }
 
+#ifdef WOLFCOSE_HAVE_AESCCM
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_AeadCheckPayloadLen(contentAlgId, encryptPayloadLen);
+    }
+#endif
+
     /* Validate nonce length matches algorithm spec */
     if (ret == WOLFCOSE_SUCCESS) {
         size_t expectedNonceLen;
@@ -8130,7 +9118,9 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
         else {
-            recipientCrv = recipients[0].key->crv;
+            WOLFCOSE_KEY* recipientKey = recipients[0].key;
+
+            recipientCrv = recipientKey->crv;
 
             /* Pre-encode recipient protected hdr for KDF context. */
             ret = wolfCose_EncodeProtectedHdr(recipients[0].algId,
@@ -8141,7 +9131,7 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wolfCose_EcdhEsDirect(
                     recipients[0].algId,
-                    recipients[0].key,
+                    recipientKey,
                     contentAlgId,
                     keyLen,
                     recipientProtectedBuf, recipientProtectedLen,
@@ -8221,9 +9211,7 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
             /* Direct mode requires an explicit WOLFCOSE_ALG_DIRECT so a
              * zero-initialized (WOLFCOSE_ALG_UNSET) algId cannot silently
-             * select the direct-CEK construction. The decrypt path still
-             * accepts an empty (UNSET) recipient header, which is the on-wire
-             * representation of a direct recipient. */
+             * select the direct-CEK construction. */
             if (recipients[i].algId != WOLFCOSE_ALG_DIRECT) {
                 ret = WOLFCOSE_E_COSE_BAD_ALG;
             }
@@ -8415,8 +9403,7 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         /* Encode recipient protected header. RFC 9053 Section 6.1: the direct
          * key algorithm uses a zero-length protected header, so treat an
          * explicit WOLFCOSE_ALG_DIRECT the same as the unset direct case. */
-        if ((recipients[i].algId != WOLFCOSE_ALG_UNSET) &&
-            (recipients[i].algId != WOLFCOSE_ALG_DIRECT)) {
+        if (recipients[i].algId != WOLFCOSE_ALG_DIRECT) {
             ret = wolfCose_EncodeProtectedHdr(recipients[i].algId,
                 recipientProtectedBuf, sizeof(recipientProtectedBuf),
                 &recipientProtectedLen);
@@ -8465,18 +9452,36 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
             }
             else
 #endif
-            if ((recipients[i].kid != NULL) && (recipients[i].kidLen > 0u)) {
-                ret = wc_CBOR_EncodeMapStart(&ctx, 1u);
-                if (ret == WOLFCOSE_SUCCESS) {
+            if (ret == WOLFCOSE_SUCCESS) {
+                size_t mapEntries = 0u;
+
+                if (recipients[i].algId == WOLFCOSE_ALG_DIRECT) {
+                    mapEntries++;
+                }
+                if ((recipients[i].kid != NULL) &&
+                    (recipients[i].kidLen > 0u)) {
+                    mapEntries++;
+                }
+                ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
+                if ((ret == WOLFCOSE_SUCCESS) &&
+                    (recipients[i].algId == WOLFCOSE_ALG_DIRECT)) {
+                    ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_ALG);
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_ALG_DIRECT);
+                    }
+                }
+                if ((ret == WOLFCOSE_SUCCESS) &&
+                    (recipients[i].kid != NULL) &&
+                    (recipients[i].kidLen > 0u)) {
                     ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_KID);
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        ret = wc_CBOR_EncodeBstr(&ctx, recipients[i].kid,
+                                                recipients[i].kidLen);
+                    }
                 }
-                if (ret == WOLFCOSE_SUCCESS) {
-                    ret = wc_CBOR_EncodeBstr(&ctx, recipients[i].kid,
-                                              recipients[i].kidLen);
-                }
-            } else {
-                /* Empty map */
-                ret = wc_CBOR_EncodeMapStart(&ctx, 0u);
+            }
+            else {
+                /* Encoding stopped after an earlier error. */
             }
         }
 
@@ -8553,6 +9558,7 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     size_t protectedLen = 0;
     const uint8_t* ciphertext = NULL;
     size_t ciphertextLen = 0;
+    int ciphertextIsNull = 0;
     size_t encStructLen = 0;
     size_t recipientsCount = 0;
     size_t i;
@@ -8568,8 +9574,11 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     const uint8_t* recipientProtectedData = NULL;
     size_t recipientProtectedLen = 0;
     int32_t recipientAlgId = 0;
+    int recipientMode = 0;
+    WOLFCOSE_HDR recipientHdr;
     WOLFCOSE_HDR_STATE hdrState;
     WOLFCOSE_HDR_STATE recipientHdrState;
+    int bodyAlgProtected = 0;
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     uint8_t cek[32];
     uint8_t ephemPubX[66];
@@ -8637,14 +9646,18 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_DecodeProtectedHdr(protectedData, protectedLen, hdr,
                                           &hdrState);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        alg = hdr->alg;
+        if (ret == WOLFCOSE_SUCCESS) {
+            bodyAlgProtected = wolfCose_HdrStateContains(&hdrState,
+                WOLFCOSE_HDR_ALG);
+        }
     }
 
     /* [1] unprotected header */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_DecodeUnprotectedHdr(&ctx, hdr, &hdrState);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        alg = hdr->alg;
     }
 
     /* Validate IV */
@@ -8658,11 +9671,16 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
 
     /* [2] ciphertext */
     if (ret == WOLFCOSE_SUCCESS) {
+        ciphertextIsNull = 0;
+        if ((ctx.idx < ctx.bufSz) &&
+            (ctx.cbuf[ctx.idx] == WOLFCOSE_CBOR_NULL)) {
+            ciphertextIsNull = 1;
+        }
         ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
     }
 
     if (ret == WOLFCOSE_SUCCESS) {
-        if ((item.majorType == WOLFCOSE_CBOR_SIMPLE) && (item.val == 22u)) {
+        if (ciphertextIsNull != 0) {
             if (detachedCt == NULL) {
                 hdr->flags |= WOLFCOSE_HDR_FLAG_DETACHED;
                 ret = WOLFCOSE_E_DETACHED_PAYLOAD;
@@ -8692,7 +9710,12 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
 
     /* Skip to requested recipient */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientIndex); i++) {
-        ret = wc_CBOR_Skip(&ctx);
+        int32_t skippedAlg = WOLFCOSE_ALG_UNSET;
+
+        ret = wolfCose_DecodeSkippedRecipient(&ctx, &skippedAlg);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_UpdateRecipientMode(skippedAlg, &recipientMode);
+        }
     }
 
     /* Parse recipient array */
@@ -8707,78 +9730,20 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
      * unprotected decode below can run cross-bucket duplicate checks even when
      * the protected bucket is an empty bstr. */
     if (ret == WOLFCOSE_SUCCESS) {
+        (void)XMEMSET(&recipientHdr, 0, sizeof(recipientHdr));
         wolfCose_HdrStateInit(&recipientHdrState);
         ret = wc_CBOR_DecodeBstr(&ctx, &recipientProtectedData, &recipientProtectedLen);
     }
     if ((ret == WOLFCOSE_SUCCESS) && (recipientProtectedLen > 0u)) {
-        WOLFCOSE_HDR recipientHdr;
-        (void)XMEMSET(&recipientHdr, 0, sizeof(recipientHdr));
         ret = wolfCose_DecodeProtectedHdr(recipientProtectedData,
                                           recipientProtectedLen,
                                           &recipientHdr, &recipientHdrState);
-        if (ret == WOLFCOSE_SUCCESS) {
-            recipientAlgId = recipientHdr.alg;
-        }
     }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wolfCose_ValidateRecipientKeyAlg(recipient->key, recipientAlgId,
-            alg);
-    }
-
-    /* Classify the recipient key-management algorithm. Only direct, ECDH-ES
-     * direct, and AES key wrap are supported; reject anything else instead of
-     * silently treating it as direct-key decryption. */
-    if (ret == WOLFCOSE_SUCCESS) {
-        int recipModeOk = 0;
-        if ((recipientAlgId == WOLFCOSE_ALG_UNSET) ||
-            (recipientAlgId == WOLFCOSE_ALG_DIRECT)) {
-            recipModeOk = 1;
-        }
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
-        else if (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0) {
-            recipModeOk = 1;
-        }
-#endif
-#if defined(WOLFCOSE_KEY_WRAP)
-        else if (wolfCose_IsKeyWrapAlg(recipientAlgId) != 0) {
-            recipModeOk = 1;
-        }
-#endif
-        else {
-            /* No action required */
-        }
-        if (recipModeOk == 0) {
-            ret = WOLFCOSE_E_COSE_BAD_ALG;
-        }
-    }
-
-    /* Enforce the caller's recipient->algId policy when set. A message in
-     * implicit direct mode has no recipient alg, so normalize it to direct. */
-    if ((ret == WOLFCOSE_SUCCESS) &&
-        (recipient->algId != WOLFCOSE_ALG_UNSET)) {
-        int32_t gotAlg = recipientAlgId;
-        if (gotAlg == WOLFCOSE_ALG_UNSET) {
-            gotAlg = WOLFCOSE_ALG_DIRECT;
-        }
-        if (recipient->algId != gotAlg) {
-            ret = WOLFCOSE_E_COSE_BAD_ALG;
-        }
-    }
-
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
-    /* RFC 9052 Section 8.5.5: direct key agreement carries exactly one
-     * recipient. */
-    if ((ret == WOLFCOSE_SUCCESS) &&
-        (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0) &&
-        ((recipientsCount != 1u) || (recipientIndex != 0u))) {
-        ret = WOLFCOSE_E_COSE_BAD_HDR;
-    }
-#endif
 
     /* [1] recipient unprotected header */
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     if ((ret == WOLFCOSE_SUCCESS) &&
-        (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0)) {
+        (wolfCose_IsEcdhEsDirectAlg(recipientHdr.alg) != 0)) {
         size_t mapCount = 0;
         size_t j;
 
@@ -8842,14 +9807,85 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     if (ret == WOLFCOSE_SUCCESS) {
         /* Decode the recipient unprotected map with duplicate-label tracking
          * (within the map and against the recipient protected bucket). */
-        WOLFCOSE_HDR recipUnprotHdr;
-        (void)XMEMSET(&recipUnprotHdr, 0, sizeof(recipUnprotHdr));
-        ret = wolfCose_DecodeUnprotectedHdr(&ctx, &recipUnprotHdr,
+        ret = wolfCose_DecodeUnprotectedHdr(&ctx, &recipientHdr,
                                             &recipientHdrState);
     }
     else {
         /* No action required */
     }
+
+    if (ret == WOLFCOSE_SUCCESS) {
+        recipientAlgId = recipientHdr.alg;
+        ret = wolfCose_ValidateRecipientKeyAlg(recipient->key, recipientAlgId,
+            alg);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_UpdateRecipientMode(recipientAlgId, &recipientMode);
+    }
+
+    /* Classify the recipient key-management algorithm. Only direct, ECDH-ES
+     * direct, and AES key wrap are supported; reject anything else instead of
+     * silently treating it as direct-key decryption. */
+    if (ret == WOLFCOSE_SUCCESS) {
+        int recipModeOk = 0;
+        if (recipientAlgId == WOLFCOSE_ALG_DIRECT) {
+            recipModeOk = 1;
+        }
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+        else if (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0) {
+            recipModeOk = 1;
+        }
+#endif
+#if defined(WOLFCOSE_KEY_WRAP)
+        else if (wolfCose_IsKeyWrapAlg(recipientAlgId) != 0) {
+            recipModeOk = 1;
+        }
+#endif
+        else {
+            /* No action required */
+        }
+        if (recipModeOk == 0) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+    }
+
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
+    defined(HAVE_HKDF)
+    /* The ECDH parser must have consumed an ephemeral key before the merged
+     * unprotected alg can classify this recipient as ECDH-ES. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0) &&
+        (useEcdhEs == 0)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+#endif
+
+    /* Enforce the caller's recipient->algId policy when set. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipient->algId != WOLFCOSE_ALG_UNSET)) {
+        if (recipient->algId != recipientAlgId) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+    }
+
+    /* An unprotected content algorithm is safe only when direct-key policy
+     * independently pins the same algorithm. Other recipient modes pin their
+     * key-management algorithm, not the content algorithm. */
+    if ((ret == WOLFCOSE_SUCCESS) && (bodyAlgProtected == 0) &&
+        ((recipientAlgId != WOLFCOSE_ALG_DIRECT) ||
+         (recipient->key == NULL) || (recipient->key->alg != alg))) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+    /* RFC 9052 Section 8.5.5: direct key agreement carries exactly one
+     * recipient. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0) &&
+        ((recipientsCount != 1u) || (recipientIndex != 0u))) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
+#endif
 
     /* [2] wrapped CEK */
 #if defined(WOLFCOSE_KEY_WRAP)
@@ -8866,7 +9902,25 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     else
 #endif
     if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_Skip(&ctx);
+        int recipientValueIsNull = 0;
+
+        if ((ctx.idx < ctx.bufSz) &&
+            (ctx.cbuf[ctx.idx] == WOLFCOSE_CBOR_NULL)) {
+            recipientValueIsNull = 1;
+        }
+        ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (recipientValueIsNull == 0) &&
+            (item.majorType != WOLFCOSE_CBOR_BSTR)) {
+            ret = WOLFCOSE_E_CBOR_TYPE;
+        }
+        else if ((ret == WOLFCOSE_SUCCESS) &&
+                 (recipientValueIsNull == 0) && (item.dataLen != 0u)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+        else {
+            /* No action required */
+        }
     }
     else {
         /* No action required */
@@ -8875,7 +9929,12 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     /* Skip remaining recipients, then reject trailing data (RFC 8949 5.3.1). */
     for (i = recipientIndex + 1u;
          (ret == WOLFCOSE_SUCCESS) && (i < recipientsCount); i++) {
-        ret = wc_CBOR_Skip(&ctx);
+        int32_t skippedAlg = WOLFCOSE_ALG_UNSET;
+
+        ret = wolfCose_DecodeSkippedRecipient(&ctx, &skippedAlg);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_UpdateRecipientMode(skippedAlg, &recipientMode);
+        }
     }
     if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
         ret = WOLFCOSE_E_CBOR_MALFORMED;
@@ -8892,10 +9951,12 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     /* Derive/validate decryption key */
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     if ((ret == WOLFCOSE_SUCCESS) && (useEcdhEs != 0)) {
-        if ((recipient->key == NULL) ||
-            (recipient->key->kty != WOLFCOSE_KTY_EC2) ||
-            (recipient->key->key.ecc == NULL) ||
-            (recipient->key->hasPrivate != 1u)) {
+        WOLFCOSE_KEY* recipientKey = recipient->key;
+
+        if ((recipientKey == NULL) ||
+            (recipientKey->kty != WOLFCOSE_KTY_EC2) ||
+            (recipientKey->key.ecc == NULL) ||
+            (recipientKey->hasPrivate != 1u)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         /* X and Y coordinates for the ephemeral key must have matching
@@ -8906,10 +9967,11 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         }
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_EcdhEsDirectRecv(
-                recipientAlgId, recipient->key,
+                recipientAlgId, recipientKey,
                 ephemPubX, ephemPubY, ephemPubXLen,
                 alg, keyLen,
                 recipientProtectedData, recipientProtectedLen,
+                scratch, scratchSz,
                 cek, sizeof(cek));
         }
         if (ret == WOLFCOSE_SUCCESS) {
@@ -8960,7 +10022,13 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     }
     if (ret == WOLFCOSE_SUCCESS) {
         payloadLen = ciphertextLen - aeadTagLen;
-        if (payloadLen > plaintextSz) {
+#ifdef WOLFCOSE_HAVE_AESCCM
+        if (wolfCose_AeadCheckPayloadLen(alg, payloadLen) !=
+                WOLFCOSE_SUCCESS) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+#endif
+        if ((ret == WOLFCOSE_SUCCESS) && (payloadLen > plaintextSz)) {
             ret = WOLFCOSE_E_CBOR_OVERFLOW;
         }
     }
@@ -9366,20 +10434,26 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
             ret = wc_CBOR_EncodeBstr(&ctx, NULL, 0);
         }
 
-        /* [1] unprotected header map (with kid if present) */
+        /* [1] unprotected header map. The direct algorithm is mandatory and
+         * belongs in the unprotected bucket (RFC 9053 Section 6.1). */
         if (ret == WOLFCOSE_SUCCESS) {
-            if ((recipients[i].kid != NULL) && (recipients[i].kidLen > 0u)) {
-                ret = wc_CBOR_EncodeMapStart(&ctx, 1u);
-                if (ret == WOLFCOSE_SUCCESS) {
-                    ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_KID);
-                }
+            ret = wc_CBOR_EncodeMapStart(&ctx,
+                ((recipients[i].kid != NULL) &&
+                 (recipients[i].kidLen > 0u)) ? 2u : 1u);
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_ALG);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_ALG_DIRECT);
+            }
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (recipients[i].kid != NULL) &&
+                (recipients[i].kidLen > 0u)) {
+                ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_KID);
                 if (ret == WOLFCOSE_SUCCESS) {
                     ret = wc_CBOR_EncodeBstr(&ctx, recipients[i].kid,
-                                              recipients[i].kidLen);
+                                            recipients[i].kidLen);
                 }
-            }
-            else {
-                ret = wc_CBOR_EncodeMapStart(&ctx, 0u);
             }
         }
 
@@ -9437,10 +10511,12 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     size_t i;
     int32_t alg = 0;
     int32_t recipientAlgId = WOLFCOSE_ALG_UNSET;
+    int recipientMode = 0;
     size_t macStructLen = 0;
     size_t expectedTagLen = 0;
     uint8_t computedTag[WC_MAX_DIGEST_SIZE];
     WOLFCOSE_HDR_STATE hdrState;
+    int bodyAlgProtected = 0;
 #ifdef WOLFCOSE_HAVE_HMAC
     Hmac hmac;
     int hashType = 0;
@@ -9448,6 +10524,9 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
 #endif
     const uint8_t* verifyPayload = NULL;
     size_t verifyPayloadLen = 0;
+    int payloadIsNull = 0;
+    int recipientValueIsNull = 0;
+    size_t recipientValueLen = 0;
 
     /* Parameter validation */
     if ((recipient == NULL) || (in == NULL) || (inSz == 0u) ||
@@ -9501,23 +10580,32 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_DecodeProtectedHdr(protectedData, protectedLen, hdr,
                                           &hdrState);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        alg = hdr->alg;
+        if (ret == WOLFCOSE_SUCCESS) {
+            bodyAlgProtected = wolfCose_HdrStateContains(&hdrState,
+                WOLFCOSE_HDR_ALG);
+        }
     }
 
     /* [1] Decode unprotected header */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_DecodeUnprotectedHdr(&ctx, hdr, &hdrState);
     }
+    if (ret == WOLFCOSE_SUCCESS) {
+        alg = hdr->alg;
+    }
 
     /* [2] Decode payload */
     if (ret == WOLFCOSE_SUCCESS) {
+        payloadIsNull = 0;
+        if ((ctx.idx < ctx.bufSz) &&
+            (ctx.cbuf[ctx.idx] == WOLFCOSE_CBOR_NULL)) {
+            payloadIsNull = 1;
+        }
         ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
     }
 
     if (ret == WOLFCOSE_SUCCESS) {
-        if ((item.majorType == WOLFCOSE_CBOR_SIMPLE) && (item.val == 22u)) {
+        if (payloadIsNull != 0) {
             /* Null - detached payload */
             if (detachedPayload == NULL) {
                 hdr->flags |= WOLFCOSE_HDR_FLAG_DETACHED;
@@ -9559,7 +10647,12 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
 
     /* Skip to the requested recipient */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientIndex); i++) {
-        ret = wc_CBOR_Skip(&ctx);
+        int32_t skippedAlg = WOLFCOSE_ALG_UNSET;
+
+        ret = wolfCose_DecodeSkippedRecipient(&ctx, &skippedAlg);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_UpdateRecipientMode(skippedAlg, &recipientMode);
+        }
     }
 
     /* Parse the selected COSE_recipient: [protected, unprotected, ciphertext].
@@ -9589,18 +10682,24 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         }
         if (ret == WOLFCOSE_SUCCESS) {
             recipientAlgId = recipHdr.alg;
+            ret = wolfCose_UpdateRecipientMode(recipientAlgId,
+                                               &recipientMode);
         }
-        /* ciphertext: bstr (wrapped key) or nil (direct). */
+        /* Parse the recipient ciphertext before classifying its algorithm. */
         if (ret == WOLFCOSE_SUCCESS) {
+            recipientValueIsNull = 0;
+            if ((ctx.idx < ctx.bufSz) &&
+                (ctx.cbuf[ctx.idx] == WOLFCOSE_CBOR_NULL)) {
+                recipientValueIsNull = 1;
+            }
             ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            if ((item.majorType == WOLFCOSE_CBOR_SIMPLE) &&
-                (item.val == 22u)) {
-                /* nil - direct MAC, no wrapped key */
+            if (recipientValueIsNull != 0) {
+                /* Validate after recipient algorithm classification. */
             }
             else if (item.majorType == WOLFCOSE_CBOR_BSTR) {
-                /* bstr - wrapped key present (unused with provided key) */
+                recipientValueLen = item.dataLen;
             }
             else {
                 ret = WOLFCOSE_E_CBOR_TYPE;
@@ -9611,7 +10710,12 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     /* Skip remaining recipients, then reject trailing data (RFC 8949 5.3.1). */
     for (i = recipientIndex + 1u;
          (ret == WOLFCOSE_SUCCESS) && (i < recipientsCount); i++) {
-        ret = wc_CBOR_Skip(&ctx);
+        int32_t skippedAlg = WOLFCOSE_ALG_UNSET;
+
+        ret = wolfCose_DecodeSkippedRecipient(&ctx, &skippedAlg);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_UpdateRecipientMode(skippedAlg, &recipientMode);
+        }
     }
     if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
         ret = WOLFCOSE_E_CBOR_MALFORMED;
@@ -9623,29 +10727,42 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         (recipient->key->kty != WOLFCOSE_KTY_SYMMETRIC))) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
     }
+    /* An unprotected alg is safe only when constrained by key policy. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipient->key->alg == WOLFCOSE_ALG_UNSET) &&
+        (bodyAlgProtected == 0)) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
     if ((ret == WOLFCOSE_SUCCESS) &&
         (recipient->key->alg != WOLFCOSE_ALG_UNSET) && (recipient->key->alg != alg)) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
-    /* COSE_Mac is direct-keyed here: the only supported recipient modes are an
-     * absent (UNSET) or explicit WOLFCOSE_ALG_DIRECT alg. A recipient that
-     * advertises a key-distribution mode is not silently accepted. */
-    if ((ret == WOLFCOSE_SUCCESS) &&
-        (recipientAlgId != WOLFCOSE_ALG_UNSET) &&
-        (recipientAlgId != WOLFCOSE_ALG_DIRECT)) {
-        ret = WOLFCOSE_E_UNSUPPORTED;
+    /* COSE_Mac is direct-keyed here and the recipient algorithm is mandatory. */
+    if (ret == WOLFCOSE_SUCCESS) {
+        if (recipientAlgId == WOLFCOSE_ALG_UNSET) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+        else if (recipientAlgId != WOLFCOSE_ALG_DIRECT) {
+            ret = WOLFCOSE_E_UNSUPPORTED;
+        }
+        else {
+            /* No action required */
+        }
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        if ((recipientValueIsNull == 0) && (recipientValueLen != 0u)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+        else {
+            /* No action required */
+        }
     }
 
-    /* Enforce the caller's recipient->algId policy when set, normalizing an
-     * absent recipient alg to direct (matches wc_CoseEncrypt_Decrypt). */
+    /* Enforce the caller's recipient->algId policy when set. */
     if ((ret == WOLFCOSE_SUCCESS) &&
         (recipient->algId != WOLFCOSE_ALG_UNSET)) {
-        int32_t gotAlg = recipientAlgId;
-        if (gotAlg == WOLFCOSE_ALG_UNSET) {
-            gotAlg = WOLFCOSE_ALG_DIRECT;
-        }
-        if (recipient->algId != gotAlg) {
+        if (recipient->algId != recipientAlgId) {
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
     }

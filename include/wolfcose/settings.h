@@ -38,6 +38,7 @@
 #define WOLFCOSE_SETTINGS_H
 
 #include <wolfssl/wolfcrypt/settings.h>
+#include <wolfssl/version.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -354,6 +355,49 @@ extern "C" {
     #endif
 #endif
 
+/* Exact enforcement of RFC 8230's 2048-bit RSA-PSS minimum needs access to
+ * the modulus at the byte boundary. Backend-enabled builds may also carry
+ * software keys, so verify-only builds must export the modulus. */
+#if defined(WOLFCOSE_HAVE_RSAPSS) && \
+    defined(WOLFSSL_RSA_VERIFY_ONLY) && !defined(HAVE_ECC) && \
+    !defined(WOLFSSL_EXPORT_INT) && \
+    (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
+    #error "wolfCOSE RSA-PSS key validation requires WOLFSSL_EXPORT_INT"
+#endif
+
+/* Optional RFC 6979 deterministic ECDSA signing. */
+#if defined(WOLFCOSE_ENABLE_DETERMINISTIC_ECDSA) && \
+    defined(WOLFCOSE_HAVE_ECDSA) && \
+    (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN)) && \
+    !defined(WOLFCOSE_HAVE_DETERMINISTIC_ECDSA)
+    #if !defined(WOLFSSL_ECDSA_DETERMINISTIC_K) && \
+        !defined(WOLFSSL_ECDSA_DETERMINISTIC_K_VARIANT)
+        #error "WOLFCOSE_ENABLE_DETERMINISTIC_ECDSA requires wolfSSL support"
+    #endif
+
+    #define WOLFCOSE_HAVE_DETERMINISTIC_ECDSA
+
+    /* These wolfSSL sign dispatchers do not consume the key's deterministic
+     * nonce state. Fail closed rather than silently bypassing the policy. The
+     * Xilinx Versal path is not listed because it passes the derived nonce to
+     * its hardware signer. */
+    #if (defined(WOLF_CRYPTO_CB) && defined(WOLF_CRYPTO_CB_FIND)) || \
+        defined(WOLF_CRYPTO_CB_ONLY_ECC) || \
+        (defined(WOLFSSL_STM32_PKA) && \
+         !defined(WC_STM32_PKA_VERIFY_ONLY)) || \
+        defined(WOLFSSL_ATECC508A) || defined(WOLFSSL_ATECC608A) || \
+        defined(WOLFSSL_MICROCHIP_TA100) || defined(PLUTON_CRYPTO_ECC) || \
+        defined(WOLFSSL_CRYPTOCELL) || defined(WOLFSSL_SILABS_SE_ACCEL) || \
+        defined(WOLFSSL_KCAPI_ECC) || \
+        (defined(WOLFSSL_SE050) && \
+         !defined(WOLFSSL_SE050_ONLY_KEY_ID)) || \
+        (defined(WOLFSSL_ASYNC_CRYPT) && defined(WC_ASYNC_ENABLE_ECC) && \
+         (defined(HAVE_CAVIUM_V) || defined(HAVE_INTEL_QA)))
+        #error "ECDSA backend does not support deterministic signing"
+    #endif
+#endif
+
 /* COSE_Encrypt multi-recipient — extension */
 #if defined(WOLFCOSE_ENABLE_ENCRYPT)
     #define WOLFCOSE_ENCRYPT_WANT
@@ -397,6 +441,12 @@ extern "C" {
 #elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_AESWRAP) && \
       defined(HAVE_AES_KEYWRAP)
     #define WOLFCOSE_WANT_KEY_WRAP
+#endif
+#if defined(WOLFCOSE_WANT_KEY_WRAP) && \
+    (defined(WOLFCOSE_ENCRYPT) || defined(WOLFCOSE_MAC)) && \
+    !defined(WOLFCOSE_NO_RECIPIENTS) && \
+    (LIBWOLFSSL_VERSION_HEX < 0x05009000)
+    #error "wolfCOSE AES Key Wrap requires wolfSSL 5.9.0 or later"
 #endif
 
 /* ECDH-ES — extension */

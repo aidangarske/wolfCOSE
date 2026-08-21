@@ -210,6 +210,10 @@ extern "C" {
 #define WOLFCOSE_ALG_A192KW       (-4)   /* AES-192 Key Wrap */
 #define WOLFCOSE_ALG_A256KW       (-5)   /* AES-256 Key Wrap */
 #define WOLFCOSE_ALG_DIRECT       (-6)   /* Direct use of CEK */
+#define WOLFCOSE_ALG_DIRECT_HKDF_SHA_256 (-10) /* Direct + HKDF-SHA-256 */
+#define WOLFCOSE_ALG_DIRECT_HKDF_SHA_512 (-11) /* Direct + HKDF-SHA-512 */
+#define WOLFCOSE_ALG_DIRECT_HKDF_AES_128 (-12) /* Direct + HKDF-AES-128 */
+#define WOLFCOSE_ALG_DIRECT_HKDF_AES_256 (-13) /* Direct + HKDF-AES-256 */
 #define WOLFCOSE_ALG_ECDH_ES_HKDF_256  (-25)  /* ECDH-ES + HKDF-256 */
 #define WOLFCOSE_ALG_ECDH_ES_HKDF_512  (-26)  /* ECDH-ES + HKDF-512 */
 #define WOLFCOSE_ALG_ECDH_SS_HKDF_256  (-27)  /* ECDH-SS + HKDF-256 */
@@ -258,6 +262,7 @@ extern "C" {
 #define WOLFCOSE_KEY_LABEL_KTY    1
 #define WOLFCOSE_KEY_LABEL_KID    2
 #define WOLFCOSE_KEY_LABEL_ALG    3
+#define WOLFCOSE_KEY_LABEL_KEY_OPS 4
 #define WOLFCOSE_KEY_LABEL_CRV   (-1)
 #define WOLFCOSE_KEY_LABEL_X     (-2)
 #define WOLFCOSE_KEY_LABEL_Y     (-3)
@@ -313,12 +318,14 @@ typedef struct WOLFCOSE_HDR {
     size_t         ivLen;         /**< IV length */
     const uint8_t* partialIv;     /**< Partial IV pointer */
     size_t         partialIvLen;  /**< Partial IV length */
-    int32_t        contentType;   /**< Content type, 0 if absent */
+    int32_t        contentType;   /**< Content type from either header bucket */
     uint8_t        flags;         /**< Header flags (see WOLFCOSE_HDR_FLAG_*) */
 } WOLFCOSE_HDR;
 
 /** \brief Flag indicating payload is detached (RFC 9052 Section 2) */
 #define WOLFCOSE_HDR_FLAG_DETACHED 0x01u
+/** \brief Flag indicating an unprotected content-type label was present */
+#define WOLFCOSE_HDR_FLAG_CONTENT_TYPE_UNPROTECTED 0x02u
 
 /**
  * \brief Caller-supplied signature callback (RFC 9052 Section 4.4).
@@ -992,6 +999,8 @@ typedef struct WOLFCOSE_KEY_INFO {
  * (integer labels only, no duplicate labels, kty required, no trailing
  * bytes), so a buffer that peeks successfully will not be rejected by the
  * decoder for those reasons.
+ * Keys containing key_ops are rejected with WOLFCOSE_E_UNSUPPORTED because
+ * the fixed-size key wrapper cannot retain arbitrary operation identifiers.
  *
  * \param in    Input CBOR COSE_Key buffer.
  * \param inSz  Input buffer size; must be exactly the encoded length.
@@ -1009,6 +1018,14 @@ WOLFCOSE_API int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
  *        assigning key.* directly records no type and imports nothing.
  *        A decoded kty/crv that does not match the attached type returns
  *        WOLFCOSE_E_COSE_KEY_TYPE before any import runs.
+ *        Keys containing key_ops return WOLFCOSE_E_UNSUPPORTED before any
+ *        key material is imported.
+ *        An attached ECC object receiving private EC2 material must be
+ *        freshly initialized, with no existing curve or key material.
+ *        When wolfCrypt's private importer uses an unsupported math layout
+ *        or a non-transactional callback or hardware backend, private EC2
+ *        decode returns WOLFCOSE_E_UNSUPPORTED before importing key
+ *        material.
  * \param key   Key structure (should be initialized, with wolfCrypt key
  *              attached for asymmetric types).
  * \param in    Input CBOR buffer.
@@ -1022,11 +1039,15 @@ WOLFCOSE_API int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in,
 
 /* ----- COSE_Sign1 API (RFC 9052 Section 4.3) ----- */
 
+/* All message APIs require extAadLen to be zero when extAad is NULL. */
+
 #if defined(WOLFCOSE_SIGN1_SIGN)
 /**
  * \brief Sign a payload producing a COSE_Sign1 message (RFC 9052 Section 4.3).
  *
- * \param key             WOLFCOSE_KEY with hasPrivate=1. Caller retains ownership.
+ * \param key             WOLFCOSE_KEY with hasPrivate=1, or an external
+ *                        signing callback when enabled. Caller retains
+ *                        ownership.
  * \param alg             Algorithm identifier (WOLFCOSE_ALG_ES256, etc).
  * \param kid             Key ID to include in unprotected headers (NULL if none).
  * \param kidLen          Key ID length.
@@ -1042,7 +1063,8 @@ WOLFCOSE_API int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in,
  * \param out             Output buffer.
  * \param outSz           Output buffer size.
  * \param outLen          Output: bytes written to out.
- * \param rng             Initialized WC_RNG.
+ * \param rng             Initialized WC_RNG for local signing; may be NULL
+ *                        when an external signing callback is configured.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
 WOLFCOSE_API int wc_CoseSign1_Sign(WOLFCOSE_KEY* key, int32_t alg,
@@ -1338,9 +1360,11 @@ WOLFCOSE_API int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
  * Creates a COSE_Encrypt structure:
  *   COSE_Encrypt = [Headers, ciphertext, recipients : [+ COSE_recipient]]
  *
- * Currently supports direct key mode where the content encryption key (CEK)
- * is the same for all recipients (pre-shared). The recipients array contains
- * header-only entries identifying which key is used.
+ * Depending on build configuration, recipient key management supports direct,
+ * AES Key Wrap, and ECDH-ES direct key agreement. Direct mode uses a
+ * pre-shared content encryption key (CEK). AES Key Wrap generates one CEK and
+ * wraps it separately for each recipient. ECDH-ES derives the CEK for one
+ * recipient and puts the ephemeral public key in the unprotected header.
  *
  * \param recipients       Array of WOLFCOSE_RECIPIENT with keys.
  * \param recipientCount   Number of recipients (must be >= 1).
@@ -1361,7 +1385,8 @@ WOLFCOSE_API int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
  * \param out              Output buffer.
  * \param outSz            Output buffer size.
  * \param outLen           Output: bytes written to out.
- * \param rng              Initialized WC_RNG (for future CEK generation).
+ * \param rng              Initialized WC_RNG for AES Key Wrap or ECDH-ES;
+ *                         may be NULL for direct mode.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
 WOLFCOSE_API int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
@@ -1381,6 +1406,12 @@ WOLFCOSE_API int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
  * \brief Decrypt a COSE_Encrypt message.
  *
  * Decrypts using the key from the specified recipient entry.
+ * Every on-wire recipient must declare its key-management algorithm, all
+ * top-level sibling recipients must use an RFC-compatible key-distribution
+ * mode, and a direct recipient's ciphertext item must be an empty bstr or
+ * null. Selecting a recipient that contains nested recipients is unsupported.
+ * An unprotected body algorithm is accepted only when recipient->key->alg
+ * pins the same value.
  *
  * \param recipient        WOLFCOSE_RECIPIENT with decryption key.
  * \param recipientIndex   0-based index of recipient to use.
@@ -1453,6 +1484,11 @@ WOLFCOSE_API int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
  * \brief Verify a COSE_Mac message.
  *
  * Verifies using the key from the specified recipient entry.
+ * Every on-wire recipient must declare a direct key-distribution algorithm,
+ * all top-level sibling recipients must use direct mode, and the recipient
+ * ciphertext item must be an empty bstr or null. Selecting a recipient that
+ * contains nested recipients is unsupported. An unprotected body algorithm is
+ * accepted only when recipient->key->alg pins the same value.
  *
  * \param recipient        WOLFCOSE_RECIPIENT with MAC key.
  * \param recipientIndex   0-based index of recipient to use.
