@@ -122,6 +122,11 @@ run_make_with_cflags() {
         CFLAGS="$cflags" "$MAKE_BIN" -C "$ROOT_DIR" -B -n "$@" "$target"
 }
 
+run_config_make() {
+    env -i PATH="${PATH:-/usr/bin:/bin}" TMPDIR="${TMPDIR:-/tmp}" \
+        FAKE_CC_LOG="$FAKE_CC_LOG" "$MAKE_BIN" -s -C "$config_fixture" "$@"
+}
+
 check_config_rebuild() (
     config_fixture=$(mktemp -d "${TMPDIR:-/tmp}/wolfcose-config.XXXXXX")
     trap 'rm -rf "$config_fixture"' 0 1 2 3 15
@@ -133,22 +138,21 @@ check_config_rebuild() (
         "$config_fixture/include/wolfcose/"
 
     FAKE_CC_LOG="$config_fixture/compiler.log"
-    export FAKE_CC_LOG
-    "$MAKE_BIN" -s -C "$config_fixture" \
+    run_config_make \
         "CC=sh $SCRIPT_PATH --fake-cc" \
         "AR=sh $SCRIPT_PATH --fake-ar" \
         'PKG_CONFIG=false' \
         'WOLFSSL_CFLAGS=-I/fake/first/include' \
         'WOLFSSL_LIBS=-L/fake/first/lib -lfakefirst' \
         libwolfcose.a
-    "$MAKE_BIN" -s -C "$config_fixture" \
+    run_config_make \
         "CC=sh $SCRIPT_PATH --fake-cc" \
         "AR=sh $SCRIPT_PATH --fake-ar" \
         'PKG_CONFIG=false' \
         'WOLFSSL_CFLAGS=-I/fake/second/include' \
         'WOLFSSL_LIBS=-L/fake/second/lib -lfakesecond' \
         libwolfcose.a
-    "$MAKE_BIN" -s -C "$config_fixture" \
+    run_config_make \
         "CC=sh $SCRIPT_PATH --fake-cc" \
         "AR=sh $SCRIPT_PATH --fake-ar" \
         'PKG_CONFIG=false' \
