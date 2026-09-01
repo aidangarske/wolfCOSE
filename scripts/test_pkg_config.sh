@@ -51,7 +51,7 @@ if [ "${1-}" = "--fixture" ]; then
         --cflags)
             case "${3-}" in
                 wolfssl)
-                    printf '%s\n' '-I/fake/wolfssl/include'
+                    printf '%s\n' '-I/fake/wolfssl/include -DFAKE_WOLFSSL_PACKAGE=1'
                     ;;
                 wolfssl-custom)
                     printf '%s\n' '-I/fake/custom-wolfssl/include'
@@ -183,6 +183,7 @@ excludes "$shared_pkg_config_output" '/usr/local/lib'
 
 c99_output=$(run_make c99-check "PKG_CONFIG=sh $SCRIPT_PATH --fixture")
 contains "$c99_output" '-isystem /fake/wolfssl/include'
+contains "$c99_output" '-DFAKE_WOLFSSL_PACKAGE=1'
 excludes "$c99_output" '-I/fake/wolfssl/include'
 excludes "$c99_output" '/usr/local/include'
 
@@ -221,6 +222,11 @@ excludes "$cross_override_output" '-L/usr/local/lib'
 c99_override_output=$(run_make c99-check \
     'PKG_CONFIG=false' 'WOLFSSL_INC=/custom/include')
 contains "$c99_override_output" '-isystem /custom/include'
+
+c99_system_override_output=$(run_make c99-check \
+    'PKG_CONFIG=false' 'WOLFSSL_CFLAGS=-isystem /custom/include')
+contains "$c99_system_override_output" '-isystem /custom/include'
+excludes "$c99_system_override_output" '-isystem system'
 
 inherited_cflags_output=$(run_make_with_cflags tool '-O2' 'PKG_CONFIG=false')
 contains "$inherited_cflags_output" '-std=c99'

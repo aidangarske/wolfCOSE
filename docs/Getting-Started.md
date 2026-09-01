@@ -70,6 +70,37 @@ cd wolfCOSE
 make
 ```
 
+### wolfSSL Discovery
+
+The Makefile uses `pkg-config` for system-installed wolfSSL when its metadata
+is available. This works with Homebrew installations on either supported macOS
+architecture:
+
+```bash
+brew install wolfssl pkgconf
+make
+```
+
+If the package metadata is outside the default search path, set
+`PKG_CONFIG_PATH` before building:
+
+```bash
+PKG_CONFIG_PATH="$(brew --prefix wolfssl)/lib/pkgconfig" make
+```
+
+For a custom prefix without a `.pc` file, use `WOLFSSL_PREFIX`. For
+cross-builds or other custom installations, override the flags explicitly:
+
+```bash
+make WOLFSSL_PREFIX=/path/to/wolfssl
+make WOLFSSL_CFLAGS="-isystem /path/to/wolfssl/include" \
+     WOLFSSL_LIBS="-L/path/to/wolfssl/lib -lwolfssl"
+```
+
+Set `WOLFSSL_PACKAGE` for a non-default package name, or `PKG_CONFIG` to use a
+different metadata tool. Run `make pkg-config-test` to verify these discovery
+paths without a wolfSSL installation.
+
 ### Build Targets
 
 | Target | Description |
@@ -77,6 +108,7 @@ make
 | `make all` | Build `libwolfcose.a` (static library) |
 | `make shared` | Build `libwolfcose.so` (shared library) |
 | `make test` | Build and run CBOR and COSE unit tests |
+| `make pkg-config-test` | Verify wolfSSL package discovery and overrides |
 | `make tool` | Build CLI tool (`tools/wolfcose_tool`) |
 | `make tool-test` | Round-trip self-test for all 17 algorithms |
 | `make demo` | Build and run lifecycle demo (11 algorithms) |
