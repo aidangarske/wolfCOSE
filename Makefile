@@ -21,13 +21,13 @@ PKG_CONFIG ?= pkg-config
 WOLFSSL_PACKAGE ?= wolfssl
 WOLFSSL_PREFIX ?= /usr/local
 WOLFSSL_PKG_CONFIG_FOUND := $(shell $(PKG_CONFIG) --exists \
-    $(WOLFSSL_PACKAGE) 2>/dev/null && echo yes)
+    '$(WOLFSSL_PACKAGE)' 2>/dev/null && echo yes)
 
 # Prefer package metadata so system installs do not need a hard-coded prefix.
 # Explicit flags support custom installations and cross builds.
 ifeq ($(WOLFSSL_PKG_CONFIG_FOUND),yes)
-WOLFSSL_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags $(WOLFSSL_PACKAGE) 2>/dev/null)
-WOLFSSL_LIBS   ?= $(shell $(PKG_CONFIG) --libs $(WOLFSSL_PACKAGE) 2>/dev/null)
+WOLFSSL_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags '$(WOLFSSL_PACKAGE)' 2>/dev/null)
+WOLFSSL_LIBS   ?= $(shell $(PKG_CONFIG) --libs '$(WOLFSSL_PACKAGE)' 2>/dev/null)
 else
 WOLFSSL_CFLAGS ?= -isystem $(WOLFSSL_PREFIX)/include
 WOLFSSL_LIBS   ?= -L$(WOLFSSL_PREFIX)/lib -lwolfssl
