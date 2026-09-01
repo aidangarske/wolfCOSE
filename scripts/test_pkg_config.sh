@@ -176,6 +176,11 @@ contains "$pkg_config_output" '-L/fake/wolfssl/lib -lfakewolfssl'
 excludes "$pkg_config_output" '/usr/local/include'
 excludes "$pkg_config_output" '/usr/local/lib'
 
+shared_pkg_config_output=$(run_make shared \
+    "PKG_CONFIG=sh $SCRIPT_PATH --fixture")
+contains "$shared_pkg_config_output" '-L/fake/wolfssl/lib -lfakewolfssl'
+excludes "$shared_pkg_config_output" '/usr/local/lib'
+
 c99_output=$(run_make c99-check "PKG_CONFIG=sh $SCRIPT_PATH --fixture")
 contains "$c99_output" '-isystem /fake/wolfssl/include'
 excludes "$c99_output" '-I/fake/wolfssl/include'
