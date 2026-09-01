@@ -551,7 +551,7 @@ extern "C" {
     defined(WOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT)
     #if !defined(HAVE_HPKE) || !defined(HAVE_ECC) || \
         !defined(HAVE_AESGCM) || defined(NO_SHA256) || \
-        defined(NO_ECC256)
+        (defined(NO_ECC256) && !defined(HAVE_ALL_CURVES))
         #error "HPKE-0 requires wolfSSL HAVE_HPKE, HAVE_ECC, P-256, SHA-256, and HAVE_AESGCM"
     #endif
     #define WOLFCOSE_HAVE_HPKE_0
