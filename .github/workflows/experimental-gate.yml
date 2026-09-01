@@ -1,0 +1,61 @@
+name: Experimental Gate
+
+on:
+  push:
+    branches: [ 'main', 'release/**' ]
+  pull_request:
+    branches: [ '*' ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  experimental-gate:
+    name: WOLFCOSE_EXPERIMENTAL acknowledgement gate (${{ matrix.cc }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool
+
+    - name: Resolve wolfSSL master commit
+      id: wolfssl-rev
+      run: echo "sha=$(git ls-remote https://github.com/wolfSSL/wolfssl.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+    - name: Cache wolfSSL
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-v3-full-${{ steps.wolfssl-rev.outputs.sha }}
+
+    - name: Build wolfSSL
+      if: steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
+                    --enable-curve25519 --enable-curve448 \
+                    --enable-aesgcm --enable-aesccm \
+                    --enable-sha384 --enable-sha512 \
+                    --enable-keygen --enable-hkdf --enable-aeskeywrap \
+                    --enable-chacha --enable-poly1305 \
+                    --enable-dilithium --enable-rsapss \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc)
+        make install
+
+    - name: Experimental-feature gate
+      run: |
+        make experimental-check CC=${{ matrix.cc }} WOLFSSL_INC=$HOME/wolfssl-install/include
