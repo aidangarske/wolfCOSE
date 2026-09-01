@@ -5,6 +5,7 @@
 *.so
 *.su
 *.dSYM/
+.wolfcose-build-config
 
 # Binaries
 tests/test_wolfcose

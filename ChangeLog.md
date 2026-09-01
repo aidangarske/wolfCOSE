@@ -57,6 +57,8 @@ MAC, and key distribution, and standardized post-quantum ML-DSA signatures
 
 ## Improvements/Optimizations
 
+* Build discovery uses `pkg-config` for system-installed wolfSSL and supports
+  explicit flags for custom and cross builds.
 * Minimal footprint: an ES256 `COSE_Sign1` build is ~5.1 KB verify-only and
   ~6.8 KB sign + verify for the wolfCOSE COSE + CBOR engine; see the
   [Footprint](https://github.com/wolfSSL/wolfCOSE/wiki/Footprint) page for
