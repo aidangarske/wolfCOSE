@@ -743,3 +743,326 @@ int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
 #endif /* WOLFCOSE_ENCRYPT0_DECRYPT */
 
 #endif /* WOLFCOSE_ENCRYPT0 && (WOLFCOSE_HAVE_AESGCM || WOLFCOSE_HAVE_AESCCM || (WOLFCOSE_HAVE_CHACHA20)) */
+
+/* ----- COSE-HPKE Integrated Encryption API ----- */
+
+#if defined(WOLFCOSE_HPKE_0_ENCRYPT)
+int wc_CoseHpkeEncrypt0_Encrypt(const WOLFCOSE_KEY* recipientKey,
+    const uint8_t* kid, size_t kidLen,
+    const uint8_t* payload, size_t payloadLen,
+    uint8_t* detachedPayload, size_t detachedSz, size_t* detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    uint8_t* out, size_t outSz, size_t* outLen,
+    WC_RNG* rng)
+{
+    int ret = WOLFCOSE_SUCCESS;
+    uint8_t protectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
+    uint8_t enc[WOLFCOSE_HPKE_0_ENC_SZ];
+    size_t protectedLen = 0u;
+    size_t encStructLen = 0u;
+    size_t ciphertextLen = 0u;
+    size_t ciphertextOffset = 0u;
+    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_HPKE_0_SEAL_CTX sealCtx;
+    int isDetached = 0;
+
+    (void)XMEMSET(&sealCtx, 0, sizeof(sealCtx));
+    if (detachedPayload != NULL) {
+        isDetached = 1;
+    }
+
+    if ((recipientKey == NULL) || (payload == NULL) || (scratch == NULL) ||
+        (out == NULL) || (outLen == NULL) || (rng == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if (((kid == NULL) && (kidLen != 0u)) ||
+             ((kid != NULL) && (kidLen == 0u))) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if ((payloadLen > (SIZE_MAX - WOLFCOSE_HPKE_0_TAG_SZ)) ||
+             ((isDetached != 0) &&
+              ((detachedLen == NULL) ||
+               (detachedSz < (payloadLen + WOLFCOSE_HPKE_0_TAG_SZ))))) {
+        ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+    }
+#ifdef WOLFCOSE_CHECK_WORD32_LEN
+    else if ((wolfCose_LenFitsWord32(payloadLen) == 0) ||
+             (wolfCose_LenFitsWord32(extAadLen) == 0) ||
+             (wolfCose_LenFitsWord32(detachedSz) == 0) ||
+             (wolfCose_LenFitsWord32(outSz) == 0) ||
+             (wolfCose_LenFitsWord32(scratchSz) == 0)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+#endif
+    else {
+        /* Input parameters are structurally valid. */
+    }
+
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_EncodeProtectedHdr(WOLFCOSE_ALG_HPKE_0,
+                                           protectedBuf,
+                                           sizeof(protectedBuf),
+                                           &protectedLen);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_BuildEncStructure0(protectedBuf, protectedLen,
+                                          extAad, extAadLen,
+                                          scratch, scratchSz, &encStructLen);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_Hpke0SealInit(&sealCtx, recipientKey,
+                                     WOLFCOSE_ALG_HPKE_0, rng,
+                                     enc, sizeof(enc));
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ciphertextLen = payloadLen + WOLFCOSE_HPKE_0_TAG_SZ;
+        ctx.buf = out;
+        ctx.bufSz = outSz;
+        ctx.idx = 0u;
+        ret = wc_CBOR_EncodeTag(&ctx, WOLFCOSE_TAG_ENCRYPT0);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeArrayStart(&ctx, 3u);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(&ctx, protectedBuf, protectedLen);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeMapStart(&ctx, (kid != NULL) ? 2u : 1u);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (kid != NULL)) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_KID);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (kid != NULL)) {
+        ret = wc_CBOR_EncodeBstr(&ctx, kid, kidLen);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_HPKE_EK);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_EncodeBstr(&ctx, enc, sizeof(enc));
+    }
+
+    if ((ret == WOLFCOSE_SUCCESS) && (isDetached != 0)) {
+        ret = wc_CBOR_EncodeNull(&ctx);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_Hpke0Seal(&sealCtx, recipientKey,
+                NULL, 0u, scratch, encStructLen,
+                payload, payloadLen, detachedPayload, detachedSz);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            *detachedLen = ciphertextLen;
+        }
+    }
+    else if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_CBOR_EncodeHead(&ctx, WOLFCOSE_CBOR_BSTR,
+                                       (uint64_t)ciphertextLen);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((ctx.idx > ctx.bufSz) ||
+             (ciphertextLen > (ctx.bufSz - ctx.idx)))) {
+            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ciphertextOffset = ctx.idx;
+            ret = wolfCose_Hpke0Seal(&sealCtx, recipientKey,
+                NULL, 0u, scratch, encStructLen,
+                payload, payloadLen, &out[ciphertextOffset], ciphertextLen);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ctx.idx += ciphertextLen;
+        }
+    }
+    else {
+        /* No action required. */
+    }
+
+    if (ret == WOLFCOSE_SUCCESS) {
+        *outLen = ctx.idx;
+    }
+
+    wolfCose_Hpke0SealFree(&sealCtx);
+    (void)wolfCose_ForceZero(enc, sizeof(enc));
+    (void)wolfCose_ForceZero(protectedBuf, sizeof(protectedBuf));
+    if (scratch != NULL) {
+        (void)wolfCose_ForceZero(scratch, scratchSz);
+    }
+    if (ret != WOLFCOSE_SUCCESS) {
+        if (out != NULL) {
+            (void)wolfCose_ForceZero(out, outSz);
+        }
+        if (outLen != NULL) {
+            *outLen = 0u;
+        }
+        if ((isDetached != 0) && (detachedPayload != NULL)) {
+            (void)wolfCose_ForceZero(detachedPayload, detachedSz);
+        }
+        if (detachedLen != NULL) {
+            *detachedLen = 0u;
+        }
+    }
+
+    return ret;
+}
+#endif /* WOLFCOSE_HPKE_0_ENCRYPT */
+
+#if defined(WOLFCOSE_HPKE_0_DECRYPT)
+int wc_CoseHpkeEncrypt0_Decrypt(const WOLFCOSE_KEY* recipientKey,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedCt, size_t detachedCtLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    WOLFCOSE_HDR* hdr,
+    uint8_t* plaintext, size_t plaintextSz, size_t* plaintextLen)
+{
+    int ret = WOLFCOSE_SUCCESS;
+    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_ITEM item;
+    uint64_t tag = 0u;
+    size_t arrayCount = 0u;
+    const uint8_t* protectedData = NULL;
+    size_t protectedLen = 0u;
+    const uint8_t* ciphertext = NULL;
+    size_t ciphertextLen = 0u;
+    size_t encStructLen = 0u;
+    size_t payloadLen = 0u;
+    WOLFCOSE_HDR_STATE hdrState;
+    WOLFCOSE_HPKE_HDR hpkeHdr;
+    int algProtected = 0;
+
+    if ((recipientKey == NULL) || (in == NULL) || (inSz == 0u) ||
+        (scratch == NULL) || (hdr == NULL) || (plaintext == NULL) ||
+        (plaintextLen == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+#ifdef WOLFCOSE_CHECK_WORD32_LEN
+    else if ((wolfCose_LenFitsWord32(inSz) == 0) ||
+             (wolfCose_LenFitsWord32(detachedCtLen) == 0) ||
+             (wolfCose_LenFitsWord32(extAadLen) == 0) ||
+             (wolfCose_LenFitsWord32(plaintextSz) == 0) ||
+             (wolfCose_LenFitsWord32(scratchSz) == 0)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+#endif
+    else {
+        (void)XMEMSET(hdr, 0, sizeof(*hdr));
+        (void)XMEMSET(&hpkeHdr, 0, sizeof(hpkeHdr));
+        ctx.cbuf = in;
+        ctx.bufSz = inSz;
+        ctx.idx = 0u;
+    }
+
+    if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx < ctx.bufSz) &&
+        (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
+        ret = wc_CBOR_DecodeTag(&ctx, &tag);
+        if ((ret == WOLFCOSE_SUCCESS) && (tag != WOLFCOSE_TAG_ENCRYPT0)) {
+            ret = WOLFCOSE_E_COSE_BAD_TAG;
+        }
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_DecodeArrayStart(&ctx, &arrayCount);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (arrayCount != 3u)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &protectedData, &protectedLen);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_DecodeProtectedHdr(protectedData, protectedLen, hdr,
+                                          &hdrState);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        algProtected = wolfCose_HdrStateContains(&hdrState,
+            WOLFCOSE_HDR_ALG);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (((algProtected != 0) && (hdr->alg != WOLFCOSE_ALG_HPKE_0)) ||
+         (wolfCose_HdrStateContains(&hdrState,
+                                    WOLFCOSE_HDR_HPKE_EK) != 0) ||
+         (wolfCose_HdrStateContains(&hdrState,
+                                    WOLFCOSE_HPKE_0_PSK_ID_LABEL) != 0))) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_DecodeUnprotectedHdrEx(&ctx, hdr, &hdrState,
+                                              &hpkeHdr);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (((algProtected == 0) &&
+          (wolfCose_HdrStateContains(&hdrState, WOLFCOSE_HDR_ALG) != 0)) ||
+         (hdr->iv != NULL) || (hdr->partialIv != NULL) ||
+         (hpkeHdr.hasEk == 0) ||
+         (hpkeHdr.ekLen != WOLFCOSE_HPKE_0_ENC_SZ) ||
+         (wolfCose_HdrStateContains(&hdrState,
+                                    WOLFCOSE_HPKE_0_PSK_ID_LABEL) != 0))) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        if ((item.majorType == WOLFCOSE_CBOR_SIMPLE) && (item.val == 22u)) {
+            if (detachedCt == NULL) {
+                hdr->flags |= WOLFCOSE_HDR_FLAG_DETACHED;
+                ret = WOLFCOSE_E_DETACHED_PAYLOAD;
+            }
+            else {
+                ciphertext = detachedCt;
+                ciphertextLen = detachedCtLen;
+                hdr->flags |= WOLFCOSE_HDR_FLAG_DETACHED;
+            }
+        }
+        else if (item.majorType == WOLFCOSE_CBOR_BSTR) {
+            ciphertext = item.data;
+            ciphertextLen = item.dataLen;
+        }
+        else {
+            ret = WOLFCOSE_E_CBOR_TYPE;
+        }
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (ciphertextLen < WOLFCOSE_HPKE_0_TAG_SZ)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        payloadLen = ciphertextLen - WOLFCOSE_HPKE_0_TAG_SZ;
+        if (payloadLen > plaintextSz) {
+            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+        }
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_BuildEncStructure0(protectedData, protectedLen,
+                                          extAad, extAadLen,
+                                          scratch, scratchSz, &encStructLen);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_Hpke0Open(recipientKey, WOLFCOSE_ALG_HPKE_0,
+            NULL, 0u, scratch, encStructLen,
+            hpkeHdr.ek, hpkeHdr.ekLen,
+            ciphertext, ciphertextLen, plaintext, plaintextSz);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        *plaintextLen = payloadLen;
+    }
+    else if (plaintextLen != NULL) {
+        *plaintextLen = 0u;
+    }
+    else {
+        /* No action required. */
+    }
+
+    wolfCose_HdrClearOnFail(ret, hdr);
+    if (scratch != NULL) {
+        (void)wolfCose_ForceZero(scratch, scratchSz);
+    }
+    if ((ret != WOLFCOSE_SUCCESS) && (plaintext != NULL)) {
+        (void)wolfCose_ForceZero(plaintext, plaintextSz);
+    }
+
+    return ret;
+}
+#endif /* WOLFCOSE_HPKE_0_DECRYPT */

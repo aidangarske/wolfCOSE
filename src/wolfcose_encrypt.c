@@ -145,6 +145,19 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
     size_t wrappedCekLen = 0;
     int useKeyWrap = 0;
 #endif
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+    uint8_t cekHpke[32];       /* Random CEK wrapped for every recipient */
+    uint8_t hpkeEnc[WOLFCOSE_HPKE_0_ENC_SZ];
+    size_t hpkeRecipientInfoLen = 0u;
+    WOLFCOSE_HPKE_0_SEAL_CTX hpkeSealCtx;
+    int useHpke = 0;
+#endif
+
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+    (void)XMEMSET(cekHpke, 0, sizeof(cekHpke));
+    (void)XMEMSET(hpkeEnc, 0, sizeof(hpkeEnc));
+    (void)XMEMSET(&hpkeSealCtx, 0, sizeof(hpkeSealCtx));
+#endif
 
     /* Parameter validation */
     if ((recipients == NULL) || (recipientCount == 0u) ||
@@ -218,7 +231,35 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         }
     }
 
-    /* Validate first recipient and determine key mode */
+    /* Validate first recipient and determine key mode. */
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipients[0].algId == WOLFCOSE_ALG_HPKE_0_KE)) {
+        if (rng == NULL) {
+            ret = WOLFCOSE_E_INVALID_ARG;
+        }
+        for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
+            if (recipients[i].algId != WOLFCOSE_ALG_HPKE_0_KE) {
+                ret = WOLFCOSE_E_COSE_BAD_ALG;
+            }
+            else {
+                ret = wolfCose_Hpke0ValidateKey(recipients[i].key,
+                    WOLFCOSE_ALG_HPKE_0_KE, 0);
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            int rngRet = wc_RNG_GenerateBlock(rng, cekHpke, (word32)keyLen);
+            if (rngRet != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            useHpke = 1;
+            encKey = cekHpke;
+        }
+    }
+    else
+#endif
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     if ((ret == WOLFCOSE_SUCCESS) && (wolfCose_IsEcdhEsDirectAlg(recipients[0].algId) != 0)) {
         /* ECDH-ES direct is single-recipient only */
@@ -518,18 +559,35 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
 
     /* Encode each recipient */
     for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < recipientCount); i++) {
-        /* For direct key agreement, the wrapped CEK is empty */
-        /* COSE_recipient = [protected, unprotected, ciphertext] */
+        /* COSE_recipient = [protected, unprotected, ciphertext]. */
 
-        /* Encode recipient protected header. RFC 9053 Section 6.1 (direct key)
-         * and Section 6.2.1 (AES Key Wrap) both require an empty protected
-         * bucket; the algorithm is carried in the unprotected header. */
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+        (void)XMEMSET(&hpkeSealCtx, 0, sizeof(hpkeSealCtx));
+        if (useHpke != 0) {
+            ret = wolfCose_Hpke0EncodeRecipientProtectedHdr(
+                WOLFCOSE_ALG_HPKE_0_KE,
+                recipients[i].kid, recipients[i].kidLen,
+                recipientProtectedBuf, sizeof(recipientProtectedBuf),
+                &recipientProtectedLen);
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_Hpke0BuildRecipientInfo(contentAlgId,
+                    recipientProtectedBuf, recipientProtectedLen,
+                    scratch, scratchSz, &hpkeRecipientInfoLen);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_Hpke0SealInit(&hpkeSealCtx,
+                    recipients[i].key, WOLFCOSE_ALG_HPKE_0_KE, rng,
+                    hpkeEnc, sizeof(hpkeEnc));
+            }
+        }
+        else
+#endif
         if (recipients[i].algId == WOLFCOSE_ALG_DIRECT) {
-            recipientProtectedLen = 0;
+            recipientProtectedLen = 0u;
         }
 #if defined(WOLFCOSE_KEY_WRAP)
         else if (wolfCose_IsKeyWrapAlg(recipients[i].algId) != 0) {
-            recipientProtectedLen = 0;
+            recipientProtectedLen = 0u;
         }
 #endif
         else {
@@ -550,6 +608,18 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
 
         /* [1] unprotected header map */
         if (ret == WOLFCOSE_SUCCESS) {
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+            if (useHpke != 0) {
+                ret = wc_CBOR_EncodeMapStart(&ctx, 1u);
+                if (ret == WOLFCOSE_SUCCESS) {
+                    ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_HPKE_EK);
+                }
+                if (ret == WOLFCOSE_SUCCESS) {
+                    ret = wc_CBOR_EncodeBstr(&ctx, hpkeEnc, sizeof(hpkeEnc));
+                }
+            }
+            else
+#endif
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
             if (useEcdhEs != 0) {
                 /* ECDH-ES: encode kid (label 4 -> 0x04) before ephemeral
@@ -622,9 +692,32 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
             }
         }
 
-        /* [2] wrapped CEK (empty for direct key and ECDH-ES, computed
-         * per-recipient for key wrap). */
+        /* [2] wrapped CEK. Direct and ECDH-ES use an empty bstr; key wrap and
+         * HPKE create one ciphertext per recipient. */
         if (ret == WOLFCOSE_SUCCESS) {
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+            if (useHpke != 0) {
+                size_t hpkeCiphertextLen = keyLen + WOLFCOSE_HPKE_0_TAG_SZ;
+
+                ret = wolfCose_CBOR_EncodeHead(&ctx, WOLFCOSE_CBOR_BSTR,
+                                                hpkeCiphertextLen);
+                if ((ret == WOLFCOSE_SUCCESS) &&
+                    ((ctx.idx > ctx.bufSz) ||
+                     (hpkeCiphertextLen > (ctx.bufSz - ctx.idx)))) {
+                    ret = WOLFCOSE_E_CBOR_OVERFLOW;
+                }
+                if (ret == WOLFCOSE_SUCCESS) {
+                    ret = wolfCose_Hpke0Seal(&hpkeSealCtx, recipients[i].key,
+                        scratch, hpkeRecipientInfoLen,
+                        NULL, 0u, cekHpke, keyLen,
+                        &ctx.buf[ctx.idx], hpkeCiphertextLen);
+                }
+                if (ret == WOLFCOSE_SUCCESS) {
+                    ctx.idx += hpkeCiphertextLen;
+                }
+            }
+            else
+#endif
 #if defined(WOLFCOSE_KEY_WRAP)
             if (useKeyWrap != 0) {
                 ret = wolfCose_KeyWrap(recipients[i].algId,
@@ -642,6 +735,10 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
                 ret = wc_CBOR_EncodeBstr(&ctx, NULL, 0);
             }
         }
+
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+        wolfCose_Hpke0SealFree(&hpkeSealCtx);
+#endif
     }
 
     /* Set output length on success */
@@ -662,6 +759,11 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
 #endif
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     (void)wolfCose_ForceZero(cek, sizeof(cek));
+#endif
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+    wolfCose_Hpke0SealFree(&hpkeSealCtx);
+    (void)wolfCose_ForceZero(cekHpke, sizeof(cekHpke));
+    (void)wolfCose_ForceZero(hpkeEnc, sizeof(hpkeEnc));
 #endif
     if (scratch != NULL) {
         (void)wolfCose_ForceZero(scratch, scratchSz);
@@ -711,12 +813,16 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     const uint8_t* decKey = NULL;
     const uint8_t* recipientProtectedData = NULL;
     size_t recipientProtectedLen = 0;
-    int32_t recipientAlgId = 0;
+    int32_t recipientAlgId = WOLFCOSE_ALG_UNSET;
     int recipientMode = 0;
     WOLFCOSE_HDR recipientHdr;
     WOLFCOSE_HDR_STATE hdrState;
     WOLFCOSE_HDR_STATE recipientHdrState;
     int bodyAlgProtected = 0;
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+    int recipientAlgProtected = 0;
+    int isHpkeRecipient = 0;
+#endif
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     uint8_t cek[32];
     uint8_t ephemPubX[66];
@@ -733,6 +839,20 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     size_t wrappedCekLen = 0;
     size_t unwrappedCekLen = 0;
     int useKeyWrap = 0;
+#endif
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+    uint8_t cekHpke[32];
+    const uint8_t* hpkeWrappedCekData = NULL;
+    size_t hpkeWrappedCekLen = 0u;
+    size_t hpkeRecipientInfoLen = 0u;
+    WOLFCOSE_HPKE_HDR recipHpkeHdr;
+    int useHpke = 0;
+#endif
+
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+    (void)XMEMSET(cekHpke, 0, sizeof(cekHpke));
+    (void)XMEMSET(&recipientHdr, 0, sizeof(recipientHdr));
+    (void)XMEMSET(&recipHpkeHdr, 0, sizeof(recipHpkeHdr));
 #endif
 
     /* Parameter validation */
@@ -876,7 +996,88 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         ret = wolfCose_DecodeProtectedHdr(recipientProtectedData,
                                           recipientProtectedLen,
                                           &recipientHdr, &recipientHdrState);
+        if (ret == WOLFCOSE_SUCCESS) {
+            recipientAlgId = recipientHdr.alg;
+        }
     }
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+    if (ret == WOLFCOSE_SUCCESS) {
+        recipientAlgProtected = wolfCose_HdrStateContains(&recipientHdrState,
+            WOLFCOSE_HDR_ALG);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (((recipientAlgProtected != 0) &&
+          (recipientAlgId == WOLFCOSE_ALG_HPKE_0_KE)) ||
+         ((recipientAlgProtected == 0) &&
+          (recipient->algId == WOLFCOSE_ALG_HPKE_0_KE)))) {
+        if ((wolfCose_HdrStateContains(&recipientHdrState,
+                                       WOLFCOSE_HDR_HPKE_EK) != 0) ||
+            (wolfCose_HdrStateContains(&recipientHdrState,
+                                       WOLFCOSE_HPKE_0_PSK_ID_LABEL) != 0)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+        else {
+            isHpkeRecipient = 1;
+            recipientAlgId = WOLFCOSE_ALG_HPKE_0_KE;
+        }
+    }
+#endif
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipientAlgId != WOLFCOSE_ALG_UNSET)) {
+        ret = wolfCose_ValidateRecipientKeyAlg(recipient->key, recipientAlgId,
+            alg);
+    }
+
+    /* Classify the recipient key-management algorithm. Only direct, ECDH-ES
+     * direct, AES key wrap, and enabled HPKE are supported. */
+    if (ret == WOLFCOSE_SUCCESS) {
+        int recipModeOk = 0;
+        if ((recipientAlgId == WOLFCOSE_ALG_UNSET) ||
+            (recipientAlgId == WOLFCOSE_ALG_DIRECT)) {
+            recipModeOk = 1;
+        }
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+        else if (recipientAlgId == WOLFCOSE_ALG_HPKE_0_KE) {
+            recipModeOk = 1;
+        }
+#endif
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+        else if (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0) {
+            recipModeOk = 1;
+        }
+#endif
+#if defined(WOLFCOSE_KEY_WRAP)
+        else if (wolfCose_IsKeyWrapAlg(recipientAlgId) != 0) {
+            recipModeOk = 1;
+        }
+#endif
+        else {
+            /* No action required */
+        }
+        if (recipModeOk == 0) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+    }
+
+    /* Enforce the caller's recipient->algId policy when the protected header
+     * supplies an algorithm. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipientAlgId != WOLFCOSE_ALG_UNSET) &&
+        (recipient->algId != WOLFCOSE_ALG_UNSET)) {
+        if (recipient->algId != recipientAlgId) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+    }
+
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
+    /* RFC 9052 Section 8.5.5: direct key agreement carries exactly one
+     * recipient. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0) &&
+        ((recipientsCount != 1u) || (recipientIndex != 0u))) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
+#endif
 
     /* [1] recipient unprotected header */
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
@@ -957,15 +1158,46 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     if (ret == WOLFCOSE_SUCCESS) {
         /* Decode the recipient unprotected map with duplicate-label tracking
          * (within the map and against the recipient protected bucket). */
-        ret = wolfCose_DecodeUnprotectedHdr(&ctx, &recipientHdr,
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+        if (isHpkeRecipient != 0) {
+            (void)XMEMSET(&recipHpkeHdr, 0, sizeof(recipHpkeHdr));
+            ret = wolfCose_DecodeUnprotectedHdrEx(&ctx, &recipientHdr,
+                                                  &recipientHdrState,
+                                                  &recipHpkeHdr);
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (((recipientAlgProtected == 0) &&
+                  (wolfCose_HdrStateContains(&recipientHdrState,
+                                              WOLFCOSE_HDR_ALG) != 0)) ||
+                 (recipientHdr.iv != NULL) ||
+                 (recipientHdr.partialIv != NULL) ||
+                 (recipHpkeHdr.hasEk == 0) ||
+                 (recipHpkeHdr.ekLen != WOLFCOSE_HPKE_0_ENC_SZ) ||
+                 (wolfCose_HdrStateContains(&recipientHdrState,
+                                            WOLFCOSE_HPKE_0_PSK_ID_LABEL) != 0))) {
+                ret = WOLFCOSE_E_COSE_BAD_HDR;
+            }
+        }
+        else
+#endif
+        {
+            ret = wolfCose_DecodeUnprotectedHdr(&ctx, &recipientHdr,
                                             &recipientHdrState);
+        }
     }
     else {
         /* No action required */
     }
 
     if (ret == WOLFCOSE_SUCCESS) {
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+        if (isHpkeRecipient == 0) {
+            recipientAlgId = recipientHdr.alg;
+        }
+#else
         recipientAlgId = recipientHdr.alg;
+#endif
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_ValidateRecipientKeyAlg(recipient->key, recipientAlgId,
             alg);
     }
@@ -989,6 +1221,11 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         if (recipientAlgId == WOLFCOSE_ALG_DIRECT) {
             recipModeOk = 1;
         }
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+        else if (recipientAlgId == WOLFCOSE_ALG_HPKE_0_KE) {
+            recipModeOk = 1;
+        }
+#endif
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
         else if (wolfCose_IsEcdhEsDirectAlg(recipientAlgId) != 0) {
             recipModeOk = 1;
@@ -1037,13 +1274,22 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     }
 
     /* An unprotected content algorithm is safe only when direct-key policy
-     * independently pins the same algorithm. Other recipient modes pin their
-     * key-management algorithm, not the content algorithm. */
+     * independently pins it, or HPKE-0-KE binds it in the authenticated
+     * Recipient_structure next_layer_alg field. */
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+    if ((ret == WOLFCOSE_SUCCESS) && (bodyAlgProtected == 0) &&
+        (recipientAlgId != WOLFCOSE_ALG_HPKE_0_KE) &&
+        ((recipientAlgId != WOLFCOSE_ALG_DIRECT) ||
+         (recipient->key == NULL) || (recipient->key->alg != alg))) {
+        ret = WOLFCOSE_E_COSE_BAD_ALG;
+    }
+#else
     if ((ret == WOLFCOSE_SUCCESS) && (bodyAlgProtected == 0) &&
         ((recipientAlgId != WOLFCOSE_ALG_DIRECT) ||
          (recipient->key == NULL) || (recipient->key->alg != alg))) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
+#endif
 
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     /* RFC 9052 Section 8.5.5: direct key agreement carries exactly one
@@ -1056,6 +1302,21 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
 #endif
 
     /* [2] wrapped CEK */
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipientAlgId == WOLFCOSE_ALG_HPKE_0_KE)) {
+        ret = wc_CBOR_DecodeBstr(&ctx, &hpkeWrappedCekData,
+                                 &hpkeWrappedCekLen);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (hpkeWrappedCekLen < WOLFCOSE_HPKE_0_TAG_SZ)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            useHpke = 1;
+        }
+    }
+    else
+#endif
 #if defined(WOLFCOSE_KEY_WRAP)
     if ((ret == WOLFCOSE_SUCCESS) &&
         (wolfCose_IsKeyWrapAlg(recipientAlgId) != 0)) {
@@ -1123,6 +1384,33 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
     }
 
     /* Derive/validate decryption key */
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+    if ((ret == WOLFCOSE_SUCCESS) && (useHpke != 0)) {
+        if ((keyLen > (SIZE_MAX - WOLFCOSE_HPKE_0_TAG_SZ)) ||
+            (hpkeWrappedCekLen !=
+             (keyLen + WOLFCOSE_HPKE_0_TAG_SZ))) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_Hpke0BuildRecipientInfo(alg,
+                recipientProtectedData, recipientProtectedLen,
+                scratch, scratchSz, &hpkeRecipientInfoLen);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_Hpke0Open(recipient->key,
+                WOLFCOSE_ALG_HPKE_0_KE,
+                scratch, hpkeRecipientInfoLen,
+                NULL, 0u,
+                recipHpkeHdr.ek, recipHpkeHdr.ekLen,
+                hpkeWrappedCekData, hpkeWrappedCekLen,
+                cekHpke, sizeof(cekHpke));
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            decKey = cekHpke;
+        }
+    }
+    else
+#endif
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     if ((ret == WOLFCOSE_SUCCESS) && (useEcdhEs != 0)) {
         WOLFCOSE_KEY* recipientKey = recipient->key;
@@ -1312,6 +1600,9 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
 #endif
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && defined(HAVE_HKDF)
     (void)wolfCose_ForceZero(cek, sizeof(cek));
+#endif
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+    (void)wolfCose_ForceZero(cekHpke, sizeof(cekHpke));
 #endif
     if (scratch != NULL) {
         (void)wolfCose_ForceZero(scratch, scratchSz);

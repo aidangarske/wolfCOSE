@@ -33,6 +33,9 @@
 #if defined(WOLFCOSE_HAVE_CHACHA20)
     #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #endif
+#if defined(WOLFCOSE_HAVE_HPKE_0)
+    #include <wolfssl/wolfcrypt/hpke.h>
+#endif
 #ifdef WOLFCOSE_FORCE_FAILURE
     #include "../tests/force_failure.h"
 #endif
@@ -156,6 +159,27 @@ typedef struct WOLFCOSE_HDR_STATE {
     size_t         extraIntegerCount;
     size_t         extraTextCount;
 } WOLFCOSE_HDR_STATE;
+
+#if defined(WOLFCOSE_HAVE_HPKE_0)
+#define WOLFCOSE_HPKE_0_ENC_SZ 65u
+#define WOLFCOSE_HPKE_0_TAG_SZ 16u
+#define WOLFCOSE_HPKE_0_PSK_ID_LABEL (-5)
+
+typedef struct WOLFCOSE_HPKE_HDR {
+    const uint8_t* ek;
+    size_t ekLen;
+    int hasEk;
+} WOLFCOSE_HPKE_HDR;
+
+#if defined(WOLFCOSE_HPKE_0_ENCRYPT) || \
+    defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+typedef struct WOLFCOSE_HPKE_0_SEAL_CTX {
+    Hpke    hpke;
+    ecc_key ephemeralKey;
+    int     ephemeralInited;
+} WOLFCOSE_HPKE_0_SEAL_CTX;
+#endif
+#endif
 
 /* ----- COSE internal helpers ----- */
 
@@ -460,6 +484,55 @@ WOLFCOSE_LOCAL int wolfCose_HdrStateContainsLabel(const WOLFCOSE_HDR_STATE* stat
 /* HdrStateAddLabel -- defined in wolfcose_hdr.c */
 WOLFCOSE_LOCAL int wolfCose_HdrStateAddLabel(WOLFCOSE_HDR_STATE* state,
     const WOLFCOSE_CBOR_LABEL* label, const uint8_t* encodedLabel);
+
+#if defined(WOLFCOSE_HAVE_HPKE_0)
+WOLFCOSE_LOCAL int wolfCose_DecodeUnprotectedHdrEx(WOLFCOSE_CBOR_CTX* ctx,
+    WOLFCOSE_HDR* hdr, WOLFCOSE_HDR_STATE* hdrState,
+    WOLFCOSE_HPKE_HDR* hpkeHdr);
+
+WOLFCOSE_LOCAL int wolfCose_Hpke0ValidateKey(const WOLFCOSE_KEY* key,
+    int32_t alg, int needPrivate);
+
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT) || \
+    defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+WOLFCOSE_LOCAL int wolfCose_Hpke0BuildRecipientInfo(int32_t nextLayerAlg,
+    const uint8_t* recipientProtected, size_t recipientProtectedLen,
+    uint8_t* scratch, size_t scratchSz, size_t* infoLen);
+#endif
+
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+WOLFCOSE_LOCAL int wolfCose_Hpke0EncodeRecipientProtectedHdr(int32_t alg,
+    const uint8_t* kid, size_t kidLen,
+    uint8_t* buf, size_t bufSz, size_t* outLen);
+#endif
+
+#if defined(WOLFCOSE_HPKE_0_ENCRYPT) || \
+    defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+WOLFCOSE_LOCAL int wolfCose_Hpke0SealInit(
+    WOLFCOSE_HPKE_0_SEAL_CTX* sealCtx,
+    const WOLFCOSE_KEY* recipientKey, int32_t alg, WC_RNG* rng,
+    uint8_t* enc, size_t encSz);
+WOLFCOSE_LOCAL int wolfCose_Hpke0Seal(WOLFCOSE_HPKE_0_SEAL_CTX* sealCtx,
+    const WOLFCOSE_KEY* recipientKey,
+    uint8_t* info, size_t infoLen,
+    uint8_t* aad, size_t aadLen,
+    const uint8_t* plaintext, size_t plaintextLen,
+    uint8_t* ciphertext, size_t ciphertextSz);
+WOLFCOSE_LOCAL void wolfCose_Hpke0SealFree(
+    WOLFCOSE_HPKE_0_SEAL_CTX* sealCtx);
+#endif
+
+#if defined(WOLFCOSE_HPKE_0_DECRYPT) || \
+    defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+WOLFCOSE_LOCAL int wolfCose_Hpke0Open(const WOLFCOSE_KEY* recipientKey,
+    int32_t alg,
+    uint8_t* info, size_t infoLen,
+    uint8_t* aad, size_t aadLen,
+    const uint8_t* enc, size_t encLen,
+    const uint8_t* ciphertext, size_t ciphertextLen,
+    uint8_t* plaintext, size_t plaintextSz);
+#endif
+#endif
 
 
 #if defined(WOLFCOSE_SIGN_VERIFY) || defined(WOLFCOSE_ENCRYPT_DECRYPT) || \
