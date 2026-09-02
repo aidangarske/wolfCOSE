@@ -2,6 +2,42 @@
 
 wolfCOSE has two configuration modes. The default is an opt-out full build: every algorithm wolfSSL provides is enabled, and you strip what you don't need with `WOLFCOSE_NO_*` defines. Alternatively, `WOLFCOSE_LEAN` switches to an opt-in core build and you add extensions with `WOLFCOSE_ENABLE_*`. See [Lean Configuration Layer](#lean-configuration-layer).
 
+Draft, pre-RFC features are held behind a separate acknowledgement, `WOLFCOSE_EXPERIMENTAL`; see [Experimental Features](#experimental-features).
+
+## Experimental Features
+
+Some COSE work is standardized in an IETF **Internet-Draft that is not yet a finalized RFC** (for example COSE-HPKE and ML-KEM key encapsulation). While a spec is a draft, its wire format and API may still change, so wolfCOSE keeps that code off in every normal build and requires you to opt in twice — once for the master acknowledgement, once for the specific feature.
+
+| Define | Role |
+|--------|------|
+| `WOLFCOSE_EXPERIMENTAL` | Master acknowledgement. Enables **no** functionality on its own; it only *permits* the individually selected experimental features below. |
+| `WOLFCOSE_ENABLE_<X>` | Opt in one experimental feature (each keeps its own fine-grained gate). |
+
+An experimental feature is compiled in only when **both** its own `WOLFCOSE_ENABLE_<X>` and `WOLFCOSE_EXPERIMENTAL` are defined. Selecting the feature without the acknowledgement is a hard compile error:
+
+```c
+#if defined(WOLFCOSE_ENABLE_<X>) && !defined(WOLFCOSE_EXPERIMENTAL)
+    #error "WOLFCOSE_ENABLE_<X> selects experimental draft code (spec not yet a finalized RFC); also define WOLFCOSE_EXPERIMENTAL to acknowledge"
+#endif
+```
+
+`WOLFCOSE_ENABLE_EXPERIMENTAL_EXAMPLE` is a permanent reference exemplar that enables no functionality; it documents the pattern above and is the target the `make experimental-check` gate exercises. Compile examples:
+
+```bash
+# Normal build: zero experimental code, no acknowledgement needed.
+cc ... src/wolfcose.c src/wolfcose_cbor.c
+
+# Enable an experimental feature (requires both defines):
+cc -DWOLFCOSE_EXPERIMENTAL -DWOLFCOSE_ENABLE_EXPERIMENTAL_EXAMPLE ...
+
+# Feature without acknowledgement -> compile error, by design.
+cc -DWOLFCOSE_ENABLE_EXPERIMENTAL_EXAMPLE ...
+```
+
+> **Warning:** experimental features track drafts still in flux. Their message wire format, header parameters, and public API may change or be removed between wolfCOSE releases with no compatibility guarantee. Do not depend on them in a stable deployment.
+
+**Graduation policy.** When a draft is published as an RFC, its `WOLFCOSE_EXPERIMENTAL` requirement is removed in a focused follow-up and the feature becomes an ordinary gate (default-on full build, `WOLFCOSE_ENABLE_<X>` under `WOLFCOSE_LEAN`, `WOLFCOSE_NO_<X>` to strip), following the [Algorithm Gates](#algorithm-gates) convention.
+
 ## Lean Configuration Layer
 
 Defining `WOLFCOSE_LEAN` keeps only the core — `COSE_Sign1`/`Encrypt0`/`Mac0` with ES256, AES-GCM, and HMAC-SHA256 — and turns every other algorithm into an opt-in. This is the recommended starting point for constrained targets.

@@ -103,7 +103,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test pkg-config-test ecdsa-policy-test rsapss-policy-test zero-alloc-check zeroize-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check clean FORCE
+.PHONY: all shared test pkg-config-test ecdsa-policy-test rsapss-policy-test zero-alloc-check zeroize-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check experimental-check clean FORCE
 
 # --- Core library ---
 all: $(LIB_A)
@@ -504,6 +504,35 @@ c99-check:
 	    -fsyntax-only src/wolfcose.c
 	@echo "PASS: all sources conform to ISO C99 (-pedantic-errors)"
 
+# Experimental-feature acknowledgement gate. Proves WOLFCOSE_EXPERIMENTAL guards
+# draft (pre-RFC) features: enabling one without it is a hard error, enabling
+# both compiles, and a normal build pulls in zero experimental code.
+EXP_FLAGS = -std=c99 -pedantic-errors -I./include $(C99_WOLFSSL_CFLAGS) \
+            -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 $(EXTRA_CFLAGS)
+# Include settings.h plus one declaration so the stub is a valid C99 TU.
+EXP_TU = printf '\#include <wolfcose/settings.h>\nint wolfcose_experimental_gate_check;\n'
+
+experimental-check:
+	@echo "  EXP feature without acknowledgement (expect error)"
+	@if $(EXP_TU) | \
+	    $(CC) $(EXP_FLAGS) -DWOLFCOSE_ENABLE_EXPERIMENTAL_EXAMPLE \
+	    -fsyntax-only -x c - 2>experimental-check.err; then \
+	    echo "FAIL: experimental feature compiled without WOLFCOSE_EXPERIMENTAL"; \
+	    rm -f experimental-check.err; exit 1; \
+	fi
+	@grep -q WOLFCOSE_EXPERIMENTAL experimental-check.err || { \
+	    echo "FAIL: gate error did not mention WOLFCOSE_EXPERIMENTAL"; \
+	    cat experimental-check.err; rm -f experimental-check.err; exit 1; }
+	@rm -f experimental-check.err
+	@echo "  EXP feature with acknowledgement (expect pass)"
+	@$(EXP_TU) | \
+	    $(CC) $(EXP_FLAGS) -DWOLFCOSE_ENABLE_EXPERIMENTAL_EXAMPLE \
+	    -DWOLFCOSE_EXPERIMENTAL -fsyntax-only -x c -
+	@echo "  EXP normal build (expect pass, zero experimental code)"
+	@$(EXP_TU) | \
+	    $(CC) $(EXP_FLAGS) -fsyntax-only -x c -
+	@echo "PASS: WOLFCOSE_EXPERIMENTAL gate enforced"
+
 # --- Cleanup ---
 clean:
 	rm -f $(OBJ) $(TEST_BIN) $(TOOL_BIN) $(DEMO_BIN) $(ENC_DEMO) $(MAC_DEMO) \
@@ -511,6 +540,6 @@ clean:
 	    $(SCEN_FIRMWARE) $(SCEN_MULTIPARTY) $(SCEN_IOTFLEET) $(SCEN_SENSOR) $(SCEN_BROADCAST) \
 	    $(INTEROP_DIR)/*.o $(INTEROP_DIR)/*.su $(INTEROP_BIN) \
 	    $(LIB_A) $(LIB_SO) $(BUILD_CONFIG) $(BUILD_CONFIG).tmp src/*.su tests/*.su examples/*.su examples/comprehensive/*.su examples/scenarios/*.su \
-	    src/*.gcno src/*.gcda tests/*.gcno tests/*.gcda *.gcov
+	    src/*.gcno src/*.gcda tests/*.gcno tests/*.gcda *.gcov experimental-check.err
 	rm -rf tests/*.dSYM tools/*.dSYM examples/*.dSYM \
 	    examples/comprehensive/*.dSYM examples/scenarios/*.dSYM

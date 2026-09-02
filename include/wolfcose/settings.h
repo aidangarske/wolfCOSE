@@ -118,6 +118,22 @@ extern "C" {
     #define WOLFCOSE_EXT_SIGN
 #endif
 
+/* ----- Experimental (draft, pre-RFC) features -----
+ * Draft or unstable features — IETF Internet-Drafts not yet finalized as an
+ * RFC, where the wire format or API may still change — require an explicit
+ * acknowledgement. WOLFCOSE_EXPERIMENTAL enables no functionality on its own; it
+ * only permits the individually selected experimental features below, each of
+ * which keeps its own WOLFCOSE_ENABLE_<X> opt-in. See docs/Macros.md.
+ *
+ * Every experimental feature copies the guard form below into its own section:
+ * enabling the feature without WOLFCOSE_EXPERIMENTAL is a hard error. */
+
+/* Reference exemplar and validation target. Enables no functionality; it exists
+ * only to document the pattern and let CI exercise the acknowledgement gate. */
+#if defined(WOLFCOSE_ENABLE_EXPERIMENTAL_EXAMPLE) && !defined(WOLFCOSE_EXPERIMENTAL)
+    #error "WOLFCOSE_ENABLE_EXPERIMENTAL_EXAMPLE selects experimental draft code (spec not yet a finalized RFC); also define WOLFCOSE_EXPERIMENTAL to acknowledge"
+#endif
+
 /* ----- Signature algorithms ----- */
 
 /* ES256 — core (on whenever wolfSSL has ECC) */
