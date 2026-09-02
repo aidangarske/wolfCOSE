@@ -72,7 +72,8 @@ BUILD_CONFIG_CHANGED := FORCE
 endif
 
 # Tests (mirrors two-layer lib architecture)
-TEST_SRC  = tests/test_cbor.c tests/test_cose.c tests/test_interop.c tests/test_main.c
+TEST_SRC  = tests/test_cbor.c tests/test_cose.c tests/test_interop.c \
+            tests/test_psa_attestation.c tests/test_main.c
 TEST_BIN  = tests/test_wolfcose
 
 # Tools (compiled separately, never in core lib)
@@ -103,7 +104,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test pkg-config-test ecdsa-policy-test rsapss-policy-test zero-alloc-check zeroize-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check experimental-check clean FORCE
+.PHONY: all shared test pkg-config-test ecdsa-policy-test rsapss-policy-test zero-alloc-check zeroize-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose tcose-upstream interop-go-cose c99-check experimental-check clean FORCE
 
 # --- Core library ---
 all: $(LIB_A)
@@ -470,6 +471,33 @@ interop-tcose: $(LIB_A)
 	      $(TCOSE_CRYPTO_LIB) $(LDFLAGS) $(LDLIBS) -lm
 	./$(INTEROP_BIN)
 
+# Run the complete upstream t_cose suite at the same pinned checkout used for
+# wire interop. This tests t_cose and its QCBOR/OpenSSL configuration; the
+# separate interop-tcose target is the wolfCOSE compatibility test.
+tcose-upstream:
+	$(MAKE) -C $(TCOSE_DIR) -f Makefile.ossl t_cose_test \
+	        QCBOR_INC="-I $(QCBOR_DIR)/inc" \
+	        QCBOR_LIB="$(QCBOR_DIR)/libqcbor.a"
+	$(TCOSE_DIR)/t_cose_test
+
+# --- go-cose wire-interop (Veraison go-cose; version pinned in go.mod) ---
+GO              ?= go
+GO_COSE_DIR      = tests/interop/go_cose
+GO_COSE_BIN      = $(GO_COSE_DIR)/interop_go_cose
+GO_COSE_ORACLE   = $(GO_COSE_DIR)/go_cose_oracle
+GO_COSE_C_SRC    = $(GO_COSE_DIR)/interop_go_cose.c
+
+interop-go-cose: $(LIB_A)
+	$(CC) $(CFLAGS) -std=c99 -o $(GO_COSE_BIN) \
+	      $(GO_COSE_DIR)/interop_go_cose.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(GO) -C $(GO_COSE_DIR) build -o go_cose_oracle main.go
+	@bash -o pipefail -c '$(GO_COSE_BIN) sign | $(GO_COSE_ORACLE) verify'
+	@echo "PASS: go-cose verified wolfCOSE COSE_Sign1"
+	@bash -o pipefail -c '$(GO_COSE_ORACLE) sign | $(GO_COSE_BIN) verify'
+	@echo "PASS: wolfCOSE verified go-cose COSE_Sign1"
+	@$(GO_COSE_ORACLE) psa
+	@echo "PASS: go-cose and Go CBOR decoded the RFC 9783 PSA token"
+
 # --- C99 conformance gate ---
 # Compiles every translation unit (core, tests, tool, examples) under strict
 # ISO C99 with -pedantic-errors -Werror so any non-C99 construct fails the
@@ -484,7 +512,8 @@ C99_SRC   = $(SRC) $(TEST_SRC) $(TOOL_SRC) $(DEMO_SRC) \
             $(ENC_DEMO).c $(MAC_DEMO).c $(SIGN1_DEMO).c \
             $(COMP_SIGN).c $(COMP_ENCRYPT).c $(COMP_MAC).c $(COMP_ERRORS).c \
             $(SCEN_FIRMWARE).c $(SCEN_MULTIPARTY).c $(SCEN_IOTFLEET).c \
-            $(SCEN_SENSOR).c $(SCEN_BROADCAST).c $(EXTSIGN_DEMO).c
+            $(SCEN_SENSOR).c $(SCEN_BROADCAST).c $(EXTSIGN_DEMO).c \
+            $(GO_COSE_C_SRC)
 # Default features plus the opt-in paths (WOLFCOSE_FLOAT, delegated signing,
 # and delegated signing without EdDSA), so the gate judges every
 # conditionally-compiled translation unit, not just the default subset.
@@ -539,6 +568,7 @@ clean:
 	    $(EXTSIGN_DEMO) $(SIGN1_DEMO) $(COMP_SIGN) $(COMP_ENCRYPT) $(COMP_MAC) $(COMP_ERRORS) \
 	    $(SCEN_FIRMWARE) $(SCEN_MULTIPARTY) $(SCEN_IOTFLEET) $(SCEN_SENSOR) $(SCEN_BROADCAST) \
 	    $(INTEROP_DIR)/*.o $(INTEROP_DIR)/*.su $(INTEROP_BIN) \
+	    $(GO_COSE_BIN) $(GO_COSE_ORACLE) \
 	    $(LIB_A) $(LIB_SO) $(BUILD_CONFIG) $(BUILD_CONFIG).tmp src/*.su tests/*.su examples/*.su examples/comprehensive/*.su examples/scenarios/*.su \
 	    src/*.gcno src/*.gcda tests/*.gcno tests/*.gcda *.gcov experimental-check.err
 	rm -rf tests/*.dSYM tools/*.dSYM examples/*.dSYM \

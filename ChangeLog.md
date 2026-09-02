@@ -1,3 +1,10 @@
+# Unreleased
+
+## Improvements/Optimizations
+
+* Added complete pinned upstream t_cose testing, live ES256 COSE_Sign1 interop
+  with Veraison go-cose, and RFC 9783 PSA attestation-token acceptance tests.
+
 # wolfCOSE Release 1.0.0 (June 25, 2026)
 
 Release 1.0.0 is the first stable release of wolfCOSE, a complete,

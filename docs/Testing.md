@@ -70,6 +70,41 @@ t_cose and QCBOR are BSD-3-Clause and are not vendored; the
 [Interop CI job](../.github/workflows/interop.yml) fetches them at pinned
 SHAs. See `tests/interop/t_cose/README.md` for the fixed test-key provenance.
 
+### Complete upstream t_cose suite
+
+```bash
+make tcose-upstream \
+  TCOSE_DIR=/path/to/t_cose QCBOR_DIR=/path/to/QCBOR
+```
+
+This runs the entire pinned upstream t_cose suite, including its API-level and
+QCBOR-adapter tests. At the current pinned revision it runs 43 tests. It is a
+dependency-health gate, not wolfCOSE API coverage: t_cose's internal API tests
+cannot be redirected to wolfCOSE. Use `interop-tcose` for wolfCOSE wire-format
+compatibility.
+
+### Interoperability (go-cose)
+
+```bash
+make interop-go-cose
+```
+
+This runs live, bidirectional tagged ES256 `COSE_Sign1` interop against
+[Veraison go-cose](https://github.com/veraison/go-cose), pinned at v1.3.0 in
+`tests/interop/go_cose/go.mod`. Each implementation signs a message the other
+verifies, validates the payload, and rejects a modified signature. Go 1.21 or
+later is required. go-cose's current scope makes it a Sign and Sign1 oracle;
+`interop-tcose` remains the broader Mac0 and Encrypt0 wire suite. The target
+also verifies RFC 9783's ES256 PSA token and decodes its standard EAT claims
+with Go CBOR.
+
+### PSA attestation-token acceptance
+
+`make test` includes fixed acceptance vectors from RFC 9783 Appendix A. The
+tests verify ES256 `COSE_Sign1` and HMAC-256 `COSE_Mac0` PSA attestation tokens,
+reject a modified authentication value, and decode the EAT/PSA claim payload
+with wolfCOSE CBOR APIs.
+
 ---
 
 ## Code Coverage

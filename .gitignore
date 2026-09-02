@@ -13,6 +13,8 @@ tests/test_wolfcose
 tools/wolfcose_tool
 examples/lifecycle_demo
 tests/interop/t_cose/interop_tcose
+tests/interop/go_cose/interop_go_cose
+tests/interop/go_cose/go_cose_oracle
 tests/interop/t_cose/QCBOR/
 tests/interop/t_cose/t_cose/
 examples/sign1_verify_lean

@@ -33,6 +33,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Set up Go for go-cose interop
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.x'
+        cache-dependency-path: tests/interop/go_cose/go.sum
+
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -99,3 +105,19 @@ jobs:
              TCOSE_CRYPTO_LIB="-lcrypto" \
              CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -I./include -isystem $WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run go-cose interop
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make interop-go-cose \
+             CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -I./include -isystem $WOLFSSL_DIR/include" \
+             LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    # This is intentionally separate from interop-tcose: these are t_cose's
+    # own API-level tests, while interop-tcose exercises wolfCOSE wire format.
+    - name: Run complete upstream t_cose suite
+      run: |
+        make tcose-upstream \
+             TCOSE_DIR=$HOME/interop-deps/t_cose \
+             QCBOR_DIR=$HOME/interop-deps/QCBOR
