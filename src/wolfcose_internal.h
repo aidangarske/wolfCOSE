@@ -465,7 +465,8 @@ WOLFCOSE_LOCAL int wolfCose_DecodeSkippedRecipient(WOLFCOSE_CBOR_CTX* ctx,
 WOLFCOSE_LOCAL int wolfCose_KeyCanSign(const WOLFCOSE_KEY* key);
 #endif
 
-#if defined(WOLFCOSE_KEY_ENCODE) || defined(WOLFCOSE_SIGN1_SIGN)
+#if defined(WOLFCOSE_KEY_ENCODE) || defined(WOLFCOSE_SIGN1_SIGN) || \
+    defined(WOLFCOSE_SIGN_SIGN)
 /* SizeAdd -- defined in wolfcose_key.c */
 WOLFCOSE_LOCAL int wolfCose_SizeAdd(size_t* total, size_t add);
 
@@ -591,9 +592,24 @@ WOLFCOSE_LOCAL int wolfCose_UpdateRecipientMode(int32_t alg, int* commonMode);
 WOLFCOSE_LOCAL int wolfCose_MlDsaCheckKey(const WOLFCOSE_KEY* key, int32_t alg);
 #endif
 
+#if defined(WOLFCOSE_HAVE_LMS) && \
+    (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
+     defined(WOLFCOSE_EXT_SIGN))
+/* LmsCheckKey -- defined in wolfcose_sign1.c */
+WOLFCOSE_LOCAL int wolfCose_LmsCheckKey(const WOLFCOSE_KEY* key);
+#endif
+
 #if defined(WOLFCOSE_EXT_SIGN)
 /* ExtSignAlg -- defined in wolfcose_sign1.c */
 WOLFCOSE_LOCAL int wolfCose_ExtSignAlg(int32_t alg, int* preHashes);
+#endif
+
+#if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN) || \
+    defined(WOLFCOSE_EXT_SIGN)
+/* SignSigLen -- defined in wolfcose_sign1.c */
+WOLFCOSE_LOCAL int wolfCose_SignSigLen(const WOLFCOSE_KEY* key, int32_t alg,
+                                       size_t* expSigLen);
 #endif
 
 #if (defined(WOLFCOSE_ENCRYPT0) || defined(WOLFCOSE_ENCRYPT)) && \

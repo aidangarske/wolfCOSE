@@ -9,7 +9,9 @@ This guide covers prerequisites, building wolfCOSE, and basic usage examples.
 wolfCOSE requires wolfSSL 5.8.0 or later with the appropriate algorithms
 enabled. AES Key Wrap requires wolfSSL 5.9.0 or later because that release
 uses a constant-time integrity comparison during unwrap. ML-DSA requires a
-wolfSSL release newer than 5.9.1.
+wolfSSL release newer than 5.9.1. HSS/LMS (RFC 8778) requires wolfSSL 5.9.2 or
+later, the first release whose public-key importer derives the parameter set
+from the key bytes.
 
 Here is a full-featured build using a release that meets those feature floors:
 
@@ -20,7 +22,7 @@ cd wolfssl
             --enable-curve25519 --enable-aesgcm --enable-aesccm \
             --enable-sha384 --enable-sha512 --enable-keygen \
             --enable-rsapss --enable-chacha --enable-poly1305 \
-            --enable-mldsa --enable-hkdf --enable-aeskeywrap
+            --enable-mldsa --enable-lms --enable-hkdf --enable-aeskeywrap
 make && sudo make install
 sudo ldconfig
 ```
@@ -60,6 +62,7 @@ You can enable only the algorithms you need:
 | AES Key Wrap | `--enable-aeskeywrap` (wolfSSL 5.9.0+) |
 | RSA-PSS signing | `--enable-rsapss --enable-keygen` |
 | ML-DSA (post-quantum) | `--enable-mldsa` |
+| HSS/LMS (stateful hash-based) | `--enable-lms` (wolfSSL 5.9.2+) |
 | AES-MAC | `--enable-aescbc` |
 
 ## Building wolfCOSE

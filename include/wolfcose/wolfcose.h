@@ -51,6 +51,9 @@
 #ifdef WOLFSSL_HAVE_MLDSA
     #include <wolfssl/wolfcrypt/wc_mldsa.h>
 #endif
+#ifdef WOLFSSL_HAVE_LMS
+    #include <wolfssl/wolfcrypt/wc_lms.h>
+#endif
 #include <wolfssl/wolfcrypt/random.h>
 
 #ifdef __cplusplus
@@ -68,6 +71,9 @@ extern "C" {
 #endif
 #if defined(WOLFCOSE_LEAN_VERIFY_MLDSA) && !defined(WOLFCOSE_SIGN1_VERIFY)
     #error "WOLFCOSE_LEAN_VERIFY_MLDSA requires Sign1 verify; do not also disable it"
+#endif
+#if defined(WOLFCOSE_LEAN_VERIFY_LMS) && !defined(WOLFCOSE_SIGN1_VERIFY)
+    #error "WOLFCOSE_LEAN_VERIFY_LMS requires Sign1 verify; do not also disable it"
 #endif
 
 /* ----- Error codes (-9000 to -9099) ----- */
@@ -226,6 +232,8 @@ extern "C" {
 #define WOLFCOSE_ALG_ML_DSA_65   (-49)   /* ML-DSA Level 3 */
 #define WOLFCOSE_ALG_ML_DSA_87   (-50)   /* ML-DSA Level 5 */
 
+#define WOLFCOSE_ALG_HSS_LMS     (-46)   /* RFC 8778 HSS/LMS */
+
 /* RFC 9964: an ML-DSA private key is the 32-byte seed (FIPS 204). */
 #define WOLFCOSE_MLDSA_SEED_SZ   32u
 
@@ -234,6 +242,7 @@ extern "C" {
 #define WOLFCOSE_KTY_EC2         2
 #define WOLFCOSE_KTY_RSA         3
 #define WOLFCOSE_KTY_SYMMETRIC   4
+#define WOLFCOSE_KTY_HSS_LMS     5   /* RFC 8778: HSS/LMS hash-based signature */
 #define WOLFCOSE_KTY_AKP         7   /* RFC 9964: Algorithm Key Pair (ML-DSA) */
 
 /* key.* union is untagged: every member aliases one pointer, so a non-NULL
@@ -245,6 +254,7 @@ extern "C" {
 #define WOLFCOSE_ATT_RSA         4u
 #define WOLFCOSE_ATT_MLDSA       5u
 #define WOLFCOSE_ATT_SYMMETRIC   6u
+#define WOLFCOSE_ATT_LMS         7u
 
 /* Curves */
 #define WOLFCOSE_CRV_P256        1
@@ -336,7 +346,8 @@ typedef struct WOLFCOSE_HDR {
  *
  * \param cbCtx  Opaque caller context, passed through untouched.
  * \param alg    WOLFCOSE_ALG_* being signed with.
- * \param tbs    To-be-signed bytes (digest, or Sig_structure for EdDSA).
+ * \param tbs    To-be-signed bytes: the digest for ES* and PS*, or the
+ *               complete Sig_structure for EdDSA, ML-DSA, and HSS-LMS.
  * \param tbsSz  Length of tbs.
  * \param sig    Output buffer for the signature.
  * \param sigSz  Capacity of sig.
@@ -376,6 +387,9 @@ typedef struct WOLFCOSE_KEY {
 #endif
 #ifdef WOLFSSL_HAVE_MLDSA
         wc_MlDsaKey*   mldsa;     /**< ML-DSA (FIPS 204), caller-owned */
+#endif
+#ifdef WOLFSSL_HAVE_LMS
+        LmsKey*        lms;       /**< HSS/LMS (RFC 8778), caller-owned */
 #endif
         void*          pqc;       /**< Generic PQC handle for future algos */
         struct {
@@ -813,6 +827,34 @@ WOLFCOSE_API int wc_CoseKey_SetMlDsa_ex(WOLFCOSE_KEY* key, int32_t alg,
                                        const uint8_t* seed, size_t seedLen);
 #endif
 
+#ifdef WOLFCOSE_HAVE_LMS
+/**
+ * \brief Attach an HSS/LMS key to a COSE key structure (RFC 8778).
+ *
+ * The caller owns the LmsKey lifecycle and, for signing, configures its
+ * parameters and state read/write callbacks, then calls wc_LmsKey_MakeKey()
+ * or wc_LmsKey_Reload() before attaching. Signing locally (no external signer)
+ * invokes wc_LmsKey_Sign(), which consumes one one-time signature and persists
+ * the advanced state through those callbacks; wolfCOSE holds no state and
+ * defines no persistence policy. If a local signing call fails, its persisted
+ * state may be stale, so wolfCOSE marks the key bad and refuses further signing
+ * with it, reporting WOLFCOSE_E_CRYPTO. The key's public half is unaffected:
+ * its public key can still be exported and used for verification. To sign
+ * again, reconstruct the LmsKey from persisted state (a fresh wc_LmsKey_Init(),
+ * parameters and callbacks, then wc_LmsKey_Reload()) and reattach it.
+ *
+ * With an external signer (wc_CoseKey_SetExtSigner()) the callback performs the
+ * signature and owns its backend's one-time-signature state: wolfCOSE does not
+ * mark the key bad on a callback failure, so the callback must quarantine or
+ * reload its own key after any ambiguous failure before it is reused.
+ *
+ * \param key     COSE key (must be initialized).
+ * \param lmsKey  Caller-owned, initialized LmsKey.
+ * \return WOLFCOSE_SUCCESS or negative error code.
+ */
+WOLFCOSE_API int wc_CoseKey_SetLms(WOLFCOSE_KEY* key, LmsKey* lmsKey);
+#endif
+
 #ifdef WOLFCOSE_HAVE_RSAPSS
 WOLFCOSE_API int wc_CoseKey_SetRsa(WOLFCOSE_KEY* key, RsaKey* rsaKey);
 #endif
@@ -1103,7 +1145,9 @@ WOLFCOSE_API int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
  *
  * \param key         Key whose type determines the signature length. May be
  *                    NULL when \p alg determines the exact length. Required
- *                    for RSA-PSS and when both Ed25519 and Ed448 are enabled.
+ *                    for RSA-PSS, for HSS-LMS (its length comes from the
+ *                    attached key's parameter set), and when both Ed25519 and
+ *                    Ed448 are enabled.
  * \param alg         Algorithm identifier (WOLFCOSE_ALG_ES256, etc).
  * \param kidLen      Key ID length (0 if none).
  * \param payloadLen  Attached payload length (0 if detached).
@@ -1291,6 +1335,10 @@ WOLFCOSE_API int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
  *   Sig_structure = ["Signature", body_protected, sign_protected, ext_aad, payload]
  *
  * \param signers         Array of WOLFCOSE_SIGNATURE with keys and algorithms.
+ *                        At most one entry may use HSS-LMS, and it must be the
+ *                        last one, because its one-time state advances as it
+ *                        signs and a later signer failing could not return it;
+ *                        violating this returns WOLFCOSE_E_INVALID_ARG.
  * \param signerCount     Number of signers (must be >= 1).
  * \param payload         Payload to sign (NULL if detached).
  * \param payloadLen      Payload length (0 if detached).
