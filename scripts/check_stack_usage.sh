@@ -5,14 +5,12 @@
 set -e
 
 BUDGET="${1:-6144}"
-SU="src/wolfcose.su src/wolfcose_cbor.su"
+SU=$(ls src/*.su 2>/dev/null)
+if [ -z "$SU" ]; then
+    echo "no src/*.su files — build with -fstack-usage first" >&2
+    exit 2
+fi
 
-for f in $SU; do
-    if [ ! -f "$f" ]; then
-        echo "missing $f — build with -fstack-usage first" >&2
-        exit 2
-    fi
-done
 
 # Flag unbounded frames (qualifier exactly "dynamic", not "dynamic,bounded" or
 # "static") regardless of the printed size, plus any frame over budget.
