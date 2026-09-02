@@ -24196,6 +24196,36 @@ static void test_cose_countersignatures(void)
             &overlapLen, &rng);
         TEST_ASSERT(badRet == WOLFCOSE_E_INVALID_ARG && overlapLen == 0u,
                     "reject reverse partial output overlap");
+
+        (void)memcpy(overlap, message, messageLen);
+        overlapLen = 1u;
+        badRet = wc_Cose_AddCounterSignature(&counterSigner,
+            overlap, messageLen, NULL, 0u, NULL, 0u,
+            overlap, sizeof(overlap), tampered, sizeof(tampered),
+            &overlapLen, &rng);
+        TEST_ASSERT(badRet == WOLFCOSE_E_INVALID_ARG && overlapLen == 0u &&
+                    memcmp(overlap, message, messageLen) == 0,
+                    "reject scratch overlap with input without mutation");
+
+        (void)memset(overlap, 0xA5, sizeof(tampered));
+        (void)memset(tampered, 0xA5, sizeof(tampered));
+        overlapLen = 1u;
+        badRet = wc_Cose_AddCounterSignature(&counterSigner,
+            message, messageLen, NULL, 0u, NULL, 0u,
+            overlap, sizeof(tampered), overlap, sizeof(tampered),
+            &overlapLen, &rng);
+        TEST_ASSERT(badRet == WOLFCOSE_E_INVALID_ARG && overlapLen == 0u &&
+                    memcmp(overlap, tampered, sizeof(tampered)) == 0,
+                    "reject scratch overlap with output without mutation");
+
+        (void)memcpy(overlap, counterMessage, counterMessageLen);
+        badRet = wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            overlap, counterMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            overlap, sizeof(overlap), &hdr);
+        TEST_ASSERT(badRet == WOLFCOSE_E_INVALID_ARG &&
+                    memcmp(overlap, counterMessage, counterMessageLen) == 0,
+                    "reject verify scratch overlap without input mutation");
     }
 
     counterSigner0.algId = WOLFCOSE_ALG_ES256;
@@ -24215,6 +24245,19 @@ static void test_cose_countersignatures(void)
             counterAad, sizeof(counterAad) - 1u,
             scratch, sizeof(scratch));
         TEST_ASSERT(ret == 0, "verify abbreviated V2 countersignature");
+    }
+    if (ret == 0) {
+        int badRet;
+
+        (void)memcpy(overlap, abbreviatedMessage, abbreviatedMessageLen);
+        badRet = wc_Cose_VerifyCounterSignature0(&counterSigner0,
+            overlap, abbreviatedMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            overlap, sizeof(overlap));
+        TEST_ASSERT(badRet == WOLFCOSE_E_INVALID_ARG &&
+                    memcmp(overlap, abbreviatedMessage,
+                           abbreviatedMessageLen) == 0,
+                    "reject abbreviated verify scratch overlap");
     }
     if (ret == 0) {
         WOLFCOSE_COUNTERSIGNATURE0 wrongSigner = counterSigner0;

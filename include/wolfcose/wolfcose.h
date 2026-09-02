@@ -1173,6 +1173,8 @@ WOLFCOSE_API int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
  *
  * Existing full countersignatures are retained and the new value is appended.
  * \p out may equal \p in for exact in-place growth. Other overlap is rejected.
+ * \p scratch must not overlap the input, output, detached payload, external
+ * AAD, or key identifier buffers.
  * A detached target payload must be supplied through
  * \p detachedPayload. The counter signature is stored in unprotected header
  * parameter 11 as specified by RFC 9338.
@@ -1192,6 +1194,8 @@ WOLFCOSE_API int wc_Cose_AddCounterSignature(
  * The signature is stored in unprotected header parameter 12. The algorithm
  * and key identifier remain application context and are not carried in the
  * message. Only one abbreviated countersignature may be attached to a target.
+ * \p scratch must not overlap the input, output, detached payload, or external
+ * AAD buffers.
  */
 WOLFCOSE_API int wc_Cose_AddCounterSignature0(
     const WOLFCOSE_COUNTERSIGNATURE0* counterSigner,
@@ -1213,7 +1217,7 @@ WOLFCOSE_API int wc_Cose_AddCounterSignature0(
  * returned through \p counterHdr. V2 is preferred when both labels exist. An
  * algorithm in the unprotected bucket is accepted only when \p key has the
  * same non-UNSET alg value, providing the external authentication required by
- * RFC 9052.
+ * RFC 9052. \p scratch must not overlap any input buffer or \p counterHdr.
  */
 WOLFCOSE_API int wc_Cose_VerifyCounterSignature(
     const WOLFCOSE_KEY* key, size_t counterIndex,
@@ -1229,6 +1233,7 @@ WOLFCOSE_API int wc_Cose_VerifyCounterSignature(
  * The verification algorithm is supplied through \p counterSigner because a
  * COSE_Countersignature0 carries only the signature bytes. V2 header
  * parameter 12 and legacy header parameter 9 are accepted, with V2 preferred.
+ * \p scratch must not overlap any input buffer.
  */
 WOLFCOSE_API int wc_Cose_VerifyCounterSignature0(
     const WOLFCOSE_COUNTERSIGNATURE0* counterSigner,

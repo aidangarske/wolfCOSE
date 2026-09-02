@@ -7621,7 +7621,6 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
 }
 #endif /* WOLFCOSE_COUNTERSIGN_VERIFY */
 
-#if defined(WOLFCOSE_COUNTERSIGN_SIGN)
 static int wolfCose_RangesOverlap(const uint8_t* a, size_t aLen,
                                   const uint8_t* b, size_t bLen)
 {
@@ -7640,6 +7639,7 @@ static int wolfCose_RangesOverlap(const uint8_t* a, size_t aLen,
     return overlaps;
 }
 
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN)
 static int wolfCose_AttachCounter(const WOLFCOSE_COUNTER_TARGET* target,
     const uint8_t* in, size_t inSz,
     const uint8_t* protectedData, size_t protectedLen,
@@ -7844,6 +7844,7 @@ static int wolfCose_AddCounterCommon(WOLFCOSE_KEY* key, int32_t alg,
     size_t actualSigLen = 0u;
     size_t tbsLen = 0u;
     uint8_t* sig;
+    int scratchAliases = 0;
 
     if ((key == NULL) || (in == NULL) || (scratch == NULL) ||
         (out == NULL) || (outLen == NULL) ||
@@ -7855,6 +7856,24 @@ static int wolfCose_AddCounterCommon(WOLFCOSE_KEY* key, int32_t alg,
     }
     else {
         *outLen = 0u;
+    }
+    if ((scratch != NULL) &&
+        (((in != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz, in, inSz) != 0)) ||
+         ((out != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz, out, outSz) != 0)) ||
+         ((kid != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz, kid, kidLen) != 0)) ||
+         ((detachedPayload != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz,
+                                  detachedPayload, detachedLen) != 0)) ||
+         ((extAad != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz,
+                                  extAad, extAadLen) != 0)))) {
+        scratchAliases = 1;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (scratchAliases != 0)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
     }
     if ((ret == WOLFCOSE_SUCCESS) && (out != in) &&
         (wolfCose_RangesOverlap(in, inSz, out, outSz) != 0)) {
@@ -7908,7 +7927,7 @@ static int wolfCose_AddCounterCommon(WOLFCOSE_KEY* key, int32_t alg,
     }
 
     (void)wolfCose_ForceZero(protectedBuf, sizeof(protectedBuf));
-    if (scratch != NULL) {
+    if ((scratch != NULL) && (scratchAliases == 0)) {
         (void)wolfCose_ForceZero(scratch, scratchSz);
     }
     if ((ret != WOLFCOSE_SUCCESS) && (outLen != NULL)) {
@@ -8022,11 +8041,28 @@ int wc_Cose_VerifyCounterSignature(const WOLFCOSE_KEY* key,
     size_t tbsLen = 0u;
     int algProtected = 0;
     uint8_t legacy = 0u;
+    int scratchAliases = 0;
 
+    if ((scratch != NULL) &&
+        (((in != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz, in, inSz) != 0)) ||
+         ((detachedPayload != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz,
+                                  detachedPayload, detachedLen) != 0)) ||
+         ((extAad != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz,
+                                  extAad, extAadLen) != 0)) ||
+         ((counterHdr != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz,
+              (const uint8_t*)(const void*)counterHdr,
+              sizeof(*counterHdr)) != 0)))) {
+        scratchAliases = 1;
+    }
     if ((key == NULL) || (in == NULL) || (scratch == NULL) ||
         (counterHdr == NULL) ||
         ((detachedPayload == NULL) && (detachedLen != 0u)) ||
-        ((extAad == NULL) && (extAadLen != 0u))) {
+        ((extAad == NULL) && (extAadLen != 0u)) ||
+        (scratchAliases != 0)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     if (ret == WOLFCOSE_SUCCESS) {
@@ -8070,7 +8106,7 @@ int wc_Cose_VerifyCounterSignature(const WOLFCOSE_KEY* key,
     }
 
     wolfCose_HdrClearOnFail(ret, counterHdr);
-    if (scratch != NULL) {
+    if ((scratch != NULL) && (scratchAliases == 0)) {
         (void)wolfCose_ForceZero(scratch, scratchSz);
     }
     return ret;
@@ -8092,11 +8128,24 @@ int wc_Cose_VerifyCounterSignature0(
     size_t valueStart = 0u;
     size_t valueEnd = 0u;
     uint8_t legacy = 0u;
+    int scratchAliases = 0;
 
+    if ((scratch != NULL) &&
+        (((in != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz, in, inSz) != 0)) ||
+         ((detachedPayload != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz,
+                                  detachedPayload, detachedLen) != 0)) ||
+         ((extAad != NULL) &&
+          (wolfCose_RangesOverlap(scratch, scratchSz,
+                                  extAad, extAadLen) != 0)))) {
+        scratchAliases = 1;
+    }
     if ((counterSigner == NULL) || (counterSigner->key == NULL) ||
         (in == NULL) || (scratch == NULL) ||
         ((detachedPayload == NULL) && (detachedLen != 0u)) ||
-        ((extAad == NULL) && (extAadLen != 0u))) {
+        ((extAad == NULL) && (extAadLen != 0u)) ||
+        (scratchAliases != 0)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     if (ret == WOLFCOSE_SUCCESS) {
@@ -8135,7 +8184,7 @@ int wc_Cose_VerifyCounterSignature0(
             sig, sigLen, scratch, scratchSz);
     }
 
-    if (scratch != NULL) {
+    if ((scratch != NULL) && (scratchAliases == 0)) {
         (void)wolfCose_ForceZero(scratch, scratchSz);
     }
     return ret;

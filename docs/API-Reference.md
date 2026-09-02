@@ -710,6 +710,7 @@ int wc_Cose_AddCounterSignature(
 Add a full V2 countersignature in unprotected header parameter 11. Existing
 full countersignatures are retained and the new value is appended. `out` may
 equal `in` for exact in-place growth; other overlapping buffers are rejected.
+`scratch` must be disjoint from all input and output buffers.
 
 ### wc_Cose_AddCounterSignature0
 
@@ -726,7 +727,8 @@ int wc_Cose_AddCounterSignature0(
 ```
 
 Add one abbreviated V2 countersignature in unprotected header parameter 12.
-Only one abbreviated countersignature is allowed per target.
+Only one abbreviated countersignature is allowed per target. `scratch` must be
+disjoint from all input and output buffers.
 
 ### wc_Cose_VerifyCounterSignature
 
@@ -745,7 +747,8 @@ Verify a full countersignature selected by zero-based index and return its
 parsed headers. V2 label 11 and legacy RFC 8152 label 7 are accepted. V2 is
 preferred when both are present. If the countersignature algorithm is carried
 only in the unprotected header bucket, `key->alg` must pin the same algorithm;
-an unset or mismatched key policy is rejected.
+an unset or mismatched key policy is rejected. `scratch` must be disjoint from
+the message, detached payload, external AAD, and `counterHdr`.
 
 ### wc_Cose_VerifyCounterSignature0
 
@@ -761,6 +764,8 @@ int wc_Cose_VerifyCounterSignature0(
 
 Verify an abbreviated countersignature using the algorithm and key supplied by
 the application. V2 label 12 and legacy RFC 8152 label 9 are accepted.
+`scratch` must be disjoint from the message, detached payload, and external
+AAD.
 
 All four APIs require the detached payload or ciphertext and external AAD,
 when used by the target, to match the original operation. They return
