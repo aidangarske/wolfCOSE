@@ -12,10 +12,27 @@
 #   demos         - Build + run all basic demos
 #   comprehensive - Build + run comprehensive algorithm tests (CI)
 #   scenarios     - Build + run real-world scenario examples
+#   pkg-config-test - Verify wolfSSL package discovery
 #   clean         - Remove all build artifacts
 
 CC       ?= gcc
 AR       ?= ar
+PKG_CONFIG ?= pkg-config
+WOLFSSL_PACKAGE ?= wolfssl
+WOLFSSL_PREFIX ?= /usr/local
+WOLFSSL_PKG_CONFIG_FOUND := $(shell $(PKG_CONFIG) --exists \
+    '$(WOLFSSL_PACKAGE)' 2>/dev/null && echo yes)
+
+# Prefer package metadata so system installs do not need a hard-coded prefix.
+# Explicit flags support custom installations and cross builds.
+ifeq ($(WOLFSSL_PKG_CONFIG_FOUND),yes)
+WOLFSSL_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags '$(WOLFSSL_PACKAGE)' 2>/dev/null)
+WOLFSSL_LIBS   ?= $(shell $(PKG_CONFIG) --libs '$(WOLFSSL_PACKAGE)' 2>/dev/null)
+else
+WOLFSSL_CFLAGS ?= -isystem $(WOLFSSL_PREFIX)/include
+WOLFSSL_LIBS   ?= -L$(WOLFSSL_PREFIX)/lib -lwolfssl
+endif
+
 CFLAGS    = -std=c99 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion
 CFLAGS   += -Wvla -Werror=vla
 CFLAGS   += -ffunction-sections -fdata-sections
@@ -23,15 +40,36 @@ CFLAGS   += -fstack-usage
 # Match wolfSSL's default (gnu11) struct ABI; -std=c99 alone disables
 # HAVE_ANONYMOUS_INLINE_AGGREGATES and shrinks WC_RNG, corrupting the RNG.
 CFLAGS   += -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1
-CFLAGS   += -I./include -isystem /usr/local/include
+CFLAGS   += -I./include $(WOLFSSL_CFLAGS)
 CFLAGS   += $(EXTRA_CFLAGS)
-LDFLAGS   = -L/usr/local/lib -lwolfssl
+LDFLAGS  ?=
+LDLIBS   ?=
+LDLIBS   += $(WOLFSSL_LIBS)
 
 # Core library sources (only these go into .a/.so)
 SRC       = src/wolfcose_cbor.c src/wolfcose.c
 OBJ       = $(SRC:.c=.o)
 LIB_A     = libwolfcose.a
 LIB_SO    = libwolfcose.so
+# Make cannot model variable values as dependencies. Compare a saved build
+# configuration hash at parse time and force a core-object rebuild only when
+# the effective compiler or wolfSSL configuration changes.
+BUILD_CONFIG = .wolfcose-build-config
+BUILD_CONFIG_VALUE := $(shell { \
+    printf '%s\n' 'CC=$(CC)'; \
+    printf '%s\n' 'CFLAGS=$(CFLAGS)'; \
+    printf '%s\n' 'LDFLAGS=$(LDFLAGS)'; \
+    printf '%s\n' 'LDLIBS=$(LDLIBS)'; \
+    printf '%s\n' 'PKG_CONFIG=$(PKG_CONFIG)'; \
+    printf '%s\n' 'WOLFSSL_PACKAGE=$(WOLFSSL_PACKAGE)'; \
+    printf '%s\n' 'WOLFSSL_PREFIX=$(WOLFSSL_PREFIX)'; \
+    printf '%s\n' 'WOLFSSL_CFLAGS=$(WOLFSSL_CFLAGS)'; \
+    printf '%s\n' 'WOLFSSL_LIBS=$(WOLFSSL_LIBS)'; \
+} | cksum)
+BUILD_CONFIG_SAVED := $(shell test -f $(BUILD_CONFIG) && cat $(BUILD_CONFIG))
+ifneq ($(strip $(BUILD_CONFIG_VALUE)),$(strip $(BUILD_CONFIG_SAVED)))
+BUILD_CONFIG_CHANGED := FORCE
+endif
 
 # Tests (mirrors two-layer lib architecture)
 TEST_SRC  = tests/test_cbor.c tests/test_cose.c tests/test_interop.c tests/test_main.c
@@ -65,7 +103,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test ecdsa-policy-test rsapss-policy-test zero-alloc-check zeroize-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check clean
+.PHONY: all shared test pkg-config-test ecdsa-policy-test rsapss-policy-test zero-alloc-check zeroize-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose c99-check clean FORCE
 
 # --- Core library ---
 all: $(LIB_A)
@@ -73,11 +111,17 @@ all: $(LIB_A)
 $(LIB_A): $(OBJ)
 	$(AR) rcs $@ $^
 
+FORCE:
+
+$(BUILD_CONFIG): $(BUILD_CONFIG_CHANGED)
+	@printf '%s\n' '$(BUILD_CONFIG_VALUE)' > $@.tmp
+	@mv -f $@.tmp $@
+
 shared: CFLAGS += -fPIC -DBUILDING_WOLFCOSE
 shared: $(OBJ)
-	$(CC) -shared -o $(LIB_SO) $(OBJ) $(LDFLAGS)
+	$(CC) -shared -o $(LIB_SO) $(OBJ) $(LDFLAGS) $(LDLIBS)
 
-src/%.o: src/%.c src/wolfcose_internal.h include/wolfcose/wolfcose.h
+src/%.o: src/%.c src/wolfcose_internal.h include/wolfcose/wolfcose.h $(BUILD_CONFIG_CHANGED) $(BUILD_CONFIG)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # --- Tests ---
@@ -252,14 +296,17 @@ rsapss-policy-test:
 zero-alloc-check:
 	sh scripts/check_zero_alloc.sh
 
-test: ecdsa-policy-test rsapss-policy-test zero-alloc-check $(LIB_A)
-	$(CC) $(CFLAGS) -o $(TEST_BIN) $(TEST_SRC) $(LIB_A) $(LDFLAGS)
+test: pkg-config-test ecdsa-policy-test rsapss-policy-test zero-alloc-check $(LIB_A)
+	$(CC) $(CFLAGS) -o $(TEST_BIN) $(TEST_SRC) $(LIB_A) $(LDFLAGS) $(LDLIBS)
 	./$(TEST_BIN)
+
+pkg-config-test:
+	sh scripts/test_pkg_config.sh
 
 # --- Zeroize-hook test: asserts secret-scrubbing call sites actually run ---
 zeroize-test:
 	$(CC) $(CFLAGS) -DWOLFCOSE_TEST_ZEROIZE_HOOK -DWOLFCOSE_TEST_LOG_ENABLE \
-	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(LDFLAGS)
+	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(LDFLAGS) $(LDLIBS)
 	./$(TEST_BIN)
 
 # --- ECC private-import backend policy ---
@@ -267,13 +314,13 @@ zeroize-test:
 ecc-import-policy-test:
 	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE \
 	    -DWOLFCOSE_TEST_NONTRANSACTIONAL_ECC_IMPORT \
-	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LDFLAGS)
+	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LDFLAGS) $(LDLIBS)
 	./$(TEST_BIN)
 
 # --- Delegated signing seam test: exercises the ext-sign callback ---
 ext-sign-test:
 	$(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EXT_SIGN \
-	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(LDFLAGS)
+	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(LDFLAGS) $(LDLIBS)
 	./$(TEST_BIN)
 
 # --- Coverage ---
@@ -281,7 +328,7 @@ coverage: clean
 	$(CC) $(CFLAGS) --coverage -fprofile-arcs -ftest-coverage -c src/wolfcose_cbor.c -o src/wolfcose_cbor.o
 	$(CC) $(CFLAGS) --coverage -fprofile-arcs -ftest-coverage -c src/wolfcose.c -o src/wolfcose.o
 	$(AR) rcs $(LIB_A) $(OBJ)
-	$(CC) $(CFLAGS) --coverage -fprofile-arcs -ftest-coverage -o $(TEST_BIN) $(TEST_SRC) $(LIB_A) $(LDFLAGS)
+	$(CC) $(CFLAGS) --coverage -fprofile-arcs -ftest-coverage -o $(TEST_BIN) $(TEST_SRC) $(LIB_A) $(LDFLAGS) $(LDLIBS)
 	./$(TEST_BIN)
 	gcov src/*.c
 
@@ -292,7 +339,7 @@ coverage-force-failure: clean
 	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE --coverage -fprofile-arcs -ftest-coverage -c src/wolfcose_cbor.c -o src/wolfcose_cbor.o
 	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE --coverage -fprofile-arcs -ftest-coverage -c src/wolfcose.c -o src/wolfcose.o
 	$(AR) rcs $(LIB_A) $(OBJ)
-	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE --coverage -fprofile-arcs -ftest-coverage -o $(TEST_BIN) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LIB_A) $(LDFLAGS)
+	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE --coverage -fprofile-arcs -ftest-coverage -o $(TEST_BIN) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LIB_A) $(LDFLAGS) $(LDLIBS)
 	./$(TEST_BIN)
 	gcov src/*.c
 
@@ -301,12 +348,12 @@ coverage-force-failure: clean
 # WOLFCOSE_ENABLE_EXT_SIGN, so it is unreachable unless both are set.
 ext-sign-force-failure: clean
 	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE -DWOLFCOSE_ENABLE_EXT_SIGN \
-	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LDFLAGS)
+	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LDFLAGS) $(LDLIBS)
 	./$(TEST_BIN)
 
 # --- CLI Tool (compiled out of core lib) ---
 tool: $(LIB_A)
-	$(CC) $(CFLAGS) -DWOLFCOSE_BUILD_TOOL -o $(TOOL_BIN) $(TOOL_SRC) $(LIB_A) $(LDFLAGS)
+	$(CC) $(CFLAGS) -DWOLFCOSE_BUILD_TOOL -o $(TOOL_BIN) $(TOOL_SRC) $(LIB_A) $(LDFLAGS) $(LDLIBS)
 
 # --- Round-trip proof: keygen -> sign -> verify in one command ---
 tool-test: tool
@@ -324,15 +371,15 @@ cmdline-test: tool
 
 # --- Lifecycle demo ---
 demo: $(LIB_A)
-	$(CC) $(CFLAGS) -o $(DEMO_BIN) $(DEMO_SRC) $(LIB_A) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $(DEMO_BIN) $(DEMO_SRC) $(LIB_A) $(LDFLAGS) $(LDLIBS)
 	./$(DEMO_BIN)
 
 # --- All demos ---
 demos: $(LIB_A)
-	$(CC) $(CFLAGS) -o $(DEMO_BIN) $(DEMO_SRC) $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(ENC_DEMO) examples/encrypt0_demo.c $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(MAC_DEMO) examples/mac0_demo.c $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(SIGN1_DEMO) examples/sign1_demo.c $(LIB_A) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $(DEMO_BIN) $(DEMO_SRC) $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $(ENC_DEMO) examples/encrypt0_demo.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $(MAC_DEMO) examples/mac0_demo.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $(SIGN1_DEMO) examples/sign1_demo.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
 	@echo "=== Running all demos ==="
 	./$(DEMO_BIN)
 	./$(ENC_DEMO)
@@ -344,7 +391,7 @@ demos: $(LIB_A)
 # prebuilt library, so the example exercises the minimal verify-only profile.
 lean-verify:
 	$(CC) $(CFLAGS) -DWOLFCOSE_LEAN_VERIFY -o $(LEANV_DEMO) \
-		$(LEANV_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS)
+		$(LEANV_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS) $(LDLIBS)
 	@echo "=== Running lean verify-only example ==="
 	./$(LEANV_DEMO)
 
@@ -353,7 +400,7 @@ lean-verify:
 # not carry the seam.
 ext-sign-demo:
 	$(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EXT_SIGN -o $(EXTSIGN_DEMO) \
-		$(EXTSIGN_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS)
+		$(EXTSIGN_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS) $(LDLIBS)
 	@echo "=== Running delegated signing example ==="
 	./$(EXTSIGN_DEMO)
 
@@ -361,24 +408,24 @@ ext-sign-demo:
 # Requires wolfSSL built with ML-DSA (./configure --enable-dilithium).
 mldsa-demo:
 	$(CC) $(CFLAGS) -DWOLFCOSE_LEAN_MLDSA -o $(MLDSA_DEMO) \
-		$(MLDSA_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS)
+		$(MLDSA_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS) $(LDLIBS)
 	@echo "=== Running ML-DSA sign + verify example ==="
 	./$(MLDSA_DEMO)
 
 # --- Smallest post-quantum verify-only (WOLFCOSE_LEAN_VERIFY_MLDSA) ---
 mldsa-verify:
 	$(CC) $(CFLAGS) -DWOLFCOSE_LEAN_VERIFY_MLDSA -o $(MLDSAV_DEMO) \
-		$(MLDSAV_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS)
+		$(MLDSAV_DEMO).c src/wolfcose.c src/wolfcose_cbor.c $(LDFLAGS) $(LDLIBS)
 	@echo "=== Running lean ML-DSA verify-only example ==="
 	./$(MLDSAV_DEMO)
 
 # --- Comprehensive algorithm tests (CI) ---
 comprehensive: $(LIB_A)
 	@mkdir -p examples/comprehensive
-	$(CC) $(CFLAGS) -o $(COMP_SIGN) examples/comprehensive/sign_all.c $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(COMP_ENCRYPT) examples/comprehensive/encrypt_all.c $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(COMP_MAC) examples/comprehensive/mac_all.c $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(COMP_ERRORS) examples/comprehensive/errors_all.c $(LIB_A) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $(COMP_SIGN) examples/comprehensive/sign_all.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $(COMP_ENCRYPT) examples/comprehensive/encrypt_all.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $(COMP_MAC) examples/comprehensive/mac_all.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $(COMP_ERRORS) examples/comprehensive/errors_all.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
 	@echo "=== Running comprehensive tests ==="
 	./$(COMP_SIGN) || exit 1
 	./$(COMP_ENCRYPT) || exit 1
@@ -389,11 +436,11 @@ comprehensive: $(LIB_A)
 # --- Real-world scenario examples ---
 scenarios: $(LIB_A)
 	@mkdir -p examples/scenarios
-	$(CC) $(CFLAGS) -o $(SCEN_FIRMWARE) examples/scenarios/firmware_update.c $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(SCEN_MULTIPARTY) examples/scenarios/multi_party_approval.c $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(SCEN_IOTFLEET) examples/scenarios/iot_fleet_config.c $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(SCEN_SENSOR) examples/scenarios/sensor_attestation.c $(LIB_A) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o $(SCEN_BROADCAST) examples/scenarios/group_broadcast_mac.c $(LIB_A) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $(SCEN_FIRMWARE) examples/scenarios/firmware_update.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $(SCEN_MULTIPARTY) examples/scenarios/multi_party_approval.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $(SCEN_IOTFLEET) examples/scenarios/iot_fleet_config.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $(SCEN_SENSOR) examples/scenarios/sensor_attestation.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $(SCEN_BROADCAST) examples/scenarios/group_broadcast_mac.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
 	@echo "=== Running scenario examples ==="
 	./$(SCEN_FIRMWARE) || exit 1
 	./$(SCEN_MULTIPARTY) || exit 1
@@ -420,17 +467,19 @@ interop-tcose: $(LIB_A)
 	      -c $(INTEROP_DIR)/interop_key_ossl.c -o $(INTEROP_DIR)/interop_key.o
 	$(CC) -o $(INTEROP_BIN) $(INTEROP_DIR)/interop_tcose.o $(INTEROP_DIR)/interop_key.o \
 	      $(LIB_A) $(TCOSE_DIR)/libt_cose.a $(QCBOR_DIR)/libqcbor.a \
-	      $(TCOSE_CRYPTO_LIB) $(LDFLAGS) -lm
+	      $(TCOSE_CRYPTO_LIB) $(LDFLAGS) $(LDLIBS) -lm
 	./$(INTEROP_BIN)
 
 # --- C99 conformance gate ---
 # Compiles every translation unit (core, tests, tool, examples) under strict
 # ISO C99 with -pedantic-errors -Werror so any non-C99 construct fails the
 # build. wolfSSL headers are -isystem so only wolfCOSE's own code is judged.
-WOLFSSL_INC ?= /usr/local/include
+WOLFSSL_INC ?=
+C99_SYSTEM_CFLAGS = $(foreach flag,$(WOLFSSL_CFLAGS),$(if $(filter -I%,$(flag)),-isystem $(patsubst -I%,%,$(flag)),$(flag)))
+C99_WOLFSSL_CFLAGS = $(if $(strip $(WOLFSSL_INC)),-isystem $(WOLFSSL_INC),$(C99_SYSTEM_CFLAGS))
 C99_FLAGS = -std=c99 -pedantic-errors -Werror -Wall -Wextra -Wshadow -Wconversion \
             -Wvla -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 \
-            -I./include -isystem $(WOLFSSL_INC) $(EXTRA_CFLAGS)
+            -I./include $(C99_WOLFSSL_CFLAGS) $(EXTRA_CFLAGS)
 C99_SRC   = $(SRC) $(TEST_SRC) $(TOOL_SRC) $(DEMO_SRC) \
             $(ENC_DEMO).c $(MAC_DEMO).c $(SIGN1_DEMO).c \
             $(COMP_SIGN).c $(COMP_ENCRYPT).c $(COMP_MAC).c $(COMP_ERRORS).c \
@@ -461,7 +510,7 @@ clean:
 	    $(EXTSIGN_DEMO) $(SIGN1_DEMO) $(COMP_SIGN) $(COMP_ENCRYPT) $(COMP_MAC) $(COMP_ERRORS) \
 	    $(SCEN_FIRMWARE) $(SCEN_MULTIPARTY) $(SCEN_IOTFLEET) $(SCEN_SENSOR) $(SCEN_BROADCAST) \
 	    $(INTEROP_DIR)/*.o $(INTEROP_DIR)/*.su $(INTEROP_BIN) \
-	    $(LIB_A) $(LIB_SO) src/*.su tests/*.su examples/*.su examples/comprehensive/*.su examples/scenarios/*.su \
+	    $(LIB_A) $(LIB_SO) $(BUILD_CONFIG) $(BUILD_CONFIG).tmp src/*.su tests/*.su examples/*.su examples/comprehensive/*.su examples/scenarios/*.su \
 	    src/*.gcno src/*.gcda tests/*.gcno tests/*.gcda *.gcov
 	rm -rf tests/*.dSYM tools/*.dSYM examples/*.dSYM \
 	    examples/comprehensive/*.dSYM examples/scenarios/*.dSYM
