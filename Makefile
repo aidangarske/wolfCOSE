@@ -507,7 +507,7 @@ c99-check:
 # Experimental-feature acknowledgement gate. Proves WOLFCOSE_EXPERIMENTAL guards
 # draft (pre-RFC) features: enabling one without it is a hard error, enabling
 # both compiles, and a normal build pulls in zero experimental code.
-EXP_FLAGS = -std=c99 -pedantic-errors -I./include -isystem $(WOLFSSL_INC) \
+EXP_FLAGS = -std=c99 -pedantic-errors -I./include $(C99_WOLFSSL_CFLAGS) \
             -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 $(EXTRA_CFLAGS)
 # Include settings.h plus one declaration so the stub is a valid C99 TU.
 EXP_TU = printf '\#include <wolfcose/settings.h>\nint wolfcose_experimental_gate_check;\n'
