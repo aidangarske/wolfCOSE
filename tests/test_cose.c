@@ -16900,7 +16900,7 @@ static void test_cose_protected_hdr_tstr_label(void)
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "DecodeProtectedHdr rejects duplicate tstr label");
 
-    XMEMSET(labelData, 0xA5, sizeof(labelData));
+    XMEMSET(labelData, 'a', sizeof(labelData));
     for (i = 0u; i < (sizeof(boundaryLen) / sizeof(boundaryLen[0])); i++) {
         enc.buf = dupBoundary;
         enc.bufSz = sizeof(dupBoundary);
@@ -23794,6 +23794,30 @@ static void test_cose_countersignatures(void)
         0xD2u, 0x84u, 0x44u, 0xA1u, 0x61u, 'x', 0x00u,
         0xA1u, 0x61u, 'x', 0x01u, 0x41u, 0x01u, 0x41u, 0x02u
     };
+    static const uint8_t protectedIvPairTarget[] = {
+        0xD2u, 0x84u,
+        0x47u, 0xA2u, 0x05u, 0x41u, 0x00u, 0x06u, 0x41u, 0x01u,
+        0xA0u, 0x41u, 0x01u, 0x41u, 0x02u
+    };
+    static const uint8_t unprotectedIvPairTarget[] = {
+        0xD2u, 0x84u, 0x40u,
+        0xA2u, 0x05u, 0x41u, 0x00u, 0x06u, 0x41u, 0x01u,
+        0x41u, 0x01u, 0x41u, 0x02u
+    };
+    static const uint8_t crossBucketIvPairTarget[] = {
+        0xD2u, 0x84u,
+        0x44u, 0xA1u, 0x05u, 0x41u, 0x00u,
+        0xA1u, 0x06u, 0x41u, 0x01u,
+        0x41u, 0x01u, 0x41u, 0x02u
+    };
+    static const uint8_t invalidIvTypeTarget[] = {
+        0xD2u, 0x84u, 0x40u, 0xA1u, 0x05u, 0x00u,
+        0x41u, 0x01u, 0x41u, 0x02u
+    };
+    static const uint8_t invalidPartialIvTypeTarget[] = {
+        0xD2u, 0x84u, 0x40u, 0xA1u, 0x06u, 0x00u,
+        0x41u, 0x01u, 0x41u, 0x02u
+    };
     static const uint8_t emptySignaturesTarget[] = {
         0xD8u, 0x62u, 0x84u, 0x40u, 0xA0u, 0x41u, 0x01u, 0x80u
     };
@@ -24403,6 +24427,36 @@ static void test_cose_countersignatures(void)
             tampered, sizeof(tampered), &badOutLen, &rng) ==
             WOLFCOSE_E_CBOR_MALFORMED,
             "reject cross-bucket duplicate text target header");
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            protectedIvPairTarget, sizeof(protectedIvPairTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &badOutLen, &rng) ==
+            WOLFCOSE_E_COSE_BAD_HDR,
+            "reject protected target with IV and Partial IV");
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            unprotectedIvPairTarget, sizeof(unprotectedIvPairTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &badOutLen, &rng) ==
+            WOLFCOSE_E_COSE_BAD_HDR,
+            "reject unprotected target with IV and Partial IV");
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            crossBucketIvPairTarget, sizeof(crossBucketIvPairTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &badOutLen, &rng) ==
+            WOLFCOSE_E_COSE_BAD_HDR,
+            "reject cross-bucket target with IV and Partial IV");
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            invalidIvTypeTarget, sizeof(invalidIvTypeTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &badOutLen, &rng) ==
+            WOLFCOSE_E_CBOR_TYPE,
+            "reject target with non-bstr IV");
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            invalidPartialIvTypeTarget, sizeof(invalidPartialIvTypeTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &badOutLen, &rng) ==
+            WOLFCOSE_E_CBOR_TYPE,
+            "reject target with non-bstr Partial IV");
         TEST_ASSERT(wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
             protectedCounterTarget, sizeof(protectedCounterTarget),
             NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr) ==

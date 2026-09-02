@@ -97,6 +97,48 @@ static const uint8_t sign1_vec1_keyD[] = {
 static const uint8_t sign1_vec1_payload[] = "This is the content.";
 
 #if defined(WOLFCOSE_COUNTERSIGN_VERIFY) && \
+    defined(WOLFCOSE_HAVE_ES256)
+/* RFC 9338 Appendix A.1.1 COSE_Sign countersignature example. */
+static const uint8_t countersign_rfc9338_sign_key_x[] = {
+    0xba, 0xc5, 0xb1, 0x1c, 0xad, 0x8f, 0x99, 0xf9,
+    0xc7, 0x2b, 0x05, 0xcf, 0x4b, 0x9e, 0x26, 0xd2,
+    0x44, 0xdc, 0x18, 0x9f, 0x74, 0x52, 0x28, 0x25,
+    0x5a, 0x21, 0x9a, 0x86, 0xd6, 0xa0, 0x9e, 0xff
+};
+static const uint8_t countersign_rfc9338_sign_key_y[] = {
+    0x20, 0x13, 0x8b, 0xf8, 0x2d, 0xc1, 0xb6, 0xd5,
+    0x62, 0xbe, 0x0f, 0xa5, 0x4a, 0xb7, 0x80, 0x4a,
+    0x3a, 0x64, 0xb6, 0xd7, 0x2c, 0xcf, 0xed, 0x6b,
+    0x6f, 0xb6, 0xed, 0x28, 0xbb, 0xfc, 0x11, 0x7e
+};
+static const uint8_t countersign_rfc9338_sign_message[] = {
+    0xd8, 0x62, 0x84, 0x40, 0xa1, 0x0b, 0x83, 0x43,
+    0xa1, 0x01, 0x26, 0xa1, 0x04, 0x42, 0x31, 0x31,
+    0x58, 0x40, 0x5a, 0xc0, 0x5e, 0x28, 0x9d, 0x5d,
+    0x0e, 0x1b, 0x0a, 0x7f, 0x04, 0x8a, 0x5d, 0x2b,
+    0x64, 0x38, 0x13, 0xde, 0xd5, 0x0b, 0xc9, 0xe4,
+    0x92, 0x20, 0xf4, 0xf7, 0x27, 0x8f, 0x85, 0xf1,
+    0x9d, 0x4a, 0x77, 0xd6, 0x55, 0xc9, 0xd3, 0xb5,
+    0x1e, 0x80, 0x5a, 0x74, 0xb0, 0x99, 0xe1, 0xe0,
+    0x85, 0xaa, 0xcd, 0x97, 0xfc, 0x29, 0xd7, 0x2f,
+    0x88, 0x7e, 0x88, 0x02, 0xbb, 0x66, 0x50, 0xcc,
+    0xeb, 0x2c, 0x54, 0x54, 0x68, 0x69, 0x73, 0x20,
+    0x69, 0x73, 0x20, 0x74, 0x68, 0x65, 0x20, 0x63,
+    0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x2e, 0x81,
+    0x83, 0x43, 0xa1, 0x01, 0x26, 0xa1, 0x04, 0x42,
+    0x31, 0x31, 0x58, 0x40, 0xe2, 0xae, 0xaf, 0xd4,
+    0x0d, 0x69, 0xd1, 0x9d, 0xfe, 0x6e, 0x52, 0x07,
+    0x7c, 0x5d, 0x7f, 0xf4, 0xe4, 0x08, 0x28, 0x2c,
+    0xbe, 0xfb, 0x5d, 0x06, 0xcb, 0xf4, 0x14, 0xaf,
+    0x2e, 0x19, 0xd9, 0x82, 0xac, 0x45, 0xac, 0x98,
+    0xb8, 0x54, 0x4c, 0x90, 0x8b, 0x45, 0x07, 0xde,
+    0x1e, 0x90, 0xb7, 0x17, 0xc3, 0xd3, 0x48, 0x16,
+    0xfe, 0x92, 0x6a, 0x2b, 0x98, 0xf5, 0x3a, 0xfd,
+    0x2f, 0xa0, 0xf3, 0x0a
+};
+#endif
+
+#if defined(WOLFCOSE_COUNTERSIGN_VERIFY) && \
     defined(WOLFCOSE_HAVE_ES512)
 /* RFC 9338 Appendix A.2.1 COSE_Sign1 countersignature example. */
 static const uint8_t countersign_rfc9338_key_x[] = {
@@ -1294,8 +1336,63 @@ static void test_interop_sign1_eddsa_with_aad(void)
 #endif /* WOLFCOSE_HAVE_EDDSA */
 
 #if defined(WOLFCOSE_COUNTERSIGN_VERIFY) && \
+    defined(WOLFCOSE_HAVE_ES256)
+static void test_interop_countersign_rfc9338_sign(void)
+{
+    static const uint8_t expectedKid[] = "11";
+    WOLFCOSE_KEY counterKey;
+    ecc_key eccKey;
+    WOLFCOSE_HDR hdr;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    int eccInited = 0;
+    int keyInited = 0;
+    int ret;
+
+    printf("  [RFC 9338 Appendix A.1.1 COSE_Sign Countersignature]\n");
+
+    ret = wc_ecc_init(&eccKey);
+    if (ret == 0) {
+        eccInited = 1;
+        ret = wc_ecc_import_unsigned(&eccKey,
+            countersign_rfc9338_sign_key_x,
+            countersign_rfc9338_sign_key_y, NULL, ECC_SECP256R1);
+    }
+    TEST_ASSERT(ret == 0, "import RFC 9338 COSE_Sign countersigner key");
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&counterKey);
+        keyInited = (ret == 0) ? 1 : 0;
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_SetEcc(&counterKey, WOLFCOSE_CRV_P256,
+                                &eccKey);
+    }
+    if (ret == 0) {
+        ret = wc_Cose_VerifyCounterSignature(&counterKey, 0u,
+            countersign_rfc9338_sign_message,
+            sizeof(countersign_rfc9338_sign_message),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr);
+    }
+    TEST_ASSERT(ret == 0,
+                "verify RFC 9338 COSE_Sign countersignature vector");
+    if (ret == 0) {
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256 &&
+                    hdr.kidLen == sizeof(expectedKid) - 1u &&
+                    memcmp(hdr.kid, expectedKid, hdr.kidLen) == 0,
+                    "decode RFC 9338 COSE_Sign countersigner headers");
+    }
+
+    if (keyInited != 0) {
+        wc_CoseKey_Free(&counterKey);
+    }
+    if (eccInited != 0) {
+        wc_ecc_free(&eccKey);
+    }
+}
+#endif
+
+#if defined(WOLFCOSE_COUNTERSIGN_VERIFY) && \
     defined(WOLFCOSE_HAVE_ES512)
-static void test_interop_countersign_rfc9338(void)
+static void test_interop_countersign_rfc9338_sign1(void)
 {
     static const uint8_t expectedKid[] =
         "bilbo.baggins@hobbiton.example";
@@ -1829,8 +1926,12 @@ int test_interop(void)
     test_interop_sign1_eddsa_with_aad();
 #endif
 #if defined(WOLFCOSE_COUNTERSIGN_VERIFY) && \
+    defined(WOLFCOSE_HAVE_ES256)
+    test_interop_countersign_rfc9338_sign();
+#endif
+#if defined(WOLFCOSE_COUNTERSIGN_VERIFY) && \
     defined(WOLFCOSE_HAVE_ES512)
-    test_interop_countersign_rfc9338();
+    test_interop_countersign_rfc9338_sign1();
 #endif
 #if defined(WOLFCOSE_COUNTERSIGN_VERIFY) && \
     defined(WOLFCOSE_HAVE_EDDSA)

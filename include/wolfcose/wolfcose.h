@@ -731,7 +731,8 @@ typedef struct WOLFCOSE_CBOR_LABEL {
  *
  * Consumes exactly one item. Major types 0 and 1 populate label->val with
  * isText 0; major type 3 populates label->text / label->textLen with isText 1
- * and no copy. Anything else is WOLFCOSE_E_CBOR_TYPE with the item consumed.
+ * and no copy. Invalid UTF-8 returns WOLFCOSE_E_CBOR_MALFORMED. Anything else
+ * is WOLFCOSE_E_CBOR_TYPE with the item consumed.
  *
  * \param ctx    Decoder context.
  * \param label  Output: decoded label.

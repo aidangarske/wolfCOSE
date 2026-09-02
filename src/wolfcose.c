@@ -6808,6 +6808,13 @@ static int wolfCose_ParseCounterTarget(const uint8_t* in, size_t inSz,
         ret = wolfCose_ParseCounterMap(&ctx, target, &hdrState);
     }
     if (ret == WOLFCOSE_SUCCESS) {
+        ctx.idx = target->mapStart;
+        ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != target->mapEnd)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
         if ((ctx.idx < ctx.bufSz) &&
             (ctx.cbuf[ctx.idx] == WOLFCOSE_CBOR_NULL)) {
             ctx.idx++;
@@ -6841,6 +6848,11 @@ static int wolfCose_ParseCounterTarget(const uint8_t* in, size_t inSz,
         size_t childCount = 0u;
         size_t i;
 
+        /* RFC 9338 Section 3.3 counts bstr fields in the selected target,
+         * not bstr values nested inside an aggregate child array. COSE_Sign
+         * and COSE_Encrypt have no direct bstr after the payload or
+         * ciphertext. COSE_Mac's direct tag bstr is captured above. Appendix
+         * A.1.1 exercises this COSE_Sign form with other_fields absent. */
         ret = wc_CBOR_DecodeArrayStart(&ctx, &childCount);
         if ((ret == WOLFCOSE_SUCCESS) && (childCount == 0u)) {
             ret = WOLFCOSE_E_CBOR_MALFORMED;

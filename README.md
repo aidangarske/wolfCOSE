@@ -12,10 +12,10 @@ and post-quantum
 
 - **Complete RFC 9052 message set**: all six COSE message types, including multi-signer 
   `COSE_Sign` and multi-recipient `COSE_Encrypt` / `COSE_Mac`
-- **[RFC 9338 countersignatures](https://www.rfc-editor.org/rfc/rfc9338)**:
-  attach an independent signature to an existing signed, encrypted, or MACed
-  COSE message, with full and abbreviated V2 forms, multiple countersigners,
-  and in-place operation
+- **[RFC 9338 countersignature support](https://www.rfc-editor.org/rfc/rfc9338)**:
+  standards-conformant full and abbreviated V2 countersignatures for all six
+  tagged COSE message types, with multiple countersigners and in-place
+  operation
 - **Post-quantum signing**: ML-DSA (FIPS 204) at all three security levels, with RFC 9964 `COSE_Key` (AKP key type, seed-based private keys)
 - **40 algorithms** across signing, encryption, MAC, and key distribution
 - **Zero dynamic allocation**: heap-allocation-free and non-recursive. Every operation runs on caller-provided buffers 
