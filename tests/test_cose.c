@@ -23597,6 +23597,411 @@ static void test_cose_sign1_size_and_untagged(void)
 }
 #endif
 
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN) && \
+    defined(WOLFCOSE_COUNTERSIGN_VERIFY) && \
+    defined(WOLFCOSE_SIGN1_SIGN) && defined(WOLFCOSE_SIGN1_VERIFY) && \
+    defined(WOLFCOSE_HAVE_ES256)
+static void test_cose_countersignatures(void)
+{
+    static const uint8_t payload[] = "signed release manifest";
+    static const uint8_t detached[] = "detached software bill of materials";
+    static const uint8_t counterKid1[] = "release-approval";
+    static const uint8_t counterKid2[] = "transparency-log";
+    static const uint8_t counterAad[] = "approval-policy-v1";
+    static const uint8_t wrongAad[] = "wrong-policy";
+    static const uint8_t encrypt0Target[] = {
+        0xD0u, 0x83u, 0x40u, 0xA0u, 0x42u, 0x01u, 0x02u
+    };
+    static const uint8_t mac0Target[] = {
+        0xD1u, 0x84u, 0x40u, 0xA0u, 0x42u, 0x01u, 0x02u,
+        0x42u, 0x03u, 0x04u
+    };
+    static const uint8_t sign1Target[] = {
+        0xD2u, 0x84u, 0x40u, 0xA0u, 0x42u, 0x01u, 0x02u,
+        0x42u, 0x03u, 0x04u
+    };
+    static const uint8_t encryptTarget[] = {
+        0xD8u, 0x60u, 0x84u, 0x40u, 0xA0u, 0x42u, 0x01u, 0x02u,
+        0x80u
+    };
+    static const uint8_t macTarget[] = {
+        0xD8u, 0x61u, 0x85u, 0x40u, 0xA0u, 0x42u, 0x01u, 0x02u,
+        0x42u, 0x03u, 0x04u, 0x80u
+    };
+    static const uint8_t signTarget[] = {
+        0xD8u, 0x62u, 0x84u, 0x40u, 0xA0u, 0x42u, 0x01u, 0x02u,
+        0x80u
+    };
+    static const uint8_t duplicateHeaderTarget[] = {
+        0xD2u, 0x84u, 0x40u, 0xA2u, 0x01u, 0x26u, 0x01u, 0x26u,
+        0x41u, 0x01u, 0x41u, 0x02u
+    };
+    static const uint8_t crossBucketDuplicateTarget[] = {
+        0xD2u, 0x84u, 0x43u, 0xA1u, 0x01u, 0x26u, 0xA1u, 0x01u,
+        0x26u, 0x41u, 0x01u, 0x41u, 0x02u
+    };
+    static const struct {
+        const uint8_t* message;
+        size_t messageLen;
+    } taggedTargets[] = {
+        { encrypt0Target, sizeof(encrypt0Target) },
+        { mac0Target, sizeof(mac0Target) },
+        { sign1Target, sizeof(sign1Target) },
+        { encryptTarget, sizeof(encryptTarget) },
+        { macTarget, sizeof(macTarget) },
+        { signTarget, sizeof(signTarget) }
+    };
+    WC_RNG rng;
+    ecc_key primaryEcc;
+    ecc_key counterEcc1;
+    ecc_key counterEcc2;
+    WOLFCOSE_KEY primaryKey;
+    WOLFCOSE_KEY counterKey1;
+    WOLFCOSE_KEY counterKey2;
+    WOLFCOSE_COUNTERSIGNATURE counterSigner;
+    WOLFCOSE_COUNTERSIGNATURE0 counterSigner0;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* decoded = NULL;
+    size_t decodedLen = 0u;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t message[512];
+    uint8_t counterMessage[768];
+    uint8_t twoCounterMessage[1024];
+    uint8_t abbreviatedMessage[768];
+    uint8_t inPlace[768];
+    uint8_t tampered[1024];
+    uint8_t detachedMessage[512];
+    uint8_t detachedCounterMessage[768];
+    size_t messageLen = 0u;
+    size_t counterMessageLen = 0u;
+    size_t twoCounterMessageLen = 0u;
+    size_t abbreviatedMessageLen = 0u;
+    size_t inPlaceLen = 0u;
+    size_t detachedMessageLen = 0u;
+    size_t detachedCounterMessageLen = 0u;
+    size_t targetIndex;
+    int rngInited = 0;
+    int primaryEccInited = 0;
+    int counterEcc1Inited = 0;
+    int counterEcc2Inited = 0;
+    int primaryKeyInited = 0;
+    int counterKey1Inited = 0;
+    int counterKey2Inited = 0;
+    int ret;
+
+    TEST_LOG("  [RFC 9338 Countersignatures]\n");
+
+    ret = wc_InitRng(&rng);
+    if (ret == 0) {
+        rngInited = 1;
+        ret = wc_ecc_init(&primaryEcc);
+    }
+    if (ret == 0) {
+        primaryEccInited = 1;
+        ret = wc_ecc_init(&counterEcc1);
+    }
+    if (ret == 0) {
+        counterEcc1Inited = 1;
+        ret = wc_ecc_init(&counterEcc2);
+    }
+    if (ret == 0) {
+        counterEcc2Inited = 1;
+        ret = wc_ecc_make_key(&rng, 32, &primaryEcc);
+    }
+    if (ret == 0) {
+        ret = wc_ecc_make_key(&rng, 32, &counterEcc1);
+    }
+    if (ret == 0) {
+        ret = wc_ecc_make_key(&rng, 32, &counterEcc2);
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&primaryKey);
+        primaryKeyInited = (ret == 0) ? 1 : 0;
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&counterKey1);
+        counterKey1Inited = (ret == 0) ? 1 : 0;
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&counterKey2);
+        counterKey2Inited = (ret == 0) ? 1 : 0;
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_SetEcc(&primaryKey, WOLFCOSE_CRV_P256,
+                                &primaryEcc);
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_SetEcc(&counterKey1, WOLFCOSE_CRV_P256,
+                                &counterEcc1);
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_SetEcc(&counterKey2, WOLFCOSE_CRV_P256,
+                                &counterEcc2);
+    }
+    TEST_ASSERT(ret == 0, "countersignature key setup");
+
+    if (ret == 0) {
+        ret = wc_CoseSign1_Sign(&primaryKey, WOLFCOSE_ALG_ES256,
+            NULL, 0u, payload, sizeof(payload) - 1u,
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            message, sizeof(message), &messageLen, &rng);
+        TEST_ASSERT(ret == 0, "create countersignature target");
+    }
+
+    counterSigner.algId = WOLFCOSE_ALG_ES256;
+    counterSigner.key = &counterKey1;
+    counterSigner.kid = counterKid1;
+    counterSigner.kidLen = sizeof(counterKid1) - 1u;
+    if (ret == 0) {
+        ret = wc_Cose_AddCounterSignature(&counterSigner,
+            message, messageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), counterMessage,
+            sizeof(counterMessage), &counterMessageLen, &rng);
+        TEST_ASSERT(ret == 0 && counterMessageLen > messageLen,
+                    "add full V2 countersignature");
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&primaryKey,
+            counterMessage, counterMessageLen, NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), &hdr, &decoded, &decodedLen);
+        TEST_ASSERT(ret == 0 && decodedLen == sizeof(payload) - 1u &&
+                    memcmp(decoded, payload, decodedLen) == 0,
+                    "primary signature survives countersigning");
+    }
+    if (ret == 0) {
+        ret = wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            counterMessage, counterMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(ret == 0 && hdr.alg == WOLFCOSE_ALG_ES256 &&
+                    hdr.kidLen == sizeof(counterKid1) - 1u &&
+                    memcmp(hdr.kid, counterKid1, hdr.kidLen) == 0,
+                    "verify full V2 countersignature headers");
+    }
+    if (ret == 0) {
+        int badRet = wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            counterMessage, counterMessageLen, NULL, 0u,
+            wrongAad, sizeof(wrongAad) - 1u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(badRet != 0, "countersignature rejects wrong AAD");
+    }
+
+    if (ret == 0) {
+        counterSigner.key = &counterKey2;
+        counterSigner.kid = counterKid2;
+        counterSigner.kidLen = sizeof(counterKid2) - 1u;
+        ret = wc_Cose_AddCounterSignature(&counterSigner,
+            counterMessage, counterMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), twoCounterMessage,
+            sizeof(twoCounterMessage), &twoCounterMessageLen, &rng);
+        TEST_ASSERT(ret == 0 && twoCounterMessageLen > counterMessageLen,
+                    "append second full countersignature");
+    }
+    if (ret == 0) {
+        ret = wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            twoCounterMessage, twoCounterMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(ret == 0 && hdr.kidLen == sizeof(counterKid1) - 1u &&
+                    memcmp(hdr.kid, counterKid1, hdr.kidLen) == 0,
+                    "verify first countersignature in array");
+    }
+    if (ret == 0) {
+        ret = wc_Cose_VerifyCounterSignature(&counterKey2, 1u,
+            twoCounterMessage, twoCounterMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(ret == 0 && hdr.kidLen == sizeof(counterKid2) - 1u &&
+                    memcmp(hdr.kid, counterKid2, hdr.kidLen) == 0,
+                    "verify second countersignature in array");
+    }
+    if (ret == 0) {
+        int badRet = wc_Cose_VerifyCounterSignature(&counterKey2, 2u,
+            twoCounterMessage, twoCounterMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(badRet == WOLFCOSE_E_INVALID_ARG,
+                    "reject missing countersignature index");
+    }
+    if (ret == 0) {
+        (void)memcpy(tampered, twoCounterMessage, twoCounterMessageLen);
+        tampered[twoCounterMessageLen - 1u] ^= 1u;
+        TEST_ASSERT(wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            tampered, twoCounterMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), &hdr) != 0,
+            "countersignature covers primary signature");
+    }
+
+    if (ret == 0) {
+        (void)memcpy(inPlace, message, messageLen);
+        inPlaceLen = messageLen;
+        counterSigner.key = &counterKey1;
+        counterSigner.kid = counterKid1;
+        counterSigner.kidLen = sizeof(counterKid1) - 1u;
+        ret = wc_Cose_AddCounterSignature(&counterSigner,
+            inPlace, inPlaceLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), inPlace,
+            sizeof(inPlace), &inPlaceLen, &rng);
+        TEST_ASSERT(ret == 0 && inPlaceLen == counterMessageLen,
+                    "add full countersignature in place");
+    }
+    if (ret == 0) {
+        ret = wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            inPlace, inPlaceLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(ret == 0, "verify in-place countersignature");
+    }
+
+    counterSigner0.algId = WOLFCOSE_ALG_ES256;
+    counterSigner0.key = &counterKey1;
+    if (ret == 0) {
+        ret = wc_Cose_AddCounterSignature0(&counterSigner0,
+            message, messageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), abbreviatedMessage,
+            sizeof(abbreviatedMessage), &abbreviatedMessageLen, &rng);
+        TEST_ASSERT(ret == 0 && abbreviatedMessageLen > messageLen,
+                    "add abbreviated V2 countersignature");
+    }
+    if (ret == 0) {
+        ret = wc_Cose_VerifyCounterSignature0(&counterSigner0,
+            abbreviatedMessage, abbreviatedMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch));
+        TEST_ASSERT(ret == 0, "verify abbreviated V2 countersignature");
+    }
+    if (ret == 0) {
+        WOLFCOSE_COUNTERSIGNATURE0 wrongSigner = counterSigner0;
+        int badRet;
+
+        wrongSigner.key = &counterKey2;
+        badRet = wc_Cose_VerifyCounterSignature0(&wrongSigner,
+            abbreviatedMessage, abbreviatedMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch));
+        TEST_ASSERT(badRet != 0,
+                    "abbreviated countersignature rejects wrong key");
+        badRet = wc_Cose_AddCounterSignature0(&counterSigner0,
+            abbreviatedMessage, abbreviatedMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), tampered, sizeof(tampered),
+            &twoCounterMessageLen, &rng);
+        TEST_ASSERT(badRet == WOLFCOSE_E_COSE_BAD_HDR,
+                    "reject duplicate abbreviated countersignature");
+    }
+
+    if (ret == 0) {
+        ret = wc_CoseSign1_Sign(&primaryKey, WOLFCOSE_ALG_ES256,
+            NULL, 0u, NULL, 0u, detached, sizeof(detached) - 1u,
+            NULL, 0u, scratch, sizeof(scratch), detachedMessage,
+            sizeof(detachedMessage), &detachedMessageLen, &rng);
+        TEST_ASSERT(ret == 0, "create detached countersignature target");
+    }
+    if (ret == 0) {
+        counterSigner.key = &counterKey1;
+        counterSigner.kid = counterKid1;
+        counterSigner.kidLen = sizeof(counterKid1) - 1u;
+        ret = wc_Cose_AddCounterSignature(&counterSigner,
+            detachedMessage, detachedMessageLen,
+            detached, sizeof(detached) - 1u, NULL, 0u,
+            scratch, sizeof(scratch), detachedCounterMessage,
+            sizeof(detachedCounterMessage), &detachedCounterMessageLen, &rng);
+        TEST_ASSERT(ret == 0, "add countersignature to detached payload");
+    }
+    if (ret == 0) {
+        ret = wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            detachedCounterMessage, detachedCounterMessageLen,
+            detached, sizeof(detached) - 1u, NULL, 0u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(ret == 0, "verify detached payload countersignature");
+        TEST_ASSERT(wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            detachedCounterMessage, detachedCounterMessageLen,
+            payload, sizeof(payload) - 1u, NULL, 0u,
+            scratch, sizeof(scratch), &hdr) != 0,
+            "detached countersignature rejects wrong payload");
+    }
+
+    if (ret == 0) {
+        size_t shortLen = 123u;
+
+        counterSigner.key = &counterKey1;
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            message, messageLen, NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), tampered, messageLen,
+            &shortLen, &rng) == WOLFCOSE_E_BUFFER_TOO_SMALL &&
+            shortLen == 0u, "countersignature output bound checked");
+        TEST_ASSERT(wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            message, messageLen, NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), &hdr) == WOLFCOSE_E_COSE_BAD_HDR,
+            "reject target without countersignature");
+    }
+
+    for (targetIndex = 0u;
+         (ret == 0) &&
+         (targetIndex < (sizeof(taggedTargets) / sizeof(taggedTargets[0])));
+         targetIndex++) {
+        size_t taggedOutLen = 0u;
+
+        ret = wc_Cose_AddCounterSignature(&counterSigner,
+            taggedTargets[targetIndex].message,
+            taggedTargets[targetIndex].messageLen,
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &taggedOutLen, &rng);
+        if (ret == 0) {
+            ret = wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+                tampered, taggedOutLen, NULL, 0u, NULL, 0u,
+                scratch, sizeof(scratch), &hdr);
+        }
+    }
+    TEST_ASSERT(ret == 0,
+                "countersign all tagged top-level message types");
+
+    if (ret == 0) {
+        size_t badOutLen = 0u;
+
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            duplicateHeaderTarget, sizeof(duplicateHeaderTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &badOutLen, &rng) ==
+            WOLFCOSE_E_CBOR_MALFORMED,
+            "reject duplicate target unprotected header");
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            crossBucketDuplicateTarget, sizeof(crossBucketDuplicateTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &badOutLen, &rng) ==
+            WOLFCOSE_E_CBOR_MALFORMED,
+            "reject duplicate target protected header");
+    }
+
+    if (counterKey2Inited != 0) {
+        wc_CoseKey_Free(&counterKey2);
+    }
+    if (counterKey1Inited != 0) {
+        wc_CoseKey_Free(&counterKey1);
+    }
+    if (primaryKeyInited != 0) {
+        wc_CoseKey_Free(&primaryKey);
+    }
+    if (counterEcc2Inited != 0) {
+        (void)wc_ecc_free(&counterEcc2);
+    }
+    if (counterEcc1Inited != 0) {
+        (void)wc_ecc_free(&counterEcc1);
+    }
+    if (primaryEccInited != 0) {
+        (void)wc_ecc_free(&primaryEcc);
+    }
+    if (rngInited != 0) {
+        (void)wc_FreeRng(&rng);
+    }
+}
+#endif
+
 int test_cose(void)
 {
     g_failures = 0;
@@ -23605,6 +24010,12 @@ int test_cose(void)
     test_wolfcose_force_zero();
 #if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN1_SIGN)
     test_cose_sign1_size_and_untagged();
+#endif
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN) && \
+    defined(WOLFCOSE_COUNTERSIGN_VERIFY) && \
+    defined(WOLFCOSE_SIGN1_SIGN) && defined(WOLFCOSE_SIGN1_VERIFY) && \
+    defined(WOLFCOSE_HAVE_ES256)
+    test_cose_countersignatures();
 #endif
 
     /* Key tests */

@@ -371,6 +371,22 @@ extern "C" {
     #endif
 #endif
 
+/* RFC 9338 countersignatures, extension */
+#if defined(WOLFCOSE_ENABLE_COUNTERSIGN)
+    #define WOLFCOSE_COUNTERSIGN_WANT
+#elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_COUNTERSIGN)
+    #define WOLFCOSE_COUNTERSIGN_WANT
+#endif
+#if defined(WOLFCOSE_COUNTERSIGN_WANT) && defined(WOLFCOSE_HAVE_SIG)
+    #define WOLFCOSE_COUNTERSIGN
+    #ifndef WOLFCOSE_NO_COUNTERSIGN_SIGN
+        #define WOLFCOSE_COUNTERSIGN_SIGN
+    #endif
+    #ifndef WOLFCOSE_NO_COUNTERSIGN_VERIFY
+        #define WOLFCOSE_COUNTERSIGN_VERIFY
+    #endif
+#endif
+
 /* Exact enforcement of RFC 8230's 2048-bit RSA-PSS minimum needs access to
  * the modulus at the byte boundary. Backend-enabled builds may also carry
  * software keys, so verify-only builds must export the modulus. */
@@ -378,14 +394,17 @@ extern "C" {
     defined(WOLFSSL_RSA_VERIFY_ONLY) && !defined(HAVE_ECC) && \
     !defined(WOLFSSL_EXPORT_INT) && \
     (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
-     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
+     defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
+     defined(WOLFCOSE_COUNTERSIGN_VERIFY))
     #error "wolfCOSE RSA-PSS key validation requires WOLFSSL_EXPORT_INT"
 #endif
 
 /* Optional RFC 6979 deterministic ECDSA signing. */
 #if defined(WOLFCOSE_ENABLE_DETERMINISTIC_ECDSA) && \
     defined(WOLFCOSE_HAVE_ECDSA) && \
-    (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN)) && \
+    (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN) || \
+     defined(WOLFCOSE_COUNTERSIGN_SIGN)) && \
     !defined(WOLFCOSE_HAVE_DETERMINISTIC_ECDSA)
     #if !defined(WOLFSSL_ECDSA_DETERMINISTIC_K) && \
         !defined(WOLFSSL_ECDSA_DETERMINISTIC_K_VARIANT)
@@ -510,6 +529,7 @@ extern "C" {
 #elif defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_ENCRYPT0_ENCRYPT) || \
       defined(WOLFCOSE_MAC0_CREATE) || defined(WOLFCOSE_SIGN_SIGN) || \
       defined(WOLFCOSE_ENCRYPT_ENCRYPT) || defined(WOLFCOSE_MAC_CREATE) || \
+      defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
       defined(WOLFCOSE_KEY_ENCODE)
     #error "WOLFCOSE_NO_CBOR_ENCODE conflicts with an enabled encode operation"
 #endif
@@ -518,6 +538,7 @@ extern "C" {
 #elif defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_ENCRYPT0_DECRYPT) || \
       defined(WOLFCOSE_MAC0_VERIFY) || defined(WOLFCOSE_SIGN_VERIFY) || \
       defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY) || \
+      defined(WOLFCOSE_COUNTERSIGN_VERIFY) || \
       defined(WOLFCOSE_KEY_DECODE)
     #error "WOLFCOSE_NO_CBOR_DECODE conflicts with an enabled decode operation"
 #endif
@@ -583,7 +604,7 @@ extern "C" {
 #endif
 
 #if defined(WOLFCOSE_EXT_SIGN) && !defined(WOLFCOSE_SIGN1_SIGN) && \
-    !defined(WOLFCOSE_SIGN_SIGN)
+    !defined(WOLFCOSE_SIGN_SIGN) && !defined(WOLFCOSE_COUNTERSIGN_SIGN)
     #error "WOLFCOSE_ENABLE_EXT_SIGN needs a signing op, which needs at least one local signature algorithm; the LEAN_VERIFY profiles are incompatible"
 #endif
 

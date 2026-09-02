@@ -1,12 +1,14 @@
 # API Reference
 
-Complete API documentation for wolfCOSE (RFC 9052/9053 COSE implementation).
+Complete API documentation for wolfCOSE (RFC 9052/9053 COSE and RFC 9338
+countersignature implementation).
 
 ## Table of Contents
 
 - [Data Structures](#data-structures)
 - [COSE_Key API](#cose_key-api)
 - [COSE_Sign1 API](#cose_sign1-api)
+- [COSE Countersignature API](#cose-countersignature-api)
 - [COSE_Encrypt0 API](#cose_encrypt0-api)
 - [COSE_Mac0 API](#cose_mac0-api)
 - [COSE_Sign API (Multi-Signer)](#cose_sign-api-multi-signer)
@@ -86,6 +88,28 @@ typedef struct WOLFCOSE_SIGNATURE {
 ```
 
 Signer information for COSE_Sign multi-signer messages.
+
+---
+
+### WOLFCOSE_COUNTERSIGNATURE
+
+```c
+typedef struct WOLFCOSE_COUNTERSIGNATURE {
+    int32_t algId;
+    WOLFCOSE_KEY* key;
+    const uint8_t* kid;
+    size_t kidLen;
+} WOLFCOSE_COUNTERSIGNATURE;
+
+typedef struct WOLFCOSE_COUNTERSIGNATURE0 {
+    int32_t algId;
+    WOLFCOSE_KEY* key;
+} WOLFCOSE_COUNTERSIGNATURE0;
+```
+
+The full form carries protected algorithm metadata and an optional key ID.
+The abbreviated form carries only signature bytes, so its algorithm and key
+selection must be supplied by trusted application context.
 
 ---
 
@@ -659,6 +683,86 @@ Verify a COSE_Sign1 message and extract payload.
 | `payload`, `payloadLen` | Receives pointer to payload (zero-copy into coseMsg) |
 
 **Returns:** `WOLFCOSE_SUCCESS`, `WOLFCOSE_E_COSE_SIG_FAIL`, or other error
+
+---
+
+## COSE Countersignature API
+
+These RFC 9338 APIs operate on tagged `COSE_Sign1`, `COSE_Sign`,
+`COSE_Encrypt0`, `COSE_Encrypt`, `COSE_Mac0`, and `COSE_Mac` messages. A
+countersignature authenticates the target message's protected header, payload,
+and existing cryptographic output where applicable.
+
+### wc_Cose_AddCounterSignature
+
+```c
+int wc_Cose_AddCounterSignature(
+    const WOLFCOSE_COUNTERSIGNATURE* counterSigner,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    uint8_t* out, size_t outSz, size_t* outLen,
+    WC_RNG* rng
+);
+```
+
+Add a full V2 countersignature in unprotected header parameter 11. Existing
+full countersignatures are retained and the new value is appended. `out` may
+equal `in` for exact in-place growth; other overlapping buffers are rejected.
+
+### wc_Cose_AddCounterSignature0
+
+```c
+int wc_Cose_AddCounterSignature0(
+    const WOLFCOSE_COUNTERSIGNATURE0* counterSigner,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    uint8_t* out, size_t outSz, size_t* outLen,
+    WC_RNG* rng
+);
+```
+
+Add one abbreviated V2 countersignature in unprotected header parameter 12.
+Only one abbreviated countersignature is allowed per target.
+
+### wc_Cose_VerifyCounterSignature
+
+```c
+int wc_Cose_VerifyCounterSignature(
+    const WOLFCOSE_KEY* key, size_t counterIndex,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    WOLFCOSE_HDR* counterHdr
+);
+```
+
+Verify a full countersignature selected by zero-based index and return its
+parsed headers. V2 label 11 and legacy RFC 8152 label 7 are accepted. V2 is
+preferred when both are present.
+
+### wc_Cose_VerifyCounterSignature0
+
+```c
+int wc_Cose_VerifyCounterSignature0(
+    const WOLFCOSE_COUNTERSIGNATURE0* counterSigner,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz
+);
+```
+
+Verify an abbreviated countersignature using the algorithm and key supplied by
+the application. V2 label 12 and legacy RFC 8152 label 9 are accepted.
+
+All four APIs require the detached payload or ciphertext and external AAD,
+when used by the target, to match the original operation. They return
+`WOLFCOSE_SUCCESS` or a negative wolfCOSE error code.
 
 ---
 

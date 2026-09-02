@@ -13,6 +13,13 @@ MAC, and key distribution, and standardized post-quantum ML-DSA signatures
 
 ## New Feature Additions
 
+* RFC 9338 countersignatures for tagged `COSE_Sign1`, `COSE_Sign`,
+  `COSE_Encrypt0`, `COSE_Encrypt`, `COSE_Mac0`, and `COSE_Mac` messages. The
+  API creates and verifies full and abbreviated V2 countersignatures, appends
+  multiple full countersignatures, accepts detached payloads and external AAD,
+  and supports exact in-place growth. Verification also accepts the legacy
+  RFC 8152 header labels. The command-line tool adds and verifies full
+  countersignatures on existing messages.
 * `wc_CoseSign1_Sign_ex()` can emit untagged COSE_Sign1 messages, and
   `wc_CoseSign1_SignSize_ex()` reports their exact encoded size without
   signing or invoking an external signer.
