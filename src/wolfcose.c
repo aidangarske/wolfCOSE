@@ -1371,6 +1371,7 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
     return ret;
 }
 
+#if defined(WOLFCOSE_HAVE_HPKE_0)
 /* HPKE recipient state is deliberately private. WOLFCOSE_HDR is a public
  * structure, so adding decoded HPKE fields to it would silently break callers
  * that allocate the previously published layout. */
@@ -1379,10 +1380,16 @@ typedef struct WOLFCOSE_HPKE_HDR {
     size_t ekLen;
     int hasEk;
 } WOLFCOSE_HPKE_HDR;
+#endif
 
+#if defined(WOLFCOSE_HAVE_HPKE_0)
 static int wolfCose_DecodeUnprotectedHdrEx(WOLFCOSE_CBOR_CTX* ctx,
     WOLFCOSE_HDR* hdr, WOLFCOSE_HDR_STATE* hdrState,
     WOLFCOSE_HPKE_HDR* hpkeHdr)
+#else
+static int wolfCose_DecodeUnprotectedHdrEx(WOLFCOSE_CBOR_CTX* ctx,
+    WOLFCOSE_HDR* hdr, WOLFCOSE_HDR_STATE* hdrState)
+#endif
 {
     int ret;
     size_t mapCount = 0;
@@ -1390,10 +1397,6 @@ static int wolfCose_DecodeUnprotectedHdrEx(WOLFCOSE_CBOR_CTX* ctx,
     const uint8_t* bstrData;
     size_t bstrLen;
     int skipped;
-
-#if !defined(WOLFCOSE_HAVE_HPKE_0)
-    (void)hpkeHdr;
-#endif
 
     if ((ctx == NULL) || (hdr == NULL) || (hdrState == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
@@ -1530,7 +1533,11 @@ static int wolfCose_DecodeUnprotectedHdrEx(WOLFCOSE_CBOR_CTX* ctx,
 int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
     WOLFCOSE_HDR_STATE* hdrState)
 {
+#if defined(WOLFCOSE_HAVE_HPKE_0)
     return wolfCose_DecodeUnprotectedHdrEx(ctx, hdr, hdrState, NULL);
+#else
+    return wolfCose_DecodeUnprotectedHdrEx(ctx, hdr, hdrState);
+#endif
 }
 
 #if defined(WOLFCOSE_SIGN_VERIFY) || defined(WOLFCOSE_ENCRYPT_DECRYPT) || \
