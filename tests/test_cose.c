@@ -16090,8 +16090,8 @@ static void test_cose_sign_dup_signer_unprot_hdr(void)
         ret = wc_CoseSign_Verify(&key, 0, unselectedMsg,
             sizeof(unselectedMsg), NULL, 0, NULL, 0,
             scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
-        TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL,
-                    "dup label in unselected signer ignored");
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                    "dup label in unselected signer rejected");
     }
 
     if (eccInited != 0) { (void)wc_ecc_free(&eccKey); }
@@ -16177,8 +16177,8 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
     ret = wc_CoseMac_Verify(&recipient, 0, unselectedMsg,
         sizeof(unselectedMsg), NULL, 0, NULL, 0,
         scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL,
-                "dup label in unselected recipient ignored (mac)");
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "dup label in unselected recipient rejected (mac)");
 
     ret = wc_CoseMac_Verify(&recipient, 1, nestedSiblings,
         sizeof(nestedSiblings), NULL, 0, NULL, 0,
@@ -16341,8 +16341,8 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         sizeof(unselectedMsg), NULL, 0, NULL, 0,
         scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL,
-                "dup label in unselected recipient ignored (encrypt)");
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "dup label in unselected recipient rejected (encrypt)");
 
     ret = wc_CoseEncrypt_Decrypt(&recipient, 1, nestedSiblings,
         sizeof(nestedSiblings), NULL, 0, NULL, 0,
@@ -16875,15 +16875,57 @@ static void test_cose_protected_hdr_tstr_label(void)
     int ret;
     WOLFCOSE_HDR hdr;
     WOLFCOSE_HDR_STATE hdrState;
+    WOLFCOSE_CBOR_CTX enc;
+    uint8_t labelData[256];
+    uint8_t dupBoundary[600];
+    static const size_t boundaryLen[] = {0u, 23u, 24u, 255u, 256u};
+    size_t i;
     /* {1: -7, "x": 0} : alg ES256, plus an unknown tstr label */
     uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
+    /* {"x": 0, "x": 1} */
+    uint8_t dupTstrLabel[] = {
+        0xA2u, 0x61u, 'x', 0x00u, 0x61u, 'x', 0x01u
+    };
 
     TEST_LOG("  [Protected Header: tstr-labeled entry]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(tstrLabel, sizeof(tstrLabel), &hdr,
                                       &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS && hdr.alg == WOLFCOSE_ALG_ES256,
+                "DecodeProtectedHdr preserves unknown tstr label");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(dupTstrLabel, sizeof(dupTstrLabel),
+                                      &hdr, &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
-                "DecodeProtectedHdr rejects tstr labels");
+                "DecodeProtectedHdr rejects duplicate tstr label");
+
+    XMEMSET(labelData, 0xA5, sizeof(labelData));
+    for (i = 0u; i < (sizeof(boundaryLen) / sizeof(boundaryLen[0])); i++) {
+        enc.buf = dupBoundary;
+        enc.bufSz = sizeof(dupBoundary);
+        enc.idx = 0u;
+        ret = wc_CBOR_EncodeMapStart(&enc, 2u);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeTstr(&enc, labelData, boundaryLen[i]);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeUint(&enc, 0u);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeTstr(&enc, labelData, boundaryLen[i]);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_EncodeUint(&enc, 1u);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            XMEMSET(&hdr, 0, sizeof(hdr));
+            ret = wolfCose_DecodeProtectedHdr(dupBoundary, enc.idx,
+                                              &hdr, &hdrState);
+        }
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                    "reject duplicate tstr label at CBOR length boundary");
+    }
 }
 
 static void test_cose_protected_hdr_dup_label(void)
@@ -18296,25 +18338,40 @@ static void test_cose_decode_tstr_alg_values(void)
 
 static void test_cose_decode_unprotected_tstr_label(void)
 {
-    /* Cover the tstr-skip + dup-detection paths in
-     * wolfCose_DecodeUnprotectedHdr that the protected-hdr test
-     * exercised on the other side. */
     int ret;
     WOLFCOSE_HDR hdr;
     WOLFCOSE_HDR_STATE hdrState;
     WOLFCOSE_CBOR_CTX ctx;
     /* {1: -7, "x": 0} */
     uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
+    /* {"x": 0} */
+    uint8_t protectedTstr[] = {0xA1u, 0x61u, 'x', 0x00u};
+    /* {"x": 1} */
+    uint8_t duplicateTstr[] = {0xA1u, 0x61u, 'x', 0x01u};
 
-    TEST_LOG("  [DecodeUnprotectedHdr: tstr label skipped]\n");
+    TEST_LOG("  [DecodeUnprotectedHdr: tstr labels]\n");
     memset(&hdr, 0, sizeof(hdr));
-    memset(&hdrState, 0, sizeof(hdrState));
+    ret = wolfCose_DecodeProtectedHdr(NULL, 0u, &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "initialize tstr unprotected header state");
     ctx.cbuf = tstrLabel;
     ctx.bufSz = sizeof(tstrLabel);
     ctx.idx = 0;
     ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS && hdr.alg == WOLFCOSE_ALG_ES256,
+                "DecodeUnprotectedHdr preserves unknown tstr label");
+
+    memset(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(protectedTstr,
+        sizeof(protectedTstr), &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "decode protected tstr label for cross-bucket test");
+    ctx.cbuf = duplicateTstr;
+    ctx.bufSz = sizeof(duplicateTstr);
+    ctx.idx = 0;
+    ret = wolfCose_DecodeUnprotectedHdr(&ctx, &hdr, &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
-                "DecodeUnprotectedHdr rejects tstr label");
+                "DecodeUnprotectedHdr rejects cross-bucket tstr duplicate");
 }
 
 static void test_cose_key_decode_tstr_alg_rejected(void)
@@ -23701,15 +23758,20 @@ static void test_cose_countersignatures(void)
     };
     static const uint8_t encryptTarget[] = {
         0xD8u, 0x60u, 0x84u, 0x40u, 0xA0u, 0x42u, 0x01u, 0x02u,
-        0x80u
+        0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
     };
     static const uint8_t macTarget[] = {
         0xD8u, 0x61u, 0x85u, 0x40u, 0xA0u, 0x42u, 0x01u, 0x02u,
-        0x42u, 0x03u, 0x04u, 0x80u
+        0x42u, 0x03u, 0x04u,
+        0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
     };
     static const uint8_t signTarget[] = {
         0xD8u, 0x62u, 0x84u, 0x40u, 0xA0u, 0x42u, 0x01u, 0x02u,
-        0x80u
+        0x81u, 0x83u, 0x40u, 0xA0u, 0x41u, 0x03u
+    };
+    static const uint8_t textHeaderTarget[] = {
+        0xD2u, 0x84u, 0x44u, 0xA1u, 0x61u, 'x', 0x00u,
+        0xA1u, 0x61u, 'y', 0x01u, 0x41u, 0x01u, 0x41u, 0x02u
     };
     static const uint8_t duplicateHeaderTarget[] = {
         0xD2u, 0x84u, 0x40u, 0xA2u, 0x01u, 0x26u, 0x01u, 0x26u,
@@ -23723,6 +23785,38 @@ static void test_cose_countersignatures(void)
         0xD2u, 0x84u, 0x43u, 0xA1u, 0x0Bu, 0x80u, 0xA0u,
         0x41u, 0x01u, 0x41u, 0x02u
     };
+    static const uint8_t duplicateTextHeaderTarget[] = {
+        0xD2u, 0x84u, 0x40u,
+        0xA2u, 0x61u, 'x', 0x00u, 0x61u, 'x', 0x01u,
+        0x41u, 0x01u, 0x41u, 0x02u
+    };
+    static const uint8_t crossBucketTextDuplicateTarget[] = {
+        0xD2u, 0x84u, 0x44u, 0xA1u, 0x61u, 'x', 0x00u,
+        0xA1u, 0x61u, 'x', 0x01u, 0x41u, 0x01u, 0x41u, 0x02u
+    };
+    static const uint8_t emptySignaturesTarget[] = {
+        0xD8u, 0x62u, 0x84u, 0x40u, 0xA0u, 0x41u, 0x01u, 0x80u
+    };
+    static const uint8_t malformedSignatureTarget[] = {
+        0xD8u, 0x62u, 0x84u, 0x40u, 0xA0u, 0x41u, 0x01u,
+        0x81u, 0x00u
+    };
+    static const uint8_t protectedNestedCounterTarget[] = {
+        0xD8u, 0x62u, 0x84u, 0x40u, 0xA0u, 0x41u, 0x01u,
+        0x81u, 0x83u, 0x43u, 0xA1u, 0x0Bu, 0x80u,
+        0xA0u, 0x41u, 0x03u
+    };
+    static const uint8_t emptyRecipientsTarget[] = {
+        0xD8u, 0x60u, 0x84u, 0x40u, 0xA0u, 0x41u, 0x01u, 0x80u
+    };
+    static const uint8_t malformedRecipientTarget[] = {
+        0xD8u, 0x61u, 0x85u, 0x40u, 0xA0u, 0x41u, 0x01u,
+        0x41u, 0x02u, 0x81u, 0x00u
+    };
+    static const uint8_t emptyNestedRecipientsTarget[] = {
+        0xD8u, 0x60u, 0x84u, 0x40u, 0xA0u, 0x41u, 0x01u,
+        0x81u, 0x84u, 0x40u, 0xA0u, 0x40u, 0x80u
+    };
     static const struct {
         const uint8_t* message;
         size_t messageLen;
@@ -23732,7 +23826,20 @@ static void test_cose_countersignatures(void)
         { sign1Target, sizeof(sign1Target) },
         { encryptTarget, sizeof(encryptTarget) },
         { macTarget, sizeof(macTarget) },
-        { signTarget, sizeof(signTarget) }
+        { signTarget, sizeof(signTarget) },
+        { textHeaderTarget, sizeof(textHeaderTarget) }
+    };
+    static const struct {
+        const uint8_t* message;
+        size_t messageLen;
+    } malformedAggregateTargets[] = {
+        { emptySignaturesTarget, sizeof(emptySignaturesTarget) },
+        { malformedSignatureTarget, sizeof(malformedSignatureTarget) },
+        { protectedNestedCounterTarget,
+          sizeof(protectedNestedCounterTarget) },
+        { emptyRecipientsTarget, sizeof(emptyRecipientsTarget) },
+        { malformedRecipientTarget, sizeof(malformedRecipientTarget) },
+        { emptyNestedRecipientsTarget, sizeof(emptyNestedRecipientsTarget) }
     };
     WC_RNG rng;
     ecc_key primaryEcc;
@@ -23869,6 +23976,123 @@ static void test_cose_countersignatures(void)
             wrongAad, sizeof(wrongAad) - 1u,
             scratch, sizeof(scratch), &hdr);
         TEST_ASSERT(badRet != 0, "countersignature rejects wrong AAD");
+    }
+
+    if (ret == 0) {
+        static const uint8_t context[] = "CounterSignatureV2";
+        static const uint8_t targetPayload[] = {0x01u, 0x02u};
+        static const uint8_t targetSignature[] = {0x03u, 0x04u};
+        WOLFCOSE_CBOR_CTX enc;
+        uint8_t hash[WC_SHA256_DIGEST_SIZE];
+        uint8_t signature[64];
+        size_t signatureLen = sizeof(signature);
+        size_t tbsLen = 0u;
+        size_t unprotectedAlgMessageLen = 0u;
+        int pinnedRet;
+        int unpinnedRet;
+
+        enc.buf = scratch;
+        enc.bufSz = sizeof(scratch);
+        enc.idx = 0u;
+        ret = wc_CBOR_EncodeArrayStart(&enc, 6u);
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeTstr(&enc, context, sizeof(context) - 1u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, targetPayload,
+                                     sizeof(targetPayload));
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeArrayStart(&enc, 1u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, targetSignature,
+                                     sizeof(targetSignature));
+        }
+        if (ret == 0) {
+            tbsLen = enc.idx;
+            ret = wc_Hash(WC_HASH_TYPE_SHA256, scratch, (word32)tbsLen,
+                          hash, sizeof(hash));
+        }
+        if (ret == 0) {
+            ret = wolfCose_EccSignRaw(hash, sizeof(hash), signature,
+                &signatureLen, 32u, WC_HASH_TYPE_SHA256, &rng,
+                &counterEcc1);
+        }
+
+        enc.buf = tampered;
+        enc.bufSz = sizeof(tampered);
+        enc.idx = 0u;
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeTag(&enc, WOLFCOSE_TAG_SIGN1);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeArrayStart(&enc, 4u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeMapStart(&enc, 1u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeInt(&enc,
+                                    WOLFCOSE_HDR_COUNTERSIGNATURE_V2);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeArrayStart(&enc, 3u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, NULL, 0u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeMapStart(&enc, 1u);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_HDR_ALG);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeInt(&enc, WOLFCOSE_ALG_ES256);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, signature, signatureLen);
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, targetPayload,
+                                     sizeof(targetPayload));
+        }
+        if (ret == 0) {
+            ret = wc_CBOR_EncodeBstr(&enc, targetSignature,
+                                     sizeof(targetSignature));
+        }
+        if (ret == 0) {
+            unprotectedAlgMessageLen = enc.idx;
+        }
+        TEST_ASSERT(ret == 0,
+                    "create countersignature with externally bound alg");
+
+        counterKey1.alg = WOLFCOSE_ALG_ES256;
+        pinnedRet = wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            tampered, unprotectedAlgMessageLen, NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(pinnedRet == WOLFCOSE_SUCCESS,
+                    "accept unprotected countersignature alg when pinned");
+
+        counterKey1.alg = WOLFCOSE_ALG_UNSET;
+        unpinnedRet = wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            tampered, unprotectedAlgMessageLen, NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(unpinnedRet == WOLFCOSE_E_COSE_BAD_ALG,
+                    "reject unprotected countersignature alg when unpinned");
     }
 
     if (ret == 0) {
@@ -24123,11 +24347,38 @@ static void test_cose_countersignatures(void)
             tampered, sizeof(tampered), &badOutLen, &rng) ==
             WOLFCOSE_E_COSE_BAD_HDR,
             "reject countersignature in protected header");
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            duplicateTextHeaderTarget, sizeof(duplicateTextHeaderTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &badOutLen, &rng) ==
+            WOLFCOSE_E_CBOR_MALFORMED,
+            "reject duplicate text target header");
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            crossBucketTextDuplicateTarget,
+            sizeof(crossBucketTextDuplicateTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &badOutLen, &rng) ==
+            WOLFCOSE_E_CBOR_MALFORMED,
+            "reject cross-bucket duplicate text target header");
         TEST_ASSERT(wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
             protectedCounterTarget, sizeof(protectedCounterTarget),
             NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr) ==
             WOLFCOSE_E_COSE_BAD_HDR,
             "reject protected countersignature verification");
+
+        for (targetIndex = 0u;
+             targetIndex < (sizeof(malformedAggregateTargets) /
+                            sizeof(malformedAggregateTargets[0]));
+             targetIndex++) {
+            int badRet = wc_Cose_AddCounterSignature(&counterSigner,
+                malformedAggregateTargets[targetIndex].message,
+                malformedAggregateTargets[targetIndex].messageLen,
+                NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+                tampered, sizeof(tampered), &badOutLen, &rng);
+
+            TEST_ASSERT(badRet != WOLFCOSE_SUCCESS,
+                        "reject malformed signer or recipient tree");
+        }
     }
 
     if (counterKey2Inited != 0) {

@@ -743,7 +743,9 @@ int wc_Cose_VerifyCounterSignature(
 
 Verify a full countersignature selected by zero-based index and return its
 parsed headers. V2 label 11 and legacy RFC 8152 label 7 are accepted. V2 is
-preferred when both are present.
+preferred when both are present. If the countersignature algorithm is carried
+only in the unprotected header bucket, `key->alg` must pin the same algorithm;
+an unset or mismatched key policy is rejected.
 
 ### wc_Cose_VerifyCounterSignature0
 
@@ -1262,10 +1264,12 @@ else {
 }
 ```
 
-Note that `wc_CoseKey_Decode()` and the COSE header parsers accept integer
-labels only, by design: silently skipping text labels would break their
-duplicate-label enforcement. `wc_CBOR_DecodeLabel()` is for caller-written
-parsers of protocol maps such as CTAP2.
+COSE header parsers accept both integer and text labels and enforce duplicate
+labels within and across the protected and unprotected buckets. Unknown,
+non-critical text-labeled parameters are preserved in the encoded message and
+ignored during processing. `wc_CoseKey_Decode()` accepts the integer labels
+defined for COSE_Key. `wc_CBOR_DecodeLabel()` is also available for
+caller-written protocol parsers such as CTAP2.
 
 **Returns:** `WOLFCOSE_SUCCESS` or error code
 

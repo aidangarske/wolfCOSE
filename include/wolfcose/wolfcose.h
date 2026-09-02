@@ -1210,7 +1210,10 @@ WOLFCOSE_API int wc_Cose_AddCounterSignature0(
  * \p counterIndex selects a value from V2 header parameter 11 or legacy
  * header parameter 7. Zero selects the sole value when the compact
  * single-value representation is used. Parsed countersigner headers are
- * returned through \p counterHdr. V2 is preferred when both labels exist.
+ * returned through \p counterHdr. V2 is preferred when both labels exist. An
+ * algorithm in the unprotected bucket is accepted only when \p key has the
+ * same non-UNSET alg value, providing the external authentication required by
+ * RFC 9052.
  */
 WOLFCOSE_API int wc_Cose_VerifyCounterSignature(
     const WOLFCOSE_KEY* key, size_t counterIndex,

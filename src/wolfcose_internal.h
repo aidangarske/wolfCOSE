@@ -144,10 +144,18 @@ WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_MAC[3];
 WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_ENCRYPT0[8];
 WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_ENCRYPT[7];
 
+#define WOLFCOSE_MAX_HEADER_LABELS WOLFCOSE_MAX_MAP_ITEMS
+
+typedef union WOLFCOSE_HDR_EXTRA_LABEL {
+    int64_t        integer;
+    const uint8_t* textEncoded;
+} WOLFCOSE_HDR_EXTRA_LABEL;
+
 typedef struct WOLFCOSE_HDR_STATE {
-    uint32_t labelBits;
-    int64_t  extraLabels[WOLFCOSE_MAX_MAP_ITEMS];
-    size_t   extraCount;
+    uint32_t                  labelBits;
+    WOLFCOSE_HDR_EXTRA_LABEL  extraLabels[WOLFCOSE_MAX_HEADER_LABELS];
+    uint8_t                   extraIsText[WOLFCOSE_MAX_HEADER_LABELS];
+    size_t                    extraCount;
 } WOLFCOSE_HDR_STATE;
 
 /* ----- COSE internal helpers ----- */
