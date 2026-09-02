@@ -250,10 +250,13 @@ COSE-HPKE tracks an active Internet-Draft, so it is disabled in every build,
 including a normal non-lean build. It currently implements the P0 subset:
 HPKE base mode with DHKEM(P-256, HKDF-SHA256), HKDF-SHA256, and AES-128-GCM.
 See [Configuration Macros](Macros.md#cose-hpke-experimental) for the complete
-operation and compile-out gates.
+operation and compile-out gates, and [Experimental Features](Experimental.md)
+for the draft status and graduation plan.
 
 Build wolfSSL with HPKE support, then enable the exact send and receive paths
-your application needs. The standalone example enables all four paths and
+your application needs. `WOLFCOSE_EXPERIMENTAL` is required with every HPKE
+enable macro. The standalone example supplies that acknowledgement, enables all
+four paths, and
 demonstrates both one-recipient `COSE_Encrypt0` and two-recipient
 `COSE_Encrypt` key encryption:
 
@@ -280,7 +283,8 @@ for HPKE-0, while the `hpke-ke-*` commands
 use one independently HPKE-protected CEK for every recipient:
 
 ```bash
-# Build the tool with the four WOLFCOSE_ENABLE_HPKE_0_* operation macros.
+# Build the tool with WOLFCOSE_EXPERIMENTAL and the four
+# WOLFCOSE_ENABLE_HPKE_0_* operation macros.
 ./tools/wolfcose_tool keygen -a HPKE-0 \
     -o recipient.private.cbor -p recipient.public.cbor
 ./tools/wolfcose_tool hpke0-enc -k recipient.public.cbor \

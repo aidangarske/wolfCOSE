@@ -554,6 +554,14 @@ EXP_FLAGS = -std=c99 -pedantic-errors -I./include $(C99_WOLFSSL_CFLAGS) \
 # Include settings.h plus one declaration so the stub is a valid C99 TU.
 EXP_TU = printf '\#include <wolfcose/settings.h>\nint wolfcose_experimental_gate_check;\n'
 
+EXP_HPKE_ENABLES = \
+    WOLFCOSE_ENABLE_HPKE_0 \
+    WOLFCOSE_ENABLE_HPKE_0_KE \
+    WOLFCOSE_ENABLE_HPKE_0_ENCRYPT \
+    WOLFCOSE_ENABLE_HPKE_0_DECRYPT \
+    WOLFCOSE_ENABLE_HPKE_0_KE_ENCRYPT \
+    WOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT
+
 experimental-check:
 	@echo "  EXP feature without acknowledgement (expect error)"
 	@if $(EXP_TU) | \
@@ -570,17 +578,19 @@ experimental-check:
 	@$(EXP_TU) | \
 	    $(CC) $(EXP_FLAGS) -DWOLFCOSE_ENABLE_EXPERIMENTAL_EXAMPLE \
 	    -DWOLFCOSE_EXPERIMENTAL -fsyntax-only -x c -
-	@echo "  EXP COSE-HPKE without acknowledgement (expect error)"
-	@if $(EXP_TU) | \
-	    $(CC) $(EXP_FLAGS) -DWOLFCOSE_ENABLE_HPKE_0_ENCRYPT \
-	    -fsyntax-only -x c - 2>experimental-check.err; then \
-	    echo "FAIL: COSE-HPKE compiled without WOLFCOSE_EXPERIMENTAL"; \
-	    rm -f experimental-check.err; exit 1; \
-	fi
-	@grep -q WOLFCOSE_EXPERIMENTAL experimental-check.err || { \
-	    echo "FAIL: COSE-HPKE gate error did not mention WOLFCOSE_EXPERIMENTAL"; \
-	    cat experimental-check.err; rm -f experimental-check.err; exit 1; }
-	@rm -f experimental-check.err
+	@for enable in $(EXP_HPKE_ENABLES); do \
+	    echo "  EXP COSE-HPKE $$enable without acknowledgement (expect error)"; \
+	    if $(EXP_TU) | $(CC) $(EXP_FLAGS) -D$$enable \
+	        -fsyntax-only -x c - 2>experimental-check.err; then \
+	        echo "FAIL: COSE-HPKE $$enable compiled without WOLFCOSE_EXPERIMENTAL"; \
+	        rm -f experimental-check.err; exit 1; \
+	    fi; \
+	    if ! grep -q WOLFCOSE_EXPERIMENTAL experimental-check.err; then \
+	        echo "FAIL: COSE-HPKE $$enable gate error did not mention WOLFCOSE_EXPERIMENTAL"; \
+	        cat experimental-check.err; rm -f experimental-check.err; exit 1; \
+	    fi; \
+	    rm -f experimental-check.err; \
+	done
 	@echo "  EXP normal build (expect pass, zero experimental code)"
 	@$(EXP_TU) | \
 	    $(CC) $(EXP_FLAGS) -fsyntax-only -x c -

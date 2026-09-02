@@ -502,6 +502,16 @@ extern "C" {
  * other direction.  The two convenience switches enable both directions for
  * their respective COSE construction.
  */
+#if (defined(WOLFCOSE_ENABLE_HPKE_0) || \
+     defined(WOLFCOSE_ENABLE_HPKE_0_KE) || \
+     defined(WOLFCOSE_ENABLE_HPKE_0_ENCRYPT) || \
+     defined(WOLFCOSE_ENABLE_HPKE_0_DECRYPT) || \
+     defined(WOLFCOSE_ENABLE_HPKE_0_KE_ENCRYPT) || \
+     defined(WOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT)) && \
+    !defined(WOLFCOSE_EXPERIMENTAL)
+    #error "COSE-HPKE selects experimental draft code (spec not yet a finalized RFC); also define WOLFCOSE_EXPERIMENTAL to acknowledge"
+#endif
+
 #if defined(WOLFCOSE_ENABLE_HPKE_0)
     #if defined(WOLFCOSE_NO_HPKE_0)
         #error "WOLFCOSE_ENABLE_HPKE_0 conflicts with WOLFCOSE_NO_HPKE_0"

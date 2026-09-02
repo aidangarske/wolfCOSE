@@ -2,7 +2,8 @@
 
 wolfCOSE has two configuration modes. The default is an opt-out full build: every algorithm wolfSSL provides is enabled, and you strip what you don't need with `WOLFCOSE_NO_*` defines. Alternatively, `WOLFCOSE_LEAN` switches to an opt-in core build and you add extensions with `WOLFCOSE_ENABLE_*`. See [Lean Configuration Layer](#lean-configuration-layer).
 
-Draft, pre-RFC features are held behind a separate acknowledgement, `WOLFCOSE_EXPERIMENTAL`; see [Experimental Features](#experimental-features).
+Draft, pre-RFC features are held behind a separate acknowledgement,
+`WOLFCOSE_EXPERIMENTAL`; see [Experimental Features](Experimental.md).
 
 ## Experimental Features
 
@@ -39,8 +40,9 @@ cc -DWOLFCOSE_ENABLE_EXPERIMENTAL_EXAMPLE ...
 **Graduation policy.** When a draft is published as an RFC, its `WOLFCOSE_EXPERIMENTAL` requirement is removed in a focused follow-up and the feature becomes an ordinary gate (default-on full build, `WOLFCOSE_ENABLE_<X>` under `WOLFCOSE_LEAN`, `WOLFCOSE_NO_<X>` to strip), following the [Algorithm Gates](#algorithm-gates) convention.
 
 COSE-HPKE is currently an experimental feature. It stays off in every build and
-requires the master acknowledgement plus the relevant operation gate. Its
-specific gates are documented in [COSE-HPKE (experimental)](#cose-hpke-experimental).
+requires the master acknowledgement plus the relevant operation gate. See
+[Experimental Features](Experimental.md) for its current draft status, scope,
+and graduation plan.
 
 ## Lean Configuration Layer
 
@@ -242,6 +244,7 @@ with a COSE signature or MAC when the sender must be authenticated.
 
 | Define | Description | Default |
 |--------|-------------|---------|
+| `WOLFCOSE_EXPERIMENTAL` | Required acknowledgement for every COSE-HPKE enable; alone enables no HPKE code | off |
 | `WOLFCOSE_ENABLE_HPKE_0` | Enable both send and receive for single-recipient integrated `COSE_Encrypt0` HPKE-0 | off |
 | `WOLFCOSE_ENABLE_HPKE_0_ENCRYPT` | Enable only integrated Encrypt0 send | off |
 | `WOLFCOSE_ENABLE_HPKE_0_DECRYPT` | Enable only integrated Encrypt0 receive | off |
@@ -252,8 +255,10 @@ with a COSE signature or MAC when the sender must be authenticated.
 | `WOLFCOSE_NO_HPKE_0_ENCRYPT` / `WOLFCOSE_NO_HPKE_0_DECRYPT` | Compile out the corresponding integrated Encrypt0 direction | off |
 | `WOLFCOSE_NO_HPKE_0_KE_ENCRYPT` / `WOLFCOSE_NO_HPKE_0_KE_DECRYPT` | Compile out the corresponding multi-recipient key-encryption direction | off |
 
-The convenience gates respect their per-direction `NO_*` gates. Defining an
-individual `ENABLE_*` and its matching `NO_*` is a compile error; defining
+Every HPKE `ENABLE_*` macro requires `WOLFCOSE_EXPERIMENTAL`; selecting an HPKE
+operation without the acknowledgement is a compile error. The convenience
+gates respect their per-direction `NO_*` gates. Defining an individual
+`ENABLE_*` and its matching `NO_*` is a compile error; defining
 `WOLFCOSE_NO_HPKE_0` with any enable is also a compile error.
 
 An enabled HPKE operation requires wolfSSL `HAVE_HPKE`, `HAVE_ECC` with P-256,
@@ -300,13 +305,13 @@ mode is not implemented.
 
 ```bash
 # Single-recipient integrated HPKE: send and receive.
-make EXTRA_CFLAGS="-DWOLFCOSE_ENABLE_HPKE_0"
+make EXTRA_CFLAGS="-DWOLFCOSE_EXPERIMENTAL -DWOLFCOSE_ENABLE_HPKE_0"
 
 # Receive-only provisioning target: no HPKE sender code.
-make EXTRA_CFLAGS="-DWOLFCOSE_ENABLE_HPKE_0_DECRYPT"
+make EXTRA_CFLAGS="-DWOLFCOSE_EXPERIMENTAL -DWOLFCOSE_ENABLE_HPKE_0_DECRYPT"
 
 # Multi-recipient provisioning server, including the lean COSE_Encrypt gate.
-make EXTRA_CFLAGS="-DWOLFCOSE_LEAN -DWOLFCOSE_ENABLE_ENCRYPT \
+make EXTRA_CFLAGS="-DWOLFCOSE_LEAN -DWOLFCOSE_EXPERIMENTAL -DWOLFCOSE_ENABLE_ENCRYPT \
     -DWOLFCOSE_ENABLE_HPKE_0_KE_ENCRYPT"
 ```
 

@@ -20,8 +20,8 @@
 
 /* Experimental COSE-HPKE P0 demonstration.
  *
- * The draft binding is intentionally opt-in. This program demonstrates the
- * two currently supported P0 constructions:
+ * The draft binding requires WOLFCOSE_EXPERIMENTAL plus its operation gates.
+ * This program demonstrates the two currently supported P0 constructions:
  *   - HPKE-0: one-recipient COSE_Encrypt0 integrated encryption
  *   - HPKE-0-KE: COSE_Encrypt with one HPKE-protected CEK per recipient
  */
@@ -213,7 +213,8 @@ int main(void)
 int main(void)
 {
     fprintf(stderr,
-        "This example requires the four WOLFCOSE_ENABLE_HPKE_0_* macros.\n");
+        "This example requires WOLFCOSE_EXPERIMENTAL and the four "
+        "WOLFCOSE_ENABLE_HPKE_0_* macros.\n");
     return 1;
 }
 
