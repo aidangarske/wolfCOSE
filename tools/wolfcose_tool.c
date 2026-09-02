@@ -2897,8 +2897,10 @@ int main(int argc, char* argv[])
     const char* aadPath = NULL;
     size_t counterIndex = 0u;
     int counterIndexSet = 0;
-#if defined(WOLFCOSE_HAVE_HPKE_0)
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
     const char* keyPaths[WOLFCOSE_TOOL_MAX_HPKE_RECIPIENTS];
+#endif
+#if defined(WOLFCOSE_HAVE_HPKE_0)
     size_t keyPathCount = 0u;
 #endif
 #if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
@@ -2930,7 +2932,10 @@ int main(int argc, char* argv[])
                     fprintf(stderr, "Too many -k recipient keys\n");
                     return EXIT_USAGE;
                 }
-                keyPaths[keyPathCount++] = keyPath;
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT)
+                keyPaths[keyPathCount] = keyPath;
+#endif
+                keyPathCount++;
 #endif
             }
 #if defined(WOLFCOSE_HAVE_HPKE_0)
