@@ -23890,6 +23890,7 @@ static void test_cose_countersignatures(void)
     size_t messageLen = 0u;
     size_t counterMessageLen = 0u;
     size_t twoCounterMessageLen = 0u;
+    size_t threeCounterMessageLen = 0u;
     size_t abbreviatedMessageLen = 0u;
     size_t inPlaceLen = 0u;
     size_t detachedMessageLen = 0u;
@@ -24148,6 +24149,25 @@ static void test_cose_countersignatures(void)
         TEST_ASSERT(ret == 0 && hdr.kidLen == sizeof(counterKid2) - 1u &&
                     memcmp(hdr.kid, counterKid2, hdr.kidLen) == 0,
                     "verify second countersignature in array");
+    }
+    if (ret == 0) {
+        ret = wc_Cose_AddCounterSignature(&counterSigner,
+            twoCounterMessage, twoCounterMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), tampered, sizeof(tampered),
+            &threeCounterMessageLen, &rng);
+        TEST_ASSERT(ret == 0 &&
+                    threeCounterMessageLen > twoCounterMessageLen,
+                    "append third full countersignature");
+    }
+    if (ret == 0) {
+        ret = wc_Cose_VerifyCounterSignature(&counterKey2, 2u,
+            tampered, threeCounterMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(ret == 0 && hdr.kidLen == sizeof(counterKid2) - 1u &&
+                    memcmp(hdr.kid, counterKid2, hdr.kidLen) == 0,
+                    "verify third countersignature in array");
     }
     if (ret == 0) {
         int badRet = wc_Cose_VerifyCounterSignature(&counterKey2, 2u,
