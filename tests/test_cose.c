@@ -17511,8 +17511,8 @@ static void test_cose_build_sig_structure_context(void)
 }
 
 /* ----- Coverage boost: exercise multi-signer / multi-recipient paths
- *       added by recent hardening so the CI coverage threshold of
- *       99% on src/wolfcose.c is preserved. -----
+ *       added by recent hardening so the per-file 100% CI coverage
+ *       threshold is preserved. -----
  */
 
 #if defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFCOSE_SIGN) && \
@@ -23720,7 +23720,11 @@ static void test_multi_decrypt_detached_missing(void)
     TEST_ASSERT(ret == WOLFCOSE_E_DETACHED_PAYLOAD,
                 "decrypt detached ciphertext without buffer rejected");
 }
+#endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
 
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM) && \
+    defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && \
+    defined(HAVE_ECC) && defined(HAVE_HKDF)
 static void test_multi_decrypt_ecdh_recipient_map_too_large(void)
 {
     WOLFCOSE_KEY key;
@@ -24699,6 +24703,10 @@ int test_cose(void)
 #endif
 #if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM)
     test_multi_decrypt_detached_missing();
+#endif
+#if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM) && \
+    defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && \
+    defined(HAVE_ECC) && defined(HAVE_HKDF)
     test_multi_decrypt_ecdh_recipient_map_too_large();
 #endif
 #ifdef WOLFCOSE_KEY_DECODE

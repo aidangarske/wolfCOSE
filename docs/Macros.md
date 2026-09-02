@@ -25,7 +25,7 @@ An experimental feature is compiled in only when **both** its own `WOLFCOSE_ENAB
 
 ```bash
 # Normal build: zero experimental code, no acknowledgement needed.
-cc ... src/wolfcose.c src/wolfcose_cbor.c
+cc ... src/*.c
 
 # Enable an experimental feature (requires both defines):
 cc -DWOLFCOSE_EXPERIMENTAL -DWOLFCOSE_ENABLE_EXPERIMENTAL_EXAMPLE ...

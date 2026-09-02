@@ -5,11 +5,15 @@
 set -e
 
 BUDGET="${1:-6144}"
-SU=$(ls src/*.su 2>/dev/null)
-if [ -z "$SU" ]; then
-    echo "no src/*.su files — build with -fstack-usage first" >&2
-    exit 2
-fi
+SU=
+for c in src/*.c; do
+    f="${c%.c}.su"
+    if [ ! -f "$f" ]; then
+        echo "missing $f — build with -fstack-usage first" >&2
+        exit 2
+    fi
+    SU="$SU $f"
+done
 
 
 # Flag unbounded frames (qualifier exactly "dynamic", not "dynamic,bounded" or

@@ -122,6 +122,7 @@ SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 all: $(LIB_A)
 
 $(LIB_A): $(OBJ)
+	rm -f $@
 	$(AR) rcs $@ $^
 
 FORCE:
@@ -341,6 +342,7 @@ coverage: clean
 	@set -e; for f in $(SRC); do \
 	    $(CC) $(CFLAGS) --coverage -fprofile-arcs -ftest-coverage -c $$f -o $${f%.c}.o; \
 	done
+	rm -f $(LIB_A)
 	$(AR) rcs $(LIB_A) $(OBJ)
 	$(CC) $(CFLAGS) --coverage -fprofile-arcs -ftest-coverage -o $(TEST_BIN) $(TEST_SRC) $(LIB_A) $(LDFLAGS) $(LDLIBS)
 	./$(TEST_BIN)
@@ -353,6 +355,7 @@ coverage-force-failure: clean
 	@set -e; for f in $(SRC); do \
 	    $(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE --coverage -fprofile-arcs -ftest-coverage -c $$f -o $${f%.c}.o; \
 	done
+	rm -f $(LIB_A)
 	$(AR) rcs $(LIB_A) $(OBJ)
 	$(CC) $(CFLAGS) -DWOLFCOSE_FORCE_FAILURE --coverage -fprofile-arcs -ftest-coverage -o $(TEST_BIN) $(TEST_SRC) $(FORCE_FAIL_SRC) $(LIB_A) $(LDFLAGS) $(LDLIBS)
 	./$(TEST_BIN)
