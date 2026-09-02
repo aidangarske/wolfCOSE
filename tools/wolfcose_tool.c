@@ -682,7 +682,7 @@ static int tool_hpke_keygen(int32_t alg, const char* outPath,
     int ret;
 
     if (outPath == NULL) {
-        fprintf(stderr, "HPKE private and public key paths must differ\n");
+        fprintf(stderr, "HPKE key generation requires a private output path\n");
         return EXIT_USAGE;
     }
 #if (WOLFCOSE_TOOL_HAVE_POSIX_FS == 0)
