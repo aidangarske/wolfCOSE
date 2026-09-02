@@ -211,6 +211,91 @@ static void test_example_sign1(void)
     }
 }
 
+#if defined(WOLFCOSE_SIGN_VERIFY)
+
+/* sign-tests/sign-pass-02.json. */
+static const char example_sign_pass_hex[] =
+    "d8628440a054546869732069732074686520636f6e74656e742e818343a10126"
+    "a1044231315840cbb8dad9beafb890e1a414124d8bfbc26bedf2a94fcb5a882"
+    "432bff6d63e15f574eeb2ab51d83fa2cbf62672ebf4c7d993b0f4c2447647d8"
+    "31ba57cca86b930a";
+
+static void test_example_sign(void)
+{
+    WOLFCOSE_KEY cose_key;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* payload = NULL;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t message[256];
+    size_t message_len;
+    size_t payload_len = 0u;
+    ecc_key ecc_key;
+    int cose_key_inited = 0;
+    int ecc_key_inited = 0;
+    int ret;
+
+    printf("  [COSE WG Examples COSE_Sign ES256]\n");
+    message_len = example_hex_decode(example_sign_pass_hex, message,
+                                     sizeof(message));
+    TEST_ASSERT(message_len > 0u, "Examples Sign pass vector decode");
+    if (message_len == 0u) {
+        return;
+    }
+
+    ret = wc_ecc_init(&ecc_key);
+    TEST_ASSERT(ret == 0, "Examples Sign ECC init");
+    if (ret == 0) {
+        ecc_key_inited = 1;
+        ret = wc_ecc_import_unsigned(&ecc_key, example_p256_x, example_p256_y,
+                                     NULL, ECC_SECP256R1);
+        TEST_ASSERT(ret == 0, "Examples Sign public key import");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&cose_key);
+        TEST_ASSERT(ret == 0, "Examples Sign COSE key init");
+        if (ret == 0) {
+            cose_key_inited = 1;
+        }
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_SetEcc(&cose_key, WOLFCOSE_CRV_P256, &ecc_key);
+        TEST_ASSERT(ret == 0, "Examples Sign COSE key set");
+        cose_key.alg = WOLFCOSE_ALG_ES256;
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign_Verify(&cose_key, 0u, message, message_len, NULL,
+                                 0u, example_sign1_aad,
+                                 sizeof(example_sign1_aad), scratch,
+                                 sizeof(scratch), &hdr, &payload,
+                                 &payload_len);
+        TEST_ASSERT(ret == 0, "Examples Sign verifies");
+    }
+    if (ret == 0) {
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256,
+                    "Examples Sign algorithm");
+        TEST_ASSERT((payload_len == sizeof(example_payload) - 1u) &&
+                    (memcmp(payload, example_payload, payload_len) == 0),
+                    "Examples Sign payload");
+
+        message[message_len - 1u] ^= 0x01u;
+        ret = wc_CoseSign_Verify(&cose_key, 0u, message, message_len, NULL,
+                                 0u, example_sign1_aad,
+                                 sizeof(example_sign1_aad), scratch,
+                                 sizeof(scratch), &hdr, &payload,
+                                 &payload_len);
+        TEST_ASSERT(ret != 0, "Examples Sign rejects modified signature");
+    }
+
+    if (cose_key_inited != 0) {
+        wc_CoseKey_Free(&cose_key);
+    }
+    if (ecc_key_inited != 0) {
+        wc_ecc_free(&ecc_key);
+    }
+}
+
+#endif /* WOLFCOSE_SIGN_VERIFY */
+
 #endif /* WOLFCOSE_HAVE_ES256 */
 
 #ifdef WOLFCOSE_HAVE_HMAC256
@@ -372,7 +457,258 @@ static void test_example_encrypt0(void)
     }
 }
 
+#if defined(WOLFCOSE_ENCRYPT_DECRYPT)
+
+static const uint8_t example_encrypt_kid[] = "our-secret";
+static const char example_encrypt_direct_pass_hex[] =
+    "d8608443a10101a1054c02d1f7e6f26c43d4868d87ce582460973a94bb289800"
+    "9ee52ecfd9ab1dd25867374b7cde42d4f7e6dd896e231c71fdd6fc99818340a2"
+    "0125044a6f75722d73656372657440";
+
+static void test_example_encrypt_direct(void)
+{
+    WOLFCOSE_KEY cose_key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t message[256];
+    uint8_t plaintext[64];
+    size_t message_len;
+    size_t plaintext_len = 0u;
+    int cose_key_inited = 0;
+    int ret;
+
+    printf("  [COSE WG Examples COSE_Encrypt direct A128GCM]\n");
+    message_len = example_hex_decode(example_encrypt_direct_pass_hex, message,
+                                     sizeof(message));
+    TEST_ASSERT(message_len > 0u, "Examples Encrypt direct vector decode");
+    if (message_len == 0u) {
+        return;
+    }
+
+    ret = wc_CoseKey_Init(&cose_key);
+    TEST_ASSERT(ret == 0, "Examples Encrypt direct COSE key init");
+    if (ret == 0) {
+        cose_key_inited = 1;
+        ret = wc_CoseKey_SetSymmetric(&cose_key, example_a128gcm_key,
+                                      sizeof(example_a128gcm_key) - 1u);
+        TEST_ASSERT(ret == 0, "Examples Encrypt direct COSE key set");
+        cose_key.alg = WOLFCOSE_ALG_A128GCM;
+    }
+    if (ret == 0) {
+        recipient.algId = WOLFCOSE_ALG_DIRECT;
+        recipient.key = &cose_key;
+        recipient.kid = example_encrypt_kid;
+        recipient.kidLen = sizeof(example_encrypt_kid) - 1u;
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
+            NULL, 0u, example_encrypt0_aad, sizeof(example_encrypt0_aad),
+            scratch, sizeof(scratch), &hdr, plaintext, sizeof(plaintext),
+            &plaintext_len);
+        TEST_ASSERT(ret == 0, "Examples Encrypt direct decrypts");
+    }
+    if (ret == 0) {
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_A128GCM,
+                    "Examples Encrypt direct algorithm");
+        TEST_ASSERT((plaintext_len == sizeof(example_payload) - 1u) &&
+                    (memcmp(plaintext, example_payload, plaintext_len) == 0),
+                    "Examples Encrypt direct plaintext");
+
+        message[30] ^= 0x01u;
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
+            NULL, 0u, example_encrypt0_aad, sizeof(example_encrypt0_aad),
+            scratch, sizeof(scratch), &hdr, plaintext, sizeof(plaintext),
+            &plaintext_len);
+        TEST_ASSERT(ret != 0,
+                    "Examples Encrypt direct rejects modified ciphertext");
+    }
+
+    if (cose_key_inited != 0) {
+        wc_CoseKey_Free(&cose_key);
+    }
+}
+
+#if defined(WOLFCOSE_KEY_WRAP)
+
+/* aes-wrap-examples/aes-wrap-128-04.json. */
+static const char example_encrypt_a128kw_pass_hex[] =
+    "d8608443a10101a1054cdddc08972df9be62855291a158246f5556d71834cd1b"
+    "d3fdcbfff28cfa0f7d598c138d23b40c225af5e3f2096a46c766813d818340a2"
+    "0122044a6f75722d7365637265745818112872f405a5ac48a2ede46ac20e93e3"
+    "d3a38b9762d0a3e8";
+
+static void test_example_encrypt_a128kw(void)
+{
+    WOLFCOSE_KEY cose_key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t message[256];
+    uint8_t plaintext[64];
+    size_t message_len;
+    size_t plaintext_len = 0u;
+    int cose_key_inited = 0;
+    int ret;
+
+    printf("  [COSE WG Examples COSE_Encrypt A128KW]\n");
+    message_len = example_hex_decode(example_encrypt_a128kw_pass_hex, message,
+                                     sizeof(message));
+    TEST_ASSERT(message_len > 0u, "Examples A128KW vector decode");
+    if (message_len == 0u) {
+        return;
+    }
+
+    ret = wc_CoseKey_Init(&cose_key);
+    TEST_ASSERT(ret == 0, "Examples A128KW COSE key init");
+    if (ret == 0) {
+        cose_key_inited = 1;
+        ret = wc_CoseKey_SetSymmetric(&cose_key, example_a128gcm_key,
+                                      sizeof(example_a128gcm_key) - 1u);
+        TEST_ASSERT(ret == 0, "Examples A128KW COSE key set");
+        cose_key.alg = WOLFCOSE_ALG_A128KW;
+    }
+    if (ret == 0) {
+        recipient.algId = WOLFCOSE_ALG_A128KW;
+        recipient.key = &cose_key;
+        recipient.kid = example_encrypt_kid;
+        recipient.kidLen = sizeof(example_encrypt_kid) - 1u;
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plaintext,
+            sizeof(plaintext), &plaintext_len);
+        TEST_ASSERT(ret == 0, "Examples A128KW decrypts");
+    }
+    if (ret == 0) {
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_A128GCM,
+                    "Examples A128KW algorithm");
+        TEST_ASSERT((plaintext_len == sizeof(example_payload) - 1u) &&
+                    (memcmp(plaintext, example_payload, plaintext_len) == 0),
+                    "Examples A128KW plaintext");
+
+        message[30] ^= 0x01u;
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plaintext,
+            sizeof(plaintext), &plaintext_len);
+        TEST_ASSERT(ret != 0, "Examples A128KW rejects modified ciphertext");
+    }
+
+    if (cose_key_inited != 0) {
+        wc_CoseKey_Free(&cose_key);
+    }
+}
+
+#endif /* WOLFCOSE_KEY_WRAP */
+
+#endif /* WOLFCOSE_ENCRYPT_DECRYPT */
+
 #endif /* WOLFCOSE_HAVE_AESGCM */
+
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && \
+    defined(HAVE_HKDF) && defined(WOLFCOSE_ENCRYPT_DECRYPT)
+
+/* ecdh-direct-examples/p256-hkdf-256-01.json. */
+static const uint8_t example_ecdh_private[] = {
+    0xafu, 0xf9u, 0x07u, 0xc9u, 0x9fu, 0x9au, 0xd3u, 0xaau,
+    0xe6u, 0xc4u, 0xcdu, 0xf2u, 0x11u, 0x22u, 0xbcu, 0xe2u,
+    0xbdu, 0x68u, 0xb5u, 0x28u, 0x3eu, 0x69u, 0x07u, 0x15u,
+    0x4au, 0xd9u, 0x11u, 0x84u, 0x0fu, 0xa2u, 0x08u, 0xcfu
+};
+static const uint8_t example_ecdh_public[] = {
+    0x04u,
+    0x65u, 0xedu, 0xa5u, 0xa1u, 0x25u, 0x77u, 0xc2u, 0xbau,
+    0xe8u, 0x29u, 0x43u, 0x7fu, 0xe3u, 0x38u, 0x70u, 0x1au,
+    0x10u, 0xaau, 0xa3u, 0x75u, 0xe1u, 0xbbu, 0x5bu, 0x5du,
+    0xe1u, 0x08u, 0xdeu, 0x43u, 0x9cu, 0x08u, 0x55u, 0x1du,
+    0x1eu, 0x52u, 0xedu, 0x75u, 0x70u, 0x11u, 0x63u, 0xf7u,
+    0xf9u, 0xe4u, 0x0du, 0xdfu, 0x9fu, 0x34u, 0x1bu, 0x3du,
+    0xc9u, 0xbau, 0x86u, 0x0au, 0xf7u, 0xe0u, 0xcau, 0x7cu,
+    0xa7u, 0xe9u, 0xeeu, 0xcdu, 0x00u, 0x84u, 0xd1u, 0x9cu
+};
+static const uint8_t example_ecdh_kid[] =
+    "meriadoc.brandybuck@buckland.example";
+static const char example_encrypt_ecdh_pass_hex[] =
+    "d8608443a10101a1054cc9cf4df2fe6c632bf788641358247adbe2709ca818fb"
+    "415f1e5df66f4e1a51053ba6d65a1a0c52a357da7a644b8070a151b0818344a1"
+    "013818a220a40102200121582098f50a4ff6c05861c8860d13a638ea56c3f5ad"
+    "7590bbfbf054e1c7b4d91d6280225820f01400b089867804b8e9fc96c3932161"
+    "f1934f4223069170d924b7e03bf822bb0458246d65726961646f632e6272616e"
+    "64796275636b406275636b6c616e642e6578616d706c6540";
+
+static void test_example_encrypt_ecdh(void)
+{
+    WOLFCOSE_KEY cose_key;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    ecc_key ecc_key;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t message[384];
+    uint8_t plaintext[64];
+    size_t message_len;
+    size_t plaintext_len = 0u;
+    int cose_key_inited = 0;
+    int ecc_key_inited = 0;
+    int ret;
+
+    printf("  [COSE WG Examples COSE_Encrypt ECDH-ES]\n");
+    message_len = example_hex_decode(example_encrypt_ecdh_pass_hex, message,
+                                     sizeof(message));
+    TEST_ASSERT(message_len > 0u, "Examples ECDH-ES vector decode");
+    if (message_len == 0u) {
+        return;
+    }
+
+    ret = wc_ecc_init(&ecc_key);
+    TEST_ASSERT(ret == 0, "Examples ECDH-ES ECC init");
+    if (ret == 0) {
+        ecc_key_inited = 1;
+        ret = wc_ecc_import_private_key_ex(example_ecdh_private,
+            (word32)sizeof(example_ecdh_private), example_ecdh_public,
+            (word32)sizeof(example_ecdh_public), &ecc_key, ECC_SECP256R1);
+        TEST_ASSERT(ret == 0, "Examples ECDH-ES private key import");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&cose_key);
+        TEST_ASSERT(ret == 0, "Examples ECDH-ES COSE key init");
+        if (ret == 0) {
+            cose_key_inited = 1;
+        }
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_SetEcc(&cose_key, WOLFCOSE_CRV_P256, &ecc_key);
+        TEST_ASSERT(ret == 0, "Examples ECDH-ES COSE key set");
+        cose_key.hasPrivate = 1u;
+    }
+    if (ret == 0) {
+        recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+        recipient.key = &cose_key;
+        recipient.kid = example_ecdh_kid;
+        recipient.kidLen = sizeof(example_ecdh_kid) - 1u;
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plaintext,
+            sizeof(plaintext), &plaintext_len);
+        TEST_ASSERT(ret == 0, "Examples ECDH-ES decrypts");
+    }
+    if (ret == 0) {
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_A128GCM,
+                    "Examples ECDH-ES algorithm");
+        TEST_ASSERT((plaintext_len == sizeof(example_payload) - 1u) &&
+                    (memcmp(plaintext, example_payload, plaintext_len) == 0),
+                    "Examples ECDH-ES plaintext");
+
+        message[30] ^= 0x01u;
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plaintext,
+            sizeof(plaintext), &plaintext_len);
+        TEST_ASSERT(ret != 0, "Examples ECDH-ES rejects modified ciphertext");
+    }
+
+    if (cose_key_inited != 0) {
+        wc_CoseKey_Free(&cose_key);
+    }
+    if (ecc_key_inited != 0) {
+        wc_ecc_free(&ecc_key);
+    }
+}
+
+#endif /* ECDH_ES_DIRECT && ES256 && HAVE_HKDF */
 
 int test_cose_examples(void)
 {
@@ -381,12 +717,25 @@ int test_cose_examples(void)
 
 #ifdef WOLFCOSE_HAVE_ES256
     test_example_sign1();
+    #if defined(WOLFCOSE_SIGN_VERIFY)
+    test_example_sign();
+    #endif
 #endif
 #ifdef WOLFCOSE_HAVE_HMAC256
     test_example_mac0();
 #endif
 #ifdef WOLFCOSE_HAVE_AESGCM
     test_example_encrypt0();
+    #if defined(WOLFCOSE_ENCRYPT_DECRYPT)
+    test_example_encrypt_direct();
+    #ifdef WOLFCOSE_KEY_WRAP
+    test_example_encrypt_a128kw();
+    #endif
+    #endif
+#endif
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && \
+    defined(HAVE_HKDF) && defined(WOLFCOSE_ENCRYPT_DECRYPT)
+    test_example_encrypt_ecdh();
 #endif
 
     return g_failures;
