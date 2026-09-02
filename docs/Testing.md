@@ -42,14 +42,28 @@ make c99-hpke-check WOLFSSL_INC=/path/to/hpke-enabled-wolfssl/include
 EXPECT_HPKE=true make cmdline-test EXTRA_CFLAGS="$HPKE_FLAGS"
 ```
 
-The command-line test performs public/private key export, HPKE-0 integrated
-encryption, two-recipient HPKE-0-KE encryption and decryption at both recipient
-indices, maximum-message round trips for both constructions, and a focused
-`test -a` round trip for each construction. The dedicated strict C99 target
-compiles every HPKE-gated library, test, tool, and example path under each
-one-way operation gate, the complete P0 configuration, and wolfSSL's
-`NO_ECC256` plus `HAVE_ALL_CURVES` configuration. GitHub Actions runs the same
-coverage in
+The command-line test performs public/private key export, rejects identical,
+normalized-alias, case-alias (where the filesystem supports it), and
+symlink-alias key destinations, preserves existing POSIX destinations, and
+rejects a failed paired key export without leaving a private-key file. It
+rejects a plaintext one byte above the configured maximum for both
+constructions, exercises HPKE-0 integrated
+encryption, two-recipient HPKE-0-KE encryption and decryption at both
+recipient indices, maximum-message round trips for both constructions, and a
+focused `test -a` round trip for each construction. The dedicated strict C99
+target compiles every HPKE-gated library, test, tool, and example path under
+each one-way operation gate, both convenience gates, the complete P0
+configuration, and wolfSSL's `NO_ECC256` plus `HAVE_ALL_CURVES` configuration.
+The unit suite validates draft messages that omit the optional HPKE `alg`
+(including a second selected recipient), rejects an HPKE `alg` in an
+unprotected header, accepts an unprotected HPKE-0-KE content algorithm only
+when its authenticated Recipient_structure binds it, and rejects a modified
+content algorithm. The CI backend enables Koblitz curves to prove that a
+32-byte secp256k1 key cannot masquerade as P-256 at the HPKE API boundary. It
+also covers missing, duplicate, wrong-type, wrong-length, and wrongly placed
+`ek`, prohibited `psk_id`, detached ciphertext, and cleared outputs on failed
+decrypts and encrypts.
+GitHub Actions runs the same coverage in
 [Experimental COSE-HPKE](../.github/workflows/cose-hpke.yml).
 
 ### Comprehensive Algorithm Tests

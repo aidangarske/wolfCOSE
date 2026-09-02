@@ -144,6 +144,81 @@ echo "== Experimental COSE-HPKE: keygen -> encrypt -> decrypt -> self-test =="
 H0_PRIV="$WORK/hpke0.private"; H0_PUB="$WORK/hpke0.public"
 H0_COSE="$WORK/hpke0.cose"; H0_OUT="$WORK/hpke0.out"
 if hpke_keygen_or "HPKE-0" "$H0_PRIV" "$H0_PUB"; then
+    H0_SAME="$WORK/hpke0.same"
+    if "$TOOL" keygen -a "HPKE-0" -o "$H0_SAME" -p "$H0_SAME" \
+            >/dev/null 2>&1; then
+        bad "HPKE-0 keygen rejects identical private/public paths"
+    else
+        ok "HPKE-0 keygen rejects identical private/public paths"
+    fi
+    H0_ALIAS="$WORK/hpke0.alias"
+    if "$TOOL" keygen -a "HPKE-0" -o "$H0_ALIAS" -p "$WORK/./hpke0.alias" \
+            >/dev/null 2>&1; then
+        bad "HPKE-0 keygen rejects normalized private/public paths"
+    else
+        ok "HPKE-0 keygen rejects normalized private/public paths"
+    fi
+    H0_CASE_LOWER="$WORK/hpke0.case"
+    H0_CASE_UPPER="$WORK/HPKE0.CASE"
+    if touch "$H0_CASE_LOWER"; then
+        if [ -e "$H0_CASE_UPPER" ]; then
+            rm -f "$H0_CASE_LOWER"
+            if "$TOOL" keygen -a "HPKE-0" -o "$H0_CASE_LOWER" \
+                    -p "$H0_CASE_UPPER" >/dev/null 2>&1 || \
+               [ -e "$H0_CASE_LOWER" ]; then
+                bad "HPKE-0 keygen rejects case-alias private/public paths"
+            else
+                ok "HPKE-0 keygen rejects case-alias private/public paths"
+            fi
+        else
+            rm -f "$H0_CASE_LOWER"
+            skip "HPKE-0 keygen case-alias paths" "case-sensitive filesystem"
+        fi
+    else
+        bad "HPKE-0 keygen case-alias test setup"
+    fi
+    H0_SYMLINK_TARGET="$WORK/hpke0.symlink-target"
+    H0_SYMLINK="$WORK/hpke0.symlink"
+    if ln -s "$H0_SYMLINK_TARGET" "$H0_SYMLINK" && \
+       "$TOOL" keygen -a "HPKE-0" -o "$H0_SYMLINK_TARGET" -p "$H0_SYMLINK" \
+            >/dev/null 2>&1; then
+        bad "HPKE-0 keygen rejects symlink private/public paths"
+    elif [ -e "$H0_SYMLINK_TARGET" ]; then
+        bad "HPKE-0 keygen leaves symlink target untouched"
+    else
+        ok "HPKE-0 keygen rejects symlink private/public paths"
+    fi
+    H0_EXISTING_PRIV="$WORK/hpke0-existing.private"
+    H0_EXISTING_COPY="$WORK/hpke0-existing.copy"
+    H0_NEW_PUB="$WORK/hpke0-new.public"
+    if printf 'existing HPKE private key\n' > "$H0_EXISTING_PRIV" && \
+       cp "$H0_EXISTING_PRIV" "$H0_EXISTING_COPY"; then
+        if "$TOOL" keygen -a "HPKE-0" -o "$H0_EXISTING_PRIV" \
+                -p "$H0_NEW_PUB" >/dev/null 2>&1; then
+            bad "HPKE-0 keygen rejects existing output paths"
+        elif cmp -s "$H0_EXISTING_PRIV" "$H0_EXISTING_COPY" && \
+             [ ! -e "$H0_NEW_PUB" ]; then
+            ok "HPKE-0 keygen preserves existing output paths"
+        else
+            bad "HPKE-0 keygen preserves existing output paths"
+        fi
+    else
+        bad "HPKE-0 existing output test setup"
+    fi
+    H0_FAILED_PRIV="$WORK/hpke0-failed.private"
+    H0_BLOCKED_PUB="$WORK/hpke0-public-directory"
+    if mkdir "$H0_BLOCKED_PUB"; then
+        if "$TOOL" keygen -a "HPKE-0" -o "$H0_FAILED_PRIV" \
+                -p "$H0_BLOCKED_PUB" >/dev/null 2>&1; then
+            bad "HPKE-0 keygen rejects unusable public output"
+        elif [ -e "$H0_FAILED_PRIV" ]; then
+            bad "HPKE-0 keygen leaves no partial private output"
+        else
+            ok "HPKE-0 keygen leaves no partial private output"
+        fi
+    else
+        bad "HPKE-0 unusable public output test setup"
+    fi
     if "$TOOL" hpke0-enc -k "$H0_PUB" -i "$IN" -o "$H0_COSE" >/dev/null 2>&1 && \
        "$TOOL" hpke0-dec -k "$H0_PRIV" -i "$H0_COSE" -o "$H0_OUT" >/dev/null 2>&1 && \
        cmp -s "$IN" "$H0_OUT"; then
@@ -169,6 +244,19 @@ if hpke_keygen_or "HPKE-0" "$H0_PRIV" "$H0_PUB"; then
         ok "HPKE-0 maximum message enc/dec"
     else
         bad "HPKE-0 maximum message enc/dec"
+    fi
+    H0_OVERSIZE_IN="$WORK/hpke0-oversize.bin"
+    H0_OVERSIZE_COSE="$WORK/hpke0-oversize.cose"
+    if dd if=/dev/zero of="$H0_OVERSIZE_IN" bs="$HPKE_TOOL_MAX_MSG" count=1 \
+            >/dev/null 2>&1 && printf '\0' >> "$H0_OVERSIZE_IN"; then
+        if "$TOOL" hpke0-enc -k "$H0_PUB" -i "$H0_OVERSIZE_IN" \
+                -o "$H0_OVERSIZE_COSE" >/dev/null 2>&1; then
+            bad "HPKE-0 rejects oversized plaintext"
+        else
+            ok "HPKE-0 rejects oversized plaintext"
+        fi
+    else
+        bad "HPKE-0 oversized plaintext test setup"
     fi
 else
     skip "HPKE-0 command and self-test"
@@ -208,6 +296,20 @@ if hpke_keygen_or "HPKE-0-KE" "$HKE0_PRIV" "$HKE0_PUB" && \
         ok "HPKE-0-KE maximum message enc/dec"
     else
         bad "HPKE-0-KE maximum message enc/dec"
+    fi
+    HKE_OVERSIZE_IN="$WORK/hpke-ke-oversize.bin"
+    HKE_OVERSIZE_COSE="$WORK/hpke-ke-oversize.cose"
+    if dd if=/dev/zero of="$HKE_OVERSIZE_IN" bs="$HPKE_TOOL_MAX_MSG" count=1 \
+            >/dev/null 2>&1 && printf '\0' >> "$HKE_OVERSIZE_IN"; then
+        if "$TOOL" hpke-ke-enc -a A128GCM -k "$HKE0_PUB" -k "$HKE1_PUB" \
+                -i "$HKE_OVERSIZE_IN" -o "$HKE_OVERSIZE_COSE" \
+                >/dev/null 2>&1; then
+            bad "HPKE-0-KE rejects oversized plaintext"
+        else
+            ok "HPKE-0-KE rejects oversized plaintext"
+        fi
+    else
+        bad "HPKE-0-KE oversized plaintext test setup"
     fi
 else
     skip "HPKE-0-KE command and self-test"

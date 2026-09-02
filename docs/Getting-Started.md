@@ -265,13 +265,18 @@ make
 
 cd ../wolfCOSE
 make hpke-demo \
-  CFLAGS="-std=c99 -I./include -I/path/to/wolfssl" \
+  EXTRA_CFLAGS="-I/path/to/wolfssl" \
   LDFLAGS="-L/path/to/wolfssl -lwolfssl"
 ```
 
 The command-line tool is compiled with the same operation gates. `keygen -p`
 exports a public-only COSE_Key; keep the corresponding `-o` private key on the
-recipient. The direct commands are for HPKE-0, while the `hpke-ke-*` commands
+recipient, and use new, distinct non-symlink destinations for `-o` and `-p`.
+On POSIX builds, HPKE key generation refuses to replace an existing
+destination. Normalized, case-equivalent, and symlink aliases are rejected
+before either key is written. On non-POSIX builds, `-p` is rejected rather
+than weakening those key-output safeguards. The direct commands are
+for HPKE-0, while the `hpke-ke-*` commands
 use one independently HPKE-protected CEK for every recipient:
 
 ```bash

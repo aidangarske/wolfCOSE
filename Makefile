@@ -130,7 +130,9 @@ src/%.o: src/%.c src/wolfcose_internal.h include/wolfcose/wolfcose.h $(BUILD_CON
 # under test. It must exercise the local ECDSA Sign1 signing path even when the
 # caller is testing a no-ECDSA or verify-only configuration.
 ECDSA_POLICY_OPTS ?= -include wolfssl/options.h
-WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS = -UWOLFCOSE_ENABLE_HPKE_0_ENCRYPT \
+WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS = -UWOLFCOSE_ENABLE_HPKE_0 \
+                                      -UWOLFCOSE_ENABLE_HPKE_0_KE \
+                                      -UWOLFCOSE_ENABLE_HPKE_0_ENCRYPT \
                                       -UWOLFCOSE_ENABLE_HPKE_0_DECRYPT \
                                       -UWOLFCOSE_ENABLE_HPKE_0_KE_ENCRYPT \
                                       -UWOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT
@@ -525,9 +527,11 @@ HPKE_C99_CONFIGS = \
     "$(HPKE_C99_CONFIG)" \
     "$(HPKE_C99_CONFIG) -DNO_ECC256 -DHAVE_ALL_CURVES -DHAVE_ECC_KOBLITZ"
 # Prefer the explicitly selected HPKE backend over an unrelated host install.
-# One-way builds leave round-trip-only test helpers unused; this gate judges
-# gated wolfCOSE syntax while treating backend headers as system headers.
-HPKE_C99_FLAGS = $(C99_FLAGS) -Wno-unused-function
+# Treat backend headers as system headers so this gate judges gated wolfCOSE
+# syntax, including when the selected wolfSSL version uses C11 extensions.
+# Re-add the common local prefix late because macOS Clang otherwise searches it
+# before a caller-selected -isystem directory.
+HPKE_C99_FLAGS = $(C99_FLAGS) -Wno-unused-function -isystem /usr/local/include
 
 c99-check:
 	@for cfg in $(C99_CONFIGS); do \

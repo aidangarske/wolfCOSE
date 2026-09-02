@@ -286,6 +286,18 @@ once, and HPKE-wraps that CEK separately for every recipient. HPKE base mode
 does not authenticate the sender, so add a COSE signature or MAC when sender
 authentication is required.
 
+Draft P0 permits the HPKE `alg` header parameter to be absent. The integrated
+decrypt API is already pinned to HPKE-0; for key-encryption decrypt, set the
+selected `WOLFCOSE_RECIPIENT.algId` to `WOLFCOSE_ALG_HPKE_0_KE` so wolfCOSE can
+pin the omitted value safely. When an integrated or recipient HPKE `alg` is
+present, it must be in the protected header. wolfCOSE rejects an unprotected
+HPKE `alg` rather than accepting an unauthenticated key-management choice. For
+HPKE-0-KE, the outer `COSE_Encrypt` content algorithm may be unprotected: the
+HPKE Recipient_structure binds it as `next_layer_alg`, so a modification makes
+HPKE CEK recovery fail. P0 requires the 65-byte P-256 `ek` in the unprotected
+header, rejects it in the protected header, and rejects `psk_id` because PSK
+mode is not implemented.
+
 ```bash
 # Single-recipient integrated HPKE: send and receive.
 make EXTRA_CFLAGS="-DWOLFCOSE_ENABLE_HPKE_0"

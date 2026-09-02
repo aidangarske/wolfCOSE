@@ -4,7 +4,7 @@ on:
   push:
     branches: [ 'main', 'release/**' ]
   pull_request:
-    branches: [ '*' ]
+    branches: [ '**' ]
   workflow_dispatch:
 
 concurrency:
@@ -31,6 +31,7 @@ jobs:
         ./autogen.sh
         ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
                     --enable-curve25519 --enable-curve448 \
+                    --enable-ecccustcurves=all \
                     --enable-aesgcm --enable-aesccm \
                     --enable-sha384 --enable-sha512 \
                     --enable-keygen --enable-hkdf --enable-aeskeywrap \
@@ -50,7 +51,8 @@ jobs:
           -DWOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT"
         WOLFCOSE_CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 \
           -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wvla \
-          -Werror=vla -I./include -I$WOLFSSL_DIR/include $HPKE_FLAGS"
+          -Werror=vla -DHAVE_ECC_KOBLITZ -I./include \
+          -I$WOLFSSL_DIR/include $HPKE_FLAGS"
         make clean
         make test CFLAGS="$WOLFCOSE_CFLAGS" \
           LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"

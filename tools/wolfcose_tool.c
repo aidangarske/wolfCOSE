@@ -38,6 +38,13 @@
  * Exit codes: 0=success, 1=usage, 2=crypto failure, 3=I/O error.
  */
 
+/* Request the POSIX interfaces used by the optional HPKE key-output guard
+ * before any system header on POSIX hosts. */
+#if (defined(__unix__) || defined(__APPLE__) || defined(__MACH__) || \
+     defined(__CYGWIN__)) && !defined(_XOPEN_SOURCE)
+    #define _XOPEN_SOURCE 700
+#endif
+
 #ifdef HAVE_CONFIG_H
     #include <config.h>
 #endif
@@ -47,6 +54,16 @@
 #include <wolfssl/wolfcrypt/settings.h>
 
 #include <wolfcose/wolfcose.h>
+
+#if !defined(WOLFCOSE_TOOL_HAVE_POSIX_FS)
+    #if defined(__unix__) || defined(__APPLE__) || defined(__MACH__) || \
+        defined(__CYGWIN__)
+        #define WOLFCOSE_TOOL_HAVE_POSIX_FS 1
+    #else
+        #define WOLFCOSE_TOOL_HAVE_POSIX_FS 0
+    #endif
+#endif
+
 #include <wolfssl/wolfcrypt/random.h>
 #if defined(WOLFCOSE_HAVE_ECDSA) || defined(WOLFCOSE_HAVE_HPKE_0)
     #include <wolfssl/wolfcrypt/ecc.h>
@@ -67,8 +84,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
-#include <errno.h>
+#if defined(WOLFCOSE_HAVE_HPKE_0)
+    #include <errno.h>
+    #if (WOLFCOSE_TOOL_HAVE_POSIX_FS == 1)
+        #include <fcntl.h>
+        #include <limits.h>
+        #include <sys/stat.h>
+        #include <unistd.h>
+    #endif
 #endif
 
 #ifndef WOLFCOSE_TOOL_MAX_MSG
@@ -82,6 +105,17 @@
     #else
         /* RSA-2048 private COSE_Key: n,e,d,p,q,qInv plus export scratch */
         #define WOLFCOSE_TOOL_MAX_KEY  4096
+    #endif
+#endif
+
+#if defined(WOLFCOSE_HAVE_HPKE_0) && \
+    (WOLFCOSE_TOOL_HAVE_POSIX_FS == 1)
+/* PATH_MAX is optional in POSIX headers. This fallback matches the minimum
+ * practical path size supported by the command-line tool. */
+    #ifndef PATH_MAX
+        #define WOLFCOSE_TOOL_PATH_MAX 4096u
+    #else
+        #define WOLFCOSE_TOOL_PATH_MAX PATH_MAX
     #endif
 #endif
 
@@ -265,12 +299,13 @@ static int parse_alg(const char* name, int32_t* alg)
     return 0;
 }
 
-/* Read entire file into buffer, return bytes read */
+/* Read an entire file into buffer, rejecting data beyond the caller's bound. */
 static int read_file(const char* path, uint8_t* buf, size_t bufSz,
                       size_t* outLen)
 {
     FILE* f;
     size_t n;
+    int extra = EOF;
 
     f = fopen(path, "rb");
     if (f == NULL) {
@@ -278,9 +313,17 @@ static int read_file(const char* path, uint8_t* buf, size_t bufSz,
         return EXIT_IO;
     }
     n = fread(buf, 1, bufSz, f);
-    if (n == 0 && ferror(f)) {
+    if (n == bufSz) {
+        extra = fgetc(f);
+    }
+    if (ferror(f)) {
         fclose(f);
         fprintf(stderr, "Read error: %s\n", path);
+        return EXIT_IO;
+    }
+    if (extra != EOF) {
+        fclose(f);
+        fprintf(stderr, "Input too large: %s\n", path);
         return EXIT_IO;
     }
     fclose(f);
@@ -308,6 +351,321 @@ static int write_file(const char* path, const uint8_t* buf, size_t len)
 }
 
 #if defined(WOLFCOSE_HAVE_HPKE_0)
+#if (WOLFCOSE_TOOL_HAVE_POSIX_FS == 1)
+/* Resolve an output path without allowing a final symlink. Existing paths
+ * resolve fully; a new leaf is made canonical by resolving its parent. This
+ * lets the key generator reject aliases before either destination is created. */
+static int tool_hpke_canonical_output_path(const char* path,
+    char* canonical, size_t canonicalSz)
+{
+    char parent[WOLFCOSE_TOOL_PATH_MAX];
+    char resolvedParent[WOLFCOSE_TOOL_PATH_MAX];
+    const char* leaf;
+    const char* slash;
+    size_t parentLen;
+    size_t resolvedParentLen;
+    size_t leafLen;
+    struct stat pathStat;
+    int ret = 0;
+
+    if ((path == NULL) || (path[0] == '\0') || (canonical == NULL) ||
+        (canonicalSz == 0u)) {
+        ret = -1;
+    }
+    else if ((lstat(path, &pathStat) == 0) && S_ISLNK(pathStat.st_mode)) {
+        fprintf(stderr, "Refusing HPKE key output symlink: %s\n", path);
+        ret = -1;
+    }
+    else if (realpath(path, canonical) != NULL) {
+        /* Existing non-symlink path resolved successfully. */
+    }
+    else {
+        slash = strrchr(path, '/');
+        if (slash == NULL) {
+            parent[0] = '.';
+            parent[1] = '\0';
+            leaf = path;
+        }
+        else if (slash == path) {
+            parent[0] = '/';
+            parent[1] = '\0';
+            leaf = slash + 1;
+        }
+        else {
+            parentLen = (size_t)(slash - path);
+            if (parentLen >= sizeof(parent)) {
+                ret = -1;
+            }
+            else {
+                (void)XMEMCPY(parent, path, parentLen);
+                parent[parentLen] = '\0';
+                leaf = slash + 1;
+            }
+        }
+
+        if ((ret == 0) && (leaf[0] == '\0')) {
+            ret = -1;
+        }
+        if ((ret == 0) && (realpath(parent, resolvedParent) == NULL)) {
+            ret = -1;
+        }
+        if (ret == 0) {
+            resolvedParentLen = strlen(resolvedParent);
+            leafLen = strlen(leaf);
+            if ((resolvedParentLen > (SIZE_MAX - leafLen - 2u)) ||
+                ((resolvedParentLen + leafLen + 2u) > canonicalSz)) {
+                ret = -1;
+            }
+            else if ((resolvedParentLen == 1u) &&
+                     (resolvedParent[0] == '/')) {
+                (void)XMEMCPY(canonical, resolvedParent,
+                              resolvedParentLen);
+                (void)XMEMCPY(&canonical[resolvedParentLen], leaf, leafLen);
+                canonical[resolvedParentLen + leafLen] = '\0';
+            }
+            else {
+                (void)XMEMCPY(canonical, resolvedParent,
+                              resolvedParentLen);
+                canonical[resolvedParentLen] = '/';
+                (void)XMEMCPY(&canonical[resolvedParentLen + 1u], leaf,
+                              leafLen);
+                canonical[resolvedParentLen + leafLen + 1u] = '\0';
+            }
+        }
+    }
+
+    if (ret != 0) {
+        fprintf(stderr, "Invalid HPKE key output path: %s\n", path);
+    }
+    return ret;
+}
+
+/* Return one when paths name distinct, new outputs, zero when they collide,
+ * and negative when either path cannot be resolved safely. For two absent
+ * leaves, create a temporary zero-length reservation and ask the filesystem
+ * whether the second spelling resolves to it. */
+static int tool_hpke_key_paths_distinct(const char* privatePath,
+    const char* publicPath)
+{
+    char privateCanonical[WOLFCOSE_TOOL_PATH_MAX];
+    char publicCanonical[WOLFCOSE_TOOL_PATH_MAX];
+    struct stat privateStat;
+    struct stat publicStat;
+    int privateExists;
+    int publicExists;
+    int reservationFd = -1;
+    int ret;
+
+    ret = tool_hpke_canonical_output_path(privatePath, privateCanonical,
+                                          sizeof(privateCanonical));
+    if ((ret == 0) && (publicPath != NULL)) {
+        ret = tool_hpke_canonical_output_path(publicPath, publicCanonical,
+                                              sizeof(publicCanonical));
+    }
+    if (ret != 0) {
+        return -1;
+    }
+    if ((publicPath != NULL) &&
+        (strcmp(privateCanonical, publicCanonical) == 0)) {
+        return 0;
+    }
+    privateExists = (stat(privateCanonical, &privateStat) == 0) ? 1 : 0;
+    if ((privateExists == 0) && (errno != ENOENT)) {
+        return -1;
+    }
+    if (privateExists != 0) {
+        return -1;
+    }
+    if (publicPath == NULL) {
+        return 1;
+    }
+    publicExists = (stat(publicCanonical, &publicStat) == 0) ? 1 : 0;
+    if ((publicExists == 0) && (errno != ENOENT)) {
+        return -1;
+    }
+    if (publicExists != 0) {
+        return -1;
+    }
+
+    reservationFd = open(privateCanonical, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (reservationFd < 0) {
+        return -1;
+    }
+    if (close(reservationFd) != 0) {
+        (void)unlink(privateCanonical);
+        return -1;
+    }
+    if (stat(publicCanonical, &publicStat) == 0) {
+        ret = ((stat(privateCanonical, &privateStat) == 0) &&
+               (privateStat.st_dev == publicStat.st_dev) &&
+               (privateStat.st_ino == publicStat.st_ino)) ? 0 : -1;
+    }
+    else if (errno == ENOENT) {
+        ret = 1;
+    }
+    else {
+        ret = -1;
+    }
+    if (unlink(privateCanonical) != 0) {
+        ret = -1;
+    }
+    if (ret == 0) {
+        return 0;
+    }
+    if (ret < 0) {
+        return -1;
+    }
+    return 1;
+}
+
+static int tool_hpke_write_all(int fd, const uint8_t* buf, size_t len)
+{
+    size_t offset = 0u;
+
+    while (offset < len) {
+        ssize_t written = write(fd, &buf[offset], len - offset);
+
+        if (written > 0) {
+            offset += (size_t)written;
+        }
+        else if ((written < 0) && (errno == EINTR)) {
+            continue;
+        }
+        else {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/* Stage a key in the target directory so a link creates only a complete file. */
+static int tool_hpke_stage_key(const char* outputPath, const uint8_t* buf,
+    size_t len, char* temporaryPath, size_t temporaryPathSz)
+{
+    static const char suffix[] = ".wolfcose-tmp.XXXXXX";
+    size_t outputPathLen;
+    int fd;
+    int ret;
+
+    if ((outputPath == NULL) || (temporaryPath == NULL) ||
+        (temporaryPathSz < sizeof(suffix))) {
+        return -1;
+    }
+    temporaryPath[0] = '\0';
+    outputPathLen = strlen(outputPath);
+    if (outputPathLen > (temporaryPathSz - sizeof(suffix))) {
+        return -1;
+    }
+    (void)XMEMCPY(temporaryPath, outputPath, outputPathLen);
+    (void)XMEMCPY(&temporaryPath[outputPathLen], suffix, sizeof(suffix));
+
+    fd = mkstemp(temporaryPath);
+    if (fd < 0) {
+        temporaryPath[0] = '\0';
+        return -1;
+    }
+    ret = tool_hpke_write_all(fd, buf, len);
+    if ((ret == 0) && (fsync(fd) != 0)) {
+        ret = -1;
+    }
+    if (close(fd) != 0) {
+        ret = -1;
+    }
+    if (ret != 0) {
+        (void)unlink(temporaryPath);
+        temporaryPath[0] = '\0';
+    }
+    return ret;
+}
+
+/* Publish complete new key files without truncating any existing destination. */
+static int tool_hpke_write_key_pair(const char* privatePath,
+    const uint8_t* privateBuf, size_t privateLen, const char* publicPath,
+    const uint8_t* publicBuf, size_t publicLen)
+{
+    char privateCanonical[WOLFCOSE_TOOL_PATH_MAX];
+    char publicCanonical[WOLFCOSE_TOOL_PATH_MAX];
+    char privateTemporary[WOLFCOSE_TOOL_PATH_MAX];
+    char publicTemporary[WOLFCOSE_TOOL_PATH_MAX];
+    int privateInstalled = 0;
+    int publicInstalled = 0;
+    int ret = EXIT_IO;
+
+    privateTemporary[0] = '\0';
+    publicTemporary[0] = '\0';
+    if (tool_hpke_canonical_output_path(privatePath, privateCanonical,
+                                        sizeof(privateCanonical)) != 0) {
+        goto exit;
+    }
+    if ((publicPath != NULL) &&
+        (tool_hpke_canonical_output_path(publicPath, publicCanonical,
+                                         sizeof(publicCanonical)) != 0)) {
+        goto exit;
+    }
+    if (tool_hpke_stage_key(privateCanonical, privateBuf, privateLen,
+                            privateTemporary, sizeof(privateTemporary)) != 0) {
+        goto exit;
+    }
+    if ((publicPath != NULL) &&
+        (tool_hpke_stage_key(publicCanonical, publicBuf, publicLen,
+                             publicTemporary, sizeof(publicTemporary)) != 0)) {
+        goto exit;
+    }
+    if (link(privateTemporary, privateCanonical) != 0) {
+        goto exit;
+    }
+    privateInstalled = 1;
+    if ((publicPath != NULL) &&
+        (link(publicTemporary, publicCanonical) != 0)) {
+        goto exit;
+    }
+    if (publicPath != NULL) {
+        publicInstalled = 1;
+    }
+    ret = 0;
+
+exit:
+    if ((ret != 0) && (publicInstalled != 0)) {
+        (void)unlink(publicCanonical);
+    }
+    if ((ret != 0) && (privateInstalled != 0)) {
+        (void)unlink(privateCanonical);
+    }
+    if (privateTemporary[0] != '\0') {
+        (void)unlink(privateTemporary);
+    }
+    if (publicTemporary[0] != '\0') {
+        (void)unlink(publicTemporary);
+    }
+    return ret;
+}
+#else
+static int tool_hpke_key_paths_distinct(const char* privatePath,
+    const char* publicPath)
+{
+    if (privatePath == NULL) {
+        return -1;
+    }
+    if ((publicPath != NULL) && (strcmp(privatePath, publicPath) == 0)) {
+        return 0;
+    }
+    return 1;
+}
+
+static int tool_hpke_write_key_pair(const char* privatePath,
+    const uint8_t* privateBuf, size_t privateLen, const char* publicPath,
+    const uint8_t* publicBuf, size_t publicLen)
+{
+    (void)publicBuf;
+    (void)publicLen;
+    if (publicPath != NULL) {
+        fprintf(stderr, "HPKE public key export requires POSIX filesystem support\n");
+        return EXIT_USAGE;
+    }
+    return write_file(privatePath, privateBuf, privateLen);
+}
+#endif /* WOLFCOSE_TOOL_HAVE_POSIX_FS */
+
 /* Generate a P-256 HPKE key pair and optionally export its public half. */
 static int tool_hpke_keygen(int32_t alg, const char* outPath,
                             const char* publicPath)
@@ -322,6 +680,27 @@ static int tool_hpke_keygen(int32_t alg, const char* outPath,
     int rngInit = 0;
     int eccInit = 0;
     int ret;
+
+    if (outPath == NULL) {
+        fprintf(stderr, "HPKE private and public key paths must differ\n");
+        return EXIT_USAGE;
+    }
+#if (WOLFCOSE_TOOL_HAVE_POSIX_FS == 0)
+    if (publicPath != NULL) {
+        fprintf(stderr, "HPKE public key export requires POSIX filesystem support\n");
+        return EXIT_USAGE;
+    }
+#endif
+
+    ret = tool_hpke_key_paths_distinct(outPath, publicPath);
+    if (ret <= 0) {
+        if (ret == 0) {
+            fprintf(stderr, "HPKE private and public key paths must differ\n");
+            return EXIT_USAGE;
+        }
+        fprintf(stderr, "HPKE key output paths must be new and non-symlinked\n");
+        return EXIT_IO;
+    }
 
     ret = wc_InitRng(&rng);
     if (ret == 0) {
@@ -359,10 +738,8 @@ static int tool_hpke_keygen(int32_t alg, const char* outPath,
         return EXIT_CRYPTO;
     }
 
-    ret = write_file(outPath, privateBuf, privateLen);
-    if ((ret == 0) && (publicPath != NULL)) {
-        ret = write_file(publicPath, publicBuf, publicLen);
-    }
+    ret = tool_hpke_write_key_pair(outPath, privateBuf, privateLen,
+                                   publicPath, publicBuf, publicLen);
     tool_force_zero(privateBuf, sizeof(privateBuf));
     tool_force_zero(publicBuf, sizeof(publicBuf));
     if (ret == 0) {
