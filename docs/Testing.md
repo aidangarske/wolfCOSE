@@ -89,14 +89,28 @@ compatibility.
 make interop-go-cose
 ```
 
-This runs live, bidirectional tagged ES256 `COSE_Sign1` interop against
+This runs live, bidirectional `COSE_Sign1` interop against
 [Veraison go-cose](https://github.com/veraison/go-cose), pinned at v1.3.0 in
-`tests/interop/go_cose/go.mod`. Each implementation signs a message the other
-verifies, validates the payload, and rejects a modified signature. Go 1.21 or
-later is required. go-cose's current scope makes it a Sign and Sign1 oracle;
-`interop-tcose` remains the broader Mac0 and Encrypt0 wire suite. The target
-also verifies RFC 9783's ES256 PSA token and decodes its standard EAT claims
-with Go CBOR.
+`tests/interop/go_cose/go.mod`. The matrix covers ES256, ES384, ES512, PS256,
+PS384, PS512, Ed25519, ES256 with external AAD, and untagged ES256. Each
+implementation signs a message the other verifies, validates the payload, and
+rejects a modified signature. Go 1.21 or later is required. go-cose requires
+an embedded payload for Sign1 verification, so detached Sign1 remains covered
+by the wolfCOSE tests and `interop-tcose`. go-cose's scope makes it a Sign and
+Sign1 oracle; `interop-tcose` remains the broader Mac0 and Encrypt0 wire
+suite. The target also verifies RFC 9783's ES256 PSA token and decodes its
+standard EAT claims with Go CBOR.
+
+### COSE WG Examples vectors
+
+`make test` includes a curated, fixed subset from the
+[COSE WG Examples repository](https://github.com/cose-wg/Examples), pinned at
+commit `53c9d634333bb4f529d78f5980fffa2667ee2c12`. It verifies ES256
+`COSE_Sign1`, HMAC-256 `COSE_Mac0`, and A128GCM `COSE_Encrypt0` vectors with
+external AAD, plus an invalid-tag vector for each message type. The selected
+Mac0 vectors carry `alg` only in an unprotected header, so the test pins the
+expected algorithm on the local key instead of accepting an unconstrained
+algorithm from the message.
 
 ### PSA attestation-token acceptance
 

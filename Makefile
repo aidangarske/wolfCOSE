@@ -73,7 +73,8 @@ endif
 
 # Tests (mirrors two-layer lib architecture)
 TEST_SRC  = tests/test_cbor.c tests/test_cose.c tests/test_interop.c \
-            tests/test_psa_attestation.c tests/test_main.c
+            tests/test_cose_examples.c tests/test_psa_attestation.c \
+            tests/test_main.c
 TEST_BIN  = tests/test_wolfcose
 
 # Tools (compiled separately, never in core lib)
@@ -486,15 +487,20 @@ GO_COSE_DIR      = tests/interop/go_cose
 GO_COSE_BIN      = $(GO_COSE_DIR)/interop_go_cose
 GO_COSE_ORACLE   = $(GO_COSE_DIR)/go_cose_oracle
 GO_COSE_C_SRC    = $(GO_COSE_DIR)/interop_go_cose.c
+GO_COSE_CASES   ?= es256 es384 es512 ps256 ps384 ps512 ed25519 es256-aad es256-untagged
 
 interop-go-cose: $(LIB_A)
 	$(CC) $(CFLAGS) -std=c99 -o $(GO_COSE_BIN) \
 	      $(GO_COSE_DIR)/interop_go_cose.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
 	$(GO) -C $(GO_COSE_DIR) build -o go_cose_oracle main.go
-	@bash -o pipefail -c '$(GO_COSE_BIN) sign | $(GO_COSE_ORACLE) verify'
-	@echo "PASS: go-cose verified wolfCOSE COSE_Sign1"
-	@bash -o pipefail -c '$(GO_COSE_ORACLE) sign | $(GO_COSE_BIN) verify'
-	@echo "PASS: wolfCOSE verified go-cose COSE_Sign1"
+	@for test_case in $(GO_COSE_CASES); do \
+	    bash -o pipefail -c '$(GO_COSE_BIN) sign "$$1" | $(GO_COSE_ORACLE) verify "$$1"' \
+	        bash "$$test_case" || exit $$?; \
+	    echo "PASS: go-cose verified wolfCOSE COSE_Sign1 ($$test_case)"; \
+	    bash -o pipefail -c '$(GO_COSE_ORACLE) sign "$$1" | $(GO_COSE_BIN) verify "$$1"' \
+	        bash "$$test_case" || exit $$?; \
+	    echo "PASS: wolfCOSE verified go-cose COSE_Sign1 ($$test_case)"; \
+	done
 	@$(GO_COSE_ORACLE) psa
 	@echo "PASS: go-cose and Go CBOR decoded the RFC 9783 PSA token"
 
