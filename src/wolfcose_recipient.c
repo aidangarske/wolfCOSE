@@ -788,7 +788,7 @@ int wolfCose_DecodeEphemeralKey(WOLFCOSE_CBOR_CTX* ctx,
     int ret;
     size_t mapCount = 0;
     size_t i;
-    int64_t label;
+    int64_t label = 0;
     int haveCrv = 0;
     int haveX = 0;
     int haveY = 0;

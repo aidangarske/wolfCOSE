@@ -1666,7 +1666,7 @@ int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
     WOLFCOSE_CBOR_CTX ctx;
     WOLFCOSE_HDR_STATE keyLabelState;
     size_t mapCount = 0;
-    int64_t label;
+    int64_t label = 0;
 
     if ((in == NULL) || (inSz == 0u) || (info == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
@@ -1796,7 +1796,7 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
     WOLFCOSE_CBOR_CTX ctx;
     size_t mapCount = 0;
     size_t i;
-    int64_t label;
+    int64_t label = 0;
     uint64_t uval;
     const uint8_t* bstrData;
     size_t bstrLen;
