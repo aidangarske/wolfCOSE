@@ -1,0 +1,393 @@
+/* test_cose_examples.c
+ *
+ * Copyright (C) 2026 wolfSSL Inc.
+ *
+ * This file is part of wolfCOSE.
+ *
+ * wolfCOSE is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * wolfCOSE is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+
+/*
+ * Curated fixed vectors from cose-wg/Examples commit
+ * 53c9d634333bb4f529d78f5980fffa2667ee2c12. The test deliberately
+ * keeps the small supported subset in source, so make test is offline and
+ * deterministic. Source paths are named beside each vector below.
+ */
+
+#ifdef HAVE_CONFIG_H
+    #include <config.h>
+#endif
+#ifndef WOLFSSL_USER_SETTINGS
+    #include <wolfssl/options.h>
+#endif
+#include <wolfssl/wolfcrypt/settings.h>
+
+#include <wolfcose/wolfcose.h>
+#ifdef WOLFCOSE_HAVE_ES256
+    #include <wolfssl/wolfcrypt/ecc.h>
+#endif
+#include <stdio.h>
+#include <string.h>
+
+#include "test_suite.h"
+
+static int g_failures = 0;
+
+#define TEST_ASSERT(cond, name) do {                           \
+    if (!(cond)) {                                             \
+        printf("  FAIL: %s (line %d)\n", (name), __LINE__);  \
+        g_failures++;                                          \
+    }                                                          \
+    else {                                                     \
+        printf("  PASS: %s\n", (name));                      \
+    }                                                          \
+} while (0)
+
+static const uint8_t example_payload[] = "This is the content.";
+
+static size_t example_hex_decode(const char* hex, uint8_t* out, size_t out_sz)
+{
+    size_t hex_len = 0u;
+    size_t i;
+
+    if ((hex == NULL) || (out == NULL)) {
+        return 0u;
+    }
+
+    while (hex[hex_len] != '\0') {
+        hex_len++;
+    }
+    if (((hex_len & 1u) != 0u) || ((hex_len / 2u) > out_sz)) {
+        return 0u;
+    }
+
+    for (i = 0u; i < hex_len / 2u; i++) {
+        uint8_t high;
+        uint8_t low;
+        char c = hex[i * 2u];
+
+        if ((c >= '0') && (c <= '9')) {
+            high = (uint8_t)(c - '0');
+        }
+        else if ((c >= 'a') && (c <= 'f')) {
+            high = (uint8_t)(c - 'a' + 10);
+        }
+        else if ((c >= 'A') && (c <= 'F')) {
+            high = (uint8_t)(c - 'A' + 10);
+        }
+        else {
+            return 0u;
+        }
+
+        c = hex[i * 2u + 1u];
+        if ((c >= '0') && (c <= '9')) {
+            low = (uint8_t)(c - '0');
+        }
+        else if ((c >= 'a') && (c <= 'f')) {
+            low = (uint8_t)(c - 'a' + 10);
+        }
+        else if ((c >= 'A') && (c <= 'F')) {
+            low = (uint8_t)(c - 'A' + 10);
+        }
+        else {
+            return 0u;
+        }
+
+        out[i] = (uint8_t)((high << 4u) | low);
+    }
+
+    return hex_len / 2u;
+}
+
+#ifdef WOLFCOSE_HAVE_ES256
+
+/* sign1-tests/sign-pass-02.json and sign1-tests/sign-fail-01.json. */
+static const uint8_t example_p256_x[] =
+    "\xba\xc5\xb1\x1c\xad\x8f\x99\xf9\xc7\x2b\x05\xcf\x4b\x9e\x26\xd2"
+    "\x44\xdc\x18\x9f\x74\x52\x28\x25\x5a\x21\x9a\x86\xd6\xa0\x9e\xff";
+static const uint8_t example_p256_y[] =
+    "\x20\x13\x8b\xf8\x2d\xc1\xb6\xd5\x62\xbe\x0f\xa5\x4a\xb7\x80\x4a"
+    "\x3a\x64\xb6\xd7\x2c\xcf\xed\x6b\x6f\xb6\xed\x28\xbb\xfc\x11\x7e";
+static const uint8_t example_sign1_aad[] = {
+    0x11u, 0xaau, 0x22u, 0xbbu, 0x33u, 0xccu,
+    0x44u, 0xddu, 0x55u, 0x00u, 0x66u, 0x99u
+};
+static const char example_sign1_pass_hex[] =
+    "d28443a10126a10442313154546869732069732074686520636f6e74656e742e"
+    "584010729cd711cb3813d8d8e944a8da7111e7b258c9bdca6135f7ae1adbee95"
+    "09891267837e1e33bd36c150326ae62755c6bd8e540c3e8f92d7d225e8db72b8"
+    "820b";
+static const char example_sign1_bad_tag_hex[] =
+    "d903e68443a10126a10442313154546869732069732074686520636f6e74656e"
+    "742e58408eb33e4ca31d1c465ab05aac34cc6b23d58fef5c083106c4d25a91ae"
+    "f0b0117e2af9a291aa32e14ab834dc56ed2a223444547e01f11d3b0916e5a4c3"
+    "45cacb36";
+
+static void test_example_sign1(void)
+{
+    WOLFCOSE_KEY cose_key;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* payload = NULL;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t message[256];
+    size_t message_len;
+    size_t payload_len = 0u;
+    ecc_key ecc_key;
+    int cose_key_inited = 0;
+    int ecc_key_inited = 0;
+    int ret;
+
+    printf("  [COSE WG Examples COSE_Sign1 ES256]\n");
+    message_len = example_hex_decode(example_sign1_pass_hex, message,
+                                     sizeof(message));
+    TEST_ASSERT(message_len > 0u, "Examples Sign1 pass vector decode");
+    if (message_len == 0u) {
+        return;
+    }
+
+    ret = wc_ecc_init(&ecc_key);
+    TEST_ASSERT(ret == 0, "Examples Sign1 ECC init");
+    if (ret == 0) {
+        ecc_key_inited = 1;
+        ret = wc_ecc_import_unsigned(&ecc_key, example_p256_x, example_p256_y,
+                                     NULL, ECC_SECP256R1);
+        TEST_ASSERT(ret == 0, "Examples Sign1 public key import");
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_Init(&cose_key);
+        TEST_ASSERT(ret == 0, "Examples Sign1 COSE key init");
+        if (ret == 0) {
+            cose_key_inited = 1;
+        }
+    }
+    if (ret == 0) {
+        ret = wc_CoseKey_SetEcc(&cose_key, WOLFCOSE_CRV_P256, &ecc_key);
+        TEST_ASSERT(ret == 0, "Examples Sign1 COSE key set");
+        cose_key.alg = WOLFCOSE_ALG_ES256;
+    }
+    if (ret == 0) {
+        ret = wc_CoseSign1_Verify(&cose_key, message, message_len, NULL, 0u,
+                                  example_sign1_aad, sizeof(example_sign1_aad),
+                                  scratch, sizeof(scratch), &hdr, &payload,
+                                  &payload_len);
+        TEST_ASSERT(ret == 0, "Examples Sign1 verifies");
+    }
+    if (ret == 0) {
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256,
+                    "Examples Sign1 algorithm");
+        TEST_ASSERT((payload_len == sizeof(example_payload) - 1u) &&
+                    (memcmp(payload, example_payload, payload_len) == 0),
+                    "Examples Sign1 payload");
+
+        message_len = example_hex_decode(example_sign1_bad_tag_hex, message,
+                                         sizeof(message));
+        TEST_ASSERT(message_len > 0u, "Examples Sign1 bad tag vector decode");
+        if (message_len > 0u) {
+            ret = wc_CoseSign1_Verify(&cose_key, message, message_len, NULL,
+                                      0u, example_sign1_aad,
+                                      sizeof(example_sign1_aad), scratch,
+                                      sizeof(scratch), &hdr, &payload,
+                                      &payload_len);
+            TEST_ASSERT(ret != 0, "Examples Sign1 rejects wrong tag");
+        }
+    }
+
+    if (cose_key_inited != 0) {
+        wc_CoseKey_Free(&cose_key);
+    }
+    if (ecc_key_inited != 0) {
+        wc_ecc_free(&ecc_key);
+    }
+}
+
+#endif /* WOLFCOSE_HAVE_ES256 */
+
+#ifdef WOLFCOSE_HAVE_HMAC256
+
+/* mac0-tests/mac-pass-02.json and mac0-tests/mac-fail-01.json. */
+static const uint8_t example_hmac_key[] =
+    "\x84\x9b\x57\x21\x9d\xae\x48\xde\x64\x6d\x07\xdb\xb5\x33\x56\x6e"
+    "\x97\x66\x86\x45\x7c\x14\x91\xbe\x3a\x76\xdc\xea\x6c\x42\x71\x88";
+static const uint8_t example_mac0_aad[] = {
+    0xffu, 0x00u, 0xeeu, 0x11u, 0xddu, 0x22u, 0xccu,
+    0x33u, 0xbbu, 0x44u, 0xaau, 0x55u, 0x99u, 0x66u
+};
+static const char example_mac0_pass_hex[] =
+    "d18440a1010554546869732069732074686520636f6e74656e742e58200fecaec"
+    "59bb46cc8a488aaca4b205e322dd52696b75a45768d3c302dd4bae2f7";
+static const char example_mac0_bad_tag_hex[] =
+    "d903e08443a10105a054546869732069732074686520636f6e74656e742e5820"
+    "a1a848d3471f9d61ee49018d244c824772f223ad4f935293f1789fc3a08d8c58";
+
+static void test_example_mac0(void)
+{
+    WOLFCOSE_KEY cose_key;
+    WOLFCOSE_HDR hdr;
+    const uint8_t* payload = NULL;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t message[128];
+    size_t message_len;
+    size_t payload_len = 0u;
+    int cose_key_inited = 0;
+    int ret;
+
+    printf("  [COSE WG Examples COSE_Mac0 HMAC-256]\n");
+    message_len = example_hex_decode(example_mac0_pass_hex, message,
+                                     sizeof(message));
+    TEST_ASSERT(message_len > 0u, "Examples Mac0 pass vector decode");
+    if (message_len == 0u) {
+        return;
+    }
+
+    ret = wc_CoseKey_Init(&cose_key);
+    TEST_ASSERT(ret == 0, "Examples Mac0 COSE key init");
+    if (ret == 0) {
+        cose_key_inited = 1;
+        ret = wc_CoseKey_SetSymmetric(&cose_key, example_hmac_key,
+                                      sizeof(example_hmac_key) - 1u);
+        TEST_ASSERT(ret == 0, "Examples Mac0 COSE key set");
+        cose_key.alg = WOLFCOSE_ALG_HMAC_256_256;
+    }
+    if (ret == 0) {
+        ret = wc_CoseMac0_Verify(&cose_key, message, message_len, NULL, 0u,
+                                 example_mac0_aad, sizeof(example_mac0_aad),
+                                 scratch, sizeof(scratch), &hdr, &payload,
+                                 &payload_len);
+        TEST_ASSERT(ret == 0, "Examples Mac0 verifies");
+    }
+    if (ret == 0) {
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_256_256,
+                    "Examples Mac0 algorithm");
+        TEST_ASSERT((payload_len == sizeof(example_payload) - 1u) &&
+                    (memcmp(payload, example_payload, payload_len) == 0),
+                    "Examples Mac0 payload");
+
+        message_len = example_hex_decode(example_mac0_bad_tag_hex, message,
+                                         sizeof(message));
+        TEST_ASSERT(message_len > 0u, "Examples Mac0 bad tag vector decode");
+        if (message_len > 0u) {
+            ret = wc_CoseMac0_Verify(&cose_key, message, message_len, NULL,
+                                     0u, example_mac0_aad,
+                                     sizeof(example_mac0_aad), scratch,
+                                     sizeof(scratch), &hdr, &payload,
+                                     &payload_len);
+            TEST_ASSERT(ret != 0, "Examples Mac0 rejects wrong tag");
+        }
+    }
+
+    if (cose_key_inited != 0) {
+        wc_CoseKey_Free(&cose_key);
+    }
+}
+
+#endif /* WOLFCOSE_HAVE_HMAC256 */
+
+#ifdef WOLFCOSE_HAVE_AESGCM
+
+/* encrypted-tests/enc-pass-02.json and enc-fail-01.json. */
+static const uint8_t example_a128gcm_key[] =
+    "\x84\x9b\x57\x21\x9d\xae\x48\xde\x64\x6d\x07\xdb\xb5\x33\x56\x6e";
+static const uint8_t example_encrypt0_aad[] = {
+    0x00u, 0x11u, 0xbbu, 0xccu, 0x22u, 0xddu,
+    0x44u, 0x55u, 0xddu, 0x22u, 0x00u, 0x99u
+};
+static const char example_encrypt0_pass_hex[] =
+    "d08343a10101a1054c02d1f7e6f26c43d4868d87ce582460973a94bb2898009ee"
+    "52ecfd9ab1dd25867374b1dc3a143880ca2883a5630da08ae1e6e";
+static const char example_encrypt0_bad_tag_hex[] =
+    "d903e38343a10101a1054c02d1f7e6f26c43d4868d87ce582460973a94bb28980"
+    "09ee52ecfd9ab1dd25867374b162e2c03568b41f57c3cc16f9166250a";
+
+static void test_example_encrypt0(void)
+{
+    WOLFCOSE_KEY cose_key;
+    WOLFCOSE_HDR hdr;
+    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    uint8_t message[128];
+    uint8_t plaintext[64];
+    size_t message_len;
+    size_t plaintext_len = 0u;
+    int cose_key_inited = 0;
+    int ret;
+
+    printf("  [COSE WG Examples COSE_Encrypt0 A128GCM]\n");
+    message_len = example_hex_decode(example_encrypt0_pass_hex, message,
+                                     sizeof(message));
+    TEST_ASSERT(message_len > 0u, "Examples Encrypt0 pass vector decode");
+    if (message_len == 0u) {
+        return;
+    }
+
+    ret = wc_CoseKey_Init(&cose_key);
+    TEST_ASSERT(ret == 0, "Examples Encrypt0 COSE key init");
+    if (ret == 0) {
+        cose_key_inited = 1;
+        ret = wc_CoseKey_SetSymmetric(&cose_key, example_a128gcm_key,
+                                      sizeof(example_a128gcm_key) - 1u);
+        TEST_ASSERT(ret == 0, "Examples Encrypt0 COSE key set");
+        cose_key.alg = WOLFCOSE_ALG_A128GCM;
+    }
+    if (ret == 0) {
+        ret = wc_CoseEncrypt0_Decrypt(&cose_key, message, message_len, NULL,
+                                      0u, example_encrypt0_aad,
+                                      sizeof(example_encrypt0_aad), scratch,
+                                      sizeof(scratch), &hdr, plaintext,
+                                      sizeof(plaintext), &plaintext_len);
+        TEST_ASSERT(ret == 0, "Examples Encrypt0 decrypts");
+    }
+    if (ret == 0) {
+        TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_A128GCM,
+                    "Examples Encrypt0 algorithm");
+        TEST_ASSERT((plaintext_len == sizeof(example_payload) - 1u) &&
+                    (memcmp(plaintext, example_payload, plaintext_len) == 0),
+                    "Examples Encrypt0 plaintext");
+
+        message_len = example_hex_decode(example_encrypt0_bad_tag_hex, message,
+                                         sizeof(message));
+        TEST_ASSERT(message_len > 0u,
+                    "Examples Encrypt0 bad tag vector decode");
+        if (message_len > 0u) {
+            ret = wc_CoseEncrypt0_Decrypt(&cose_key, message, message_len,
+                                          NULL, 0u, example_encrypt0_aad,
+                                          sizeof(example_encrypt0_aad), scratch,
+                                          sizeof(scratch), &hdr, plaintext,
+                                          sizeof(plaintext), &plaintext_len);
+            TEST_ASSERT(ret != 0, "Examples Encrypt0 rejects wrong tag");
+        }
+    }
+
+    if (cose_key_inited != 0) {
+        wc_CoseKey_Free(&cose_key);
+    }
+}
+
+#endif /* WOLFCOSE_HAVE_AESGCM */
+
+int test_cose_examples(void)
+{
+    g_failures = 0;
+    printf("\n  COSE WG Examples vectors:\n");
+
+#ifdef WOLFCOSE_HAVE_ES256
+    test_example_sign1();
+#endif
+#ifdef WOLFCOSE_HAVE_HMAC256
+    test_example_mac0();
+#endif
+#ifdef WOLFCOSE_HAVE_AESGCM
+    test_example_encrypt0();
+#endif
+
+    return g_failures;
+}
