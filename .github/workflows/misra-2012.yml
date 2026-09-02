@@ -43,7 +43,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-ubuntu-24.04-v4-${{ env.WOLFSSL_REF }}
+        key: wolfssl-ubuntu-24.04-v5-${{ env.WOLFSSL_REF }}
 
     - name: Build wolfSSL
       if: steps.cache-wolfssl.outputs.cache-hit != 'true'
