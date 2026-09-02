@@ -10562,7 +10562,8 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         ret = WOLFCOSE_E_COSE_BAD_HDR;
     }
 #endif
-    if (ret == WOLFCOSE_SUCCESS) {
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipientAlgId != WOLFCOSE_ALG_UNSET)) {
         ret = wolfCose_ValidateRecipientKeyAlg(recipient->key, recipientAlgId,
             alg);
     }
@@ -10598,15 +10599,12 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         }
     }
 
-    /* Enforce the caller's recipient->algId policy when set. A message in
-     * implicit direct mode has no recipient alg, so normalize it to direct. */
+    /* Enforce the caller's recipient->algId policy when the protected header
+     * supplies an algorithm. */
     if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipientAlgId != WOLFCOSE_ALG_UNSET) &&
         (recipient->algId != WOLFCOSE_ALG_UNSET)) {
-        int32_t gotAlg = recipientAlgId;
-        if (gotAlg == WOLFCOSE_ALG_UNSET) {
-            gotAlg = WOLFCOSE_ALG_DIRECT;
-        }
-        if (recipient->algId != gotAlg) {
+        if (recipient->algId != recipientAlgId) {
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
     }

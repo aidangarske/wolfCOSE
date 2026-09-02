@@ -130,14 +130,20 @@ src/%.o: src/%.c src/wolfcose_internal.h include/wolfcose/wolfcose.h $(BUILD_CON
 # under test. It must exercise the local ECDSA Sign1 signing path even when the
 # caller is testing a no-ECDSA or verify-only configuration.
 ECDSA_POLICY_OPTS ?= -include wolfssl/options.h
-ECDSA_POLICY_BASE_FLAGS = $(CFLAGS) -x c -fsyntax-only -Wno-error \
+WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS = -UWOLFCOSE_ENABLE_HPKE_0_ENCRYPT \
+                                      -UWOLFCOSE_ENABLE_HPKE_0_DECRYPT \
+                                      -UWOLFCOSE_ENABLE_HPKE_0_KE_ENCRYPT \
+                                      -UWOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT
+ECDSA_POLICY_BASE_FLAGS = $(CFLAGS) $(WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS) \
+                          -x c -fsyntax-only -Wno-error \
                           $(ECDSA_POLICY_OPTS) -DHAVE_ECC \
                           -UWOLFCOSE_ENABLE_DETERMINISTIC_ECDSA \
                           -UWOLFCOSE_NO_ES256 -UWOLFCOSE_NO_SIGN1 \
                           -UWOLFCOSE_NO_SIGN1_SIGN -UWOLFCOSE_LEAN_VERIFY \
                           -UWOLFCOSE_LEAN_VERIFY_MLDSA \
                           -UWOLFCOSE_LEAN_MLDSA
-ECDSA_POLICY_NO_SUPPORT_FLAGS = $(CFLAGS) -x c -fsyntax-only -Wno-error \
+ECDSA_POLICY_NO_SUPPORT_FLAGS = $(CFLAGS) $(WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS) \
+                                -x c -fsyntax-only -Wno-error \
                                 -DWOLFSSL_NO_OPTIONS_H -DHAVE_ECC \
                                 -UWOLFSSL_ECDSA_DETERMINISTIC_K \
                                 -UWOLFSSL_ECDSA_DETERMINISTIC_K_VARIANT \
@@ -250,18 +256,18 @@ ecdsa-policy-test:
 	echo "PASS: optional ECDSA nonce policy enforced"
 
 rsapss-policy-test:
-	$(CC) $(CFLAGS) -Werror=unused-function -fsyntax-only \
+	$(CC) $(CFLAGS) $(WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS) -Werror=unused-function -fsyntax-only \
 	    -DWOLFCOSE_NO_SIGN1 -DWOLFCOSE_NO_SIGN src/wolfcose.c
-	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	$(CC) $(CFLAGS) $(WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
 	    -DWC_RSA_PSS -DWOLFCOSE_NO_KEY_ENCODE \
 	    -DWOLFCOSE_ENABLE_RSAPSS src/wolfcose.c
-	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	$(CC) $(CFLAGS) $(WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
 	    -DWC_RSA_PSS -DWOLFCOSE_LEAN_VERIFY \
 	    -DWOLFCOSE_ENABLE_RSAPSS src/wolfcose.c
 	@set -e; \
 	log_file=$$(mktemp "$${TMPDIR:-/tmp}/wolfcose-rsapss.XXXXXX"); \
 	trap 'rm -f "$$log_file"' 0 1 2 3 15; \
-	if $(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	if $(CC) $(CFLAGS) $(WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
 	    -UHAVE_ECC -UWOLFSSL_EXPORT_INT \
 	    -DWC_RSA_PSS -DWOLFCOSE_ENABLE_RSAPSS \
 	    -DWOLFSSL_RSA_VERIFY_ONLY -DWOLFCOSE_LEAN_VERIFY \
@@ -271,7 +277,7 @@ rsapss-policy-test:
 	fi; \
 	grep -q "RSA-PSS key validation requires WOLFSSL_EXPORT_INT" \
 	    "$$log_file"
-	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	$(CC) $(CFLAGS) $(WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
 	    -UHAVE_ECC -UWOLFSSL_EXPORT_INT \
 	    -DWC_RSA_PSS -DWOLFCOSE_ENABLE_RSAPSS \
 	    -DWOLFSSL_RSA_VERIFY_ONLY -DWOLFSSL_EXPORT_INT \
@@ -280,7 +286,7 @@ rsapss-policy-test:
 	log_file=$$(mktemp "$${TMPDIR:-/tmp}/wolfcose-rsapss.XXXXXX"); \
 	trap 'rm -f "$$log_file"' 0 1 2 3 15; \
 	for backend in WOLF_CRYPTO_CB WOLFSSL_MICROCHIP_TA100; do \
-	    if $(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	    if $(CC) $(CFLAGS) $(WOLFCOSE_POLICY_DISABLE_HPKE_FLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
 	        -UHAVE_ECC -UWOLFSSL_EXPORT_INT \
 	        -DWC_RSA_PSS -DWOLFCOSE_ENABLE_RSAPSS \
 	        -DWOLFSSL_RSA_VERIFY_ONLY -D$$backend \
