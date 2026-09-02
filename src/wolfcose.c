@@ -7636,8 +7636,8 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
 static int wolfCose_RangesOverlap(const uint8_t* a, size_t aLen,
                                   const uint8_t* b, size_t bLen)
 {
-    uintptr_t aAddr = (uintptr_t)(const void*)a;
-    uintptr_t bAddr = (uintptr_t)(const void*)b;
+    uintptr_t aAddr = (uintptr_t)a;
+    uintptr_t bAddr = (uintptr_t)b;
     int overlaps = 0;
 
     if ((aLen != 0u) && (bLen != 0u)) {
@@ -8066,7 +8066,7 @@ int wc_Cose_VerifyCounterSignature(const WOLFCOSE_KEY* key,
                                   extAad, extAadLen) != 0)) ||
          ((counterHdr != NULL) &&
           (wolfCose_RangesOverlap(scratch, scratchSz,
-              (const uint8_t*)(const void*)counterHdr,
+              (const uint8_t*)counterHdr,
               sizeof(*counterHdr)) != 0)))) {
         scratchAliases = 1;
     }
