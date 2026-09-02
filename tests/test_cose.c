@@ -98,6 +98,45 @@ static int g_failures = 0;
     }                                                          \
 } while (0)
 
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN) && \
+    defined(WOLFCOSE_COUNTERSIGN_VERIFY)
+static int test_cose_countersign_roundtrip(WOLFCOSE_KEY* signKey,
+    const WOLFCOSE_KEY* verifyKey, int32_t alg, WC_RNG* rng,
+    const char* name)
+{
+    static const uint8_t target[] = {
+        0xD2u, 0x84u, 0x40u, 0xA0u, 0x41u, 0x78u, 0x41u, 0x00u
+    };
+    static uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+    static uint8_t out[WOLFCOSE_MAX_SCRATCH_SZ + 256u];
+    WOLFCOSE_COUNTERSIGNATURE counterSigner;
+    WOLFCOSE_HDR hdr;
+    size_t outLen = 0u;
+    int ret;
+
+    (void)name;
+    TEST_LOG("  [Countersignature %s]\n", name);
+
+    counterSigner.algId = alg;
+    counterSigner.key = signKey;
+    counterSigner.kid = NULL;
+    counterSigner.kidLen = 0u;
+    ret = wc_Cose_AddCounterSignature(&counterSigner,
+        target, sizeof(target), NULL, 0u, NULL, 0u,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, rng);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS && outLen > sizeof(target),
+                "algorithm countersignature creation");
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_Cose_VerifyCounterSignature(verifyKey, 0u,
+            out, outLen, NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS && hdr.alg == alg,
+                    "algorithm countersignature verification");
+    }
+    return ret;
+}
+#endif
+
 #if (defined(WOLFCOSE_MAC) && defined(WOLFCOSE_HAVE_HMAC256)) || \
     (defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM))
 /* Locate the one-byte direct-alg value in a generated recipient header. */
@@ -968,6 +1007,14 @@ static void test_cose_sign1_ext_sign(void)
                     "ext-sign payload match");
         TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256, "ext-sign hdr alg");
     }
+
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN) && \
+    defined(WOLFCOSE_COUNTERSIGN_VERIFY)
+    if (ret == 0) {
+        ret = test_cose_countersign_roundtrip(&signKey, &verifyKey,
+            WOLFCOSE_ALG_ES256, NULL, "external ES256");
+    }
+#endif
 
     /* Wrong-length ECDSA sig is rejected by alg size, even with kty unset. */
     if (ret == 0) {
@@ -1927,6 +1974,14 @@ static void test_cose_sign1_eddsa(void)
         TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_EDDSA, "sign1 eddsa hdr alg");
     }
 
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN) && \
+    defined(WOLFCOSE_COUNTERSIGN_VERIFY)
+    if (ret == 0) {
+        ret = test_cose_countersign_roundtrip(&signKey, &signKey,
+            WOLFCOSE_ALG_EDDSA, &rng, "Ed25519");
+    }
+#endif
+
     if (ret == 0) {
         WOLFCOSE_KEY wrongTypeKey = signKey;
         int wrongRet;
@@ -2035,6 +2090,14 @@ static void test_cose_sign1_ed448(void)
                     "sign1 ed448 payload match");
         TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_EDDSA, "sign1 ed448 hdr alg");
     }
+
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN) && \
+    defined(WOLFCOSE_COUNTERSIGN_VERIFY)
+    if (ret == 0) {
+        ret = test_cose_countersign_roundtrip(&signKey, &signKey,
+            WOLFCOSE_ALG_EDDSA, &rng, "Ed448");
+    }
+#endif
 
     if (ret == 0) {
         WOLFCOSE_KEY wrongTypeKey = signKey;
@@ -2963,6 +3026,14 @@ static void test_cose_sign1_pss(const char* label, int32_t alg)
         TEST_ASSERT(hdr.alg == alg, "sign1 pss hdr alg");
     }
 
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN) && \
+    defined(WOLFCOSE_COUNTERSIGN_VERIFY)
+    if (ret == 0) {
+        ret = test_cose_countersign_roundtrip(&signKey, &signKey,
+            alg, &rng, label);
+    }
+#endif
+
     if (ret == 0) {
         /* Wrong key should fail */
         RsaKey rsaWrong;
@@ -3409,6 +3480,14 @@ static void test_cose_sign1_ml_dsa(const char* label, int32_t alg, byte level)
                     "sign1 ml-dsa payload match");
         TEST_ASSERT(hdr.alg == alg, "sign1 ml-dsa hdr alg");
     }
+
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN) && \
+    defined(WOLFCOSE_COUNTERSIGN_VERIFY)
+    if (ret == 0) {
+        ret = test_cose_countersign_roundtrip(&signKey, &signKey,
+            alg, &rng, label);
+    }
+#endif
 
     if (ret == 0) {
         /* Wrong key should fail */
@@ -23640,6 +23719,10 @@ static void test_cose_countersignatures(void)
         0xD2u, 0x84u, 0x43u, 0xA1u, 0x01u, 0x26u, 0xA1u, 0x01u,
         0x26u, 0x41u, 0x01u, 0x41u, 0x02u
     };
+    static const uint8_t protectedCounterTarget[] = {
+        0xD2u, 0x84u, 0x43u, 0xA1u, 0x0Bu, 0x80u, 0xA0u,
+        0x41u, 0x01u, 0x41u, 0x02u
+    };
     static const struct {
         const uint8_t* message;
         size_t messageLen;
@@ -23669,6 +23752,7 @@ static void test_cose_countersignatures(void)
     uint8_t twoCounterMessage[1024];
     uint8_t abbreviatedMessage[768];
     uint8_t inPlace[768];
+    uint8_t overlap[1536];
     uint8_t tampered[1024];
     uint8_t detachedMessage[512];
     uint8_t detachedCounterMessage[768];
@@ -23826,6 +23910,18 @@ static void test_cose_countersignatures(void)
                     "reject missing countersignature index");
     }
     if (ret == 0) {
+        WOLFCOSE_KEY wrongAlgKey = counterKey1;
+        int badRet;
+
+        wrongAlgKey.alg = WOLFCOSE_ALG_ES384;
+        badRet = wc_Cose_VerifyCounterSignature(&wrongAlgKey, 0u,
+            twoCounterMessage, twoCounterMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), &hdr);
+        TEST_ASSERT(badRet == WOLFCOSE_E_COSE_BAD_ALG,
+                    "countersignature rejects wrong algorithm");
+    }
+    if (ret == 0) {
         (void)memcpy(tampered, twoCounterMessage, twoCounterMessageLen);
         tampered[twoCounterMessageLen - 1u] ^= 1u;
         TEST_ASSERT(wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
@@ -23855,6 +23951,27 @@ static void test_cose_countersignatures(void)
             counterAad, sizeof(counterAad) - 1u,
             scratch, sizeof(scratch), &hdr);
         TEST_ASSERT(ret == 0, "verify in-place countersignature");
+    }
+    if (ret == 0) {
+        size_t overlapLen = 1u;
+        int badRet;
+
+        (void)memcpy(overlap, message, messageLen);
+        badRet = wc_Cose_AddCounterSignature(&counterSigner,
+            overlap, messageLen, NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), &overlap[1], sizeof(overlap) - 1u,
+            &overlapLen, &rng);
+        TEST_ASSERT(badRet == WOLFCOSE_E_INVALID_ARG && overlapLen == 0u,
+                    "reject forward partial output overlap");
+
+        (void)memcpy(&overlap[1], message, messageLen);
+        overlapLen = 1u;
+        badRet = wc_Cose_AddCounterSignature(&counterSigner,
+            &overlap[1], messageLen, NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), overlap, sizeof(overlap),
+            &overlapLen, &rng);
+        TEST_ASSERT(badRet == WOLFCOSE_E_INVALID_ARG && overlapLen == 0u,
+                    "reject reverse partial output overlap");
     }
 
     counterSigner0.algId = WOLFCOSE_ALG_ES256;
@@ -23886,6 +24003,14 @@ static void test_cose_countersignatures(void)
             scratch, sizeof(scratch));
         TEST_ASSERT(badRet != 0,
                     "abbreviated countersignature rejects wrong key");
+        wrongSigner.key = &counterKey1;
+        wrongSigner.algId = WOLFCOSE_ALG_ES384;
+        badRet = wc_Cose_VerifyCounterSignature0(&wrongSigner,
+            abbreviatedMessage, abbreviatedMessageLen, NULL, 0u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch));
+        TEST_ASSERT(badRet == WOLFCOSE_E_COSE_BAD_ALG,
+                    "abbreviated countersignature rejects wrong algorithm");
         badRet = wc_Cose_AddCounterSignature0(&counterSigner0,
             abbreviatedMessage, abbreviatedMessageLen, NULL, 0u,
             counterAad, sizeof(counterAad) - 1u,
@@ -23939,6 +24064,22 @@ static void test_cose_countersignatures(void)
             message, messageLen, NULL, 0u, NULL, 0u,
             scratch, sizeof(scratch), &hdr) == WOLFCOSE_E_COSE_BAD_HDR,
             "reject target without countersignature");
+        shortLen = 123u;
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            message, messageLen, NULL, 1u, NULL, 0u,
+            scratch, sizeof(scratch), tampered, sizeof(tampered),
+            &shortLen, &rng) == WOLFCOSE_E_INVALID_ARG && shortLen == 0u,
+            "reject missing detached payload bytes");
+        TEST_ASSERT(wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            counterMessage, counterMessageLen, NULL, 1u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch), &hdr) == WOLFCOSE_E_INVALID_ARG,
+            "counter verification rejects missing detached payload bytes");
+        TEST_ASSERT(wc_Cose_VerifyCounterSignature0(&counterSigner0,
+            abbreviatedMessage, abbreviatedMessageLen, NULL, 1u,
+            counterAad, sizeof(counterAad) - 1u,
+            scratch, sizeof(scratch)) == WOLFCOSE_E_INVALID_ARG,
+            "abbreviated verify rejects missing detached payload bytes");
     }
 
     for (targetIndex = 0u;
@@ -23976,6 +24117,17 @@ static void test_cose_countersignatures(void)
             tampered, sizeof(tampered), &badOutLen, &rng) ==
             WOLFCOSE_E_CBOR_MALFORMED,
             "reject duplicate target protected header");
+        TEST_ASSERT(wc_Cose_AddCounterSignature(&counterSigner,
+            protectedCounterTarget, sizeof(protectedCounterTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+            tampered, sizeof(tampered), &badOutLen, &rng) ==
+            WOLFCOSE_E_COSE_BAD_HDR,
+            "reject countersignature in protected header");
+        TEST_ASSERT(wc_Cose_VerifyCounterSignature(&counterKey1, 0u,
+            protectedCounterTarget, sizeof(protectedCounterTarget),
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr) ==
+            WOLFCOSE_E_COSE_BAD_HDR,
+            "reject protected countersignature verification");
     }
 
     if (counterKey2Inited != 0) {

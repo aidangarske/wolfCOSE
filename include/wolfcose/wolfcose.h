@@ -1172,8 +1172,8 @@ WOLFCOSE_API int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
  * \brief Add a full V2 countersignature to a tagged COSE message.
  *
  * Existing full countersignatures are retained and the new value is appended.
- * \p out may equal \p in for exact in-place growth. Other overlap is not
- * supported. A detached target payload must be supplied through
+ * \p out may equal \p in for exact in-place growth. Other overlap is rejected.
+ * A detached target payload must be supplied through
  * \p detachedPayload. The counter signature is stored in unprotected header
  * parameter 11 as specified by RFC 9338.
  */

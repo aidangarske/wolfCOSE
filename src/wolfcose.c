@@ -337,7 +337,8 @@ static void wolfCose_EccPrivateImportRollback(ecc_key* ecc,
  * not exposed to callers that inspect hdr without gating on the return code. */
 #if defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_SIGN_VERIFY) || \
     defined(WOLFCOSE_ENCRYPT0_DECRYPT) || defined(WOLFCOSE_MAC0_VERIFY) || \
-    defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY)
+    defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY) || \
+    defined(WOLFCOSE_COUNTERSIGN_VERIFY)
 static void wolfCose_HdrClearOnFail(int ret, WOLFCOSE_HDR* hdr)
 {
     if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
@@ -6707,6 +6708,17 @@ static int wolfCose_ParseCounterTarget(const uint8_t* in, size_t inSz,
         ret = wolfCose_DecodeProtectedHdr(target->bodyProtected,
             target->bodyProtectedLen, &hdr, &hdrState);
     }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        ((wolfCose_HdrStateContains(&hdrState,
+            WOLFCOSE_HDR_COUNTERSIGNATURE_V2) != 0) ||
+         (wolfCose_HdrStateContains(&hdrState,
+            WOLFCOSE_HDR_COUNTERSIGNATURE0_V2) != 0) ||
+         (wolfCose_HdrStateContains(&hdrState,
+            WOLFCOSE_HDR_COUNTERSIGNATURE_LEGACY) != 0) ||
+         (wolfCose_HdrStateContains(&hdrState,
+            WOLFCOSE_HDR_COUNTERSIGNATURE0_LEGACY) != 0))) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_ParseCounterMap(&ctx, target, &hdrState);
     }
@@ -6918,7 +6930,7 @@ static int wolfCose_BuildCounterStructure(
             if (abbreviated != 0u) {
                 context = WOLFCOSE_CTX_COUNTERSIGN0;
                 contextLen = sizeof(WOLFCOSE_CTX_COUNTERSIGN0) - 1u;
-                arrayCount = 5u;
+                arrayCount = 4u;
             }
             else {
                 context = WOLFCOSE_CTX_COUNTERSIGN;
@@ -6961,8 +6973,7 @@ static int wolfCose_BuildCounterStructure(
         ret = wc_CBOR_EncodeBstr(&ctx, target->bodyProtected,
                                   target->bodyProtectedLen);
     }
-    if ((ret == WOLFCOSE_SUCCESS) &&
-        ((abbreviated == 0u) || (legacy != 0u))) {
+    if ((ret == WOLFCOSE_SUCCESS) && (abbreviated == 0u)) {
         ret = wc_CBOR_EncodeBstr(&ctx, signProtected, signProtectedLen);
     }
     if (ret == WOLFCOSE_SUCCESS) {
@@ -7510,6 +7521,24 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
 #endif /* WOLFCOSE_COUNTERSIGN_VERIFY */
 
 #if defined(WOLFCOSE_COUNTERSIGN_SIGN)
+static int wolfCose_RangesOverlap(const uint8_t* a, size_t aLen,
+                                  const uint8_t* b, size_t bLen)
+{
+    uintptr_t aAddr = (uintptr_t)(const void*)a;
+    uintptr_t bAddr = (uintptr_t)(const void*)b;
+    int overlaps = 0;
+
+    if ((aLen != 0u) && (bLen != 0u)) {
+        if (aAddr <= bAddr) {
+            overlaps = ((bAddr - aAddr) < aLen) ? 1 : 0;
+        }
+        else {
+            overlaps = ((aAddr - bAddr) < bLen) ? 1 : 0;
+        }
+    }
+    return overlaps;
+}
+
 static int wolfCose_AttachCounter(const WOLFCOSE_COUNTER_TARGET* target,
     const uint8_t* in, size_t inSz,
     const uint8_t* protectedData, size_t protectedLen,
@@ -7719,11 +7748,16 @@ static int wolfCose_AddCounterCommon(WOLFCOSE_KEY* key, int32_t alg,
         (out == NULL) || (outLen == NULL) ||
         ((kid == NULL) && (kidLen != 0u)) ||
         ((kid != NULL) && (kidLen == 0u)) ||
+        ((detachedPayload == NULL) && (detachedLen != 0u)) ||
         ((extAad == NULL) && (extAadLen != 0u))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
         *outLen = 0u;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (out != in) &&
+        (wolfCose_RangesOverlap(in, inSz, out, outSz) != 0)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
     }
 #ifdef WOLFCOSE_CHECK_WORD32_LEN
     if ((ret == WOLFCOSE_SUCCESS) &&
@@ -7890,6 +7924,7 @@ int wc_Cose_VerifyCounterSignature(const WOLFCOSE_KEY* key,
 
     if ((key == NULL) || (in == NULL) || (scratch == NULL) ||
         (counterHdr == NULL) ||
+        ((detachedPayload == NULL) && (detachedLen != 0u)) ||
         ((extAad == NULL) && (extAadLen != 0u))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
@@ -7957,6 +7992,7 @@ int wc_Cose_VerifyCounterSignature0(
 
     if ((counterSigner == NULL) || (counterSigner->key == NULL) ||
         (in == NULL) || (scratch == NULL) ||
+        ((detachedPayload == NULL) && (detachedLen != 0u)) ||
         ((extAad == NULL) && (extAadLen != 0u))) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }

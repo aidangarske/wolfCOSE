@@ -148,9 +148,10 @@ off by default.
 | `WOLFCOSE_NO_COUNTERSIGN_VERIFY` | Disable countersignature verification | - |
 
 The default full build includes countersignatures. `WOLFCOSE_LEAN` excludes
-them unless `WOLFCOSE_ENABLE_COUNTERSIGN` is defined. Creation requires CBOR
-encoding and a signing algorithm. Verification requires CBOR decoding and a
-verification algorithm.
+them unless `WOLFCOSE_ENABLE_COUNTERSIGN` is defined. Creation and verification
+both require CBOR encoding and decoding because each operation decodes the
+target message and encodes its `Countersign_structure`. Creation also requires
+a signing algorithm, and verification requires a verification algorithm.
 
 ### COSE_Sign1 (Single Signer)
 

@@ -522,7 +522,9 @@ extern "C" {
 
 /* ----- CBOR layer -----
  * Encode is required by any sign/encrypt/MAC-create op and by COSE_Key encode;
- * decode by any verify/decrypt/MAC-verify op and COSE_Key decode. On by
+ * decode by any verify/decrypt/MAC-verify op and COSE_Key decode.
+ * Countersignature creation and verification require both layers because each
+ * operation decodes its target and encodes a Countersign_structure. On by
  * default; fail loud if explicitly disabled while still required. */
 #if !defined(WOLFCOSE_NO_CBOR_ENCODE)
     #define WOLFCOSE_CBOR_ENCODE
@@ -530,6 +532,7 @@ extern "C" {
       defined(WOLFCOSE_MAC0_CREATE) || defined(WOLFCOSE_SIGN_SIGN) || \
       defined(WOLFCOSE_ENCRYPT_ENCRYPT) || defined(WOLFCOSE_MAC_CREATE) || \
       defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
+      defined(WOLFCOSE_COUNTERSIGN_VERIFY) || \
       defined(WOLFCOSE_KEY_ENCODE)
     #error "WOLFCOSE_NO_CBOR_ENCODE conflicts with an enabled encode operation"
 #endif
@@ -538,6 +541,7 @@ extern "C" {
 #elif defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_ENCRYPT0_DECRYPT) || \
       defined(WOLFCOSE_MAC0_VERIFY) || defined(WOLFCOSE_SIGN_VERIFY) || \
       defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY) || \
+      defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
       defined(WOLFCOSE_COUNTERSIGN_VERIFY) || \
       defined(WOLFCOSE_KEY_DECODE)
     #error "WOLFCOSE_NO_CBOR_DECODE conflicts with an enabled decode operation"
