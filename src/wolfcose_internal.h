@@ -122,6 +122,22 @@ static inline uint64_t wolfCose_LoadBE64(const uint8_t* buf)
 
 /* ----- Internal CBOR head encode/decode ----- */
 
+/* RFC 9783 Section 5.1's variation tolerance is a private PSA/EAT decoder
+ * option. Ordinary public CBOR and COSE APIs always use zero (strict mode). */
+#define WOLFCOSE_COSE_DECODE_ALLOW_NONPREFERRED 0x0001u
+
+#if defined(WOLFCOSE_EAT_PSA)
+    #define WOLFCOSE_COSE_DECODE_FLAGS_VALID(flags) \
+        (((flags) & ~WOLFCOSE_COSE_DECODE_ALLOW_NONPREFERRED) == 0u)
+#else
+    #define WOLFCOSE_COSE_DECODE_FLAGS_VALID(flags) ((flags) == 0u)
+#endif
+
+#if defined(WOLFCOSE_EAT_PSA)
+    #define WOLFCOSE_HDR_X5CHAIN      33
+    #define WOLFCOSE_HDR_FLAG_X5CHAIN 0x04u
+#endif
+
 /**
  * \brief Encode a CBOR initial byte + argument.
  * RFC 8949 Section 3.1: initial_byte = (majorType << 5) | additional_info
@@ -130,11 +146,29 @@ WOLFCOSE_LOCAL int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx,
                                              uint8_t majorType, uint64_t val);
 
 /**
- * \brief Decode a CBOR initial byte + argument. Sets item fields.
- * For bstr/tstr: item->data points into ctx->buf, item->dataLen set.
+ * \brief Decode a CBOR initial byte + argument with private profile options.
+ * For bstr/tstr: item->data points into ctx->cbuf, item->dataLen set.
  */
-WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx,
-                                             WOLFCOSE_CBOR_ITEM* item);
+WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeHead_ex(WOLFCOSE_CBOR_CTX* ctx,
+    WOLFCOSE_CBOR_ITEM* item, uint32_t decodeFlags);
+WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeUint_ex(WOLFCOSE_CBOR_CTX* ctx,
+    uint64_t* val, uint32_t decodeFlags);
+WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeInt_ex(WOLFCOSE_CBOR_CTX* ctx,
+    int64_t* val, uint32_t decodeFlags);
+WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeBstr_ex(WOLFCOSE_CBOR_CTX* ctx,
+    const uint8_t** data, size_t* dataLen, uint32_t decodeFlags);
+WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeTstr_ex(WOLFCOSE_CBOR_CTX* ctx,
+    const uint8_t** str, size_t* strLen, uint32_t decodeFlags);
+WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeArrayStart_ex(WOLFCOSE_CBOR_CTX* ctx,
+    size_t* count, uint32_t decodeFlags);
+WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeMapStart_ex(WOLFCOSE_CBOR_CTX* ctx,
+    size_t* count, uint32_t decodeFlags);
+WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeTag_ex(WOLFCOSE_CBOR_CTX* ctx,
+    uint64_t* tag, uint32_t decodeFlags);
+WOLFCOSE_LOCAL int wolfCose_CBOR_Skip_ex(WOLFCOSE_CBOR_CTX* ctx,
+    uint32_t decodeFlags);
+WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeLabel_ex(WOLFCOSE_CBOR_CTX* ctx,
+    WOLFCOSE_CBOR_LABEL* label, uint32_t decodeFlags);
 
 /* ----- RFC 9052 context-string byte arrays (see wolfcose.c) ----- */
 WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_SIGNATURE1[10];
@@ -147,7 +181,10 @@ WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_ENCRYPT[7];
 typedef struct WOLFCOSE_HDR_STATE {
     uint32_t labelBits;
     int64_t  extraLabels[WOLFCOSE_MAX_MAP_ITEMS];
+    const uint8_t* textLabels[WOLFCOSE_MAX_MAP_ITEMS];
+    size_t   textLabelLens[WOLFCOSE_MAX_MAP_ITEMS];
     size_t   extraCount;
+    size_t   textCount;
 } WOLFCOSE_HDR_STATE;
 
 /* ----- COSE internal helpers ----- */
@@ -173,6 +210,12 @@ WOLFCOSE_LOCAL int wolfCose_DecodeProtectedHdr(const uint8_t* data,
                                                 WOLFCOSE_HDR* hdr,
                                                 WOLFCOSE_HDR_STATE* hdrState);
 
+WOLFCOSE_LOCAL int wolfCose_DecodeProtectedHdr_ex(const uint8_t* data,
+                                                   size_t dataLen,
+                                                   WOLFCOSE_HDR* hdr,
+                                                   WOLFCOSE_HDR_STATE* hdrState,
+                                                   uint32_t decodeFlags);
+
 /**
  * \brief Decode an unprotected header map from the decoder context.
  * \param ctx  Decoder context positioned at the map.
@@ -181,6 +224,30 @@ WOLFCOSE_LOCAL int wolfCose_DecodeProtectedHdr(const uint8_t* data,
 WOLFCOSE_LOCAL int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx,
                                                   WOLFCOSE_HDR* hdr,
                                                   WOLFCOSE_HDR_STATE* hdrState);
+WOLFCOSE_LOCAL int wolfCose_DecodeUnprotectedHdr_ex(WOLFCOSE_CBOR_CTX* ctx,
+    WOLFCOSE_HDR* hdr, WOLFCOSE_HDR_STATE* hdrState, uint32_t decodeFlags);
+
+#if defined(WOLFCOSE_SIGN1_VERIFY)
+WOLFCOSE_LOCAL int wolfCose_Sign1_Verify_ex(const WOLFCOSE_KEY* key,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    WOLFCOSE_HDR* hdr,
+    const uint8_t** payload, size_t* payloadLen,
+    uint32_t flags);
+#endif
+
+#if defined(WOLFCOSE_MAC0_VERIFY)
+WOLFCOSE_LOCAL int wolfCose_Mac0_Verify_ex(const WOLFCOSE_KEY* key,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    WOLFCOSE_HDR* hdr,
+    const uint8_t** payload, size_t* payloadLen,
+    uint32_t flags);
+#endif
 
 /**
  * \brief Map COSE algorithm ID to wolfCrypt hash type.

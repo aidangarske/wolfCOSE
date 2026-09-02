@@ -51,15 +51,57 @@ Extension names for `WOLFCOSE_ENABLE_<X>`: `ES384`, `ES512`, `EDDSA`, `ED448`, `
 
 An extension is compiled in when it is explicitly enabled (`WOLFCOSE_ENABLE_<X>`), or — in a non-lean build — when wolfSSL provides the primitive and it is not opted out with `WOLFCOSE_NO_<X>`. Enabling an extension wolfSSL cannot provide is a compile error. The resolved state is exposed internally as read-only `WOLFCOSE_HAVE_<X>` gates (e.g. `WOLFCOSE_HAVE_MLDSA`); sources, tests, and examples compile against those, so you set `WOLFCOSE_ENABLE_*`/`WOLFCOSE_NO_*`, not `WOLFCOSE_HAVE_*`.
 
+## PSA/EAT Attestation Gates
+
+PSA/EAT support is off in every build, including a non-lean full build. The
+default archive does not contain `wc_CoseEatPsaToken_*` symbols or the PSA/EAT
+parser. Define the common switch, one or more profiles, and one or more COSE
+envelope families deliberately. The three PSA/EAT limit macros below are also
+defined and checked only after the common switch resolves to enabled.
+
+| Define | Description | Default |
+|--------|-------------|---------|
+| `WOLFCOSE_ENABLE_EAT_PSA` | Common PSA/EAT API and parser | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_CURRENT` | RFC 9783 TF-M current profile | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_SIGN1` | Tagged Sign1 consumption | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_MAC0` | Tagged Mac0 consumption | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_ISSUE` | Current-profile claim and token issuance | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_LEGACY` | Legacy `PSA_IOT_PROFILE_1` consumption | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER` | UEID-selected key lookup helper | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR` | Zero-copy component callback helper | off |
+| `WOLFCOSE_EAT_PSA_TFM_FULL` | Derived: all RFC 9783 `#tfm` receiver algorithms/envelopes are present; do not define manually | derived |
+| `WOLFCOSE_EAT_PSA_MAX_COMPONENTS` | Maximum accepted software-component maps | 32 |
+| `WOLFCOSE_EAT_PSA_MAX_CLAIMS` | Maximum claim-map entries, including extension claims | 64 |
+| `WOLFCOSE_EAT_PSA_MAX_COMPONENT_CLAIMS` | Maximum entries in each component map, including extensions | 16 |
+
+`WOLFCOSE_ENABLE_EAT_PSA_ISSUE` requires the current profile plus an enabled
+Sign1 signing or Mac0 creation path. Sign1 consumption requires an enabled
+ES256, ES384, or ES512 verifier; Mac0 consumption requires an enabled HMAC
+verifier. The normal `WOLFCOSE_ENABLE_ES384`, `WOLFCOSE_ENABLE_ES512`,
+`WOLFCOSE_ENABLE_HMAC384`, and `WOLFCOSE_ENABLE_HMAC512` macros choose the
+non-core RFC 9783 algorithms in a lean build. `WOLFCOSE_NO_*` macros remove
+their branches in a full build.
+
+RFC 9783 Section 5.2 requires a receiver advertising the standardized
+`tag:psacertified.org,2023:psa#tfm` profile to accept tagged Sign1 and Mac0
+tokens with ES256/384/512 and HMAC 256/256, 384/384, and 512/512. wolfCOSE
+derives `WOLFCOSE_EAT_PSA_TFM_FULL` only when that complete set is enabled.
+That is a receiver-conformance gate only. An attester that enables issuance
+and one RFC 9783 Sign1 or Mac0 creation path can issue a correctly labelled
+`#tfm` token. A selective current-profile verifier still rejects `#tfm` with
+`WOLFCOSE_E_EAT_PSA_PROFILE` and must not advertise full receiver conformance.
+
+See [[PSA-EAT]] for examples, profile boundaries, and security guidance.
+
 ## Algorithm Gates
 
 Per-algorithm opt-outs for the default (non-lean) build. Each also has a `WOLFCOSE_ENABLE_<X>` form for lean opt-in. `ES256`, `AESGCM`, and `HMAC256` form the lean core and stay on unless explicitly opted out.
 
 | Opt-out | Algorithm | wolfSSL requirement |
 |---------|-----------|---------------------|
-| `WOLFCOSE_NO_ES256` | ECDSA P-256 (ES256) | `HAVE_ECC` |
-| `WOLFCOSE_NO_ES384` | ECDSA P-384 (ES384) | `HAVE_ECC` + `WOLFSSL_SHA384` |
-| `WOLFCOSE_NO_ES512` | ECDSA P-521 (ES512) | `HAVE_ECC` + `WOLFSSL_SHA512` |
+| `WOLFCOSE_NO_ES256` | ECDSA P-256 (ES256) | `HAVE_ECC`, SHA-256, P-256 not disabled by `NO_ECC256`, and `ECC_MIN_KEY_SZ <= 256` |
+| `WOLFCOSE_NO_ES384` | ECDSA P-384 (ES384) | `HAVE_ECC`, `WOLFSSL_SHA384`, `HAVE_ECC384` or `HAVE_ALL_CURVES`, and `ECC_MIN_KEY_SZ <= 384` |
+| `WOLFCOSE_NO_ES512` | ECDSA P-521 (ES512) | `HAVE_ECC`, `WOLFSSL_SHA512`, `HAVE_ECC521` or `HAVE_ALL_CURVES`, and `ECC_MIN_KEY_SZ <= 521` |
 | `WOLFCOSE_NO_EDDSA` | Ed25519 | `HAVE_ED25519` |
 | `WOLFCOSE_NO_ED448` | Ed448 | `HAVE_ED448` |
 | `WOLFCOSE_NO_RSAPSS` | RSA-PSS (PS256/384/512) | `WC_RSA_PSS` |
@@ -67,7 +109,7 @@ Per-algorithm opt-outs for the default (non-lean) build. Each also has a `WOLFCO
 | `WOLFCOSE_NO_AESGCM` | AES-GCM | `HAVE_AESGCM` |
 | `WOLFCOSE_NO_AESCCM` | AES-CCM | `HAVE_AESCCM` |
 | `WOLFCOSE_NO_CHACHA20` | ChaCha20-Poly1305 | `HAVE_CHACHA` + `HAVE_POLY1305` |
-| `WOLFCOSE_NO_HMAC256` | HMAC-SHA256 | HMAC (`NO_HMAC` unset) |
+| `WOLFCOSE_NO_HMAC256` | HMAC-SHA256 | HMAC and SHA-256 (`NO_HMAC` and `NO_SHA256` unset) |
 | `WOLFCOSE_NO_HMAC384` | HMAC-SHA384 | `WOLFSSL_SHA384` |
 | `WOLFCOSE_NO_HMAC512` | HMAC-SHA512 | `WOLFSSL_SHA512` |
 | `WOLFCOSE_NO_AESMAC` | AES-CBC-MAC | `HAVE_AES_CBC` |
@@ -339,7 +381,7 @@ Post-quantum sign + verify is within ~1 KB of classical ES256 (35.8 vs 34.6 KB),
 
 ### `WOLFCOSE_LEAN_VERIFY` — minimal verify-only
 
-The smallest secure on-device profile: COSE_Sign1 verification only, the common case where a device verifies signed firmware or attestation while signing happens off-device on a server or HSM. It implies `WOLFCOSE_LEAN` plus `WOLFCOSE_NO_SIGN1_SIGN` (removing signing and, transitively, the RNG), `WOLFCOSE_NO_ENCRYPT0`, `WOLFCOSE_NO_MAC0`, `WOLFCOSE_NO_KEY_ENCODE`, and `WOLFCOSE_NO_KEY_DECODE`. Full RFC 9052 verification stays: header decode, crit enforcement, duplicate-label detection, and the Sig_structure rebuild. Sign1 verify must stay enabled; the build errors out if it is also disabled.
+The smallest secure on-device profile: COSE_Sign1 verification only, the common case where a device verifies signed firmware or attestation while signing happens off-device on a server or HSM. It implies `WOLFCOSE_LEAN` plus `WOLFCOSE_NO_SIGN1_SIGN` (removing signing and, transitively, the RNG), `WOLFCOSE_NO_ENCRYPT0`, `WOLFCOSE_NO_MAC0`, `WOLFCOSE_NO_MAC0_CREATE`, `WOLFCOSE_NO_KEY_ENCODE`, and `WOLFCOSE_NO_KEY_DECODE`. An explicit `WOLFCOSE_ENABLE_EAT_PSA_MAC0` selection retains Mac0 verification but not creation, so a verify-only full RFC 9783 `#tfm` receiver can opt in. Full RFC 9052 verification stays: header decode, crit enforcement, duplicate-label detection, and the Sig_structure rebuild. Sign1 verify must stay enabled; the build errors out if it is also disabled.
 
 ```bash
 make lean-verify     # builds + runs examples/sign1_verify_lean.c with the profile

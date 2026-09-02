@@ -133,6 +133,7 @@ check_config_rebuild() (
     mkdir -p "$config_fixture/src" "$config_fixture/include/wolfcose"
     cp "$ROOT_DIR/Makefile" "$config_fixture/Makefile"
     cp "$ROOT_DIR/src/wolfcose_cbor.c" "$ROOT_DIR/src/wolfcose.c" \
+        "$ROOT_DIR/src/wolfcose_eat_psa.c" \
         "$ROOT_DIR/src/wolfcose_internal.h" "$config_fixture/src/"
     cp "$ROOT_DIR/include/wolfcose/wolfcose.h" \
         "$config_fixture/include/wolfcose/"
@@ -163,8 +164,8 @@ check_config_rebuild() (
     compiler_args=$(cat "$FAKE_CC_LOG")
     contains "$compiler_args" '-I/fake/second/include'
     compiler_count=$(wc -l < "$FAKE_CC_LOG" | tr -d ' ')
-    if [ "$compiler_count" -ne 4 ]; then
-        printf 'FAIL: expected configuration change to rebuild both objects\n' >&2
+    if [ "$compiler_count" -ne 6 ]; then
+        printf 'FAIL: expected configuration change to rebuild all objects\n' >&2
         exit 1
     fi
 )
