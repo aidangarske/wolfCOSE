@@ -28,10 +28,12 @@ Round-trip self-tests for all 17 supported CLI algorithms. Each algorithm is tes
 
 COSE-HPKE P0 is off by default and therefore has a dedicated opt-in test path.
 Build against a wolfSSL configured with `--enable-hpke --enable-ecc
---enable-aesgcm --enable-keygen`, then enable the four operation macros:
+--enable-aesgcm --enable-keygen`, then acknowledge experimental draft support
+and enable the four operation macros:
 
 ```bash
-HPKE_FLAGS="-DWOLFCOSE_ENABLE_HPKE_0_ENCRYPT \
+HPKE_FLAGS="-DWOLFCOSE_EXPERIMENTAL \
+  -DWOLFCOSE_ENABLE_HPKE_0_ENCRYPT \
   -DWOLFCOSE_ENABLE_HPKE_0_DECRYPT \
   -DWOLFCOSE_ENABLE_HPKE_0_KE_ENCRYPT \
   -DWOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT"
@@ -54,6 +56,9 @@ focused `test -a` round trip for each construction. The dedicated strict C99
 target compiles every HPKE-gated library, test, tool, and example path under
 each one-way operation gate, both convenience gates, the complete P0
 configuration, and wolfSSL's `NO_ECC256` plus `HAVE_ALL_CURVES` configuration.
+Every enabled configuration also supplies `WOLFCOSE_EXPERIMENTAL`; the regular
+`make experimental-check` target verifies that an HPKE operation selected
+without that acknowledgement is rejected at compile time.
 The unit suite validates draft messages that omit the optional HPKE `alg`
 (including a second selected recipient), rejects an HPKE `alg` in an
 unprotected header, accepts an unprotected HPKE-0-KE content algorithm only
