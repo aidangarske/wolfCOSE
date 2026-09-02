@@ -4,6 +4,7 @@
 *.a
 *.so
 *.su
+experimental-check.err
 *.dSYM/
 .wolfcose-build-config
 
