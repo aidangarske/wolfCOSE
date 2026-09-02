@@ -513,7 +513,7 @@ static void test_example_encrypt_direct(void)
                     (memcmp(plaintext, example_payload, plaintext_len) == 0),
                     "Examples Encrypt direct plaintext");
 
-        message[30] ^= 0x01u;
+        message[message_len - 1u] ^= 0x01u;
         ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
             NULL, 0u, example_encrypt0_aad, sizeof(example_encrypt0_aad),
             scratch, sizeof(scratch), &hdr, plaintext, sizeof(plaintext),
@@ -583,7 +583,7 @@ static void test_example_encrypt_a128kw(void)
                     (memcmp(plaintext, example_payload, plaintext_len) == 0),
                     "Examples A128KW plaintext");
 
-        message[30] ^= 0x01u;
+        message[message_len - 1u] ^= 0x01u;
         ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
             NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plaintext,
             sizeof(plaintext), &plaintext_len);
@@ -693,7 +693,7 @@ static void test_example_encrypt_ecdh(void)
                     (memcmp(plaintext, example_payload, plaintext_len) == 0),
                     "Examples ECDH-ES plaintext");
 
-        message[30] ^= 0x01u;
+        message[message_len - 1u] ^= 0x01u;
         ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
             NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plaintext,
             sizeof(plaintext), &plaintext_len);

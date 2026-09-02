@@ -288,7 +288,6 @@ static void test_psa_sign1_token(void)
     size_t payload_len = 0u;
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t token[512];
-    uint8_t tampered[512];
     size_t token_len;
     ecc_key ecc_key;
     int cose_key_inited = 0;
@@ -304,10 +303,8 @@ static void test_psa_sign1_token(void)
 
     ret = wc_ecc_init(&ecc_key);
     TEST_ASSERT(ret == 0, "PSA Sign1 ECC init");
-    if (ret == 0)
-        ecc_key_inited = 1;
-
     if (ret == 0) {
+        ecc_key_inited = 1;
         ret = wc_ecc_import_unsigned(&ecc_key, psa_sign1_x, psa_sign1_y,
                                      NULL, ECC_SECP256R1);
         TEST_ASSERT(ret == 0, "PSA Sign1 public key import");
@@ -329,6 +326,8 @@ static void test_psa_sign1_token(void)
         TEST_ASSERT(ret == 0, "PSA Sign1 signature verifies");
     }
     if (ret == 0) {
+        uint8_t tampered[512];
+
         TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_ES256, "PSA Sign1 algorithm");
         psa_parse_claims(payload, payload_len, psa_sign1_ueid);
         memcpy(tampered, token, token_len);
@@ -378,7 +377,6 @@ static void test_psa_mac0_token(void)
     size_t payload_len = 0u;
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t token[512];
-    uint8_t tampered[512];
     size_t token_len;
     int cose_key_inited = 0;
     int ret;
@@ -392,9 +390,8 @@ static void test_psa_mac0_token(void)
 
     ret = wc_CoseKey_Init(&cose_key);
     TEST_ASSERT(ret == 0, "PSA Mac0 COSE key init");
-    if (ret == 0)
-        cose_key_inited = 1;
     if (ret == 0) {
+        cose_key_inited = 1;
         ret = wc_CoseKey_SetSymmetric(&cose_key, psa_mac0_key,
                                       sizeof(psa_mac0_key) - 1u);
         TEST_ASSERT(ret == 0, "PSA Mac0 COSE key set");
@@ -406,6 +403,8 @@ static void test_psa_mac0_token(void)
         TEST_ASSERT(ret == 0, "PSA Mac0 tag verifies");
     }
     if (ret == 0) {
+        uint8_t tampered[512];
+
         TEST_ASSERT(hdr.alg == WOLFCOSE_ALG_HMAC_256_256,
                     "PSA Mac0 algorithm");
         psa_parse_claims(payload, payload_len, psa_mac0_ueid);

@@ -199,7 +199,6 @@ static int init_key(RUST_COSET_KEYSET* keyset,
 
 static int read_message(uint8_t* message, size_t message_sz, size_t* message_len)
 {
-    int input;
     size_t length = 0u;
 
     if ((message == NULL) || (message_len == NULL) || (message_sz == 0u)) {
@@ -207,6 +206,8 @@ static int read_message(uint8_t* message, size_t message_sz, size_t* message_len
     }
 
     while (length < message_sz) {
+        int input;
+
         input = fgetc(stdin);
         if (input == EOF) {
             break;
@@ -244,7 +245,6 @@ static int sign_message(const RUST_COSET_CASE* test_case)
 {
     RUST_COSET_KEYSET keyset;
     WC_RNG rng;
-    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t message[RUST_COSET_MESSAGE_MAX_SZ];
     const uint8_t* payload = g_payload;
     const uint8_t* detached_payload = NULL;
@@ -269,6 +269,8 @@ static int sign_message(const RUST_COSET_CASE* test_case)
         }
     }
     if (ret == 0) {
+        uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+
         ret = wc_CoseSign1_Sign_ex(&keyset.cose_key, test_case->alg, NULL,
             0u, payload, payload_len, detached_payload, detached_len,
             test_case->ext_aad, test_case->ext_aad_len, scratch,

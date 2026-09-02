@@ -243,7 +243,6 @@ static int init_key(GO_COSE_KEYSET* keyset, const GO_COSE_CASE* test_case)
 
 static int read_message(uint8_t* message, size_t message_sz, size_t* message_len)
 {
-    int input;
     size_t length = 0u;
 
     if ((message == NULL) || (message_len == NULL) || (message_sz == 0u)) {
@@ -251,6 +250,8 @@ static int read_message(uint8_t* message, size_t message_sz, size_t* message_len
     }
 
     while (length < message_sz) {
+        int input;
+
         input = fgetc(stdin);
         if (input == EOF) {
             break;

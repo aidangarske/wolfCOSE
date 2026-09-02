@@ -147,7 +147,6 @@ static const PYTHON_CWT_CASE* find_case(const char* name)
 
 static int read_message(uint8_t* message, size_t message_sz, size_t* message_len)
 {
-    int input;
     size_t length = 0u;
 
     if ((message == NULL) || (message_len == NULL) || (message_sz == 0u)) {
@@ -155,6 +154,8 @@ static int read_message(uint8_t* message, size_t message_sz, size_t* message_len
     }
 
     while (length < message_sz) {
+        int input;
+
         input = fgetc(stdin);
         if (input == EOF) {
             break;
@@ -291,7 +292,6 @@ static int encrypt_message(const PYTHON_CWT_CASE* test_case)
     WOLFCOSE_RECIPIENT recipient;
     ecc_key ecc;
     WC_RNG rng;
-    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t message[PYTHON_CWT_MESSAGE_MAX_SZ];
     size_t message_len = 0u;
     int key_inited = 0;
@@ -311,6 +311,8 @@ static int encrypt_message(const PYTHON_CWT_CASE* test_case)
         }
     }
     if (ret == 0) {
+        uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+
         ret = wc_CoseEncrypt_Encrypt(&recipient, 1u, WOLFCOSE_ALG_A128GCM,
             g_iv, sizeof(g_iv), g_payload, sizeof(g_payload) - 1u,
             NULL, 0u, g_external_aad, sizeof(g_external_aad) - 1u,
@@ -413,7 +415,6 @@ static int mac_message(void)
 {
     WOLFCOSE_KEY key;
     WOLFCOSE_RECIPIENT recipient;
-    uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
     uint8_t message[PYTHON_CWT_MESSAGE_MAX_SZ];
     size_t message_len = 0u;
     int key_inited = 0;
@@ -421,6 +422,8 @@ static int mac_message(void)
 
     ret = init_mac_recipient(&key, &key_inited, &recipient);
     if (ret == 0) {
+        uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
+
         ret = wc_CoseMac_Create(&recipient, 1u, WOLFCOSE_ALG_HMAC_256_256,
             g_payload, sizeof(g_payload) - 1u, NULL, 0u, g_external_aad,
             sizeof(g_external_aad) - 1u, scratch, sizeof(scratch), message,
@@ -497,7 +500,7 @@ int main(int argc, char** argv)
     }
 
     test_case = find_case(argv[2]);
-    if (test_case == NULL) {
+    if ((test_case == NULL) || (test_case->kind == 0)) {
         fprintf(stderr, "unknown case: %s\n", argv[2]);
         return 2;
     }
