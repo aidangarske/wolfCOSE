@@ -120,6 +120,9 @@ static void free_key(RUST_COSET_KEYSET* keyset)
     if (keyset->cose_key_inited != 0) {
         wc_CoseKey_Free(&keyset->cose_key);
     }
+
+    keyset->kind = 0;
+    keyset->cose_key_inited = 0;
 }
 
 static int init_ecc_key(RUST_COSET_KEYSET* keyset)
@@ -291,7 +294,7 @@ static int sign_message(const RUST_COSET_CASE* test_case)
 static int verify_message(const RUST_COSET_CASE* test_case)
 {
     WOLFCOSE_HDR header;
-    RUST_COSET_KEYSET keyset;
+    RUST_COSET_KEYSET keyset = { 0 };
     const uint8_t* decoded = NULL;
     const uint8_t* detached_payload = NULL;
     uint8_t scratch[WOLFCOSE_MAX_SCRATCH_SZ];
