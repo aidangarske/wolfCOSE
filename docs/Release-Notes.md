@@ -15,20 +15,6 @@ MAC, and key distribution, and standardized post-quantum ML-DSA signatures
 
 ### New Feature Additions
 
-- Optional RFC 9783 PSA attestation / EAT Token support. It consumes tagged
-  current TF-M and legacy PSA IoT profile Sign1 or Mac0 tokens, validates the
-  required structural claims and nonce, and emits current-profile tokens with
-  one enabled RFC 9783 Sign1 or Mac0 protection path. Complete RFC 9783
-  `#tfm` receiver capability remains a separately derived gate.
-  Every PSA/EAT profile, envelope, issuer, helper, and non-core algorithm is
-  explicitly macro-gated and absent from a default archive. The verifier
-  accepts RFC-required non-preferred definite CBOR while ordinary COSE decode
-  remains strict. Partial builds reject `#tfm` rather than claiming incomplete
-  conformance; profile, map-limit, Appendix A TF-M `iat-verifier`, and t_cose
-  interop coverage are in CI. A device-onboarding example demonstrates current
-  Sign1 issuance, nonce verification, and software measurement appraisal. See
-  [[PSA-EAT]].
-
 - CBOR engine implementing RFC 8949 encode/decode with no external dependency,
   enforcing deterministic/preferred-encoding rules and rejecting non-preferred
   or trailing input on decode.
