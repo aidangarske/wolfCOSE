@@ -143,7 +143,7 @@ SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 # --- Core library ---
 all: $(LIB_A)
 
-$(LIB_A): $(OBJ)
+$(LIB_A): $(OBJ) $(BUILD_CONFIG_CHANGED)
 	$(AR) rcs $@ $(OBJ)
 
 FORCE:

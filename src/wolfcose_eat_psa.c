@@ -176,8 +176,7 @@ static int wolfCose_EatPsaComponentOverlapsBuffer(
 {
     int overlap = 0;
 
-    if (component != NULL) {
-        overlap = (
+    if ((component != NULL) && (
             (wolfCose_EatPsaBuffersOverlap(
                  (const uint8_t*)component, sizeof(*component),
                  buffer, bufferSz) != 0) ||
@@ -190,7 +189,8 @@ static int wolfCose_EatPsaComponentOverlapsBuffer(
             (wolfCose_EatPsaSpanOverlapsBuffer(&component->signerId,
                  buffer, bufferSz) != 0) ||
             (wolfCose_EatPsaSpanOverlapsBuffer(&component->measurementDesc,
-                 buffer, bufferSz) != 0)) ? 1 : 0;
+                 buffer, bufferSz) != 0))) {
+        overlap = 1;
     }
 
     return overlap;
@@ -208,7 +208,7 @@ static int wolfCose_EatPsaClaimsOverlapBuffer(
     if (claims != NULL) {
         size_t i;
 
-        overlap = (
+        if (
             (wolfCose_EatPsaBuffersOverlap(
                  (const uint8_t*)claims, sizeof(*claims),
                  buffer, bufferSz) != 0) ||
@@ -224,7 +224,9 @@ static int wolfCose_EatPsaClaimsOverlapBuffer(
                  &claims->certificationReference, buffer, bufferSz) != 0) ||
             (wolfCose_EatPsaSpanOverlapsBuffer(
                  &claims->verificationServiceIndicator, buffer,
-                 bufferSz) != 0)) ? 1 : 0;
+                 bufferSz) != 0)) {
+            overlap = 1;
+        }
         for (i = 0u; (overlap == 0) && (i < claims->componentCount); i++) {
             overlap = wolfCose_EatPsaComponentOverlapsBuffer(
                 &claims->components[i], buffer, bufferSz);
