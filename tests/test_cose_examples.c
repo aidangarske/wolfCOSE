@@ -54,6 +54,11 @@ static int g_failures = 0;
     }                                                          \
 } while (0)
 
+#define EXAMPLE_ENCRYPT_CIPHERTEXT_OFFSET 24u
+#define EXAMPLE_ENCRYPT_CIPHERTEXT_LEN    36u
+#define EXAMPLE_ENCRYPT_TAG_OFFSET \
+    (EXAMPLE_ENCRYPT_CIPHERTEXT_OFFSET + EXAMPLE_ENCRYPT_CIPHERTEXT_LEN - 1u)
+
 static const uint8_t example_payload[] = "This is the content.";
 
 static size_t example_hex_decode(const char* hex, uint8_t* out, size_t out_sz)
@@ -513,13 +518,17 @@ static void test_example_encrypt_direct(void)
                     (memcmp(plaintext, example_payload, plaintext_len) == 0),
                     "Examples Encrypt direct plaintext");
 
-        message[message_len - 1u] ^= 0x01u;
-        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
-            NULL, 0u, example_encrypt0_aad, sizeof(example_encrypt0_aad),
-            scratch, sizeof(scratch), &hdr, plaintext, sizeof(plaintext),
-            &plaintext_len);
-        TEST_ASSERT(ret != 0,
-                    "Examples Encrypt direct rejects modified ciphertext");
+        TEST_ASSERT(message_len > EXAMPLE_ENCRYPT_TAG_OFFSET,
+                    "Examples Encrypt direct tag offset");
+        if (message_len > EXAMPLE_ENCRYPT_TAG_OFFSET) {
+            message[EXAMPLE_ENCRYPT_TAG_OFFSET] ^= 0x01u;
+            ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
+                NULL, 0u, example_encrypt0_aad, sizeof(example_encrypt0_aad),
+                scratch, sizeof(scratch), &hdr, plaintext, sizeof(plaintext),
+                &plaintext_len);
+            TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL,
+                        "Examples Encrypt direct rejects modified tag");
+        }
     }
 
     if (cose_key_inited != 0) {
@@ -583,11 +592,16 @@ static void test_example_encrypt_a128kw(void)
                     (memcmp(plaintext, example_payload, plaintext_len) == 0),
                     "Examples A128KW plaintext");
 
-        message[message_len - 1u] ^= 0x01u;
-        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
-            NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plaintext,
-            sizeof(plaintext), &plaintext_len);
-        TEST_ASSERT(ret != 0, "Examples A128KW rejects modified ciphertext");
+        TEST_ASSERT(message_len > EXAMPLE_ENCRYPT_TAG_OFFSET,
+                    "Examples A128KW tag offset");
+        if (message_len > EXAMPLE_ENCRYPT_TAG_OFFSET) {
+            message[EXAMPLE_ENCRYPT_TAG_OFFSET] ^= 0x01u;
+            ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
+                NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plaintext,
+                sizeof(plaintext), &plaintext_len);
+            TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL,
+                        "Examples A128KW rejects modified tag");
+        }
     }
 
     if (cose_key_inited != 0) {
@@ -693,11 +707,16 @@ static void test_example_encrypt_ecdh(void)
                     (memcmp(plaintext, example_payload, plaintext_len) == 0),
                     "Examples ECDH-ES plaintext");
 
-        message[message_len - 1u] ^= 0x01u;
-        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
-            NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plaintext,
-            sizeof(plaintext), &plaintext_len);
-        TEST_ASSERT(ret != 0, "Examples ECDH-ES rejects modified ciphertext");
+        TEST_ASSERT(message_len > EXAMPLE_ENCRYPT_TAG_OFFSET,
+                    "Examples ECDH-ES tag offset");
+        if (message_len > EXAMPLE_ENCRYPT_TAG_OFFSET) {
+            message[EXAMPLE_ENCRYPT_TAG_OFFSET] ^= 0x01u;
+            ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, message, message_len,
+                NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plaintext,
+                sizeof(plaintext), &plaintext_len);
+            TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL,
+                        "Examples ECDH-ES rejects modified tag");
+        }
     }
 
     if (cose_key_inited != 0) {
