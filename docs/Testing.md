@@ -1,6 +1,11 @@
 # Testing
 
-wolfCOSE includes comprehensive testing infrastructure for unit tests, algorithm coverage, code coverage, and failure injection testing. Code coverage is enforced by CI: `wolfcose.c` requires 99% minimum, `wolfcose_cbor.c` requires 100%, and the explicit full `wolfcose_eat_psa.c` profile requires 80%. These thresholds are validated on every push and PR to ensure coverage doesn't regress.
+wolfCOSE includes comprehensive testing infrastructure for unit tests,
+algorithm coverage, code coverage, and failure injection testing. Code
+coverage is enforced by CI: `wolfcose.c` requires 99% minimum, while
+`wolfcose_cbor.c` and the explicit full `wolfcose_eat_psa.c` profile require
+100%. These thresholds are validated on every push and PR to ensure coverage
+doesn't regress.
 
 ## Running Tests
 
@@ -144,7 +149,7 @@ collecting the PSA/EAT source coverage report.
 |-----------|--------|
 | `wolfcose.c` | 99% minimum |
 | `wolfcose_cbor.c` | 100% minimum |
-| `wolfcose_eat_psa.c` | 80% minimum, full RFC 9783 feature profile |
+| `wolfcose_eat_psa.c` | 100% minimum, full RFC 9783 feature profile |
 
 ### Coverage with Failure Injection
 

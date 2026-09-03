@@ -71,7 +71,7 @@ jobs:
         # Coverage thresholds:
         #   wolfcose.c:      99% minimum
         #   wolfcose_cbor.c: 100% minimum
-        #   wolfcose_eat_psa.c: 80% minimum (full PSA/EAT profile)
+        #   wolfcose_eat_psa.c: 100% minimum (full PSA/EAT profile)
 
         FAILED=0
 
@@ -144,20 +144,20 @@ jobs:
         else
           echo "wolfcose_eat_psa.c:"
           echo "  Coverage: ${EAT_PCT}%"
-          echo "  Threshold: 80%"
+          echo "  Threshold: 100%"
           echo "  Uncovered lines: ${EAT_UNCOV}"
           echo ""
 
-          if awk "BEGIN {exit !($EAT_PCT < 80)}"; then
+          if awk "BEGIN {exit !($EAT_PCT < 100)}"; then
             FAILED=1
-            echo ">>> FAILED: wolfcose_eat_psa.c coverage is below 80%! <<<"
+            echo ">>> FAILED: wolfcose_eat_psa.c coverage is below 100%! <<<"
             echo ""
             echo "Uncovered lines in wolfcose_eat_psa.c:"
             echo "---------------------------------------"
             grep -n "#####" wolfcose_eat_psa.c.gcov | head -50
             echo ""
           else
-            echo ">>> PASSED: wolfcose_eat_psa.c meets 80% threshold <<<"
+            echo ">>> PASSED: wolfcose_eat_psa.c meets 100% threshold <<<"
           fi
           echo ""
         fi

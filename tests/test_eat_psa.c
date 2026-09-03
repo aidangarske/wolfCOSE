@@ -2206,9 +2206,15 @@ static void test_eat_psa_expect_sign1_overlap(WOLFCOSE_KEY* key,
 static void test_eat_psa_issue_boundaries(WOLFCOSE_KEY* key, WC_RNG* rng)
 {
     static const uint8_t invalidUtf8[] = { 0xFFu };
+    static const char* componentClaimTests[] = {
+        "issue and verify component with version only",
+        "issue and verify component with description only",
+        "issue and verify component with required claims only"
+    };
     WOLFCOSE_EAT_PSA_CLAIMS claims;
     WOLFCOSE_EAT_PSA_COMPONENT component;
     WOLFCOSE_EAT_PSA_COMPONENT components[WOLFCOSE_EAT_PSA_MAX_COMPONENTS + 1u];
+    WOLFCOSE_EAT_PSA_TOKEN token;
     union {
         WOLFCOSE_EAT_PSA_CLAIMS claims;
         WOLFCOSE_EAT_PSA_COMPONENT component;
@@ -2220,6 +2226,7 @@ static void test_eat_psa_issue_boundaries(WOLFCOSE_KEY* key, WC_RNG* rng)
     uint8_t out[1024];
     uint8_t overlap[2048];
     size_t outLen = 17u;
+    size_t tokenLen;
     size_t i;
     int ret;
     int spanChecks;
@@ -2460,6 +2467,31 @@ static void test_eat_psa_issue_boundaries(WOLFCOSE_KEY* key, WC_RNG* rng)
     test_eat_psa_expect_issue_claim_failure(&claims, claimsBuf,
         sizeof(claimsBuf),
         "reject issuer optional component text with NULL data");
+
+    for (i = 0u; i < (sizeof(componentClaimTests) /
+         sizeof(componentClaimTests[0])); i++) {
+        test_eat_psa_claims(&claims, &component);
+        component.measurementType.data = NULL;
+        component.measurementType.len = 0u;
+        if (i != 0u) {
+            component.version.data = NULL;
+            component.version.len = 0u;
+        }
+        if (i != 1u) {
+            component.measurementDesc.data = NULL;
+            component.measurementDesc.len = 0u;
+        }
+        tokenLen = 0u;
+        ret = wc_CoseEatPsaToken_CreateSign1(key, WOLFCOSE_ALG_ES256,
+            &claims, claimsBuf, sizeof(claimsBuf), scratch, sizeof(scratch),
+            out, sizeof(out), &tokenLen, rng);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CoseEatPsaToken_Verify(key, out, tokenLen, kNonce,
+                sizeof(kNonce), scratch, sizeof(scratch), &token);
+        }
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS && token.componentCount == 1u,
+            componentClaimTests[i]);
+    }
 
     test_eat_psa_claims(&claims, &component);
     claims.componentCount = 0u;
