@@ -15900,7 +15900,9 @@ static void test_cose_protected_hdr_empty_map(void)
                                       &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr accepts serialized empty map");
-    TEST_ASSERT((hdrState.labelBits == 0u) && (hdrState.extraCount == 0u),
+    TEST_ASSERT((hdrState.labelBits == 0u) &&
+                (hdrState.extraIntegerCount == 0u) &&
+                (hdrState.extraTextCount == 0u),
                 "DecodeProtectedHdr empty map state");
 }
 

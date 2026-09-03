@@ -146,17 +146,12 @@ WOLFCOSE_LOCAL extern const uint8_t WOLFCOSE_CTX_ENCRYPT[7];
 
 #define WOLFCOSE_MAX_HEADER_LABELS WOLFCOSE_MAX_MAP_ITEMS
 
-typedef struct WOLFCOSE_HDR_EXTRA_LABEL {
-    int64_t        integer;
-    const uint8_t* text;
-    size_t         textLen;
-    uint8_t        isText;
-} WOLFCOSE_HDR_EXTRA_LABEL;
-
 typedef struct WOLFCOSE_HDR_STATE {
-    uint32_t                  labelBits;
-    WOLFCOSE_HDR_EXTRA_LABEL  extraLabels[WOLFCOSE_MAX_HEADER_LABELS];
-    size_t                    extraCount;
+    uint32_t       labelBits;
+    int64_t        extraIntegerLabels[WOLFCOSE_MAX_HEADER_LABELS];
+    const uint8_t* extraTextLabels[WOLFCOSE_MAX_HEADER_LABELS];
+    size_t         extraIntegerCount;
+    size_t         extraTextCount;
 } WOLFCOSE_HDR_STATE;
 
 /* ----- COSE internal helpers ----- */

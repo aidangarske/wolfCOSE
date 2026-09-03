@@ -1050,7 +1050,8 @@ static void wolfCose_HdrStateInit(WOLFCOSE_HDR_STATE* state)
 {
     if (state != NULL) {
         state->labelBits = 0u;
-        state->extraCount = 0u;
+        state->extraIntegerCount = 0u;
+        state->extraTextCount = 0u;
     }
 }
 
@@ -1067,9 +1068,8 @@ static int wolfCose_HdrStateContains(const WOLFCOSE_HDR_STATE* state,
         }
         else {
             size_t i;
-            for (i = 0u; i < state->extraCount; i++) {
-                if ((state->extraLabels[i].isText == 0u) &&
-                    (state->extraLabels[i].integer == label)) {
+            for (i = 0u; i < state->extraIntegerCount; i++) {
+                if (state->extraIntegerLabels[i] == label) {
                     found = 1;
                     break;
                 }
@@ -1093,16 +1093,13 @@ static int wolfCose_HdrStateAdd(WOLFCOSE_HDR_STATE* state, int64_t label)
         if (bit != 0u) {
             state->labelBits |= bit;
         }
-        else if (state->extraCount >=
+        else if (state->extraIntegerCount >=
                  (size_t)WOLFCOSE_MAX_HEADER_LABELS) {
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
         else {
-            state->extraLabels[state->extraCount].integer = label;
-            state->extraLabels[state->extraCount].text = NULL;
-            state->extraLabels[state->extraCount].textLen = 0u;
-            state->extraLabels[state->extraCount].isText = 0u;
-            state->extraCount++;
+            state->extraIntegerLabels[state->extraIntegerCount] = label;
+            state->extraIntegerCount++;
         }
     }
 
@@ -1124,6 +1121,48 @@ static int wolfCose_HdrStateCheckAndAdd(WOLFCOSE_HDR_STATE* state,
     return ret;
 }
 
+static int wolfCose_TextLabelEquals(const uint8_t* encoded,
+    const WOLFCOSE_CBOR_LABEL* label)
+{
+    uint8_t ai;
+    uint64_t textLen = UINT64_MAX;
+    size_t headLen = 0u;
+    int equal = 0;
+
+    ai = (uint8_t)(encoded[0] & 0x1Fu);
+    if (ai < 24u) {
+        textLen = ai;
+        headLen = 1u;
+    }
+    else if (ai == 24u) {
+        textLen = encoded[1];
+        headLen = 2u;
+    }
+    else if (ai == 25u) {
+        textLen = wolfCose_LoadBE16(&encoded[1]);
+        headLen = 3u;
+    }
+    else if (ai == 26u) {
+        textLen = wolfCose_LoadBE32(&encoded[1]);
+        headLen = 5u;
+    }
+    else if (ai == 27u) {
+        textLen = wolfCose_LoadBE64(&encoded[1]);
+        headLen = 9u;
+    }
+    else {
+        /* The stored label was already decoded. */
+    }
+
+    if ((textLen == (uint64_t)label->textLen) &&
+        ((label->textLen == 0u) ||
+         (XMEMCMP(&encoded[headLen], label->text, label->textLen) == 0))) {
+        equal = 1;
+    }
+
+    return equal;
+}
+
 static int wolfCose_HdrStateContainsLabel(const WOLFCOSE_HDR_STATE* state,
     const WOLFCOSE_CBOR_LABEL* label)
 {
@@ -1136,12 +1175,9 @@ static int wolfCose_HdrStateContainsLabel(const WOLFCOSE_HDR_STATE* state,
         else {
             size_t i;
 
-            for (i = 0u; i < state->extraCount; i++) {
-                if ((state->extraLabels[i].isText != 0u) &&
-                    (state->extraLabels[i].textLen == label->textLen) &&
-                    ((label->textLen == 0u) ||
-                     (XMEMCMP(state->extraLabels[i].text, label->text,
-                              label->textLen) == 0))) {
+            for (i = 0u; i < state->extraTextCount; i++) {
+                if (wolfCose_TextLabelEquals(
+                        state->extraTextLabels[i], label) != 0) {
                     found = 1;
                     break;
                 }
@@ -1153,7 +1189,7 @@ static int wolfCose_HdrStateContainsLabel(const WOLFCOSE_HDR_STATE* state,
 }
 
 static int wolfCose_HdrStateAddLabel(WOLFCOSE_HDR_STATE* state,
-    const WOLFCOSE_CBOR_LABEL* label)
+    const WOLFCOSE_CBOR_LABEL* label, const uint8_t* encodedLabel)
 {
     int ret = WOLFCOSE_SUCCESS;
 
@@ -1163,22 +1199,23 @@ static int wolfCose_HdrStateAddLabel(WOLFCOSE_HDR_STATE* state,
     else if (label->isText == 0u) {
         ret = wolfCose_HdrStateAdd(state, label->val);
     }
-    else if (state->extraCount >= (size_t)WOLFCOSE_MAX_HEADER_LABELS) {
+    else if (encodedLabel == NULL) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if (state->extraTextCount >=
+             (size_t)WOLFCOSE_MAX_HEADER_LABELS) {
         ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
     else {
-        state->extraLabels[state->extraCount].integer = 0;
-        state->extraLabels[state->extraCount].text = label->text;
-        state->extraLabels[state->extraCount].textLen = label->textLen;
-        state->extraLabels[state->extraCount].isText = 1u;
-        state->extraCount++;
+        state->extraTextLabels[state->extraTextCount] = encodedLabel;
+        state->extraTextCount++;
     }
 
     return ret;
 }
 
 static int wolfCose_HdrStateCheckAndAddLabel(WOLFCOSE_HDR_STATE* state,
-    const WOLFCOSE_CBOR_LABEL* label)
+    const WOLFCOSE_CBOR_LABEL* label, const uint8_t* encodedLabel)
 {
     int ret = WOLFCOSE_SUCCESS;
 
@@ -1189,7 +1226,7 @@ static int wolfCose_HdrStateCheckAndAddLabel(WOLFCOSE_HDR_STATE* state,
         ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
     else {
-        ret = wolfCose_HdrStateAddLabel(state, label);
+        ret = wolfCose_HdrStateAddLabel(state, label, encodedLabel);
     }
 
     return ret;
@@ -1280,9 +1317,15 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
         }
 
         for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < mapCount); i++) {
+            const uint8_t* encodedLabel = NULL;
+
+            if ((ctx.cbuf != NULL) && (ctx.idx < ctx.bufSz)) {
+                encodedLabel = &ctx.cbuf[ctx.idx];
+            }
             ret = wc_CBOR_DecodeLabel(&ctx, &label);
             if (ret == WOLFCOSE_SUCCESS) {
-                ret = wolfCose_HdrStateCheckAndAddLabel(hdrState, &label);
+                ret = wolfCose_HdrStateCheckAndAddLabel(hdrState, &label,
+                    encodedLabel);
             }
 
             if ((ret == WOLFCOSE_SUCCESS) &&
@@ -1458,6 +1501,11 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
         }
 
         for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < mapCount); i++) {
+            const uint8_t* encodedLabel = NULL;
+
+            if ((ctx->cbuf != NULL) && (ctx->idx < ctx->bufSz)) {
+                encodedLabel = &ctx->cbuf[ctx->idx];
+            }
             ret = wc_CBOR_DecodeLabel(ctx, &label);
             if (ret == WOLFCOSE_SUCCESS) {
                 /* crit MUST live in the protected bucket. */
@@ -1471,7 +1519,8 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
                     ret = WOLFCOSE_E_CBOR_MALFORMED;
                 }
                 else {
-                    ret = wolfCose_HdrStateAddLabel(&unprotState, &label);
+                    ret = wolfCose_HdrStateAddLabel(&unprotState, &label,
+                        encodedLabel);
                 }
             }
 
@@ -6581,10 +6630,14 @@ static int wolfCose_ParseCounterMap(WOLFCOSE_CBOR_CTX* ctx,
 
     for (i = 0u; (ret == WOLFCOSE_SUCCESS) && (i < count); i++) {
         WOLFCOSE_CBOR_LABEL label;
+        const uint8_t* encodedLabel = NULL;
         const uint8_t* value = NULL;
         size_t valueLen = 0u;
         size_t valueStart;
 
+        if ((ctx->cbuf != NULL) && (ctx->idx < ctx->bufSz)) {
+            encodedLabel = &ctx->cbuf[ctx->idx];
+        }
         ret = wc_CBOR_DecodeLabel(ctx, &label);
         if ((ret == WOLFCOSE_SUCCESS) &&
             (wc_CBOR_LabelIsInt(&label, WOLFCOSE_HDR_CRIT) != 0)) {
@@ -6596,7 +6649,8 @@ static int wolfCose_ParseCounterMap(WOLFCOSE_CBOR_CTX* ctx,
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
             else {
-                ret = wolfCose_HdrStateAddLabel(&mapState, &label);
+                ret = wolfCose_HdrStateAddLabel(&mapState, &label,
+                    encodedLabel);
             }
         }
         valueStart = ctx->idx;
@@ -11430,7 +11484,11 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
 
         for (j = 0; (ret == WOLFCOSE_SUCCESS) && (j < mapCount); j++) {
             WOLFCOSE_CBOR_LABEL label;
+            const uint8_t* encodedLabel = NULL;
 
+            if ((ctx.cbuf != NULL) && (ctx.idx < ctx.bufSz)) {
+                encodedLabel = &ctx.cbuf[ctx.idx];
+            }
             ret = wc_CBOR_DecodeLabel(&ctx, &label);
 
             /* Reject duplicate labels within the unprotected map and labels
@@ -11443,7 +11501,8 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
                     ret = WOLFCOSE_E_CBOR_MALFORMED;
                 }
                 else {
-                    ret = wolfCose_HdrStateAddLabel(&unprotState, &label);
+                    ret = wolfCose_HdrStateAddLabel(&unprotState, &label,
+                        encodedLabel);
                 }
             }
 
