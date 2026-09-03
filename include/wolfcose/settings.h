@@ -143,9 +143,9 @@ extern "C" {
 
 /* ES256 — core. ECC_USER_CURVES keeps P-256 unless NO_ECC256 selects it
  * out; HAVE_ALL_CURVES is the equivalent all-curves configuration. */
-#if defined(HAVE_ECC) && !defined(NO_SHA256) && !defined(NO_ECC256) && \
-    (!defined(ECC_MIN_KEY_SZ) || (ECC_MIN_KEY_SZ <= 256)) && \
-    !defined(WOLFCOSE_NO_ES256)
+#if !defined(WOLFCOSE_NO_ES256) && defined(HAVE_ECC) && \
+    !defined(NO_SHA256) && !defined(NO_ECC256) && \
+    (!defined(ECC_MIN_KEY_SZ) || (ECC_MIN_KEY_SZ <= 256))
     #define WOLFCOSE_HAVE_ES256
 #endif
 

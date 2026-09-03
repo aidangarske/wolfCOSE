@@ -2620,6 +2620,9 @@ static void test_eat_psa_issue_boundaries(WOLFCOSE_KEY* key, WC_RNG* rng)
 #if defined(WOLFCOSE_SIGN1_VERIFY) && defined(WOLFCOSE_HAVE_ES256)
 static void test_eat_psa_rfc9783_sign1(void)
 {
+    static const uint8_t protectedX5chain[] = {
+        0xA2u, 0x01u, 0x26u, 0x18u, 0x21u, 0x40u
+    };
     WOLFCOSE_EAT_PSA_TOKEN token;
     EAT_PSA_COMPONENT_CTX componentCtx;
     WOLFCOSE_KEY key;
@@ -2639,18 +2642,12 @@ static void test_eat_psa_rfc9783_sign1(void)
     int keyInited = 0;
 
     (void)printf("  [RFC 9783 Appendix A Sign1]\n");
-    {
-        static const uint8_t protectedX5chain[] = {
-            0xA2u, 0x01u, 0x26u, 0x18u, 0x21u, 0x40u
-        };
-
-        (void)memset(&hdr, 0, sizeof(hdr));
-        ret = wolfCose_DecodeProtectedHdr(protectedX5chain,
-            sizeof(protectedX5chain), &hdr, &hdrState);
-        TEST_ASSERT(ret == WOLFCOSE_SUCCESS &&
-                    ((hdr.flags & WOLFCOSE_HDR_FLAG_X5CHAIN) != 0u),
-            "detect x5chain in protected COSE headers");
-    }
+    (void)memset(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(protectedX5chain,
+        sizeof(protectedX5chain), &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS &&
+                ((hdr.flags & WOLFCOSE_HDR_FLAG_X5CHAIN) != 0u),
+        "detect x5chain in protected COSE headers");
     ret = test_eat_psa_hex_decode(kRfc9783Sign1Hex, tokenBuf,
         sizeof(tokenBuf), &tokenLen);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS && tokenLen > 0u,
@@ -2817,6 +2814,9 @@ static void test_eat_psa_sign1(void)
     static const uint8_t currentProfile[] = WOLFCOSE_EAT_PSA_PROFILE_TFM;
     static const uint16_t lifecycleClasses[] = {
         0x1000u, 0x4000u, 0x5000u, 0x6000u
+    };
+    static const uint16_t provisioningLifecycles[] = {
+        0x2000u, 0x20FFu
     };
     WOLFCOSE_EAT_PSA_CLAIMS claims;
     WOLFCOSE_EAT_PSA_CLAIMS malformedClaims;
@@ -3377,31 +3377,25 @@ static void test_eat_psa_sign1(void)
                 "retain unknown lifecycle for application policy");
         }
 
-        {
-            static const uint16_t provisioningLifecycles[] = {
-                0x2000u, 0x20FFu
-            };
-
-            for (i = 0u; i < (sizeof(provisioningLifecycles) /
-                 sizeof(provisioningLifecycles[0])); i++) {
-                (void)memcpy(lifecyclePayload, payload, payloadLen);
-                testRet = test_eat_psa_set_lifecycle(lifecyclePayload,
-                    payloadLen, provisioningLifecycles[i]);
-                if (testRet == WOLFCOSE_SUCCESS) {
-                    testRet = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
-                        NULL, 0u, lifecyclePayload, payloadLen, NULL, 0u,
-                        NULL, 0u, scratch, sizeof(scratch), legacyToken,
-                        sizeof(legacyToken), &auxTokenLen, &rng);
-                }
-                if (testRet == WOLFCOSE_SUCCESS) {
-                    testRet = wc_EatPsaToken_Verify(&key, legacyToken,
-                        auxTokenLen, kNonce, sizeof(kNonce), scratch,
-                        sizeof(scratch), &token);
-                }
-                TEST_ASSERT(testRet == WOLFCOSE_SUCCESS &&
-                    token.lifecycle == provisioningLifecycles[i],
-                    "accept signed PSA RoT provisioning lifecycle boundaries");
+        for (i = 0u; i < (sizeof(provisioningLifecycles) /
+             sizeof(provisioningLifecycles[0])); i++) {
+            (void)memcpy(lifecyclePayload, payload, payloadLen);
+            testRet = test_eat_psa_set_lifecycle(lifecyclePayload,
+                payloadLen, provisioningLifecycles[i]);
+            if (testRet == WOLFCOSE_SUCCESS) {
+                testRet = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+                    NULL, 0u, lifecyclePayload, payloadLen, NULL, 0u,
+                    NULL, 0u, scratch, sizeof(scratch), legacyToken,
+                    sizeof(legacyToken), &auxTokenLen, &rng);
             }
+            if (testRet == WOLFCOSE_SUCCESS) {
+                testRet = wc_EatPsaToken_Verify(&key, legacyToken,
+                    auxTokenLen, kNonce, sizeof(kNonce), scratch,
+                    sizeof(scratch), &token);
+            }
+            TEST_ASSERT(testRet == WOLFCOSE_SUCCESS &&
+                token.lifecycle == provisioningLifecycles[i],
+                "accept signed PSA RoT provisioning lifecycle boundaries");
         }
         (void)memcpy(lifecyclePayload, payload, payloadLen);
         testRet = test_eat_psa_set_lifecycle(lifecyclePayload, payloadLen,
@@ -4082,7 +4076,7 @@ static void test_eat_psa_mac0(void)
             TEST_ASSERT(0, "expected deterministic Mac0 protected header");
         }
     }
-    if (ret == WOLFCOSE_E_COSE_BAD_ALG) {
+    if ((ret == WOLFCOSE_E_COSE_BAD_ALG) && (tokenLen > 0u)) {
         (void)memcpy(modifiedToken, tokenBuf, tokenLen);
         modifiedToken[tokenLen - 1u] ^= 0xFFu;
         (void)memset(&token, 0xA5, sizeof(token));

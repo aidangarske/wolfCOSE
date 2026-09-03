@@ -89,10 +89,6 @@
     (defined(WOLFCOSE_EAT_PSA_TFM_FULL) || defined(WOLFCOSE_EAT_PSA_ISSUE))
 static const uint8_t kEatPsaTfmProfile[] = WOLFCOSE_EAT_PSA_PROFILE_TFM;
 #endif
-#if defined(WOLFCOSE_EAT_PSA_LEGACY)
-static const uint8_t kEatPsaLegacyProfile[] = WOLFCOSE_EAT_PSA_PROFILE_LEGACY;
-#endif
-
 /* RFC 9783 Section 5.1 allows CBOR variation serialization. Keep that
  * tolerance scoped to authenticated PSA/EAT parsing; the public CBOR API
  * remains strict and carries no profile-specific decode state. */
@@ -122,6 +118,21 @@ static const uint8_t kEatPsaLegacyProfile[] = WOLFCOSE_EAT_PSA_PROFILE_LEGACY;
 #define WOLFCOSE_EAT_PSA_SKIP(ctx) \
     wolfCose_CBOR_Skip_ex((ctx), WOLFCOSE_EAT_PSA_DECODE_FLAGS)
 
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
+static int wolfCose_EatPsaConstantCompare(const uint8_t* a, const uint8_t* b,
+    size_t length)
+{
+    size_t i;
+    volatile unsigned int result = 0u;
+
+    for (i = 0u; i < length; i++) {
+        result |= (unsigned int)a[i] ^ (unsigned int)b[i];
+    }
+
+    return (int)result;
+}
+#endif
+
 #if defined(WOLFCOSE_EAT_PSA_ISSUE)
 static int wolfCose_EatPsaBuffersOverlap(const uint8_t* a, size_t aSz,
     const uint8_t* b, size_t bSz)
@@ -129,14 +140,21 @@ static int wolfCose_EatPsaBuffersOverlap(const uint8_t* a, size_t aSz,
     int overlap = 0;
 
     if ((a != NULL) && (b != NULL) && (aSz != 0u) && (bSz != 0u)) {
-        uintptr_t aStart = (uintptr_t)(const void*)a;
-        uintptr_t bStart = (uintptr_t)(const void*)b;
+        /* uintptr_t is used intentionally: relational comparison of pointers
+         * to unrelated caller-owned objects is not defined by ISO C. */
+        uintptr_t aStart = (uintptr_t)a;
+        uintptr_t bStart = (uintptr_t)b;
 
-        if (aStart <= bStart) {
-            overlap = ((bStart - aStart) < (uintptr_t)aSz) ? 1 : 0;
+        if ((aStart <= bStart) &&
+            ((bStart - aStart) < (uintptr_t)aSz)) {
+            overlap = 1;
+        }
+        else if ((aStart > bStart) &&
+                 ((aStart - bStart) < (uintptr_t)bSz)) {
+            overlap = 1;
         }
         else {
-            overlap = ((aStart - bStart) < (uintptr_t)bSz) ? 1 : 0;
+            /* The nonempty buffer ranges are disjoint. */
         }
     }
 
@@ -159,9 +177,9 @@ static int wolfCose_EatPsaComponentOverlapsBuffer(
     int overlap = 0;
 
     if (component != NULL) {
-        overlap =
+        overlap = (
             (wolfCose_EatPsaBuffersOverlap(
-                 (const uint8_t*)(const void*)component, sizeof(*component),
+                 (const uint8_t*)component, sizeof(*component),
                  buffer, bufferSz) != 0) ||
             (wolfCose_EatPsaSpanOverlapsBuffer(&component->measurementType,
                  buffer, bufferSz) != 0) ||
@@ -172,7 +190,7 @@ static int wolfCose_EatPsaComponentOverlapsBuffer(
             (wolfCose_EatPsaSpanOverlapsBuffer(&component->signerId,
                  buffer, bufferSz) != 0) ||
             (wolfCose_EatPsaSpanOverlapsBuffer(&component->measurementDesc,
-                 buffer, bufferSz) != 0);
+                 buffer, bufferSz) != 0)) ? 1 : 0;
     }
 
     return overlap;
@@ -190,9 +208,9 @@ static int wolfCose_EatPsaClaimsOverlapBuffer(
     if (claims != NULL) {
         size_t i;
 
-        overlap =
+        overlap = (
             (wolfCose_EatPsaBuffersOverlap(
-                 (const uint8_t*)(const void*)claims, sizeof(*claims),
+                 (const uint8_t*)claims, sizeof(*claims),
                  buffer, bufferSz) != 0) ||
             (wolfCose_EatPsaSpanOverlapsBuffer(&claims->nonce,
                  buffer, bufferSz) != 0) ||
@@ -206,7 +224,7 @@ static int wolfCose_EatPsaClaimsOverlapBuffer(
                  &claims->certificationReference, buffer, bufferSz) != 0) ||
             (wolfCose_EatPsaSpanOverlapsBuffer(
                  &claims->verificationServiceIndicator, buffer,
-                 bufferSz) != 0);
+                 bufferSz) != 0)) ? 1 : 0;
         for (i = 0u; (overlap == 0) && (i < claims->componentCount); i++) {
             overlap = wolfCose_EatPsaComponentOverlapsBuffer(
                 &claims->components[i], buffer, bufferSz);
@@ -250,9 +268,10 @@ static int wolfCose_EatPsaIsOptionalSpan(const WOLFCOSE_EAT_PSA_SPAN* span)
 {
     int ret = 0;
 
-    if (span != NULL) {
-        ret = (((span->data == NULL) && (span->len == 0u)) ||
-               (span->data != NULL)) ? 1 : 0;
+    if ((span != NULL) &&
+        (((span->data == NULL) && (span->len == 0u)) ||
+         (span->data != NULL))) {
+        ret = 1;
     }
 
     return ret;
@@ -290,6 +309,9 @@ static int wolfCose_EatPsaCertRefValid(const WOLFCOSE_EAT_PSA_SPAN* span,
             else if ((span->data[i] < (uint8_t)'0') ||
                      (span->data[i] > (uint8_t)'9')) {
                 ret = 0;
+            }
+            else {
+                /* The character is a valid decimal digit. */
             }
         }
     }
@@ -751,6 +773,9 @@ static int wolfCose_EatPsaDecodeComponent(WOLFCOSE_CBOR_CTX* ctx,
         else if (ret == WOLFCOSE_SUCCESS) {
             ret = WOLFCOSE_EAT_PSA_SKIP(ctx);
         }
+        else {
+            /* Preserve the error produced while decoding the component. */
+        }
     }
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((wolfCose_EatPsaIsHash(&component->measurementValue) == 0) ||
@@ -767,6 +792,7 @@ static int wolfCose_EatPsaDecodeComponents(WOLFCOSE_CBOR_CTX* ctx,
     int ret;
     size_t i;
     size_t count = 0u;
+    size_t startIdx = 0u;
     const uint8_t* start;
     WOLFCOSE_EAT_PSA_COMPONENT component;
 
@@ -774,7 +800,8 @@ static int wolfCose_EatPsaDecodeComponents(WOLFCOSE_CBOR_CTX* ctx,
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
-        start = &ctx->cbuf[ctx->idx];
+        startIdx = ctx->idx;
+        start = &ctx->cbuf[startIdx];
         ret = WOLFCOSE_EAT_PSA_DECODE_ARRAY(ctx, &count);
     }
     if ((ret == WOLFCOSE_SUCCESS) &&
@@ -786,7 +813,7 @@ static int wolfCose_EatPsaDecodeComponents(WOLFCOSE_CBOR_CTX* ctx,
     }
     if (ret == WOLFCOSE_SUCCESS) {
         token->components.data = start;
-        token->components.len = (size_t)(&ctx->cbuf[ctx->idx] - start);
+        token->components.len = ctx->idx - startIdx;
         token->componentCount = count;
     }
 
@@ -814,8 +841,11 @@ static int wolfCose_EatPsaSetProfile(WOLFCOSE_EAT_PSA_TOKEN* token,
     }
     else if (profile == WOLFCOSE_EAT_PSA_PROFILE_OLD) {
 #if defined(WOLFCOSE_EAT_PSA_LEGACY)
-        expected = kEatPsaLegacyProfile;
-        expectedLen = sizeof(kEatPsaLegacyProfile) - 1u;
+        static const uint8_t legacyProfile[] =
+            WOLFCOSE_EAT_PSA_PROFILE_LEGACY;
+
+        expected = legacyProfile;
+        expectedLen = sizeof(legacyProfile) - 1u;
 #else
         ret = WOLFCOSE_E_EAT_PSA_PROFILE;
 #endif
@@ -825,7 +855,7 @@ static int wolfCose_EatPsaSetProfile(WOLFCOSE_EAT_PSA_TOKEN* token,
     }
     if (ret == WOLFCOSE_SUCCESS) {
         if ((textLen != expectedLen) ||
-            (XMEMCMP(text, expected, textLen) != 0)) {
+            (wolfCose_EatPsaConstantCompare(text, expected, textLen) != 0)) {
             ret = WOLFCOSE_E_EAT_PSA_PROFILE;
         }
         else {
@@ -1113,6 +1143,9 @@ static int wolfCose_EatPsaDecodeClaims(const uint8_t* payload,
                 }
             }
         }
+        else {
+            /* Preserve the error produced while decoding the map label. */
+        }
     }
     if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
         ret = WOLFCOSE_E_EAT_PSA_CLAIM;
@@ -1129,6 +1162,9 @@ static int wolfCose_EatPsaDecodeClaims(const uint8_t* payload,
         }
         else if (token->profile != WOLFCOSE_EAT_PSA_PROFILE_CURRENT) {
             ret = WOLFCOSE_E_EAT_PSA_PROFILE;
+        }
+        else {
+            /* All required current-profile claims were decoded. */
         }
     }
 #endif
@@ -1147,6 +1183,9 @@ static int wolfCose_EatPsaDecodeClaims(const uint8_t* payload,
         }
         else if (token->profile != WOLFCOSE_EAT_PSA_PROFILE_OLD) {
             ret = WOLFCOSE_E_EAT_PSA_PROFILE;
+        }
+        else {
+            /* All required legacy-profile claims were decoded. */
         }
     }
 #endif
@@ -1288,8 +1327,12 @@ static int wolfCose_EatPsaCheckNonce(const WOLFCOSE_EAT_PSA_TOKEN* token,
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else if ((token->nonce.len != expectedNonceLen) ||
-        (XMEMCMP(token->nonce.data, expectedNonce, expectedNonceLen) != 0)) {
+        (wolfCose_EatPsaConstantCompare(token->nonce.data, expectedNonce,
+             expectedNonceLen) != 0)) {
         ret = WOLFCOSE_E_EAT_PSA_NONCE;
+    }
+    else {
+        /* The authenticated nonce matches the caller's challenge. */
     }
 
     return ret;

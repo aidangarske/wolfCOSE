@@ -87,7 +87,7 @@ EAT_PSA_LIMITS_TEST_BIN = tests/test_wolfcose_eat_psa_limits
 
 # Full PSA/EAT conformance test profile. Production integrations can select a
 # smaller subset by defining only the WOLFCOSE_ENABLE_EAT_PSA_* switches they
-# need; see docs/PSA-EAT.md. This variable is overrideable for CI experiments.
+# need; see docs/PSA-EAT.md. This variable is overridable for CI experiments.
 EAT_PSA_FULL_FLAGS ?= -DWOLFCOSE_ENABLE_EAT_PSA \
 	-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
 	-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1 -DWOLFCOSE_ENABLE_EAT_PSA_MAC0 \
@@ -288,16 +288,16 @@ ecdsa-policy-test:
 rsapss-policy-test:
 	$(CC) $(CFLAGS) -Werror=unused-function -fsyntax-only \
 	    -DWOLFCOSE_NO_SIGN1 -DWOLFCOSE_NO_SIGN src/wolfcose.c
-	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H -DWC_NO_HARDEN \
 	    -DWC_RSA_PSS -DWOLFCOSE_NO_KEY_ENCODE \
 	    -DWOLFCOSE_ENABLE_RSAPSS src/wolfcose.c
-	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H -DWC_NO_HARDEN \
 	    -DWC_RSA_PSS -DWOLFCOSE_LEAN_VERIFY \
 	    -DWOLFCOSE_ENABLE_RSAPSS src/wolfcose.c
 	@set -e; \
 	log_file=$$(mktemp "$${TMPDIR:-/tmp}/wolfcose-rsapss.XXXXXX"); \
 	trap 'rm -f "$$log_file"' 0 1 2 3 15; \
-	if $(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	if $(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H -DWC_NO_HARDEN \
 	    -UHAVE_ECC -UWOLFSSL_EXPORT_INT \
 	    -DWC_RSA_PSS -DWOLFCOSE_ENABLE_RSAPSS \
 	    -DWOLFSSL_RSA_VERIFY_ONLY -DWOLFCOSE_LEAN_VERIFY \
@@ -307,7 +307,7 @@ rsapss-policy-test:
 	fi; \
 	grep -q "RSA-PSS key validation requires WOLFSSL_EXPORT_INT" \
 	    "$$log_file"
-	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	$(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H -DWC_NO_HARDEN \
 	    -UHAVE_ECC -UWOLFSSL_EXPORT_INT \
 	    -DWC_RSA_PSS -DWOLFCOSE_ENABLE_RSAPSS \
 	    -DWOLFSSL_RSA_VERIFY_ONLY -DWOLFSSL_EXPORT_INT \
@@ -316,7 +316,7 @@ rsapss-policy-test:
 	log_file=$$(mktemp "$${TMPDIR:-/tmp}/wolfcose-rsapss.XXXXXX"); \
 	trap 'rm -f "$$log_file"' 0 1 2 3 15; \
 	for backend in WOLF_CRYPTO_CB WOLFSSL_MICROCHIP_TA100; do \
-	    if $(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H \
+	    if $(CC) $(CFLAGS) -x c -fsyntax-only -DWOLFSSL_NO_OPTIONS_H -DWC_NO_HARDEN \
 	        -UHAVE_ECC -UWOLFSSL_EXPORT_INT \
 	        -DWC_RSA_PSS -DWOLFCOSE_ENABLE_RSAPSS \
 	        -DWOLFSSL_RSA_VERIFY_ONLY -D$$backend \
@@ -423,7 +423,7 @@ eat-psa-profile-test:
 eat-psa-config-check:
 	$(MAKE) clean
 	$(MAKE) all
-	@if nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_"; then \
+	@if nm $(LIB_A) | grep "wc_CoseEatPsaToken_" >/dev/null; then \
 	    echo "FAIL: default library exports PSA/EAT"; exit 1; \
 	fi
 	@echo "PASS: default library has no PSA/EAT symbols"
@@ -432,48 +432,48 @@ eat-psa-config-check:
 	$(MAKE) test EXTRA_CFLAGS='-DWOLFCOSE_ENABLE_COSE_TEXT_LABELS'
 	@echo "PASS: generic COSE text-label extension is independently selectable"
 	$(MAKE) all EXTRA_CFLAGS='$(EAT_PSA_FULL_FLAGS)'
-	@if ! nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_Verify"; then \
+	@if ! nm $(LIB_A) | grep "wc_CoseEatPsaToken_Verify" >/dev/null; then \
 	    echo "FAIL: enabled library omits PSA/EAT verifier"; exit 1; \
 	fi
 	$(MAKE) all
-	@if nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_"; then \
+	@if nm $(LIB_A) | grep "wc_CoseEatPsaToken_" >/dev/null; then \
 	    echo "FAIL: enabled-to-default build retained PSA/EAT symbols"; exit 1; \
 	fi
 	$(MAKE) all EXTRA_CFLAGS='-DHAVE_CONFIG_H -I./tests/config/eat_psa_config'
-	@if ! nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_Verify"; then \
+	@if ! nm $(LIB_A) | grep "wc_CoseEatPsaToken_Verify" >/dev/null; then \
 	    echo "FAIL: config.h-enabled library omits PSA/EAT verifier"; exit 1; \
 	fi
 	$(MAKE) all
-	@if nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_"; then \
+	@if nm $(LIB_A) | grep "wc_CoseEatPsaToken_" >/dev/null; then \
 	    echo "FAIL: config.h-to-default build retained PSA/EAT symbols"; exit 1; \
 	fi
 	$(MAKE) all EXTRA_CFLAGS='-DWOLFCOSE_LEAN $(EAT_PSA_NO_DECODE_FLAGS) \
 		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
 		-DWOLFCOSE_ENABLE_EAT_PSA_ISSUE'
-	@if ! nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_EncodeClaims"; then \
+	@if ! nm $(LIB_A) | grep "wc_CoseEatPsaToken_EncodeClaims" >/dev/null; then \
 	    echo "FAIL: claim-only issuer omits claim encoder"; exit 1; \
 	fi
-	@if nm $(LIB_A) | grep -E -q "wc_CoseEatPsaToken_(Verify|Create)"; then \
+	@if nm $(LIB_A) | grep -E "wc_CoseEatPsaToken_(Verify|Create)" >/dev/null; then \
 	    echo "FAIL: claim-only issuer contains a verifier or envelope creator"; exit 1; \
 	fi
 	$(MAKE) all EXTRA_CFLAGS='-DWOLFCOSE_LEAN $(EAT_PSA_NO_DECODE_FLAGS) \
 		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
 		-DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
 		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE'
-	@if ! nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_CreateSign1"; then \
+	@if ! nm $(LIB_A) | grep "wc_CoseEatPsaToken_CreateSign1" >/dev/null; then \
 	    echo "FAIL: Sign1-only issuer omits Sign1 creator"; exit 1; \
 	fi
-	@if nm $(LIB_A) | grep -E -q "wc_CoseEatPsaToken_(Verify|CreateMac0)"; then \
+	@if nm $(LIB_A) | grep -E "wc_CoseEatPsaToken_(Verify|CreateMac0)" >/dev/null; then \
 	    echo "FAIL: Sign1-only issuer contains verifier or Mac0 creator"; exit 1; \
 	fi
 	$(MAKE) all EXTRA_CFLAGS='-DWOLFCOSE_LEAN $(EAT_PSA_NO_DECODE_FLAGS) \
 		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
 		-DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
 		-DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE'
-	@if ! nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_CreateMac0"; then \
+	@if ! nm $(LIB_A) | grep "wc_CoseEatPsaToken_CreateMac0" >/dev/null; then \
 	    echo "FAIL: Mac0-only issuer omits Mac0 creator"; exit 1; \
 	fi
-	@if nm $(LIB_A) | grep -E -q "wc_CoseEatPsaToken_(Verify|CreateSign1)"; then \
+	@if nm $(LIB_A) | grep -E "wc_CoseEatPsaToken_(Verify|CreateSign1)" >/dev/null; then \
 	    echo "FAIL: Mac0-only issuer contains verifier or Sign1 creator"; exit 1; \
 	fi
 	$(MAKE) all

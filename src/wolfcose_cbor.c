@@ -67,7 +67,9 @@ static int wolfCose_CBOR_IsUtf8(const uint8_t* data, size_t len)
         ret = 0;
     }
     while ((i < len) && (ret != 0)) {
-        uint8_t first = data[i++];
+        uint8_t first = data[i];
+
+        i++;
 
         if (first <= 0x7Fu) {
             /* Single-byte ASCII code point. */

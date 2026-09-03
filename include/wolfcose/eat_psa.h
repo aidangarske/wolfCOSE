@@ -30,7 +30,7 @@ extern "C" {
 #ifdef WOLFCOSE_EAT_PSA
 
 #define WOLFCOSE_EAT_PSA_PROFILE_TFM \
-    "tag:psacertified.org,2023:psa#tfm"
+    "tag:psacertified.org,2023:psa\x23" "tfm"
 #define WOLFCOSE_EAT_PSA_PROFILE_LEGACY "PSA_IOT_PROFILE_1"
 
 /* PSA/EAT-specific errors are intentionally absent from the base API when

@@ -4342,7 +4342,6 @@ static void test_cose_mac_multi_per_recipient(void)
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                     "mac rejects later mixed recipient mode");
         out[algOffsets[1]] = 0x25u; /* direct */
-        ret = WOLFCOSE_SUCCESS;
         out[algOffsets[0]] = 0x22u; /* A128KW */
         ret = wc_CoseMac_Verify(&recipients[1], 1, out, outLen,
             NULL, 0, NULL, 0, scratch, sizeof(scratch),
@@ -16940,7 +16939,6 @@ static void test_cose_encrypt_multi_per_recipient(void)
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                     "encrypt rejects later mixed recipient mode");
         out[algOffsets[1]] = 0x25u; /* direct */
-        ret = WOLFCOSE_SUCCESS;
         out[algOffsets[0]] = 0x22u; /* A128KW */
         ret = wc_CoseEncrypt_Decrypt(&recipients[1], 1, out, outLen,
             NULL, 0, NULL, 0, scratch, sizeof(scratch), &hdr,

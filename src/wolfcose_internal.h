@@ -129,9 +129,10 @@ static inline uint64_t wolfCose_LoadBE64(const uint8_t* buf)
 
 #if defined(WOLFCOSE_EAT_PSA_VERIFY)
     #define WOLFCOSE_COSE_DECODE_FLAGS_VALID(flags) \
-        (((flags) & ~WOLFCOSE_COSE_DECODE_ALLOW_NONPREFERRED) == 0u)
+        ((((flags) & ~WOLFCOSE_COSE_DECODE_ALLOW_NONPREFERRED) == 0u) ? 1 : 0)
 #else
-    #define WOLFCOSE_COSE_DECODE_FLAGS_VALID(flags) ((flags) == 0u)
+    #define WOLFCOSE_COSE_DECODE_FLAGS_VALID(flags) \
+        (((flags) == 0u) ? 1 : 0)
 #endif
 
 #if defined(WOLFCOSE_EAT_PSA_VERIFY)
