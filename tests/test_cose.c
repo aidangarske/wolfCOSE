@@ -7467,11 +7467,12 @@ static void test_cose_key_peek_info(void)
         TEST_ASSERT(wc_CoseKey_PeekInfo(buf, enc.idx, &info) ==
                     WOLFCOSE_E_CBOR_MALFORMED, "peek trailing bytes");
 
-        /* Text label */
+        /* A text label named "kty" is never the registered integer kty. */
         (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
         (void)wc_CBOR_EncodeMapStart(&enc, 1);
         (void)wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"kty", 3);
         (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
         TEST_ASSERT(wc_CoseKey_PeekInfo(buf, enc.idx, &info) ==
                     WOLFCOSE_E_COSE_BAD_HDR,
                     "peek does not treat text label as numeric kty");
@@ -7534,6 +7535,11 @@ static void test_cose_key_peek_info(void)
                         "decode rejects duplicate text extension");
             wc_CoseKey_Free(&key);
         }
+#else
+        TEST_ASSERT(wc_CoseKey_PeekInfo(buf, enc.idx, &info) ==
+                    WOLFCOSE_E_CBOR_MALFORMED,
+                    "peek rejects text labels when support is disabled");
+#endif
     }
 }
 
@@ -10140,7 +10146,9 @@ static void test_cose_secret_zeroize(void)
 }
 #endif /* ZEROIZE_HOOK && ECDH_ES_DIRECT && ES256 && HKDF */
 
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && \
+    defined(HAVE_HKDF)
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
 static int test_cose_add_vendor_entries(const uint8_t* in, size_t inLen,
     size_t mapPos, size_t entryCount, uint8_t* out, size_t outSz,
     size_t* outLen)
@@ -10182,6 +10190,7 @@ static int test_cose_add_vendor_entries(const uint8_t* in, size_t inLen,
 
     return ret;
 }
+#endif /* WOLFCOSE_COSE_TEXT_LABELS */
 
 /**
  * Test ECDH-ES (Ephemeral-Static) encryption and decryption.
@@ -10383,6 +10392,7 @@ static void test_cose_encrypt_ecdh_es_ephemeral_crv_narrowing(void)
     (void)wc_FreeRng(&rng);
 }
 
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
 static void test_cose_encrypt_ecdh_es_text_extensions(void)
 {
     WOLFCOSE_KEY recipientKey;
@@ -10498,6 +10508,7 @@ static void test_cose_encrypt_ecdh_es_text_extensions(void)
     (void)wc_ecc_free(&recipientEcc);
     (void)wc_FreeRng(&rng);
 }
+#endif /* WOLFCOSE_COSE_TEXT_LABELS */
 
 static void test_cose_encrypt_ecdh_es_malformed_ephemeral_point(void)
 {
@@ -17056,6 +17067,7 @@ static void test_cose_protected_hdr_tstr_label(void)
     WOLFCOSE_HDR_STATE hdrState;
     /* {1: -7, "x": 0} : alg ES256, plus an unknown tstr label */
     uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
     /* Same map, with tstr length one encoded non-preferred. */
     uint8_t nonPreferred[] = {
         0xA2u, 0x01u, 0x26u, 0x78u, 0x01u, 'x', 0x00u
@@ -17063,11 +17075,13 @@ static void test_cose_protected_hdr_tstr_label(void)
     uint8_t duplicateTstr[] = {
         0xA2u, 0x61u, 'x', 0x00u, 0x61u, 'x', 0x01u
     };
+#endif
 
     TEST_LOG("  [Protected Header: tstr-labeled entry]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(tstrLabel, sizeof(tstrLabel), &hdr,
                                       &hdrState);
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS && hdr.alg == WOLFCOSE_ALG_ES256,
                 "DecodeProtectedHdr skips unknown preferred tstr label");
 
@@ -17090,6 +17104,10 @@ static void test_cose_protected_hdr_tstr_label(void)
                                       &hdr, &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "DecodeProtectedHdr rejects duplicate tstr labels");
+#else
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "DecodeProtectedHdr rejects disabled tstr labels");
+#endif
 }
 
 static void test_cose_protected_hdr_dup_label(void)
@@ -18518,6 +18536,7 @@ static void test_cose_decode_tstr_alg_values(void)
                 "DecodeUnprotectedHdr tolerates tstr alg");
 }
 
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
 static int test_cose_encode_text_extension_map(uint8_t firstLabel,
     size_t count, uint8_t* out, size_t outSz, size_t* outLen)
 {
@@ -18743,6 +18762,7 @@ static void test_cose_decode_unprotected_tstr_label(void)
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
         "combined text-before-integer capacity rejects one over limit");
 }
+#endif /* WOLFCOSE_COSE_TEXT_LABELS */
 
 static void test_cose_key_decode_tstr_alg_rejected(void)
 {
@@ -24332,7 +24352,9 @@ int test_cose(void)
     test_cose_encrypt_ecdh_es_kid_and_alg_pin();
     test_cose_encrypt_ecdh_es_ephemeral_crv_narrowing();
     test_cose_encrypt_ecdh_es_malformed_ephemeral_point();
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
     test_cose_encrypt_ecdh_es_text_extensions();
+#endif
     test_cose_encrypt_ecdh_es_hkdf_256();
     test_cose_encrypt_ecdh_es_long_recipient_protected();
     test_cose_encrypt_ecdh_es_wrong_key();
@@ -24541,7 +24563,9 @@ int test_cose(void)
     defined(WOLFCOSE_HAVE_ES256) && defined(WOLFSSL_KEY_GEN)
     test_cose_sign_multi_wrong_kty_for_pss();
 #endif
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
     test_cose_decode_unprotected_tstr_label();
+#endif
     test_cose_sigsize_known_algs();
     test_cose_decode_tstr_alg_values();
     test_cose_key_decode_tstr_alg_rejected();

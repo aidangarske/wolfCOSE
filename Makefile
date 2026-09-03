@@ -92,8 +92,16 @@ EAT_PSA_FULL_FLAGS ?= -DWOLFCOSE_ENABLE_EAT_PSA \
 	-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
 	-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1 -DWOLFCOSE_ENABLE_EAT_PSA_MAC0 \
 	-DWOLFCOSE_ENABLE_EAT_PSA_ISSUE -DWOLFCOSE_ENABLE_EAT_PSA_LEGACY \
+	-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE \
+	-DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE \
 	-DWOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER \
 	-DWOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR
+
+# Remove every lean-core decode path. Issuer-only matrix builds use this to
+# prove that PSA/EAT claim and envelope creation do not retain CBOR decoding.
+EAT_PSA_NO_DECODE_FLAGS = -DWOLFCOSE_NO_SIGN1_VERIFY \
+	-DWOLFCOSE_NO_ENCRYPT0_DECRYPT -DWOLFCOSE_NO_MAC0_VERIFY \
+	-DWOLFCOSE_NO_KEY_DECODE -DWOLFCOSE_NO_CBOR_DECODE
 
 # Exercise established generic targets against an intentionally reduced
 # algorithm set. PSA/EAT-specific targets select EAT_PSA_FULL_FLAGS instead.
@@ -150,6 +158,8 @@ shared: $(OBJ)
 
 src/%.o: src/%.c src/wolfcose_internal.h include/wolfcose/wolfcose.h $(BUILD_CONFIG_CHANGED) $(BUILD_CONFIG)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+src/wolfcose_eat_psa.o: include/wolfcose/eat_psa.h
 
 # --- Tests ---
 # Keep this synthetic policy probe independent of profiles used by the build
@@ -375,6 +385,7 @@ eat-psa-profile-test:
 	$(CC) $(CFLAGS) -DWOLFCOSE_TEST_EAT_PSA_PROFILES \
 		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
 		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1 -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE \
 		-o $(EAT_PSA_TEST_BIN) $(CORE_SRC) $(EAT_PSA_SRC) \
 		tests/test_eat_psa_profiles.c tests/test_eat_psa_profile_main.c \
 		$(LDFLAGS) $(LDLIBS)
@@ -383,6 +394,7 @@ eat-psa-profile-test:
 	$(CC) $(CFLAGS) -DWOLFCOSE_TEST_EAT_PSA_PROFILES \
 		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
 		-DWOLFCOSE_ENABLE_EAT_PSA_MAC0 -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE \
 		-o $(EAT_PSA_TEST_BIN) $(CORE_SRC) $(EAT_PSA_SRC) \
 		tests/test_eat_psa_profiles.c tests/test_eat_psa_profile_main.c \
 		$(LDFLAGS) $(LDLIBS)
@@ -417,6 +429,8 @@ eat-psa-config-check:
 	@echo "PASS: default library has no PSA/EAT symbols"
 	$(MAKE) test
 	@echo "PASS: default generic verifiers reject private PSA/EAT decode flags"
+	$(MAKE) test EXTRA_CFLAGS='-DWOLFCOSE_ENABLE_COSE_TEXT_LABELS'
+	@echo "PASS: generic COSE text-label extension is independently selectable"
 	$(MAKE) all EXTRA_CFLAGS='$(EAT_PSA_FULL_FLAGS)'
 	@if ! nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_Verify"; then \
 	    echo "FAIL: enabled library omits PSA/EAT verifier"; exit 1; \
@@ -433,6 +447,36 @@ eat-psa-config-check:
 	@if nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_"; then \
 	    echo "FAIL: config.h-to-default build retained PSA/EAT symbols"; exit 1; \
 	fi
+	$(MAKE) all EXTRA_CFLAGS='-DWOLFCOSE_LEAN $(EAT_PSA_NO_DECODE_FLAGS) \
+		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
+		-DWOLFCOSE_ENABLE_EAT_PSA_ISSUE'
+	@if ! nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_EncodeClaims"; then \
+	    echo "FAIL: claim-only issuer omits claim encoder"; exit 1; \
+	fi
+	@if nm $(LIB_A) | grep -E -q "wc_CoseEatPsaToken_(Verify|Create)"; then \
+	    echo "FAIL: claim-only issuer contains a verifier or envelope creator"; exit 1; \
+	fi
+	$(MAKE) all EXTRA_CFLAGS='-DWOLFCOSE_LEAN $(EAT_PSA_NO_DECODE_FLAGS) \
+		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
+		-DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE'
+	@if ! nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_CreateSign1"; then \
+	    echo "FAIL: Sign1-only issuer omits Sign1 creator"; exit 1; \
+	fi
+	@if nm $(LIB_A) | grep -E -q "wc_CoseEatPsaToken_(Verify|CreateMac0)"; then \
+	    echo "FAIL: Sign1-only issuer contains verifier or Mac0 creator"; exit 1; \
+	fi
+	$(MAKE) all EXTRA_CFLAGS='-DWOLFCOSE_LEAN $(EAT_PSA_NO_DECODE_FLAGS) \
+		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
+		-DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE'
+	@if ! nm $(LIB_A) | grep -q "wc_CoseEatPsaToken_CreateMac0"; then \
+	    echo "FAIL: Mac0-only issuer omits Mac0 creator"; exit 1; \
+	fi
+	@if nm $(LIB_A) | grep -E -q "wc_CoseEatPsaToken_(Verify|CreateSign1)"; then \
+	    echo "FAIL: Mac0-only issuer contains verifier or Sign1 creator"; exit 1; \
+	fi
+	$(MAKE) all
 	$(CC) $(CFLAGS) -Werror -DWOLFCOSE_LEAN_VERIFY \
 		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
 		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1 -fsyntax-only $(EAT_PSA_SRC)
@@ -448,11 +492,33 @@ eat-psa-config-check:
 	$(CC) $(CFLAGS) -Werror \
 		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
 		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1 -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE \
 		-DWOLFCOSE_NO_ES384 -DWOLFCOSE_NO_ES512 -fsyntax-only $(EAT_PSA_SRC)
 	$(CC) $(CFLAGS) -Werror \
 		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
 		-DWOLFCOSE_ENABLE_EAT_PSA_MAC0 -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE \
 		-DWOLFCOSE_NO_HMAC384 -DWOLFCOSE_NO_HMAC512 -fsyntax-only $(EAT_PSA_SRC)
+	$(CC) $(CFLAGS) -Werror -Werror=unused-function -DWOLFCOSE_LEAN \
+		-DWOLFCOSE_NO_ES256 -DWOLFCOSE_ENABLE_ES384 \
+		-DWOLFCOSE_NO_SIGN1_VERIFY -DWOLFCOSE_ENABLE_EAT_PSA \
+		-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE -fsyntax-only $(EAT_PSA_SRC)
+	$(CC) $(CFLAGS) -Werror -Werror=unused-function -DWOLFCOSE_LEAN \
+		-DWOLFCOSE_NO_ES256 -DWOLFCOSE_ENABLE_ES512 \
+		-DWOLFCOSE_NO_SIGN1_VERIFY -DWOLFCOSE_ENABLE_EAT_PSA \
+		-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE -fsyntax-only $(EAT_PSA_SRC)
+	$(CC) $(CFLAGS) -Werror -Werror=unused-function -DWOLFCOSE_LEAN \
+		-DWOLFCOSE_NO_HMAC256 -DWOLFCOSE_ENABLE_HMAC384 \
+		-DWOLFCOSE_NO_MAC0_VERIFY -DWOLFCOSE_ENABLE_EAT_PSA \
+		-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE -fsyntax-only $(EAT_PSA_SRC)
+	$(CC) $(CFLAGS) -Werror -Werror=unused-function -DWOLFCOSE_LEAN \
+		-DWOLFCOSE_NO_HMAC256 -DWOLFCOSE_ENABLE_HMAC512 \
+		-DWOLFCOSE_NO_MAC0_VERIFY -DWOLFCOSE_ENABLE_EAT_PSA \
+		-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE -fsyntax-only $(EAT_PSA_SRC)
 	$(CC) $(CFLAGS) -Werror -DWOLFSSL_USER_SETTINGS \
 		-I./tests/config/eat_psa_curves \
 		-DWOLFCOSE_ENABLE_EAT_PSA -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
@@ -550,6 +616,23 @@ eat-psa-config-check:
 	    echo "FAIL: Mac0 flag accepted without PSA/EAT"; exit 1; \
 	fi
 	@if $(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EAT_PSA \
+		-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT -fsyntax-only \
+		$(EAT_PSA_SRC) >/dev/null 2>&1; then \
+	    echo "FAIL: PSA/EAT accepted a profile without an operation"; exit 1; \
+	fi
+	@if $(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EAT_PSA \
+		-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
+		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE -fsyntax-only \
+		$(EAT_PSA_SRC) >/dev/null 2>&1; then \
+	    echo "FAIL: Sign1 issuer accepted without common issuance"; exit 1; \
+	fi
+	@if $(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EAT_PSA \
+		-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
+		-DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE -fsyntax-only \
+		$(EAT_PSA_SRC) >/dev/null 2>&1; then \
+	    echo "FAIL: Mac0 issuer accepted without common issuance"; exit 1; \
+	fi
+	@if $(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EAT_PSA \
 		-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT -DWOLFCOSE_ENABLE_EAT_PSA_SIGN1 \
 		-DWOLFCOSE_NO_ES256 -DWOLFCOSE_NO_ES384 -DWOLFCOSE_NO_ES512 \
 		-fsyntax-only $(EAT_PSA_SRC) >/dev/null 2>&1; then \
@@ -570,9 +653,15 @@ eat-psa-config-check:
 	fi
 	@if $(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EAT_PSA \
 		-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
-		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1 -DWOLFCOSE_NO_SIGN1_SIGN \
+		-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE -DWOLFCOSE_NO_SIGN1_SIGN \
 		-fsyntax-only $(EAT_PSA_SRC) >/dev/null 2>&1; then \
-	    echo "FAIL: issuer flag accepted without a creation path"; exit 1; \
+	    echo "FAIL: Sign1 issuer accepted without a creation path"; exit 1; \
+	fi
+	@if $(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EAT_PSA \
+		-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+		-DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE -DWOLFCOSE_NO_MAC0_CREATE \
+		-fsyntax-only $(EAT_PSA_SRC) >/dev/null 2>&1; then \
+	    echo "FAIL: Mac0 issuer accepted without a creation path"; exit 1; \
 	fi
 	@if $(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_EAT_PSA \
 		-DWOLFCOSE_ENABLE_EAT_PSA_LEGACY -DWOLFCOSE_ENABLE_EAT_PSA_SIGN1 \

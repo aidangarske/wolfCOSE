@@ -546,21 +546,19 @@ extern "C" {
  * independently so an embedded verifier carries only the code it uses.
  * Generic WOLFCOSE_ENABLE_<algorithm> controls remain the algorithm gates.
  *
- *   WOLFCOSE_ENABLE_EAT_PSA                    common PSA/EAT API and parser
+ *   WOLFCOSE_ENABLE_EAT_PSA                    common PSA/EAT API and types
  *   WOLFCOSE_ENABLE_EAT_PSA_CURRENT            RFC 9783 TF-M claim profile
  *   WOLFCOSE_ENABLE_EAT_PSA_SIGN1              tagged Sign1 consumption
  *   WOLFCOSE_ENABLE_EAT_PSA_MAC0               tagged Mac0 consumption
- *   WOLFCOSE_ENABLE_EAT_PSA_ISSUE              current-profile issuance
+ *   WOLFCOSE_ENABLE_EAT_PSA_ISSUE              current claim encoding
+ *   WOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE        tagged Sign1 issuance
+ *   WOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE         tagged Mac0 issuance
  *   WOLFCOSE_ENABLE_EAT_PSA_LEGACY             PSA_IOT_PROFILE_1 consume
  *   WOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER      claim-based key lookup helper
  *   WOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR component traversal helper
  */
 #if defined(WOLFCOSE_ENABLE_EAT_PSA)
     #define WOLFCOSE_EAT_PSA
-#endif
-
-#if defined(WOLFCOSE_EAT_PSA) && !defined(WOLFCOSE_CBOR_DECODE)
-    #error "WOLFCOSE_ENABLE_EAT_PSA requires CBOR decoding"
 #endif
 
 #if defined(WOLFCOSE_ENABLE_EAT_PSA_CURRENT)
@@ -577,8 +575,16 @@ extern "C" {
     #define WOLFCOSE_EAT_PSA_LEGACY
 #endif
 
+#if defined(WOLFCOSE_ENABLE_EAT_PSA_ISSUE)
+    #if !defined(WOLFCOSE_EAT_PSA_CURRENT) || !defined(WOLFCOSE_CBOR_ENCODE)
+        #error "WOLFCOSE_ENABLE_EAT_PSA_ISSUE requires EAT_PSA_CURRENT and CBOR encode"
+    #endif
+    #define WOLFCOSE_EAT_PSA_ISSUE
+#endif
+
 #if defined(WOLFCOSE_ENABLE_EAT_PSA_SIGN1)
     #if !defined(WOLFCOSE_EAT_PSA) || !defined(WOLFCOSE_SIGN1_VERIFY) || \
+        !defined(WOLFCOSE_CBOR_DECODE) || \
         (!defined(WOLFCOSE_HAVE_ES256) && !defined(WOLFCOSE_HAVE_ES384) && \
          !defined(WOLFCOSE_HAVE_ES512))
         #error "WOLFCOSE_ENABLE_EAT_PSA_SIGN1 requires EAT_PSA and an ECDSA COSE Sign1 verifier"
@@ -588,10 +594,44 @@ extern "C" {
 
 #if defined(WOLFCOSE_ENABLE_EAT_PSA_MAC0)
     #if !defined(WOLFCOSE_EAT_PSA) || !defined(WOLFCOSE_MAC0_VERIFY) || \
-        !defined(WOLFCOSE_HAVE_HMAC)
+        !defined(WOLFCOSE_CBOR_DECODE) || !defined(WOLFCOSE_HAVE_HMAC)
         #error "WOLFCOSE_ENABLE_EAT_PSA_MAC0 requires EAT_PSA and HMAC COSE Mac0 verify"
     #endif
     #define WOLFCOSE_EAT_PSA_MAC0
+#endif
+
+#if defined(WOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE)
+    #if !defined(WOLFCOSE_EAT_PSA_ISSUE) || \
+        !defined(WOLFCOSE_SIGN1_SIGN) || \
+        (!defined(WOLFCOSE_HAVE_ES256) && !defined(WOLFCOSE_HAVE_ES384) && \
+         !defined(WOLFCOSE_HAVE_ES512))
+        #error "EAT_PSA_SIGN1_ISSUE needs EAT_PSA_ISSUE and ECDSA Sign1 signing"
+    #endif
+    #define WOLFCOSE_EAT_PSA_SIGN1_ISSUE
+#endif
+
+#if defined(WOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE)
+    #if !defined(WOLFCOSE_EAT_PSA_ISSUE) || \
+        !defined(WOLFCOSE_MAC0_CREATE) || !defined(WOLFCOSE_HAVE_HMAC)
+        #error "EAT_PSA_MAC0_ISSUE needs EAT_PSA_ISSUE and HMAC Mac0 creation"
+    #endif
+    #define WOLFCOSE_EAT_PSA_MAC0_ISSUE
+#endif
+
+#if defined(WOLFCOSE_EAT_PSA_SIGN1) || defined(WOLFCOSE_EAT_PSA_MAC0)
+    #define WOLFCOSE_EAT_PSA_VERIFY
+#endif
+
+/* Text-string COSE labels need additional duplicate-tracking state. Keep the
+ * generic extension opt-in, while enabling it automatically for variation-
+ * tolerant PSA/EAT verification. */
+#if defined(WOLFCOSE_ENABLE_COSE_TEXT_LABELS)
+    #if !defined(WOLFCOSE_CBOR_DECODE)
+        #error "WOLFCOSE_ENABLE_COSE_TEXT_LABELS requires CBOR decode"
+    #endif
+    #define WOLFCOSE_COSE_TEXT_LABELS
+#elif defined(WOLFCOSE_EAT_PSA_VERIFY)
+    #define WOLFCOSE_COSE_TEXT_LABELS
 #endif
 
 #if defined(WOLFCOSE_EAT_PSA) && !defined(WOLFCOSE_EAT_PSA_CURRENT) && \
@@ -599,46 +639,28 @@ extern "C" {
     #error "WOLFCOSE_ENABLE_EAT_PSA needs EAT_PSA_CURRENT and/or EAT_PSA_LEGACY"
 #endif
 
-#if defined(WOLFCOSE_EAT_PSA) && !defined(WOLFCOSE_EAT_PSA_SIGN1) && \
-    !defined(WOLFCOSE_EAT_PSA_MAC0)
-    #error "WOLFCOSE_ENABLE_EAT_PSA needs EAT_PSA_SIGN1 and/or EAT_PSA_MAC0"
+#if defined(WOLFCOSE_EAT_PSA) && !defined(WOLFCOSE_EAT_PSA_VERIFY) && \
+    !defined(WOLFCOSE_EAT_PSA_ISSUE)
+    #error "WOLFCOSE_ENABLE_EAT_PSA needs a verifier and/or issuer operation"
+#endif
+
+#if defined(WOLFCOSE_EAT_PSA_LEGACY) && \
+    !defined(WOLFCOSE_EAT_PSA_VERIFY)
+    #error "WOLFCOSE_ENABLE_EAT_PSA_LEGACY is consume-only and needs a verifier"
 #endif
 
 #if defined(WOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER)
-    #if !defined(WOLFCOSE_EAT_PSA)
-        #error "WOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER requires EAT_PSA"
+    #if !defined(WOLFCOSE_EAT_PSA_VERIFY)
+        #error "WOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER requires an EAT_PSA verifier"
     #endif
     #define WOLFCOSE_EAT_PSA_UEID_RESOLVER
 #endif
 
 #if defined(WOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR)
-    #if !defined(WOLFCOSE_EAT_PSA)
-        #error "WOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR requires EAT_PSA"
+    #if !defined(WOLFCOSE_EAT_PSA_VERIFY)
+        #error "WOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR requires an EAT_PSA verifier"
     #endif
     #define WOLFCOSE_EAT_PSA_COMPONENT_ITERATOR
-#endif
-
-#if defined(WOLFCOSE_ENABLE_EAT_PSA_ISSUE)
-    #if !defined(WOLFCOSE_EAT_PSA_CURRENT) || !defined(WOLFCOSE_CBOR_ENCODE)
-        #error "WOLFCOSE_ENABLE_EAT_PSA_ISSUE requires EAT_PSA_CURRENT and CBOR encode"
-    #endif
-    #define WOLFCOSE_EAT_PSA_ISSUE
-#endif
-
-#if defined(WOLFCOSE_EAT_PSA_ISSUE) && defined(WOLFCOSE_EAT_PSA_SIGN1) && \
-    defined(WOLFCOSE_SIGN1_SIGN)
-    #define WOLFCOSE_EAT_PSA_SIGN1_ISSUE
-#endif
-
-#if defined(WOLFCOSE_EAT_PSA_ISSUE) && defined(WOLFCOSE_EAT_PSA_MAC0) && \
-    defined(WOLFCOSE_MAC0_CREATE) && defined(WOLFCOSE_HAVE_HMAC)
-    #define WOLFCOSE_EAT_PSA_MAC0_ISSUE
-#endif
-
-#if defined(WOLFCOSE_EAT_PSA_ISSUE) && \
-    !defined(WOLFCOSE_EAT_PSA_SIGN1_ISSUE) && \
-    !defined(WOLFCOSE_EAT_PSA_MAC0_ISSUE)
-    #error "WOLFCOSE_ENABLE_EAT_PSA_ISSUE needs an enabled signing or MAC creation path"
 #endif
 
 /* RFC 9783 Section 5.2 gives the standardized #tfm profile a fixed receiver
@@ -702,11 +724,13 @@ extern "C" {
 
 #if defined(WOLFCOSE_EAT_PSA)
     /* Maximum software-component maps accepted in one PSA token. This bounds
-     * verification time while leaving decoded component bytes zero-copy. */
+     * verification time and issuer input size. */
     #ifndef WOLFCOSE_EAT_PSA_MAX_COMPONENTS
         #define WOLFCOSE_EAT_PSA_MAX_COMPONENTS 32u
     #endif
+#endif
 
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
     /* PSA/EAT map keys must be unique, including unknown extension keys. The
      * allocation-free duplicate check re-scans earlier entries, so bound both
      * maps to retain predictable verifier time. Defaults leave room for
@@ -736,6 +760,8 @@ extern "C" {
     #if WOLFCOSE_EAT_PSA_MAX_COMPONENTS < 1u
         #error "WOLFCOSE_EAT_PSA_MAX_COMPONENTS must permit one component"
     #endif
+#endif
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
     #if WOLFCOSE_EAT_PSA_MAX_CLAIMS < 10u
         #error "WOLFCOSE_EAT_PSA_MAX_CLAIMS must permit all current-profile claims"
     #endif

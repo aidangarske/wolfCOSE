@@ -75,7 +75,8 @@ typedef struct WOLFCOSE_EAT_PSA_CLAIMS {
     WOLFCOSE_EAT_PSA_SPAN ueid; /**< Required 33-byte UEID starting with 0x01. */
     WOLFCOSE_EAT_PSA_SPAN implementationId; /**< Required 32-byte implementation ID. */
     WOLFCOSE_EAT_PSA_SPAN bootSeed; /**< Optional current-profile 8 to 32-byte seed. */
-    WOLFCOSE_EAT_PSA_SPAN certificationReference; /**< Optional 13-digit EAN-13, dash, and five-digit version. */
+    /** Optional 13-digit EAN-13, dash, and five-digit version. */
+    WOLFCOSE_EAT_PSA_SPAN certificationReference;
     WOLFCOSE_EAT_PSA_SPAN verificationServiceIndicator; /**< Optional text VSI. */
     int32_t clientId; /**< Required nonzero signed PSA client ID. */
     uint16_t lifecycle; /**< Required lifecycle; 0x00xx is structurally valid unknown state. */
@@ -90,7 +91,8 @@ typedef struct WOLFCOSE_EAT_PSA_TOKEN {
     WOLFCOSE_EAT_PSA_SPAN ueid; /**< Authenticated UEID. */
     WOLFCOSE_EAT_PSA_SPAN implementationId; /**< Authenticated implementation ID. */
     WOLFCOSE_EAT_PSA_SPAN bootSeed; /**< Optional authenticated boot seed. */
-    WOLFCOSE_EAT_PSA_SPAN certificationReference; /**< Optional EAN-13 + five-digit certification reference. */
+    /** Optional EAN-13 and five-digit certification reference. */
+    WOLFCOSE_EAT_PSA_SPAN certificationReference;
     WOLFCOSE_EAT_PSA_SPAN verificationServiceIndicator; /**< Optional VSI. */
     int32_t clientId; /**< Authenticated nonzero PSA client ID. */
     uint16_t lifecycle; /**< Authenticated lifecycle; appraise 0x00xx by policy. */
@@ -251,11 +253,13 @@ WOLFCOSE_API int wc_CoseEatPsaToken_CreateMac0(const WOLFCOSE_KEY* key,
  *         WOLFCOSE_E_EAT_PSA_CLAIM, WOLFCOSE_E_EAT_PSA_PROFILE,
  *         WOLFCOSE_E_EAT_PSA_NONCE, or WOLFCOSE_E_INVALID_ARG.
  */
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
 WOLFCOSE_API int wc_CoseEatPsaToken_Verify(const WOLFCOSE_KEY* key,
     const uint8_t* in, size_t inSz,
     const uint8_t* expectedNonce, size_t expectedNonceLen,
     uint8_t* scratch, size_t scratchSz,
     WOLFCOSE_EAT_PSA_TOKEN* token);
+#endif
 
 /**
  * \brief Verify a PSA token after resolving its key using the untrusted UEID.
@@ -311,7 +315,9 @@ WOLFCOSE_API int wc_CoseEatPsaToken_ForEachComponent(
 #if defined(WOLFCOSE_EAT_PSA_MAC0_ISSUE)
     #define wc_EatPsaToken_CreateMac0 wc_CoseEatPsaToken_CreateMac0
 #endif
-#define wc_EatPsaToken_Verify wc_CoseEatPsaToken_Verify
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
+    #define wc_EatPsaToken_Verify wc_CoseEatPsaToken_Verify
+#endif
 #if defined(WOLFCOSE_EAT_PSA_UEID_RESOLVER)
     #define wc_EatPsaToken_VerifyByUeid wc_CoseEatPsaToken_VerifyByUeid
 #endif

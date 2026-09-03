@@ -1010,12 +1010,13 @@ typedef struct WOLFCOSE_KEY_INFO {
  *
  * Nothing is imported, no key object is needed, and \p in is not modified.
  * The same structural checks wc_CoseKey_Decode() applies are applied here
- * (no duplicate integer or text labels, kty required, no trailing bytes), so
- * a buffer that peeks successfully will not be rejected by the decoder for
- * those reasons. Registered COSE_Key parameters remain numeric; an unknown
- * text label is treated as a non-critical extension. Keys containing key_ops
- * are rejected with WOLFCOSE_E_UNSUPPORTED because the fixed-size key wrapper
- * cannot retain arbitrary operation identifiers.
+ * (no duplicate integer labels, kty required, no trailing bytes), so a buffer
+ * that peeks successfully will not be rejected by the decoder for those
+ * reasons. WOLFCOSE_ENABLE_COSE_TEXT_LABELS accepts unknown text labels as
+ * non-critical extensions and checks them for duplicates. Registered
+ * COSE_Key parameters remain numeric. Keys containing key_ops are rejected
+ * with WOLFCOSE_E_UNSUPPORTED because the fixed-size key wrapper cannot
+ * retain arbitrary operation identifiers.
  *
  * \param in    Input CBOR COSE_Key buffer.
  * \param inSz  Input buffer size; must be exactly the encoded length.

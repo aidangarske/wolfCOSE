@@ -467,10 +467,11 @@ The decoded `kty`/`crv` must name the attached key type or
 key type a buffer holds before attaching anything, use
 [`wc_CoseKey_PeekInfo()`](#wc_cosekey_peekinfo).
 
-Decoding is strict: preferred CBOR only, no duplicate integer or text labels,
-and `bufSz` must be exactly the encoded length. Registered COSE_Key parameters
-remain numeric; an unknown text label is treated as a non-critical extension.
-See
+Decoding is strict: preferred CBOR only, no duplicate integer labels, and
+`bufSz` must be exactly the encoded length. With
+`WOLFCOSE_ENABLE_COSE_TEXT_LABELS`, unknown text labels are accepted as
+non-critical extensions and checked for duplicates. Registered COSE_Key
+parameters remain numeric. See
 [Getting Started - Strict
 decoding](Getting-Started.md#strict-decoding-rfc-8949-preferred-serialization).
 Keys containing the optional `key_ops` label (4) return
@@ -533,11 +534,11 @@ if (ret == WOLFCOSE_SUCCESS) {
 `in` is not modified and nothing is consumed, so the call is repeatable. `kid`
 points into `in`, so it stays valid only as long as that buffer does.
 
-The same structural checks `wc_CoseKey_Decode()` applies are applied here -
-no duplicate integer or text labels, `kty` required, and no trailing bytes -
-so a buffer that peeks successfully will not be rejected by the decoder for
-those reasons. Registered COSE_Key parameters remain numeric and an unknown
-text label is treated as a non-critical extension. Label `-1` is `crv` for
+The same structural checks `wc_CoseKey_Decode()` applies are applied here:
+no duplicate integer labels, `kty` required, and no trailing bytes. With
+`WOLFCOSE_ENABLE_COSE_TEXT_LABELS`, unknown text labels are also accepted and
+checked for duplicates. Registered COSE_Key parameters remain numeric. Label
+`-1` is `crv` for
 EC2/OKP but `k`/`n` for symmetric/RSA keys; the value is dispatched on its
 CBOR type, so `crv` stays 0 for the latter. A `key_ops` label returns
 `WOLFCOSE_E_UNSUPPORTED`, matching decode. On any error every field of `info`
@@ -1042,8 +1043,8 @@ the output token is used. `expectedNonce` is required and must be 32, 48, or
 | Function | Required feature gate | Purpose |
 |----------|-----------------------|---------|
 | `wc_CoseEatPsaToken_EncodeClaims` | `WOLFCOSE_ENABLE_EAT_PSA_ISSUE` | Encode current-profile claims |
-| `wc_CoseEatPsaToken_CreateSign1` | issue plus Sign1 creation | Encode and create a current Sign1 token |
-| `wc_CoseEatPsaToken_CreateMac0` | issue plus Mac0 creation | Encode and create a current Mac0 token |
+| `wc_CoseEatPsaToken_CreateSign1` | `WOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE` plus common issue | Encode and create a current Sign1 token |
+| `wc_CoseEatPsaToken_CreateMac0` | `WOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE` plus common issue | Encode and create a current Mac0 token |
 | `wc_CoseEatPsaToken_VerifyByUeid` | `WOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER` | Resolve a candidate key from an untrusted UEID, then authenticate the original token |
 | `wc_CoseEatPsaToken_ForEachComponent` | `WOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR` | Decode authenticated software components one at a time |
 
@@ -1225,12 +1226,13 @@ else {
 }
 ```
 
-`wc_CoseKey_Decode()` and the COSE header parsers accept both forms and
-bytewise track text-label duplicates, including between protected and
-unprotected header buckets. Registered COSE parameters remain numeric: a text
-label such as `"alg"` or `"kty"` is an unknown extension, not an alias for
-numeric labels 1 or 3. Unknown non-critical extensions are skipped; an
-unknown entry listed in numeric `crit` is rejected.
+With `WOLFCOSE_ENABLE_COSE_TEXT_LABELS`, `wc_CoseKey_Decode()` and the COSE
+header parsers accept both forms and bytewise track text-label duplicates,
+including between protected and unprotected header buckets. Registered COSE
+parameters remain numeric: a text label such as `"alg"` or `"kty"` is an
+unknown extension, not an alias for numeric labels 1 or 3. Unknown
+non-critical extensions are skipped; an unknown entry listed in numeric
+`crit` is rejected. Without the gate, these generic parsers reject text labels.
 
 **Returns:** `WOLFCOSE_SUCCESS` or error code
 

@@ -409,15 +409,16 @@ Related strictness that surprises integrators for the same reason:
 - EC2 coordinates must be exactly the curve size, with leading zeros preserved
   (RFC 9053 Section 7.1.1) - a 31-byte P-256 `x` is rejected, not left-padded.
 - A duplicate label in a header or `COSE_Key` map is rejected.
-- `COSE_Key` and COSE header maps accept integer and text labels, and reject
-  duplicate text labels just as they reject duplicate integer labels. Registered
-  COSE parameters are numeric; an unknown text label is skipped as a
-  non-critical extension, not treated as an alias such as `"alg"` for label 1.
+- With `WOLFCOSE_ENABLE_COSE_TEXT_LABELS`, `COSE_Key` and COSE header maps
+  accept unknown text labels and reject their duplicates. Registered COSE
+  parameters remain numeric; `"alg"` is not an alias for integer label 1.
+  The option is off by default and is implied by PSA/EAT verification.
 
-None of this is configurable for the ordinary API: relaxing it would let a
-signature or MAC be recomputed over a re-encoding of the same data, which is
-the class of bug deterministic encoding exists to prevent. The optional
-PSA/EAT verifier's variation-tolerant path still rejects indefinite CBOR.
+The strict decoding rules are not configurable for the ordinary API: relaxing
+them would let a signature or MAC be recomputed over a re-encoding of the same
+data. The text-label option expands accepted label types without relaxing CBOR
+encoding rules. The optional PSA/EAT verifier's variation-tolerant path still
+rejects indefinite CBOR.
 
 ## Cross-Compilation
 

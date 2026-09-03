@@ -216,6 +216,8 @@ static int wolfCose_EatPsaClaimsOverlapBuffer(
     return overlap;
 }
 
+#if defined(WOLFCOSE_EAT_PSA_SIGN1_ISSUE) || \
+    defined(WOLFCOSE_EAT_PSA_MAC0_ISSUE)
 static int wolfCose_EatPsaIssueBuffersOverlap(
     const uint8_t* claimsBuf, size_t claimsBufSz,
     const uint8_t* scratch, size_t scratchSz,
@@ -228,6 +230,7 @@ static int wolfCose_EatPsaIssueBuffersOverlap(
             (wolfCose_EatPsaBuffersOverlap(scratch, scratchSz,
                  out, outSz) != 0)) ? 1 : 0;
 }
+#endif
 #endif /* WOLFCOSE_EAT_PSA_ISSUE */
 
 static int wolfCose_EatPsaIsHash(const WOLFCOSE_EAT_PSA_SPAN* span)
@@ -294,7 +297,8 @@ static int wolfCose_EatPsaCertRefValid(const WOLFCOSE_EAT_PSA_SPAN* span,
     return ret;
 }
 
-#if defined(WOLFCOSE_EAT_PSA_SIGN1)
+#if defined(WOLFCOSE_EAT_PSA_SIGN1) || \
+    defined(WOLFCOSE_EAT_PSA_SIGN1_ISSUE)
 static int wolfCose_EatPsaSignAlg(int32_t alg)
 {
     int ret = 0;
@@ -321,9 +325,10 @@ static int wolfCose_EatPsaSignAlg(int32_t alg)
 
     return ret;
 }
-#endif /* WOLFCOSE_EAT_PSA_SIGN1 */
+#endif /* WOLFCOSE_EAT_PSA_SIGN1 || WOLFCOSE_EAT_PSA_SIGN1_ISSUE */
 
-#if defined(WOLFCOSE_EAT_PSA_MAC0)
+#if defined(WOLFCOSE_EAT_PSA_MAC0) || \
+    defined(WOLFCOSE_EAT_PSA_MAC0_ISSUE)
 static int wolfCose_EatPsaMacAlg(int32_t alg)
 {
     int ret = 0;
@@ -350,7 +355,7 @@ static int wolfCose_EatPsaMacAlg(int32_t alg)
 
     return ret;
 }
-#endif /* WOLFCOSE_EAT_PSA_MAC0 */
+#endif /* WOLFCOSE_EAT_PSA_MAC0 || WOLFCOSE_EAT_PSA_MAC0_ISSUE */
 
 #if defined(WOLFCOSE_EAT_PSA_ISSUE) && defined(WOLFCOSE_CBOR_ENCODE)
 static int wolfCose_EatPsaValidateComponent(
@@ -581,6 +586,8 @@ int wc_CoseEatPsaToken_EncodeClaims(const WOLFCOSE_EAT_PSA_CLAIMS* claims,
 #endif
 }
 #endif /* WOLFCOSE_EAT_PSA_ISSUE */
+
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
 
 static int wolfCose_EatPsaLabelsEqual(const WOLFCOSE_CBOR_LABEL* first,
     const WOLFCOSE_CBOR_LABEL* second)
@@ -1481,6 +1488,8 @@ int wc_CoseEatPsaToken_ForEachComponent(const WOLFCOSE_EAT_PSA_TOKEN* token,
     return ret;
 }
 #endif /* WOLFCOSE_EAT_PSA_COMPONENT_ITERATOR */
+
+#endif /* WOLFCOSE_EAT_PSA_VERIFY */
 
 #if defined(WOLFCOSE_EAT_PSA_SIGN1_ISSUE)
 int wc_CoseEatPsaToken_CreateSign1(WOLFCOSE_KEY* key, int32_t alg,

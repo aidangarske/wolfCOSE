@@ -31,9 +31,10 @@
 #include "wolfcose_internal.h"
 #include <string.h>  /* memcpy */
 
+#if defined(WOLFCOSE_CBOR_DECODE)
 static int wolfCose_CBOR_AllowsNonpreferred(uint32_t decodeFlags)
 {
-#if defined(WOLFCOSE_EAT_PSA)
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
     return ((decodeFlags & WOLFCOSE_COSE_DECODE_ALLOW_NONPREFERRED) != 0u) ?
         1 : 0;
 #else
@@ -41,14 +42,18 @@ static int wolfCose_CBOR_AllowsNonpreferred(uint32_t decodeFlags)
     return 0;
 #endif
 }
+#endif
 
+#if defined(WOLFCOSE_CBOR_ENCODE)
 static int wolfCose_CBOR_IsEncodeContext(const WOLFCOSE_CBOR_CTX* ctx)
 {
     /* buf has always selected encoder mode. Do not inspect cbuf here because
      * existing callers may initialize only the original encoder fields. */
     return ((ctx != NULL) && (ctx->buf != NULL)) ? 1 : 0;
 }
+#endif
 
+#if defined(WOLFCOSE_CBOR_ENCODE) || defined(WOLFCOSE_CBOR_DECODE)
 /* RFC 8949 Section 3.3 defines a text string as a sequence of Unicode code
  * points encoded in UTF-8. Keep this bounded and allocation-free so it is
  * usable for ordinary text values, labels, and values skipped by a profile
@@ -140,7 +145,9 @@ static int wolfCose_CBOR_IsUtf8(const uint8_t* data, size_t len)
 
     return ret;
 }
+#endif
 
+#if defined(WOLFCOSE_CBOR_ENCODE)
 /* WOLFCOSE_CBOR_CTX is public, so a caller can pass a context whose idx has
  * been advanced past bufSz. Subtraction-based capacity check that cannot wrap
  * in that case. Returns 1 when at least need bytes remain, 0 otherwise. */
@@ -149,7 +156,9 @@ static int wolfCose_CBOR_HasRoom(const WOLFCOSE_CBOR_CTX* ctx, size_t need)
     return ((ctx->idx <= ctx->bufSz) &&
             (need <= (ctx->bufSz - ctx->idx))) ? 1 : 0;
 }
+#endif
 
+#if defined(WOLFCOSE_CBOR_ENCODE)
 /* -----
  * Internal: CBOR head encoder
  *
@@ -235,7 +244,9 @@ int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx, uint8_t majorType,
     }
     return ret;
 }
+#endif /* WOLFCOSE_CBOR_ENCODE */
 
+#if defined(WOLFCOSE_CBOR_DECODE)
 /* -----
  * Internal: CBOR head decoder
  *
@@ -366,6 +377,7 @@ int wolfCose_CBOR_DecodeHead_ex(WOLFCOSE_CBOR_CTX* ctx,
     }
     return ret;
 }
+#endif /* WOLFCOSE_CBOR_DECODE */
 
 /* -----
  * Public Encode API

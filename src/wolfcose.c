@@ -1010,6 +1010,7 @@ int wolfCose_EccVerifyRaw(const uint8_t* sigBuf, size_t sigLen,
 
 /* ----- Internal: Protected/Unprotected header encode/decode ----- */
 
+#if defined(WOLFCOSE_CBOR_DECODE)
 /* COSE algorithm, key type, and curve identifiers are stored in int32_t
  * fields. Reject decoded CBOR integers that do not fit before narrowing so a
  * non-representable value cannot alias a valid identifier. */
@@ -1049,7 +1050,9 @@ static void wolfCose_HdrStateInit(WOLFCOSE_HDR_STATE* state)
     if (state != NULL) {
         state->labelBits = 0u;
         state->extraCount = 0u;
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
         state->textCount = 0u;
+#endif
     }
 }
 
@@ -1091,9 +1094,13 @@ static int wolfCose_HdrStateAdd(WOLFCOSE_HDR_STATE* state, int64_t label)
         if (bit != 0u) {
             state->labelBits |= bit;
         }
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
         else if ((state->textCount > (size_t)WOLFCOSE_MAX_MAP_ITEMS) ||
                  (state->extraCount >=
                   ((size_t)WOLFCOSE_MAX_MAP_ITEMS - state->textCount))) {
+#else
+        else if (state->extraCount >= (size_t)WOLFCOSE_MAX_MAP_ITEMS) {
+#endif
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
         else {
@@ -1105,6 +1112,7 @@ static int wolfCose_HdrStateAdd(WOLFCOSE_HDR_STATE* state, int64_t label)
     return ret;
 }
 
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
 static int wolfCose_HdrStateTextContains(const WOLFCOSE_HDR_STATE* state,
     const uint8_t* text, size_t textLen)
 {
@@ -1151,6 +1159,7 @@ static int wolfCose_HdrStateTextAdd(WOLFCOSE_HDR_STATE* state,
 
     return ret;
 }
+#endif
 
 static int wolfCose_HdrStateCheckAndAdd(WOLFCOSE_HDR_STATE* state,
     int64_t label)
@@ -1174,8 +1183,10 @@ static int wolfCose_HdrStateContainsLabel(const WOLFCOSE_HDR_STATE* state,
 
     if (label != NULL) {
         if (label->isText != 0u) {
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
             found = wolfCose_HdrStateTextContains(state, label->text,
                 label->textLen);
+#endif
         }
         else {
             found = wolfCose_HdrStateContains(state, label->val);
@@ -1194,7 +1205,11 @@ static int wolfCose_HdrStateAddLabel(WOLFCOSE_HDR_STATE* state,
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else if (label->isText != 0u) {
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
         ret = wolfCose_HdrStateTextAdd(state, label->text, label->textLen);
+#else
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+#endif
     }
     else {
         ret = wolfCose_HdrStateAdd(state, label->val);
@@ -1238,15 +1253,19 @@ static int wolfCose_HdrStateMerge(WOLFCOSE_HDR_STATE* dst,
         for (i = 0u; (ret == WOLFCOSE_SUCCESS) && (i < src->extraCount); i++) {
             ret = wolfCose_HdrStateAdd(dst, src->extraLabels[i]);
         }
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
         for (i = 0u; (ret == WOLFCOSE_SUCCESS) && (i < src->textCount); i++) {
             ret = wolfCose_HdrStateTextAdd(dst, src->textLabels[i],
                 src->textLabelLens[i]);
         }
+#endif
     }
 
     return ret;
 }
+#endif /* WOLFCOSE_CBOR_DECODE */
 
+#if defined(WOLFCOSE_CBOR_ENCODE)
 int wolfCose_EncodeProtectedHdr(int32_t alg, uint8_t* buf, size_t bufSz,
                                  size_t* outLen)
 {
@@ -1275,7 +1294,9 @@ int wolfCose_EncodeProtectedHdr(int32_t alg, uint8_t* buf, size_t bufSz,
     }
     return ret;
 }
+#endif /* WOLFCOSE_CBOR_ENCODE */
 
+#if defined(WOLFCOSE_CBOR_DECODE)
 int wolfCose_DecodeProtectedHdr_ex(const uint8_t* data, size_t dataLen,
                                     WOLFCOSE_HDR* hdr,
                                     WOLFCOSE_HDR_STATE* hdrState,
@@ -1431,7 +1452,7 @@ int wolfCose_DecodeProtectedHdr_ex(const uint8_t* data, size_t dataLen,
                     hdr->partialIvLen = pivBstrLen;
                 }
             }
-#if defined(WOLFCOSE_EAT_PSA)
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
             else if ((ret == WOLFCOSE_SUCCESS) && (label.isText == 0u) &&
                      (label.val == WOLFCOSE_HDR_X5CHAIN)) {
                 hdr->flags |= WOLFCOSE_HDR_FLAG_X5CHAIN;
@@ -1582,7 +1603,7 @@ int wolfCose_DecodeUnprotectedHdr_ex(WOLFCOSE_CBOR_CTX* ctx,
                     }
                 }
             }
-#if defined(WOLFCOSE_EAT_PSA)
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
             else if ((ret == WOLFCOSE_SUCCESS) && (label.isText == 0u) &&
                      (label.val == WOLFCOSE_HDR_X5CHAIN)) {
                 hdr->flags |= WOLFCOSE_HDR_FLAG_X5CHAIN;
@@ -1614,6 +1635,7 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
 {
     return wolfCose_DecodeUnprotectedHdr_ex(ctx, hdr, hdrState, 0u);
 }
+#endif /* WOLFCOSE_CBOR_DECODE */
 
 #if defined(WOLFCOSE_SIGN_VERIFY) || defined(WOLFCOSE_ENCRYPT_DECRYPT) || \
     defined(WOLFCOSE_MAC_VERIFY)

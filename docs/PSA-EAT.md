@@ -13,27 +13,35 @@ the caller. Decoded claim spans borrow the authenticated input token.
 ## Select only what is needed
 
 `WOLFCOSE_ENABLE_EAT_PSA` enables the common API. Select at least one profile
-and at least one envelope family after it.
+and at least one consume or issue operation after it.
 
 | Define | Effect | Default |
 |---|---|---|
-| `WOLFCOSE_ENABLE_EAT_PSA` | Common PSA/EAT API and parser support | off |
+| `WOLFCOSE_ENABLE_EAT_PSA` | Common PSA/EAT API and types | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_CURRENT` | RFC 9783 TF-M profile, `tag:psacertified.org,2023:psa#tfm` | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_SIGN1` | Tagged `COSE_Sign1` consumption | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_MAC0` | Tagged `COSE_Mac0` consumption | off |
-| `WOLFCOSE_ENABLE_EAT_PSA_ISSUE` | Current-profile claim encoding and token creation | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_ISSUE` | Current-profile claim encoding | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE` | Tagged `COSE_Sign1` token creation | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE` | Tagged `COSE_Mac0` token creation | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_LEGACY` | Legacy `PSA_IOT_PROFILE_1` consumption | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER` | `wc_CoseEatPsaToken_VerifyByUeid()` key lookup helper | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR` | `wc_CoseEatPsaToken_ForEachComponent()` callback helper | off |
 | `WOLFCOSE_EAT_PSA_MAX_COMPONENTS` | Maximum accepted software-component maps | 32 |
-| `WOLFCOSE_EAT_PSA_MAX_CLAIMS` | Maximum current/legacy claim-map entries, including extensions | 64 |
-| `WOLFCOSE_EAT_PSA_MAX_COMPONENT_CLAIMS` | Maximum entries in each component map, including extensions | 16 |
+| `WOLFCOSE_EAT_PSA_MAX_CLAIMS` | Verifier-only maximum current/legacy claim-map entries | 64 |
+| `WOLFCOSE_EAT_PSA_MAX_COMPONENT_CLAIMS` | Verifier-only maximum entries in each component map | 16 |
 
 The generic wolfCOSE algorithm gates remain authoritative. Select ES384,
 ES512, HMAC384, and HMAC512 with their normal `WOLFCOSE_ENABLE_*` macros in a
 lean build, or remove any supported algorithm with its `WOLFCOSE_NO_*` macro.
 The PSA/EAT code has no algorithm fallback: a disabled algorithm is rejected
 before claims are used.
+
+The consume and issue directions are independent. An attester can select the
+common issue gate and one issue envelope without selecting either consumption
+gate. Such a build contains no PSA/EAT verifier symbol. A claim-encoder-only
+build can omit both issue-envelope gates. Conversely, a verifier can omit the
+common issue gate and every issuance API.
 
 Minimal current Sign1 verifier:
 
@@ -52,6 +60,25 @@ Current Mac0 verifier:
 -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT
 -DWOLFCOSE_ENABLE_EAT_PSA_MAC0
 ```
+
+Current ES256 Sign1 issuer without the PSA/EAT verifier:
+
+```text
+-DWOLFCOSE_LEAN
+-DWOLFCOSE_NO_SIGN1_VERIFY
+-DWOLFCOSE_NO_ENCRYPT0_DECRYPT
+-DWOLFCOSE_NO_MAC0_VERIFY
+-DWOLFCOSE_NO_KEY_DECODE
+-DWOLFCOSE_NO_CBOR_DECODE
+-DWOLFCOSE_ENABLE_EAT_PSA
+-DWOLFCOSE_ENABLE_EAT_PSA_CURRENT
+-DWOLFCOSE_ENABLE_EAT_PSA_ISSUE
+-DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE
+```
+
+Replace the last gate with `WOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE` for an
+HMAC256 Mac0 issuer. The same decode opt-outs apply. The algorithm gates can
+then replace ES256 or HMAC256 independently as described in [[Macros]].
 
 These selective examples are useful COSE building blocks, but they are not
 RFC 9783 `#tfm` receivers: Section 5.2 requires a `#tfm` receiver to accept
@@ -165,7 +192,9 @@ for a component list. The callback's component structure is valid only for the
 duration of that callback. Its span data borrows from the verified token input
 and remains valid while that input remains unchanged.
 
-For a current-profile issuer, enable `WOLFCOSE_ENABLE_EAT_PSA_ISSUE` and use:
+For a current-profile Sign1 issuer, enable
+`WOLFCOSE_ENABLE_EAT_PSA_ISSUE` and
+`WOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE`, then use:
 
 ```c
 wc_CoseEatPsaToken_CreateSign1(&issuer_key, WOLFCOSE_ALG_ES256, &claims,
@@ -173,8 +202,8 @@ wc_CoseEatPsaToken_CreateSign1(&issuer_key, WOLFCOSE_ALG_ES256, &claims,
     sizeof(token), &token_len, rng);
 ```
 
-`wc_CoseEatPsaToken_CreateMac0()` is available only when both the Mac0 and issue
-gates are selected. Issuance always emits the current RFC 9783 profile;
+`wc_CoseEatPsaToken_CreateMac0()` is available only when the common issue and
+Mac0 issue gates are selected. Issuance always emits the current RFC 9783 profile;
 legacy is deliberately consume-only. An attester needs only one enabled
 RFC 9783 Table 4 Sign1 or Mac0 creation path to emit the standardized `#tfm`
 identifier. `WOLFCOSE_EAT_PSA_TFM_FULL` is deliberately separate: it proves a
@@ -258,7 +287,8 @@ encodings. Ordinary wolfCOSE decoding remains strict by default. Unknown
 non-critical COSE header extensions may use integer or text labels; text labels
 are tracked for duplicates across protected and unprotected buckets, but are
 not aliases for registered numeric headers. A text extension listed in `crit`
-is rejected because this verifier does not implement it.
+is rejected because this verifier does not implement it. Verification implies
+the otherwise optional `WOLFCOSE_ENABLE_COSE_TEXT_LABELS` capability.
 
 The raw-key API rejects `x5chain` headers with `WOLFCOSE_E_UNSUPPORTED`. A
 certificate chain is not proof of a trusted IAK until an application has

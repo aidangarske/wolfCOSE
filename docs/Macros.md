@@ -51,36 +51,69 @@ Extension names for `WOLFCOSE_ENABLE_<X>`: `ES384`, `ES512`, `EDDSA`, `ED448`, `
 
 An extension is compiled in when it is explicitly enabled (`WOLFCOSE_ENABLE_<X>`), or — in a non-lean build — when wolfSSL provides the primitive and it is not opted out with `WOLFCOSE_NO_<X>`. Enabling an extension wolfSSL cannot provide is a compile error. The resolved state is exposed internally as read-only `WOLFCOSE_HAVE_<X>` gates (e.g. `WOLFCOSE_HAVE_MLDSA`); sources, tests, and examples compile against those, so you set `WOLFCOSE_ENABLE_*`/`WOLFCOSE_NO_*`, not `WOLFCOSE_HAVE_*`.
 
+## COSE Text-Label Extensions
+
+`WOLFCOSE_ENABLE_COSE_TEXT_LABELS` enables unknown text-string labels in COSE
+header and `COSE_Key` maps. The decoder skips them as non-critical extensions
+and tracks them for duplicate detection. It is off by default because the
+tracking arrays add bounded parser state. PSA/EAT verification enables this
+capability automatically for variation-tolerant reception; issuer-only builds
+do not. The public `wc_CBOR_DecodeLabel()` helper remains available without
+this gate for applications that decode their own maps.
+
 ## PSA/EAT Attestation Gates
 
 PSA/EAT support is off in every build, including a non-lean full build. The
 default archive does not contain `wc_CoseEatPsaToken_*` symbols or the PSA/EAT
 parser. Define the common switch, one or more profiles, and one or more COSE
-envelope families deliberately. The three PSA/EAT limit macros below are also
-defined and checked only after the common switch resolves to enabled.
+envelope families deliberately. The component-count limit applies to issuers
+and verifiers. The two claim-map limits exist only in verifier builds.
 
 | Define | Description | Default |
 |--------|-------------|---------|
-| `WOLFCOSE_ENABLE_EAT_PSA` | Common PSA/EAT API and parser | off |
+| `WOLFCOSE_ENABLE_EAT_PSA` | Common PSA/EAT API and types | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_CURRENT` | RFC 9783 TF-M current profile | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_SIGN1` | Tagged Sign1 consumption | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_MAC0` | Tagged Mac0 consumption | off |
-| `WOLFCOSE_ENABLE_EAT_PSA_ISSUE` | Current-profile claim and token issuance | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_ISSUE` | Current-profile claim encoding | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE` | Tagged Sign1 token issuance | off |
+| `WOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE` | Tagged Mac0 token issuance | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_LEGACY` | Legacy `PSA_IOT_PROFILE_1` consumption | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER` | UEID-selected key lookup helper | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR` | Zero-copy component callback helper | off |
+| `WOLFCOSE_ENABLE_COSE_TEXT_LABELS` | Generic COSE text-label extensions; implied by PSA/EAT verification | off |
 | `WOLFCOSE_EAT_PSA_TFM_FULL` | Derived: all RFC 9783 `#tfm` receiver algorithms/envelopes are present; do not define manually | derived |
 | `WOLFCOSE_EAT_PSA_MAX_COMPONENTS` | Maximum accepted software-component maps | 32 |
-| `WOLFCOSE_EAT_PSA_MAX_CLAIMS` | Maximum claim-map entries, including extension claims | 64 |
-| `WOLFCOSE_EAT_PSA_MAX_COMPONENT_CLAIMS` | Maximum entries in each component map, including extensions | 16 |
+| `WOLFCOSE_EAT_PSA_MAX_CLAIMS` | Verifier-only maximum claim-map entries, including extensions | 64 |
+| `WOLFCOSE_EAT_PSA_MAX_COMPONENT_CLAIMS` | Verifier-only maximum entries in each component map | 16 |
 
-`WOLFCOSE_ENABLE_EAT_PSA_ISSUE` requires the current profile plus an enabled
-Sign1 signing or Mac0 creation path. Sign1 consumption requires an enabled
-ES256, ES384, or ES512 verifier; Mac0 consumption requires an enabled HMAC
-verifier. The normal `WOLFCOSE_ENABLE_ES384`, `WOLFCOSE_ENABLE_ES512`,
-`WOLFCOSE_ENABLE_HMAC384`, and `WOLFCOSE_ENABLE_HMAC512` macros choose the
-non-core RFC 9783 algorithms in a lean build. `WOLFCOSE_NO_*` macros remove
-their branches in a full build.
+`WOLFCOSE_ENABLE_EAT_PSA_ISSUE` enables the claim encoder and requires the
+current profile. Add `WOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE` and/or
+`WOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE` for a protected token creator. These
+issuer gates are independent of the Sign1 and Mac0 consumption gates, so an
+attester-only build does not export `wc_CoseEatPsaToken_Verify()`.
+It may also disable all generic verify/decrypt operations, key decoding, and
+`WOLFCOSE_CBOR_DECODE`; `make eat-psa-config-check` compiles both issuer
+envelopes in exactly that encode-only configuration.
+
+The generic operation and algorithm gates remain authoritative:
+
+| PSA/EAT path | Required generic operation | Algorithm selection |
+|--------------|----------------------------|---------------------|
+| Sign1 consume | `WOLFCOSE_SIGN1_VERIFY` | ES256, ES384, and/or ES512 |
+| Sign1 issue | `WOLFCOSE_SIGN1_SIGN` | ES256, ES384, and/or ES512 |
+| Mac0 consume | `WOLFCOSE_MAC0_VERIFY` | HMAC256, HMAC384, and/or HMAC512 |
+| Mac0 issue | `WOLFCOSE_MAC0_CREATE` | HMAC256, HMAC384, and/or HMAC512 |
+
+Use `WOLFCOSE_NO_SIGN1_SIGN`, `WOLFCOSE_NO_SIGN1_VERIFY`,
+`WOLFCOSE_NO_MAC0_CREATE`, or `WOLFCOSE_NO_MAC0_VERIFY` to remove a generic
+operation. ES256 and HMAC256 are lean-core algorithms and can be removed with
+`WOLFCOSE_NO_ES256` and `WOLFCOSE_NO_HMAC256`. Select ES384, ES512, HMAC384,
+and HMAC512 in a lean build with `WOLFCOSE_ENABLE_ES384`,
+`WOLFCOSE_ENABLE_ES512`, `WOLFCOSE_ENABLE_HMAC384`, and
+`WOLFCOSE_ENABLE_HMAC512`; use the corresponding `WOLFCOSE_NO_*` macros in a
+full build. A selected PSA/EAT path that has no compatible generic operation
+or algorithm is a compile-time configuration error.
 
 RFC 9783 Section 5.2 requires a receiver advertising the standardized
 `tag:psacertified.org,2023:psa#tfm` profile to accept tagged Sign1 and Mac0
