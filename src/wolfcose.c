@@ -394,14 +394,6 @@ WOLFCOSE_LOCAL const uint8_t WOLFCOSE_CTX_ENCRYPT0[8] = {
 WOLFCOSE_LOCAL const uint8_t WOLFCOSE_CTX_ENCRYPT[7] = {
     0x45u, 0x6Eu, 0x63u, 0x72u, 0x79u, 0x70u, 0x74u
 };
-#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT) || \
-    defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
-static const uint8_t wolfCose_HpkeRecipientContext[14] = {
-    0x48u, 0x50u, 0x4Bu, 0x45u, 0x20u, 0x52u, 0x65u,
-    0x63u, 0x69u, 0x70u, 0x69u, 0x65u, 0x6Eu, 0x74u
-};
-#endif
-
 /* ----- Internal helpers: algorithm dispatch ----- */
 
 int wolfCose_AlgToHashType(int32_t alg, enum wc_HashType* hashType)
@@ -5345,28 +5337,32 @@ static int wolfCose_Hpke0ValidateKey(const WOLFCOSE_KEY* key,
     int32_t alg, int needPrivate)
 {
     int ret = WOLFCOSE_SUCCESS;
+    ecc_key* eccKey = NULL;
 
     if (key == NULL) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
-    else if ((key->kty != WOLFCOSE_KTY_EC2) ||
-             (key->crv != WOLFCOSE_CRV_P256) ||
-             (key->key.ecc == NULL) ||
-             (wc_ecc_size(key->key.ecc) != 32)) {
-        ret = WOLFCOSE_E_COSE_KEY_TYPE;
-    }
-    else if (wolfCose_EccKeyCheckCurve(WOLFCOSE_CRV_P256,
-                                       key->key.ecc) != WOLFCOSE_SUCCESS) {
-        ret = WOLFCOSE_E_COSE_KEY_TYPE;
-    }
-    else if ((key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
-        ret = WOLFCOSE_E_COSE_BAD_ALG;
-    }
-    else if ((needPrivate != 0) && (key->hasPrivate != 1u)) {
-        ret = WOLFCOSE_E_COSE_KEY_TYPE;
-    }
     else {
-        /* Key is valid. */
+        eccKey = key->key.ecc;
+        if ((key->kty != WOLFCOSE_KTY_EC2) ||
+            (key->crv != WOLFCOSE_CRV_P256) ||
+            (eccKey == NULL) ||
+            (wc_ecc_size(eccKey) != 32)) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        else if (wolfCose_EccKeyCheckCurve(WOLFCOSE_CRV_P256,
+                                            eccKey) != WOLFCOSE_SUCCESS) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        else if ((key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {
+            ret = WOLFCOSE_E_COSE_BAD_ALG;
+        }
+        else if ((needPrivate != 0) && (key->hasPrivate != 1u)) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        else {
+            /* Key is valid. */
+        }
     }
 
     return ret;
@@ -5380,6 +5376,10 @@ static int wolfCose_Hpke0BuildRecipientInfo(int32_t nextLayerAlg,
     const uint8_t* recipientProtected, size_t recipientProtectedLen,
     uint8_t* scratch, size_t scratchSz, size_t* infoLen)
 {
+    static const uint8_t recipientContext[14] = {
+        0x48u, 0x50u, 0x4Bu, 0x45u, 0x20u, 0x52u, 0x65u,
+        0x63u, 0x69u, 0x70u, 0x69u, 0x65u, 0x6Eu, 0x74u
+    };
     int ret;
     WOLFCOSE_CBOR_CTX ctx;
 
@@ -5394,8 +5394,8 @@ static int wolfCose_Hpke0BuildRecipientInfo(int32_t nextLayerAlg,
 
         ret = wc_CBOR_EncodeArrayStart(&ctx, 4u);
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_CBOR_EncodeTstr(&ctx, wolfCose_HpkeRecipientContext,
-                                     sizeof(wolfCose_HpkeRecipientContext));
+            ret = wc_CBOR_EncodeTstr(&ctx, recipientContext,
+                                     sizeof(recipientContext));
         }
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wc_CBOR_EncodeInt(&ctx, (int64_t)nextLayerAlg);
@@ -5433,7 +5433,10 @@ static int wolfCose_Hpke0EncodeRecipientProtectedHdr(int32_t alg,
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
-        mapEntries = (kid != NULL) ? 2u : 1u;
+        mapEntries = (size_t)1u;
+        if (kid != NULL) {
+            mapEntries = (size_t)2u;
+        }
         ctx.buf = buf;
         ctx.bufSz = bufSz;
         ctx.idx = 0u;
@@ -5537,13 +5540,14 @@ static int wolfCose_Hpke0SealInit(WOLFCOSE_HPKE_0_SEAL_CTX* sealCtx,
 /* Perform the one-shot HPKE seal with a prepared ephemeral key. */
 static int wolfCose_Hpke0Seal(WOLFCOSE_HPKE_0_SEAL_CTX* sealCtx,
     const WOLFCOSE_KEY* recipientKey,
-    const uint8_t* info, size_t infoLen,
-    const uint8_t* aad, size_t aadLen,
+    uint8_t* info, size_t infoLen,
+    uint8_t* aad, size_t aadLen,
     const uint8_t* plaintext, size_t plaintextLen,
     uint8_t* ciphertext, size_t ciphertextSz)
 {
     int ret = WOLFCOSE_SUCCESS;
     int hpkeRet;
+    ecc_key* recipientEcc = NULL;
 
     if ((sealCtx == NULL) || (recipientKey == NULL) ||
         (plaintext == NULL) || (ciphertext == NULL)) {
@@ -5574,10 +5578,11 @@ static int wolfCose_Hpke0Seal(WOLFCOSE_HPKE_0_SEAL_CTX* sealCtx,
     }
 
     if (ret == WOLFCOSE_SUCCESS) {
+        recipientEcc = recipientKey->key.ecc;
         hpkeRet = wc_HpkeSealBase(&sealCtx->hpke,
-            &sealCtx->ephemeralKey, (void*)recipientKey->key.ecc,
-            (byte*)info, (word32)infoLen,
-            (byte*)aad, (word32)aadLen,
+            &sealCtx->ephemeralKey, recipientEcc,
+            info, (word32)infoLen,
+            aad, (word32)aadLen,
             (byte*)plaintext, (word32)plaintextLen, ciphertext);
         if (hpkeRet != 0) {
             ret = WOLFCOSE_E_CRYPTO;
@@ -5603,8 +5608,8 @@ static void wolfCose_Hpke0SealFree(WOLFCOSE_HPKE_0_SEAL_CTX* sealCtx)
 /* Perform a single HPKE base-mode open with the fixed HPKE-0 suite. */
 static int wolfCose_Hpke0Open(const WOLFCOSE_KEY* recipientKey,
     int32_t alg,
-    const uint8_t* info, size_t infoLen,
-    const uint8_t* aad, size_t aadLen,
+    uint8_t* info, size_t infoLen,
+    uint8_t* aad, size_t aadLen,
     const uint8_t* enc, size_t encLen,
     const uint8_t* ciphertext, size_t ciphertextLen,
     uint8_t* plaintext, size_t plaintextSz)
@@ -5612,6 +5617,7 @@ static int wolfCose_Hpke0Open(const WOLFCOSE_KEY* recipientKey,
     int ret = WOLFCOSE_SUCCESS;
     int hpkeRet;
     Hpke hpke;
+    ecc_key* recipientEcc = NULL;
     size_t ciphertextBodyLen = 0u;
 
     if ((enc == NULL) || (ciphertext == NULL) || (plaintext == NULL)) {
@@ -5652,10 +5658,11 @@ static int wolfCose_Hpke0Open(const WOLFCOSE_KEY* recipientKey,
         }
     }
     if (ret == WOLFCOSE_SUCCESS) {
-        hpkeRet = wc_HpkeOpenBase(&hpke, (void*)recipientKey->key.ecc,
+        recipientEcc = recipientKey->key.ecc;
+        hpkeRet = wc_HpkeOpenBase(&hpke, recipientEcc,
             enc, (word16)encLen,
-            (byte*)info, (word32)infoLen,
-            (byte*)aad, (word32)aadLen,
+            info, (word32)infoLen,
+            aad, (word32)aadLen,
             (byte*)ciphertext, (word32)ciphertextBodyLen, plaintext);
         if (hpkeRet != 0) {
             ret = WOLFCOSE_E_COSE_DECRYPT_FAIL;
@@ -8626,10 +8633,12 @@ int wc_CoseHpkeEncrypt0_Encrypt(const WOLFCOSE_KEY* recipientKey,
     size_t ciphertextOffset = 0u;
     WOLFCOSE_CBOR_CTX ctx;
     WOLFCOSE_HPKE_0_SEAL_CTX sealCtx;
-    int isDetached;
+    int isDetached = 0;
 
     (void)XMEMSET(&sealCtx, 0, sizeof(sealCtx));
-    isDetached = (detachedPayload != NULL) ? 1 : 0;
+    if (detachedPayload != NULL) {
+        isDetached = 1;
+    }
 
     if ((recipientKey == NULL) || (payload == NULL) || (scratch == NULL) ||
         (out == NULL) || (outLen == NULL) || (rng == NULL)) {
