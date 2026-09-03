@@ -1068,7 +1068,7 @@ static int wolfCose_HdrStateContains(const WOLFCOSE_HDR_STATE* state,
         else {
             size_t i;
             for (i = 0u; i < state->extraCount; i++) {
-                if ((state->extraIsText[i] == 0u) &&
+                if ((state->extraLabels[i].isText == 0u) &&
                     (state->extraLabels[i].integer == label)) {
                     found = 1;
                     break;
@@ -1099,7 +1099,9 @@ static int wolfCose_HdrStateAdd(WOLFCOSE_HDR_STATE* state, int64_t label)
         }
         else {
             state->extraLabels[state->extraCount].integer = label;
-            state->extraIsText[state->extraCount] = 0u;
+            state->extraLabels[state->extraCount].text = NULL;
+            state->extraLabels[state->extraCount].textLen = 0u;
+            state->extraLabels[state->extraCount].isText = 0u;
             state->extraCount++;
         }
     }
@@ -1122,77 +1124,6 @@ static int wolfCose_HdrStateCheckAndAdd(WOLFCOSE_HDR_STATE* state,
     return ret;
 }
 
-static size_t wolfCose_TextLabelHeadSize(size_t textLen)
-{
-    size_t headLen;
-
-    if (textLen < 24u) {
-        headLen = 1u;
-    }
-    else if (textLen <= 0xFFu) {
-        headLen = 2u;
-    }
-    else if (textLen <= 0xFFFFu) {
-        headLen = 3u;
-    }
-#if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
-    else if (textLen <= 0xFFFFFFFFUL) {
-        headLen = 5u;
-    }
-    else {
-        headLen = 9u;
-    }
-#else
-    else {
-        headLen = 5u;
-    }
-#endif
-
-    return headLen;
-}
-
-static int wolfCose_TextLabelEquals(const uint8_t* encoded,
-    const WOLFCOSE_CBOR_LABEL* label)
-{
-    uint8_t ai;
-    uint64_t textLen = UINT64_MAX;
-    size_t headLen = 0u;
-    int equal = 0;
-
-    ai = (uint8_t)(encoded[0] & 0x1Fu);
-    if (ai < 24u) {
-        textLen = ai;
-        headLen = 1u;
-    }
-    else if (ai == 24u) {
-        textLen = encoded[1];
-        headLen = 2u;
-    }
-    else if (ai == 25u) {
-        textLen = wolfCose_LoadBE16(&encoded[1]);
-        headLen = 3u;
-    }
-    else if (ai == 26u) {
-        textLen = wolfCose_LoadBE32(&encoded[1]);
-        headLen = 5u;
-    }
-    else if (ai == 27u) {
-        textLen = wolfCose_LoadBE64(&encoded[1]);
-        headLen = 9u;
-    }
-    else {
-        /* The stored label was already decoded, so this cannot occur. */
-    }
-
-    if ((textLen == (uint64_t)label->textLen) &&
-        ((label->textLen == 0u) ||
-         (XMEMCMP(&encoded[headLen], label->text, label->textLen) == 0))) {
-        equal = 1;
-    }
-
-    return equal;
-}
-
 static int wolfCose_HdrStateContainsLabel(const WOLFCOSE_HDR_STATE* state,
     const WOLFCOSE_CBOR_LABEL* label)
 {
@@ -1206,9 +1137,11 @@ static int wolfCose_HdrStateContainsLabel(const WOLFCOSE_HDR_STATE* state,
             size_t i;
 
             for (i = 0u; i < state->extraCount; i++) {
-                if ((state->extraIsText[i] != 0u) &&
-                    (wolfCose_TextLabelEquals(
-                        state->extraLabels[i].textEncoded, label) != 0)) {
+                if ((state->extraLabels[i].isText != 0u) &&
+                    (state->extraLabels[i].textLen == label->textLen) &&
+                    ((label->textLen == 0u) ||
+                     (XMEMCMP(state->extraLabels[i].text, label->text,
+                              label->textLen) == 0))) {
                     found = 1;
                     break;
                 }
@@ -1234,11 +1167,10 @@ static int wolfCose_HdrStateAddLabel(WOLFCOSE_HDR_STATE* state,
         ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
     else {
-        size_t headLen = wolfCose_TextLabelHeadSize(label->textLen);
-
-        state->extraLabels[state->extraCount].textEncoded =
-            label->text - headLen;
-        state->extraIsText[state->extraCount] = 1u;
+        state->extraLabels[state->extraCount].integer = 0;
+        state->extraLabels[state->extraCount].text = label->text;
+        state->extraLabels[state->extraCount].textLen = label->textLen;
+        state->extraLabels[state->extraCount].isText = 1u;
         state->extraCount++;
     }
 
@@ -1678,6 +1610,9 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
     }
     else if (ret == WOLFCOSE_SUCCESS) {
         ret = wc_CBOR_DecodeBstr(ctx, &valueData, &valueLen);
+    }
+    else {
+        /* No action required */
     }
 
     (void)valueData;
@@ -6592,11 +6527,6 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
 
 #if defined(WOLFCOSE_COUNTERSIGN)
 
-static const uint8_t WOLFCOSE_CTX_COUNTERSIGN[] = "CounterSignature";
-static const uint8_t WOLFCOSE_CTX_COUNTERSIGN0[] = "CounterSignature0";
-static const uint8_t WOLFCOSE_CTX_COUNTERSIGN_V2[] = "CounterSignatureV2";
-static const uint8_t WOLFCOSE_CTX_COUNTERSIGN0_V2[] = "CounterSignature0V2";
-
 typedef struct WOLFCOSE_COUNTER_TARGET {
     uint64_t tag;
     const uint8_t* bodyProtected;
@@ -6744,6 +6674,7 @@ static int wolfCose_ParseCounterTarget(const uint8_t* in, size_t inSz,
     size_t arrayCount = 0u;
     size_t expectedCount = 0u;
 
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
     if ((in == NULL) || (target == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
@@ -6985,6 +6916,7 @@ static int wolfCose_SelectFullCounter(const uint8_t* in, size_t inSz,
     int ret;
     WOLFCOSE_COUNTER_LIST_INFO info;
 
+    (void)XMEMSET(&info, 0, sizeof(info));
     if ((selected == NULL) || (selectedLen == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
@@ -7027,6 +6959,10 @@ static int wolfCose_BuildCounterStructure(
     const uint8_t* extAad, size_t extAadLen, uint8_t abbreviated,
     uint8_t legacy, uint8_t* scratch, size_t scratchSz, size_t* structLen)
 {
+    static const uint8_t contextCounter[] = "CounterSignature";
+    static const uint8_t contextCounter0[] = "CounterSignature0";
+    static const uint8_t contextCounterV2[] = "CounterSignatureV2";
+    static const uint8_t contextCounter0V2[] = "CounterSignature0V2";
     int ret;
     WOLFCOSE_CBOR_CTX ctx;
     const uint8_t* context;
@@ -7041,37 +6977,39 @@ static int wolfCose_BuildCounterStructure(
     else {
         if (legacy != 0u) {
             if (abbreviated != 0u) {
-                context = WOLFCOSE_CTX_COUNTERSIGN0;
-                contextLen = sizeof(WOLFCOSE_CTX_COUNTERSIGN0) - 1u;
+                context = contextCounter0;
+                contextLen = sizeof(contextCounter0) - 1u;
                 arrayCount = 4u;
             }
             else {
-                context = WOLFCOSE_CTX_COUNTERSIGN;
-                contextLen = sizeof(WOLFCOSE_CTX_COUNTERSIGN) - 1u;
+                context = contextCounter;
+                contextLen = sizeof(contextCounter) - 1u;
                 arrayCount = 5u;
             }
         }
         else if (abbreviated != 0u) {
             if (target->otherCount != 0u) {
-                context = WOLFCOSE_CTX_COUNTERSIGN0_V2;
-                contextLen = sizeof(WOLFCOSE_CTX_COUNTERSIGN0_V2) - 1u;
+                context = contextCounter0V2;
+                contextLen = sizeof(contextCounter0V2) - 1u;
+                arrayCount = 5u;
             }
             else {
-                context = WOLFCOSE_CTX_COUNTERSIGN0;
-                contextLen = sizeof(WOLFCOSE_CTX_COUNTERSIGN0) - 1u;
+                context = contextCounter0;
+                contextLen = sizeof(contextCounter0) - 1u;
+                arrayCount = 4u;
             }
-            arrayCount = (target->otherCount != 0u) ? 5u : 4u;
         }
         else {
             if (target->otherCount != 0u) {
-                context = WOLFCOSE_CTX_COUNTERSIGN_V2;
-                contextLen = sizeof(WOLFCOSE_CTX_COUNTERSIGN_V2) - 1u;
+                context = contextCounterV2;
+                contextLen = sizeof(contextCounterV2) - 1u;
+                arrayCount = 6u;
             }
             else {
-                context = WOLFCOSE_CTX_COUNTERSIGN;
-                contextLen = sizeof(WOLFCOSE_CTX_COUNTERSIGN) - 1u;
+                context = contextCounter;
+                contextLen = sizeof(contextCounter) - 1u;
+                arrayCount = 5u;
             }
-            arrayCount = (target->otherCount != 0u) ? 6u : 5u;
         }
         ret = wc_CBOR_EncoderInit(&ctx, scratch, scratchSz);
     }
@@ -7150,8 +7088,11 @@ static int wolfCose_EncodeFullCounter(WOLFCOSE_CBOR_CTX* ctx,
     const uint8_t* sig, size_t sigLen)
 {
     int ret;
-    size_t mapCount = (kidLen != 0u) ? 1u : 0u;
+    size_t mapCount = 0u;
 
+    if (kidLen != 0u) {
+        mapCount = 1u;
+    }
     ret = wc_CBOR_EncodeArrayStart(ctx, 3u);
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wc_CBOR_EncodeBstr(ctx, protectedData, protectedLen);
@@ -7451,9 +7392,11 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             else {
+                ed25519_key* ed25519Key = key->key.ed25519;
+
                 INJECT_FAILURE(WOLF_FAIL_ED25519_VERIFY, -1,
                     ret = wc_ed25519_verify_msg(sig, (word32)sigLen,
-                        tbs, (word32)tbsLen, &verified, key->key.ed25519));
+                        tbs, (word32)tbsLen, &verified, ed25519Key));
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -7469,9 +7412,11 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             else {
+                ed448_key* ed448Key = key->key.ed448;
+
                 INJECT_FAILURE(WOLF_FAIL_ED448_VERIFY, -1,
                     ret = wc_ed448_verify_msg(sig, (word32)sigLen,
-                        tbs, (word32)tbsLen, &verified, key->key.ed448,
+                        tbs, (word32)tbsLen, &verified, ed448Key,
                         NULL, 0));
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
@@ -7496,6 +7441,7 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((alg == WOLFCOSE_ALG_ES256) || (alg == WOLFCOSE_ALG_ES384) ||
          (alg == WOLFCOSE_ALG_ES512))) {
+        ecc_key* eccKey = NULL;
         enum wc_HashType hashType = WC_HASH_TYPE_NONE;
         int digestSz = 0;
         int verified = 0;
@@ -7518,7 +7464,8 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
         else {
-            ret = wolfCose_EccKeyCheckCurve(key->crv, key->key.ecc);
+            eccKey = key->key.ecc;
+            ret = wolfCose_EccKeyCheckCurve(key->crv, eccKey);
         }
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_AlgToHashType(alg, &hashType);
@@ -7542,7 +7489,7 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
         }
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_EccVerifyRaw(sig, sigLen, hashBuf,
-                (size_t)digestSz, coordSz, key->key.ecc, &verified);
+                (size_t)digestSz, coordSz, eccKey, &verified);
         }
         if ((ret == WOLFCOSE_SUCCESS) && (verified != 1)) {
             ret = WOLFCOSE_E_COSE_SIG_FAIL;
@@ -7554,12 +7501,14 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((alg == WOLFCOSE_ALG_PS256) || (alg == WOLFCOSE_ALG_PS384) ||
          (alg == WOLFCOSE_ALG_PS512))) {
+        RsaKey* rsaKey = NULL;
         enum wc_HashType hashType = WC_HASH_TYPE_NONE;
         int digestSz = 0;
         int mgf = 0;
 
         ret = wolfCose_RsaPssCheckKey(key, NULL);
         if (ret == WOLFCOSE_SUCCESS) {
+            rsaKey = key->key.rsa;
             ret = wolfCose_AlgToHashType(alg, &hashType);
         }
         if (ret == WOLFCOSE_SUCCESS) {
@@ -7587,7 +7536,7 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
             INJECT_FAILURE(WOLF_FAIL_RSA_SSL_VERIFY, -1,
                 ret = wc_RsaPSS_VerifyCheck(scratch, (word32)sigLen,
                     scratch, (word32)scratchSz, hashBuf,
-                    (word32)digestSz, hashType, mgf, key->key.rsa));
+                    (word32)digestSz, hashType, mgf, rsaKey));
             if (ret < 0) {
                 ret = WOLFCOSE_E_COSE_SIG_FAIL;
             }
@@ -7607,8 +7556,10 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
 
         ret = wolfCose_MlDsaCheckKey(key, alg);
         if (ret == WOLFCOSE_SUCCESS) {
+            wc_MlDsaKey* mldsaKey = key->key.mldsa;
+
             INJECT_FAILURE(WOLF_FAIL_MLDSA_VERIFY, -1,
-                ret = wc_MlDsaKey_VerifyCtx(key->key.mldsa,
+                ret = wc_MlDsaKey_VerifyCtx(mldsaKey,
                     sig, (word32)sigLen, NULL, 0,
                     tbs, (word32)tbsLen, &verified));
             if (ret != 0) {
@@ -7636,16 +7587,20 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
 static int wolfCose_RangesOverlap(const uint8_t* a, size_t aLen,
                                   const uint8_t* b, size_t bLen)
 {
-    uintptr_t aAddr = (uintptr_t)a;
-    uintptr_t bAddr = (uintptr_t)b;
     int overlaps = 0;
 
     if ((aLen != 0u) && (bLen != 0u)) {
-        if (aAddr <= bAddr) {
-            overlaps = ((bAddr - aAddr) < aLen) ? 1 : 0;
+        size_t i;
+
+        for (i = 0u; (i < aLen) && (overlaps == 0); i++) {
+            if (&a[i] == b) {
+                overlaps = 1;
+            }
         }
-        else {
-            overlaps = ((aAddr - bAddr) < bLen) ? 1 : 0;
+        for (i = 0u; (i < bLen) && (overlaps == 0); i++) {
+            if (&b[i] == a) {
+                overlaps = 1;
+            }
         }
     }
     return overlaps;
@@ -7670,7 +7625,6 @@ static int wolfCose_AttachCounter(const WOLFCOSE_COUNTER_TARGET* target,
     size_t counterLen = 0u;
     size_t delta = 0u;
     size_t finalLen = inSz;
-    size_t suffixLen;
     uint8_t replacesValue = 0u;
 
     (void)XMEMSET(&listInfo, 0, sizeof(listInfo));
@@ -7731,6 +7685,9 @@ static int wolfCose_AttachCounter(const WOLFCOSE_COUNTER_TARGET* target,
     else if (ret == WOLFCOSE_SUCCESS) {
         delta = newValueLen - oldValueLen;
     }
+    else {
+        /* No action required */
+    }
 
     newMapHeadLen = wolfCose_CborHeadSize((uint64_t)newMapCount);
     if ((ret == WOLFCOSE_SUCCESS) && (replacesValue == 0u)) {
@@ -7743,10 +7700,11 @@ static int wolfCose_AttachCounter(const WOLFCOSE_COUNTER_TARGET* target,
         ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
     }
     if (ret == WOLFCOSE_SUCCESS) {
+        size_t suffixLen = inSz - target->mapEnd;
+
         if (out != in) {
             (void)XMEMMOVE(out, in, inSz);
         }
-        suffixLen = inSz - target->mapEnd;
         (void)XMEMMOVE(&out[target->mapEnd + delta],
                        &out[target->mapEnd], suffixLen);
     }
@@ -7800,9 +7758,14 @@ static int wolfCose_AttachCounter(const WOLFCOSE_COUNTER_TARGET* target,
         size_t contentLen = target->mapEnd - target->mapContentStart;
         size_t newContentStart = target->mapStart + newMapHeadLen;
         size_t appendOffset = newContentStart + contentLen;
-        int64_t label = (abbreviated != 0u) ?
-            WOLFCOSE_HDR_COUNTERSIGNATURE0_V2 :
-            WOLFCOSE_HDR_COUNTERSIGNATURE_V2;
+        int64_t label;
+
+        if (abbreviated != 0u) {
+            label = WOLFCOSE_HDR_COUNTERSIGNATURE0_V2;
+        }
+        else {
+            label = WOLFCOSE_HDR_COUNTERSIGNATURE_V2;
+        }
 
         (void)XMEMMOVE(&out[newContentStart],
                        &out[target->mapContentStart], contentLen);
@@ -7962,7 +7925,9 @@ int wc_Cose_AddCounterSignature(
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
-        ret = wolfCose_AddCounterCommon(counterSigner->key,
+        WOLFCOSE_KEY* key = counterSigner->key;
+
+        ret = wolfCose_AddCounterCommon(key,
             counterSigner->algId, counterSigner->kid,
             counterSigner->kidLen, 0u, in, inSz,
             detachedPayload, detachedLen, extAad, extAadLen,
@@ -7985,7 +7950,9 @@ int wc_Cose_AddCounterSignature0(
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
-        ret = wolfCose_AddCounterCommon(counterSigner->key,
+        WOLFCOSE_KEY* key = counterSigner->key;
+
+        ret = wolfCose_AddCounterCommon(key,
             counterSigner->algId, NULL, 0u, 1u, in, inSz,
             detachedPayload, detachedLen, extAad, extAadLen,
             scratch, scratchSz, out, outSz, outLen, rng);
@@ -8137,8 +8104,6 @@ int wc_Cose_VerifyCounterSignature0(
     const uint8_t* sig = NULL;
     size_t sigLen = 0u;
     size_t tbsLen = 0u;
-    size_t valueStart = 0u;
-    size_t valueEnd = 0u;
     uint8_t legacy = 0u;
     int scratchAliases = 0;
 
@@ -8169,8 +8134,9 @@ int wc_Cose_VerifyCounterSignature0(
         ret = WOLFCOSE_E_COSE_BAD_HDR;
     }
     if (ret == WOLFCOSE_SUCCESS) {
-        valueStart = target.abbreviatedValueStart;
-        valueEnd = target.abbreviatedValueEnd;
+        size_t valueStart = target.abbreviatedValueStart;
+        size_t valueEnd = target.abbreviatedValueEnd;
+
         if (target.hasAbbreviated == 0u) {
             legacy = 1u;
             valueStart = target.legacyAbbreviatedValueStart;
