@@ -33,6 +33,9 @@
 #if defined(WOLFCOSE_HAVE_CHACHA20)
     #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #endif
+#ifdef WOLFCOSE_FORCE_FAILURE
+    #include "../tests/force_failure.h"
+#endif
 
 /* ECC private-material import is unavailable when wolfCrypt uses an
  * incompatible math layout or cannot roll back accepted or provisioned key
@@ -360,7 +363,6 @@ WOLFCOSE_LOCAL int wolfCose_ExtSign(const WOLFCOSE_KEY* key, int32_t alg,
 
 /* ----- Forced failure injection for testing error paths ----- */
 #ifdef WOLFCOSE_FORCE_FAILURE
-    #include "../tests/force_failure.h"
     /* Inject a forced failure when armed; otherwise run stmt. */
     #define INJECT_FAILURE(failure_type, error_code, stmt) \
         do { \
