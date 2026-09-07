@@ -117,10 +117,9 @@ checks its payload, and must reject a modified authenticated byte. The target
 also verifies RFC 9783's ES256 PSA token and decodes selected EAT claims with
 python-cwt and `cbor2`.
 
-python-cwt's A128KW producer is verified by wolfCOSE. Its 3.3.0 decoder rejects
-the standards-compliant protected recipient algorithm that wolfCOSE emits for
-A128KW, so the reverse direction is deliberately kept in the fixed COSE WG
-Examples vector suite instead of changing wolfCOSE's output.
+A128KW `COSE_Encrypt` interoperates in both directions. wolfCOSE emits an empty
+protected recipient bucket with the algorithm in the unprotected header, per
+RFC 9053 Section 6.2.1, which python-cwt 3.3.0 both produces and accepts.
 
 ### Interoperability (Rust coset)
 

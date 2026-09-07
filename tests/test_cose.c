@@ -9258,7 +9258,7 @@ static void test_cose_sign_mixed_algorithms(void)
 /* ----- COSE_Encrypt Multi-Recipient Tests (RFC 9052 Section 5.1) ----- */
 #if defined(WOLFCOSE_ENCRYPT) && defined(WOLFCOSE_HAVE_AESGCM) && \
     defined(WOLFCOSE_KEY_WRAP)
-static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
+static int mutate_first_recipient_alg(uint8_t* msg, size_t msgLen,
     uint8_t algByte)
 {
     int ret = -1;
@@ -9267,7 +9267,7 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
     size_t count = 0;
     const uint8_t* protectedData = NULL;
     size_t protectedLen = 0;
-    size_t protectedOffset;
+    int64_t label = 0;
 
     (void)XMEMSET(&ctx, 0, sizeof(ctx));
     ctx.cbuf = msg;
@@ -9311,15 +9311,34 @@ static int mutate_first_recipient_protected_alg(uint8_t* msg, size_t msgLen,
             ret = -1;
         }
     }
+    /* RFC 9053 6.2.1: the AES Key Wrap recipient has an empty protected
+     * bucket, so the algorithm is carried in the unprotected header. */
     if (ret == 0) {
         ret = wc_CBOR_DecodeBstr(&ctx, &protectedData, &protectedLen);
-        if ((ret != 0) || (protectedLen < 3u)) {
+        if ((ret != 0) || (protectedLen != 0u)) {
             ret = -1;
         }
     }
     if (ret == 0) {
-        protectedOffset = (size_t)(protectedData - msg);
-        msg[protectedOffset + protectedLen - 1u] = algByte;
+        ret = wc_CBOR_DecodeMapStart(&ctx, &count);
+        if ((ret != 0) || (count < 1u)) {
+            ret = -1;
+        }
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeInt(&ctx, &label);
+        if ((ret != 0) || (label != WOLFCOSE_HDR_ALG)) {
+            ret = -1;
+        }
+    }
+    if (ret == 0) {
+        (void)protectedData;
+        if (ctx.idx < ctx.bufSz) {
+            msg[ctx.idx] = algByte;
+        }
+        else {
+            ret = -1;
+        }
     }
 
     return ret;
@@ -11209,16 +11228,14 @@ static void test_cose_encrypt_a128kw_unprotected_alg(void)
     uint8_t iv[12] = {0};
     uint8_t scratch[256];
     uint8_t out[512];
-    uint8_t conformant[512];
     uint8_t plaintext[128];
     size_t outLen = 0u;
-    size_t conformantLen = 0u;
     size_t plaintextLen = 0u;
     size_t count = 0u;
-    size_t recipientHdrStart = 0u;
-    size_t recipientSuffix = 0u;
     const uint8_t* protectedData = NULL;
     size_t protectedLen = 0u;
+    int64_t label = 0;
+    int64_t algValue = 0;
     uint64_t tag = 0u;
     int ret;
 
@@ -11274,40 +11291,37 @@ static void test_cose_encrypt_a128kw_unprotected_alg(void)
     if ((ret == 0) && (count != 3u)) {
         ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
+    /* RFC 9053 6.2.1: the AES Key Wrap recipient's protected bucket is empty
+     * and the algorithm is carried in the unprotected header. */
     if (ret == 0) {
-        recipientHdrStart = ctx.idx;
         ret = wc_CBOR_DecodeBstr(&ctx, &protectedData, &protectedLen);
     }
-    if ((ret == 0) && ((protectedLen != 3u) ||
-        (protectedData[0] != 0xA1u) || (protectedData[1] != 0x01u) ||
-        (protectedData[2] != 0x22u))) {
+    if ((ret == 0) && (protectedLen != 0u)) {
         ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
     if (ret == 0) {
         ret = wc_CBOR_DecodeMapStart(&ctx, &count);
     }
-    if ((ret == 0) && (count != 0u)) {
+    if ((ret == 0) && (count != 1u)) {
         ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
     if (ret == 0) {
-        recipientSuffix = ctx.idx;
-        conformantLen = recipientHdrStart + 4u + (outLen - recipientSuffix);
-        if (conformantLen > sizeof(conformant)) {
-            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
-        }
+        ret = wc_CBOR_DecodeInt(&ctx, &label);
+    }
+    if ((ret == 0) && (label != WOLFCOSE_HDR_ALG)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if (ret == 0) {
+        ret = wc_CBOR_DecodeInt(&ctx, &algValue);
+    }
+    if ((ret == 0) && (algValue != WOLFCOSE_ALG_A128KW)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
     TEST_ASSERT(ret == 0, "a128kw unprotected locate recipient headers");
     if (ret == 0) {
-        (void)XMEMCPY(conformant, out, recipientHdrStart);
-        conformant[recipientHdrStart] = 0x40u;
-        conformant[recipientHdrStart + 1u] = 0xA1u;
-        conformant[recipientHdrStart + 2u] = 0x01u;
-        conformant[recipientHdrStart + 3u] = 0x22u;
-        (void)XMEMCPY(&conformant[recipientHdrStart + 4u],
-                      &out[recipientSuffix], outLen - recipientSuffix);
-
+        (void)protectedData;
         ret = wc_CoseEncrypt_Decrypt(&recipient, 0u,
-            conformant, conformantLen,
+            out, outLen,
             NULL, 0u, NULL, 0u,
             scratch, sizeof(scratch), &hdr,
             plaintext, sizeof(plaintext), &plaintextLen);
@@ -11370,7 +11384,7 @@ static void test_cose_encrypt_kw_mutated_recipient_alg_pin(void)
         &rng);
     TEST_ASSERT(ret == 0, "kw mutated encrypt");
 
-    ret = mutate_first_recipient_protected_alg(out, outLen, 0x24);
+    ret = mutate_first_recipient_alg(out, outLen, 0x24);
     TEST_ASSERT(ret == 0, "kw mutated patch recipient alg");
 
     memset(&hdr, 0, sizeof(hdr));
@@ -11412,8 +11426,8 @@ static void test_cose_encrypt_a128kw_multi_recipient(void)
     size_t count = 0u;
     const uint8_t* recipientProtected = NULL;
     size_t recipientProtectedLen = 0u;
-    size_t protectedHeadOffset = 0u;
-    size_t protectedDataOffset = 0u;
+    size_t algValOffset = 0u;
+    int64_t label = 0;
     const uint8_t payload[] = "Multi-KW payload";
     static const uint8_t kwR0Kid[] = { 'k', 'w', '-', 'r', '0' };
     static const uint8_t kwR1Kid[] = { 'k', 'w', '-', 'r', '1' };
@@ -11519,26 +11533,37 @@ static void test_cose_encrypt_a128kw_multi_recipient(void)
         ret = wc_CBOR_DecodeArrayStart(&ctx, &count);
     }
     if ((ret == 0) && (count == 3u)) {
-        protectedHeadOffset = ctx.idx;
         ret = wc_CBOR_DecodeBstr(&ctx, &recipientProtected,
                                  &recipientProtectedLen);
     }
     else if (ret == 0) {
         ret = WOLFCOSE_E_CBOR_MALFORMED;
     }
-    if ((ret == 0) && (recipientProtectedLen == 3u) &&
-        (recipientProtected[0] == 0xA1u) &&
-        (recipientProtected[1] == 0x01u) &&
-        (recipientProtected[2] == 0x22u) &&
+    /* RFC 9053 6.2.1: recipient 1's alg sits in its unprotected header (the
+     * protected bucket is empty). Widen the alg in place from A128KW (-3) to
+     * an unimplemented transport without touching recipient 0. */
+    if ((ret == 0) && (recipientProtectedLen == 0u)) {
+        ret = wc_CBOR_DecodeMapStart(&ctx, &count);
+    }
+    else if (ret == 0) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if ((ret == 0) && (count >= 1u)) {
+        ret = wc_CBOR_DecodeInt(&ctx, &label);
+    }
+    else if (ret == 0) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    if ((ret == 0) && (label == WOLFCOSE_HDR_ALG) &&
+        (ctx.idx < outLen) && (out[ctx.idx] == 0x22u) &&
         (outLen < sizeof(mixed))) {
-        protectedDataOffset = (size_t)(recipientProtected - out);
+        algValOffset = ctx.idx;
         (void)XMEMCPY(mixed, out, outLen);
-        (void)XMEMMOVE(&mixed[protectedDataOffset + 4u],
-                       &mixed[protectedDataOffset + 3u],
-                       outLen - (protectedDataOffset + 3u));
-        mixed[protectedHeadOffset] = 0x44u;
-        mixed[protectedDataOffset + 2u] = 0x38u;
-        mixed[protectedDataOffset + 3u] = 0x28u;
+        (void)XMEMMOVE(&mixed[algValOffset + 2u],
+                       &mixed[algValOffset + 1u],
+                       outLen - (algValOffset + 1u));
+        mixed[algValOffset] = 0x38u;
+        mixed[algValOffset + 1u] = 0x28u;
         mixedLen = outLen + 1u;
     }
     else if (ret == 0) {
@@ -11561,7 +11586,7 @@ static void test_cose_encrypt_a128kw_multi_recipient(void)
     }
 
     if (ret == 0) {
-        mixed[protectedDataOffset + 3u] = 0x1Au; /* ECDH-SS + HKDF-256 */
+        mixed[algValOffset + 1u] = 0x1Au; /* ECDH-SS + HKDF-256 */
         plain1Len = 0u;
         ret = wc_CoseEncrypt_Decrypt(
             &recipients[0], 0, mixed, mixedLen,

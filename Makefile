@@ -528,11 +528,11 @@ PYTHON_CWT_DIR           = tests/interop/python_cwt
 PYTHON_CWT_BIN           = $(PYTHON_CWT_DIR)/interop_python_cwt
 PYTHON_CWT_ORACLE        = $(PYTHON) $(PYTHON_CWT_DIR)/main.py
 PYTHON_CWT_C_SRC         = $(PYTHON_CWT_DIR)/interop_python_cwt.c
-# python-cwt 3.3.0 rejects the protected recipient algorithm emitted by
-# wolfCOSE for A128KW. Keep its producer path live without weakening the
-# standards-compliant wolfCOSE encoder; the fixed COSE WG vector covers it.
-PYTHON_CWT_CASES        ?= encrypt-direct encrypt-ecdh-es mac-direct
-PYTHON_CWT_TO_WOLFCOSE_CASES ?= encrypt-a128kw
+# A128KW COSE_Encrypt interoperates in both directions: wolfCOSE emits an empty
+# protected recipient bucket with the algorithm in the unprotected header per
+# RFC 9053 Section 6.2.1, which python-cwt 3.3.0 accepts.
+PYTHON_CWT_CASES        ?= encrypt-direct encrypt-ecdh-es mac-direct encrypt-a128kw
+PYTHON_CWT_TO_WOLFCOSE_CASES ?=
 
 interop-python-cwt: $(LIB_A)
 	$(CC) $(CFLAGS) -std=c99 -o $(PYTHON_CWT_BIN) \
