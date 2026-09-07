@@ -244,8 +244,13 @@ int wolfCose_EccKeyCheckCurve(int32_t crv, ecc_key* eccKey)
     }
     if ((ret == WOLFCOSE_SUCCESS) && (actualSz != 0) &&
         (eccKey->dp != NULL)) {
-        int actualCrv = wc_ecc_get_curve_id(eccKey->idx);
+        int actualCrv = ECC_CURVE_INVALID;
 
+        /* FIPS wc_ecc_get_curve_id() does not bounds-check idx, and a dp-params
+         * key carries idx -1, so only look it up when the index is valid. */
+        if (eccKey->idx >= 0) {
+            actualCrv = wc_ecc_get_curve_id(eccKey->idx);
+        }
         if (actualCrv == (int)ECC_CURVE_INVALID) {
             actualCrv = wc_ecc_get_curve_id_from_dp_params(eccKey->dp);
         }

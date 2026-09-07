@@ -128,9 +128,16 @@ jobs:
         build_cfg() {
           name="$1"; shift
           echo "== $name =="
+          objs=""
           for f in src/*.c; do
-            gcc $SF "$@" -c "$f" -o "/tmp/$(basename "$f" .c).o"
+            o="/tmp/$(basename "$f" .c).o"
+            gcc $SF "$@" -c "$f" -o "$o"
+            objs="$objs $o"
           done
+          # Link so a definition removed under some config while its caller
+          # remains surfaces as an undefined reference (compile-only misses it).
+          gcc -shared $objs -L"$WOLFSSL_DIR/lib" -lwolfssl -Wl,--no-undefined \
+              -o /tmp/leancheck.so
         }
         build_cfg "default (full)"
         build_cfg "WOLFCOSE_LEAN (sign+verify)" -DWOLFCOSE_LEAN

@@ -23864,7 +23864,7 @@ static void test_ephemeral_key_map_too_large(void)
     ctx.bufSz = 4u;
     ret = wolfCose_DecodeEphemeralKey(&ctx, &crv,
         x, sizeof(x), &xLen, y, sizeof(y), &yLen);
-    TEST_ASSERT(ret != WOLFCOSE_SUCCESS, "ephemeral unknown label skipped");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR, "ephemeral unknown label skipped");
 }
 #endif /* WOLFCOSE_ECDH_ES_DIRECT && HAVE_ECC && HAVE_HKDF */
 
