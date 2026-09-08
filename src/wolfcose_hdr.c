@@ -635,6 +635,12 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
     if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL)) {
         ret = wolfCose_DecodeSkippedHdrAlg(ctx, alg, &algFound);
     }
+    /* RFC 9053 Section 6.1 requires an empty protected header bucket for
+     * Direct recipients. */
+    if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL) &&
+        (*alg == WOLFCOSE_ALG_DIRECT) && (protectedLen != 0u)) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
     if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL)) {
         if (*alg == WOLFCOSE_ALG_DIRECT) {
             WOLFCOSE_CBOR_ITEM item;
