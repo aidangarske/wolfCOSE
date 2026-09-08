@@ -786,9 +786,9 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         /* Signer unprotected headers (may include kid). Match Sign1/Mac0
          * by requiring both kid and kidLen to be present. */
         if (ret == WOLFCOSE_SUCCESS) {
-            unprotectedEntries = (size_t)(((signer->kid != NULL) &&
-                                            (signer->kidLen > 0u))
-                                          ? 1u : 0u);
+            unprotectedEntries = ((signer->kid != NULL) &&
+                                  (signer->kidLen > 0u)) ?
+                                 (size_t)1u : (size_t)0u;
             ret = wc_CBOR_EncodeMapStart(&outCtx, unprotectedEntries);
         }
 
