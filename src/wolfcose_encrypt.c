@@ -956,6 +956,14 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         ret = wolfCose_UpdateRecipientMode(recipientAlgId, &recipientMode);
     }
 
+    /* RFC 9053 Section 6.1 requires an empty protected header bucket for
+     * Direct recipients. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipientAlgId == WOLFCOSE_ALG_DIRECT) &&
+        (recipientProtectedLen != 0u)) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
+
     /* Classify the recipient key-management algorithm. Only direct, ECDH-ES
      * direct, and AES key wrap are supported; reject anything else instead of
      * silently treating it as direct-key decryption. */

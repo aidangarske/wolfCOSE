@@ -571,6 +571,13 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
             ret = wolfCose_UpdateRecipientMode(recipientAlgId,
                                                &recipientMode);
         }
+        /* RFC 9053 Section 6.1 requires an empty protected header bucket for
+         * Direct recipients. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (recipientAlgId == WOLFCOSE_ALG_DIRECT) &&
+            (recipProtLen != 0u)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
         /* Parse the recipient ciphertext before classifying its algorithm. */
         if (ret == WOLFCOSE_SUCCESS) {
             recipientValueIsNull = 0;
