@@ -636,7 +636,31 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
         ret = wolfCose_DecodeSkippedHdrAlg(ctx, alg, &algFound);
     }
     if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL)) {
-        ret = wc_CBOR_Skip(ctx);
+        if (*alg == WOLFCOSE_ALG_DIRECT) {
+            WOLFCOSE_CBOR_ITEM item;
+            int recipientValueIsNull = 0;
+
+            if ((ctx->idx < ctx->bufSz) &&
+                (ctx->cbuf[ctx->idx] == WOLFCOSE_CBOR_NULL)) {
+                recipientValueIsNull = 1;
+            }
+            ret = wolfCose_CBOR_DecodeHead(ctx, &item);
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (recipientValueIsNull == 0) &&
+                (item.majorType != WOLFCOSE_CBOR_BSTR)) {
+                ret = WOLFCOSE_E_CBOR_TYPE;
+            }
+            else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (recipientValueIsNull == 0) && (item.dataLen != 0u)) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
+            }
+            else {
+                /* No action required */
+            }
+        }
+        else {
+            ret = wc_CBOR_Skip(ctx);
+        }
     }
 
     return ret;
