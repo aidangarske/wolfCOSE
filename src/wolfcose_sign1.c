@@ -998,7 +998,8 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
     }
 
     if (ret == WOLFCOSE_SUCCESS) {
-        unprotectedEntries = (size_t)(((kid != NULL) && (kidLen > 0u)) ? 1u : 0u);
+        unprotectedEntries = ((kid != NULL) && (kidLen > 0u)) ?
+                             (size_t)1u : (size_t)0u;
         ret = wc_CBOR_EncodeMapStart(&outCtx, unprotectedEntries);
     }
 
