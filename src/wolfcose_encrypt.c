@@ -517,16 +517,21 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         /* For direct key agreement, the wrapped CEK is empty */
         /* COSE_recipient = [protected, unprotected, ciphertext] */
 
-        /* Encode recipient protected header. RFC 9053 Section 6.1: the direct
-         * key algorithm uses a zero-length protected header, so treat an
-         * explicit WOLFCOSE_ALG_DIRECT the same as the unset direct case. */
-        if (recipients[i].algId != WOLFCOSE_ALG_DIRECT) {
+        /* Encode recipient protected header. RFC 9053 Section 6.1 (direct key)
+         * and Section 6.2.1 (AES Key Wrap) both require an empty protected
+         * bucket; the algorithm is carried in the unprotected header. */
+        if (recipients[i].algId == WOLFCOSE_ALG_DIRECT) {
+            recipientProtectedLen = 0;
+        }
+#if defined(WOLFCOSE_KEY_WRAP)
+        else if (wolfCose_IsKeyWrapAlg(recipients[i].algId) != 0) {
+            recipientProtectedLen = 0;
+        }
+#endif
+        else {
             ret = wolfCose_EncodeProtectedHdr(recipients[i].algId,
                 recipientProtectedBuf, sizeof(recipientProtectedBuf),
                 &recipientProtectedLen);
-        } else {
-            /* Direct key - no alg in protected, use empty bstr */
-            recipientProtectedLen = 0;
         }
 
         /* Start recipient array [protected, unprotected, ciphertext] */
@@ -571,8 +576,20 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
 #endif
             if (ret == WOLFCOSE_SUCCESS) {
                 size_t mapEntries = 0u;
+                int emitAlg = 0;
 
                 if (recipients[i].algId == WOLFCOSE_ALG_DIRECT) {
+                    emitAlg = 1;
+                }
+#if defined(WOLFCOSE_KEY_WRAP)
+                else if (wolfCose_IsKeyWrapAlg(recipients[i].algId) != 0) {
+                    emitAlg = 1;
+                }
+#endif
+                else {
+                    /* No action required */
+                }
+                if (emitAlg != 0) {
                     mapEntries++;
                 }
                 if ((recipients[i].kid != NULL) &&
@@ -580,11 +597,10 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
                     mapEntries++;
                 }
                 ret = wc_CBOR_EncodeMapStart(&ctx, mapEntries);
-                if ((ret == WOLFCOSE_SUCCESS) &&
-                    (recipients[i].algId == WOLFCOSE_ALG_DIRECT)) {
+                if ((ret == WOLFCOSE_SUCCESS) && (emitAlg != 0)) {
                     ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_HDR_ALG);
                     if (ret == WOLFCOSE_SUCCESS) {
-                        ret = wc_CBOR_EncodeInt(&ctx, WOLFCOSE_ALG_DIRECT);
+                        ret = wc_CBOR_EncodeInt(&ctx, recipients[i].algId);
                     }
                 }
                 if ((ret == WOLFCOSE_SUCCESS) &&
