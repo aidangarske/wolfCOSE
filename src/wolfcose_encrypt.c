@@ -982,6 +982,16 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         }
     }
 
+#if defined(WOLFCOSE_KEY_WRAP)
+    /* RFC 9053 Section 6.2.1 requires an empty protected header bucket for
+     * AES Key Wrap recipients. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (wolfCose_IsKeyWrapAlg(recipientAlgId) != 0) &&
+        (recipientProtectedLen != 0u)) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
+#endif
+
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
     defined(HAVE_HKDF)
     /* The ECDH parser must have consumed an ephemeral key before the merged
