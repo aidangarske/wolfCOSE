@@ -2201,6 +2201,42 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
         }
 #endif
 
+#if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448)
+        /* Validate OKP key material before the attachment-dependent import.
+         * Metadata-only decoding must not turn malformed input into a
+         * successfully validated COSE_Key. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (key->kty == WOLFCOSE_KTY_OKP)) {
+            size_t okpPubSz = 0u;
+            size_t okpPrivSz = 0u;
+
+            if ((xData == NULL) && (dData == NULL)) {
+                ret = WOLFCOSE_E_COSE_BAD_HDR;
+            }
+#ifdef WOLFCOSE_HAVE_EDDSA
+            else if (key->crv == WOLFCOSE_CRV_ED25519) {
+                okpPubSz = (size_t)ED25519_PUB_KEY_SIZE;
+                okpPrivSz = (size_t)ED25519_KEY_SIZE;
+            }
+#endif
+#ifdef WOLFCOSE_HAVE_ED448
+            else if (key->crv == WOLFCOSE_CRV_ED448) {
+                okpPubSz = (size_t)ED448_PUB_KEY_SIZE;
+                okpPrivSz = (size_t)ED448_KEY_SIZE;
+            }
+#endif
+            else {
+                ret = WOLFCOSE_E_COSE_BAD_ALG;
+            }
+
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (((xData != NULL) && (xLen != okpPubSz)) ||
+                 ((dData != NULL) && (dLen != okpPrivSz)))) {
+                ret = WOLFCOSE_E_COSE_BAD_HDR;
+            }
+        }
+#endif
+
         if (ret == WOLFCOSE_SUCCESS) {
             ret = wolfCose_KeyAttachedTypeCheck(key);
         }
@@ -2525,7 +2561,8 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             else
 #endif /* WOLFCOSE_HAVE_LMS */
 #if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448)
-            if (key->kty == WOLFCOSE_KTY_OKP) {
+            if ((key->kty == WOLFCOSE_KTY_OKP) &&
+                (key->attachedType != WOLFCOSE_ATT_NONE)) {
                 /* RFC 9052: x is recommended, not required, for a private OKP
                  * key, so accept {kty, crv, d} and recompute the public key. */
                 if ((xData == NULL) && (dData == NULL)) {
