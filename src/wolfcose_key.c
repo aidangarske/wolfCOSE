@@ -565,8 +565,11 @@ static int wolfCose_EncodeRsaMp(WOLFCOSE_CBOR_CTX* ctx, int64_t label,
                 WC_TYPE_UNSIGNED_BIN) != 0) {
             ret = WOLFCOSE_E_CRYPTO;
         }
+        else if (len != keySz) {
+            ret = WOLFCOSE_E_CRYPTO;
+        }
         else {
-            ctx->idx += (size_t)len;
+            ctx->idx += (size_t)keySz;
         }
     }
     return ret;
@@ -2174,6 +2177,22 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
 #endif
+#endif
+
+#ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
+        /* RSA private values have widths derived from the modulus. Validate
+         * them before importing into a backend that may not reject an
+         * oversized fixed-width export safely. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (key->kty == WOLFCOSE_KTY_RSA) && (yData != NULL)) {
+            size_t rsaHalfLen = nLen - (nLen / 2u);
+
+            if ((yLen > nLen) || (dLen > rsaHalfLen) ||
+                (qLen > rsaHalfLen) || (dpLen > rsaHalfLen) ||
+                (dqLen > rsaHalfLen) || (qiLen > rsaHalfLen)) {
+                ret = WOLFCOSE_E_COSE_BAD_HDR;
+            }
+        }
 #endif
 
         /* An EC2 key must contain either a complete public point or a private
