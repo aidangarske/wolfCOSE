@@ -807,6 +807,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wc_CBOR_EncodeBstr(&ctx, eBuf, (size_t)eLen);
             }
+#ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
             /* -3: d (private exponent, optional) — direct export */
             if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
                 ret = wc_CBOR_EncodeInt(&ctx,
@@ -890,7 +891,6 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                     }
                 }
             }
-#ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
             /* -4 p, -5 q, -8 qInv: CRT factors so a decoded key can sign. */
             if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
                 int modSz = wc_RsaEncryptSize(key->key.rsa);
