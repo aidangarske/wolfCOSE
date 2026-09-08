@@ -8,10 +8,18 @@ This guide covers prerequisites, building wolfCOSE, and basic usage examples.
 
 wolfCOSE requires wolfSSL 5.8.0 or later with the appropriate algorithms
 enabled. AES Key Wrap requires wolfSSL 5.9.0 or later because that release
-uses a constant-time integrity comparison during unwrap. ML-DSA requires a
-wolfSSL release newer than 5.9.1. HSS/LMS (RFC 8778) requires wolfSSL 5.9.2 or
-later, the first release whose public-key importer derives the parameter set
-from the key bytes.
+uses a constant-time integrity comparison during unwrap. Private RSA
+`COSE_Key` decoding requires wolfSSL 5.9.0 or later, and private RSA
+serialization requires wolfSSL 5.9.2 or later. ML-DSA requires a wolfSSL
+release newer than 5.9.1. HSS/LMS (RFC 8778) requires wolfSSL 5.9.2 or later,
+the first release whose public-key importer derives the parameter set from the
+key bytes.
+
+These dependency floors are enforced at compile time whenever wolfCOSE selects
+the corresponding feature. With an older wolfSSL, disable unused ML-DSA or LMS
+support with `WOLFCOSE_NO_MLDSA` or `WOLFCOSE_NO_LMS`. Define
+`WOLFCOSE_RSA_PUBLIC_ONLY` to retain RSA-PSS and public `COSE_Key` support
+without private RSA serialization.
 
 Here is a full-featured build using a release that meets those feature floors:
 
@@ -61,7 +69,9 @@ You can enable only the algorithms you need:
 | ECDH-ES key agreement | `--enable-ecc --enable-hkdf` |
 | AES Key Wrap | `--enable-aeskeywrap` (wolfSSL 5.9.0+) |
 | RSA-PSS signing | `--enable-rsapss --enable-keygen` |
-| ML-DSA (post-quantum) | `--enable-mldsa` |
+| Private RSA `COSE_Key` decoding | `--enable-rsapss` (wolfSSL 5.9.0+) |
+| Private RSA `COSE_Key` serialization | `--enable-rsapss --enable-keygen` (wolfSSL 5.9.2+) |
+| ML-DSA (post-quantum) | `--enable-mldsa` (wolfSSL newer than 5.9.1) |
 | HSS/LMS (stateful hash-based) | `--enable-lms` (wolfSSL 5.9.2+) |
 | AES-MAC | `--enable-aescbc` |
 
