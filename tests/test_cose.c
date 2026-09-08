@@ -17302,8 +17302,8 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
         0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
         0x40u
     };
-    /* Valid four-element recipients appear on both sides of the selected
-     * recipient. Their nested direct recipients must also be decoded. */
+    /* Four-element Direct recipients appear on both sides of the selected
+     * recipient. Neither may contain nested recipients. */
     uint8_t nestedSiblings[] = {
         0x85u, 0x43u, 0xA1u, 0x01u, 0x05u, 0xA0u, 0x41u, 0x78u,
         0x58u, 0x20u,
@@ -17352,8 +17352,8 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
     ret = wc_CoseMac_Verify(&recipient, 1, nestedSiblings,
         sizeof(nestedSiblings), NULL, 0, NULL, 0,
         scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL,
-                "nested unselected recipients accepted (mac)");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "nested skipped Direct recipient rejected (mac)");
 
     ret = wc_CoseMac_Verify(&recipient, 1, tstrSibling,
         sizeof(tstrSibling), NULL, 0, NULL, 0,
@@ -17463,8 +17463,8 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
         0x40u
     };
-    /* Valid four-element recipients appear on both sides of the selected
-     * recipient. Their nested direct recipients must also be decoded. */
+    /* Four-element Direct recipients appear on both sides of the selected
+     * recipient. Neither may contain nested recipients. */
     uint8_t nestedSiblings[] = {
         0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
         0xA1u, 0x05u, 0x4Cu,
@@ -17517,8 +17517,8 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         sizeof(nestedSiblings), NULL, 0, NULL, 0,
         scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL,
-                "nested unselected recipients accepted (encrypt)");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "nested skipped Direct recipient rejected (encrypt)");
 
     ret = wc_CoseEncrypt_Decrypt(&recipient, 1, tstrSibling,
         sizeof(tstrSibling), NULL, 0, NULL, 0,

@@ -709,6 +709,10 @@ int wolfCose_DecodeSkippedRecipient(WOLFCOSE_CBOR_CTX* ctx,
         ret = wolfCose_DecodeSkippedHeaderEntry(ctx, 4u, &arrayCount,
                                                  &decodedAlg);
         remaining--;
+        if ((ret == WOLFCOSE_SUCCESS) && (arrayCount == 4u) &&
+            (decodedAlg == WOLFCOSE_ALG_DIRECT)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
         if ((ret == WOLFCOSE_SUCCESS) && (firstRecipient != 0)) {
             *recipientAlg = decodedAlg;
             firstRecipient = 0;
