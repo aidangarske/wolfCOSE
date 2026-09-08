@@ -416,6 +416,7 @@ int wc_CoseEncrypt0_Encrypt(const WOLFCOSE_KEY* key, int32_t alg,
 #if defined(WOLFCOSE_HAVE_AESGCM) || defined(WOLFCOSE_HAVE_AESCCM)
     if (aesInited != 0) {
         (void)wc_AesFree(&aes);
+        (void)wolfCose_ForceZero(&aes, sizeof(aes));
     }
 #endif
     if (scratch != NULL) {
@@ -726,6 +727,7 @@ int wc_CoseEncrypt0_Decrypt(const WOLFCOSE_KEY* key,
 #if defined(WOLFCOSE_HAVE_AESGCM) || defined(WOLFCOSE_HAVE_AESCCM)
     if (aesInited != 0) {
         (void)wc_AesFree(&aes);
+        (void)wolfCose_ForceZero(&aes, sizeof(aes));
     }
 #endif
     if (scratch != NULL) {

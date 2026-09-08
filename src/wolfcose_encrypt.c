@@ -649,6 +649,7 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
 #if defined(WOLFCOSE_HAVE_AESGCM) || defined(WOLFCOSE_HAVE_AESCCM)
     if (aesInited != 0) {
         (void)wc_AesFree(&aes);
+        (void)wolfCose_ForceZero(&aes, sizeof(aes));
     }
 #endif
 #if defined(WOLFCOSE_KEY_WRAP)
@@ -1262,6 +1263,7 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
 #if defined(WOLFCOSE_HAVE_AESGCM) || defined(WOLFCOSE_HAVE_AESCCM)
     if (aesInited != 0) {
         (void)wc_AesFree(&aes);
+        (void)wolfCose_ForceZero(&aes, sizeof(aes));
     }
 #endif
 #if defined(WOLFCOSE_KEY_WRAP)
