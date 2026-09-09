@@ -2476,11 +2476,6 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     /* RFC 9964 AKP keys carry no crv. */
                     ret = WOLFCOSE_E_COSE_BAD_HDR;
                 }
-                else if (akpPub == NULL) {
-                    /* RFC 9964: pub is REQUIRED for AKP keys, public or
-                     * private. Reject a seed-only key with no public part. */
-                    ret = WOLFCOSE_E_COSE_BAD_HDR;
-                }
                 else {
                     ret = wc_MlDsaKey_SetParams(key->key.mldsa, dlLevel);
                     if (ret != 0) {
@@ -2499,39 +2494,34 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     }
 #ifndef WOLFSSL_MLDSA_NO_MAKE_KEY
                     if ((ret == WOLFCOSE_SUCCESS) && (akpSeed != NULL)) {
-                        if (akpSeedLen != WOLFCOSE_MLDSA_SEED_SZ) {
+                        INJECT_FAILURE(WOLF_FAIL_MLDSA_IMPORT_PRIV, -1,
+                            ret = wc_MlDsaKey_MakeKeyFromSeed(
+                                key->key.mldsa, akpSeed));
+                        if ((ret == 0) &&
+                            (XMEMCMP(key->key.mldsa->p, akpPub,
+                                     akpPubLen) != 0)) {
+                            wolfCose_MlDsaImportRollback(
+                                key->key.mldsa, dlLevel);
+                            key->hasPrivate = 0u;
+                            key->mldsaSeed = NULL;
+                            key->mldsaSeedLen = 0u;
                             ret = WOLFCOSE_E_COSE_BAD_HDR;
                         }
+                        else if (ret == 0) {
+                            key->hasPrivate = 1;
+                            /* Retain the seed (zero-copy into the input,
+                             * like kid) so a decode->encode round-trip can
+                             * re-emit the private key. */
+                            key->mldsaSeed = akpSeed;
+                            key->mldsaSeedLen = akpSeedLen;
+                        }
                         else {
-                            INJECT_FAILURE(WOLF_FAIL_MLDSA_IMPORT_PRIV, -1,
-                                ret = wc_MlDsaKey_MakeKeyFromSeed(
-                                    key->key.mldsa, akpSeed));
-                            if ((ret == 0) &&
-                                (XMEMCMP(key->key.mldsa->p, akpPub,
-                                         akpPubLen) != 0)) {
-                                wolfCose_MlDsaImportRollback(
-                                    key->key.mldsa, dlLevel);
-                                key->hasPrivate = 0u;
-                                key->mldsaSeed = NULL;
-                                key->mldsaSeedLen = 0u;
-                                ret = WOLFCOSE_E_COSE_BAD_HDR;
-                            }
-                            else if (ret == 0) {
-                                key->hasPrivate = 1;
-                                /* Retain the seed (zero-copy into the input,
-                                 * like kid) so a decode->encode round-trip can
-                                 * re-emit the private key. */
-                                key->mldsaSeed = akpSeed;
-                                key->mldsaSeedLen = akpSeedLen;
-                            }
-                            else {
-                                wolfCose_MlDsaImportRollback(
-                                    key->key.mldsa, dlLevel);
-                                key->hasPrivate = 0u;
-                                key->mldsaSeed = NULL;
-                                key->mldsaSeedLen = 0u;
-                                ret = WOLFCOSE_E_CRYPTO;
-                            }
+                            wolfCose_MlDsaImportRollback(
+                                key->key.mldsa, dlLevel);
+                            key->hasPrivate = 0u;
+                            key->mldsaSeed = NULL;
+                            key->mldsaSeedLen = 0u;
+                            ret = WOLFCOSE_E_CRYPTO;
                         }
                     }
 #endif
