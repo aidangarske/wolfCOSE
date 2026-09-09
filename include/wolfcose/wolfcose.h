@@ -1200,8 +1200,8 @@ WOLFCOSE_API int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
  * \param alg             Algorithm (WOLFCOSE_ALG_A128GCM/A192GCM/A256GCM).
  * \param iv              Initialization vector (12 bytes for AES-GCM).
  * \param ivLen           IV length.
- * \param payload         Plaintext payload (NULL if detached).
- * \param payloadLen      Payload length (0 if detached).
+ * \param payload         Plaintext payload to encrypt.
+ * \param payloadLen      Plaintext payload length.
  * \param detachedPayload Detached ciphertext destination (NULL if attached).
  *                        If non-NULL, ciphertext is stored here, message has nil.
  * \param detachedSz      Detached buffer size.
