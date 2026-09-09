@@ -159,7 +159,8 @@ static int wolfCose_SignEncodedSize(const WOLFCOSE_SIGNATURE* signers,
  * \param out           Output buffer for COSE_Sign message
  * \param outSz         Output buffer size
  * \param outLen        Output: message length
- * \param rng           Initialized RNG
+ * \param rng           Initialized RNG for local signers; may be NULL with
+ *                      WOLFCOSE_EXT_SIGN when every signer has a signCb
  * \return WOLFCOSE_SUCCESS or error code
  */
 int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
