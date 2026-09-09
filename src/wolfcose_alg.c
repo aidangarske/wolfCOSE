@@ -602,7 +602,7 @@ int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
 #if defined(WOLFCOSE_HAVE_RSAPSS) && \
     (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
      defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
-int wolfCose_HashToMgf(enum wc_HashType hashType, int* mgf)
+int wolfCose_HashToMgf(enum wc_HashType hashType, WOLFCOSE_MGF_ID* mgf)
 {
     int ret = WOLFCOSE_SUCCESS;
 
@@ -610,16 +610,16 @@ int wolfCose_HashToMgf(enum wc_HashType hashType, int* mgf)
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else if (hashType == WC_HASH_TYPE_SHA256) {
-        *mgf = WC_MGF1SHA256;
+        *mgf = (WOLFCOSE_MGF_ID)WC_MGF1SHA256;
     }
 #ifdef WOLFCOSE_HAVE_PS384
     else if (hashType == WC_HASH_TYPE_SHA384) {
-        *mgf = WC_MGF1SHA384;
+        *mgf = (WOLFCOSE_MGF_ID)WC_MGF1SHA384;
     }
 #endif
 #ifdef WOLFCOSE_HAVE_PS512
     else if (hashType == WC_HASH_TYPE_SHA512) {
-        *mgf = WC_MGF1SHA512;
+        *mgf = (WOLFCOSE_MGF_ID)WC_MGF1SHA512;
     }
 #endif
     else {

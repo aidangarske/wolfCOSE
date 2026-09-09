@@ -364,7 +364,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             size_t need = 0;
             int inPlace = 0;
 #if defined(WOLFCOSE_EXT_SIGN)
-            int extPreHash = 0;
+            WOLFCOSE_PREHASH_FLAG extPreHash = 0u;
 #endif
 
             /* ML-DSA and HSS-LMS sign the Sig_structure in place; a delegated
@@ -413,7 +413,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
                 (signers[i].key->signCb != NULL)) {
                 ret = wolfCose_ExtSignAlg(signers[i].algId, &extPreHash);
                 inPlace = 0;
-                if (extPreHash == 0) {
+                if (extPreHash == 0u) {
                     inPlace = 1;
                 }
             }
@@ -556,13 +556,13 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         if ((ret == WOLFCOSE_SUCCESS) && (signerKey->signCb != NULL)) {
             size_t extSigLen = 0;
             size_t sigOff = 0;
-            int extPreHash = 0;
+            WOLFCOSE_PREHASH_FLAG extPreHash = 0u;
 
             /* Same placement rule as wc_CoseSign1_Sign: only an in-place
              * Sig_structure signer needs the structure kept intact. */
             ret = wolfCose_ExtSignAlg(signer->algId, &extPreHash);
             if (ret == WOLFCOSE_SUCCESS) {
-                sigOff = (extPreHash != 0) ? 0u : sigStructLen;
+                sigOff = (extPreHash != 0u) ? 0u : sigStructLen;
                 if (scratchSz <= sigOff) {
                     ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
                 }
@@ -650,7 +650,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             ((signer->algId == WOLFCOSE_ALG_PS256) ||
              (signer->algId == WOLFCOSE_ALG_PS384) ||
              (signer->algId == WOLFCOSE_ALG_PS512))) {
-            int mgf = 0;
+            WOLFCOSE_MGF_ID mgf = 0;
             ret = wolfCose_RsaPssCheckKey(signerKey, NULL);
             if (ret == WOLFCOSE_SUCCESS) {
                 ret = wolfCose_HashToMgf(hashType, &mgf);
@@ -661,7 +661,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
                 word32 rsaSigLen = (word32)scratchSz;
                 ret = wc_RsaPSS_Sign_ex(hashBuf, (word32)hashLen,
                                           scratch, rsaSigLen,
-                                          hashType, mgf, (int)hashLen,
+                                          hashType, (int)mgf, (int)hashLen,
                                           signerKey->key.rsa, rng);
                 if (ret <= 0) {
                     ret = WOLFCOSE_E_CRYPTO;
@@ -1188,7 +1188,7 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         ((alg == WOLFCOSE_ALG_PS256) || (alg == WOLFCOSE_ALG_PS384) ||
          (alg == WOLFCOSE_ALG_PS512))) {
         RsaKey* rsaKey = NULL;
-        int mgf = 0;
+        WOLFCOSE_MGF_ID mgf = 0;
         ret = wolfCose_RsaPssCheckKey(verifyKey, NULL);
         if (ret == WOLFCOSE_SUCCESS) {
             rsaKey = verifyKey->key.rsa;
@@ -1204,7 +1204,7 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
             ret = wc_RsaPSS_VerifyCheck(scratch, (word32)signatureLen,
                                           scratch, (word32)scratchSz,
                                           hashBuf, (word32)hashLen,
-                                          hashType, mgf, rsaKey);
+                                          hashType, (int)mgf, rsaKey);
             if (ret < 0) {
                 ret = WOLFCOSE_E_COSE_SIG_FAIL;
             }

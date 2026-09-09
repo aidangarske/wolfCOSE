@@ -246,51 +246,51 @@ int wolfCose_SignSigLen(const WOLFCOSE_KEY* key, int32_t alg,
  * so these live outside the WOLFCOSE_SIGN1 region below. */
 #if defined(WOLFCOSE_EXT_SIGN)
 /* Reject algorithms this build lacks; report whether alg pre-hashes. */
-int wolfCose_ExtSignAlg(int32_t alg, int* preHashes)
+int wolfCose_ExtSignAlg(int32_t alg, WOLFCOSE_PREHASH_FLAG* preHashes)
 {
     int ret = WOLFCOSE_SUCCESS;
 
     switch (alg) {
 #if defined(WOLFCOSE_HAVE_ES256)
         case WOLFCOSE_ALG_ES256:
-            *preHashes = 1;
+            *preHashes = 1u;
             break;
 #endif
 #if defined(WOLFCOSE_HAVE_ES384)
         case WOLFCOSE_ALG_ES384:
-            *preHashes = 1;
+            *preHashes = 1u;
             break;
 #endif
 #if defined(WOLFCOSE_HAVE_ES512)
         case WOLFCOSE_ALG_ES512:
-            *preHashes = 1;
+            *preHashes = 1u;
             break;
 #endif
 #if defined(WOLFCOSE_HAVE_PS256)
         case WOLFCOSE_ALG_PS256:
-            *preHashes = 1;
+            *preHashes = 1u;
             break;
 #endif
 #if defined(WOLFCOSE_HAVE_PS384)
         case WOLFCOSE_ALG_PS384:
-            *preHashes = 1;
+            *preHashes = 1u;
             break;
 #endif
 #if defined(WOLFCOSE_HAVE_PS512)
         case WOLFCOSE_ALG_PS512:
-            *preHashes = 1;
+            *preHashes = 1u;
             break;
 #endif
 #if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448)
         case WOLFCOSE_ALG_EDDSA:
-            *preHashes = 0;
+            *preHashes = 0u;
             break;
 #endif
 #if defined(WOLFCOSE_HAVE_MLDSA)
         case WOLFCOSE_ALG_ML_DSA_44:
         case WOLFCOSE_ALG_ML_DSA_65:
         case WOLFCOSE_ALG_ML_DSA_87:
-            *preHashes = 0;
+            *preHashes = 0u;
             break;
 #endif
 #if defined(WOLFCOSE_HAVE_LMS)
@@ -317,7 +317,7 @@ int wolfCose_ExtSign(const WOLFCOSE_KEY* key, int32_t alg,
     const uint8_t* tbs = sigStruct;
     size_t tbsLen = sigStructLen;
     size_t expSigLen = 0;
-    int preHashes = 0;
+    WOLFCOSE_PREHASH_FLAG preHashes = 0u;
 
     if ((key == NULL) || (key->signCb == NULL) || (sigStruct == NULL) ||
         (sig == NULL) || (sigLen == NULL) || (sigSz == 0u)) {
@@ -329,7 +329,7 @@ int wolfCose_ExtSign(const WOLFCOSE_KEY* key, int32_t alg,
         ret = wolfCose_ExtSignAlg(alg, &preHashes);
     }
 
-    if ((ret == WOLFCOSE_SUCCESS) && (preHashes != 0)) {
+    if ((ret == WOLFCOSE_SUCCESS) && (preHashes != 0u)) {
         int digestSz = 0;
 
         ret = wolfCose_AlgToHashType(alg, &hashType);
@@ -658,7 +658,7 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
     if ((ret == WOLFCOSE_SUCCESS) && (key->signCb != NULL)) {
         size_t extSigLen = 0;
         size_t sigOff = 0;
-        int extPreHash = 0;
+        WOLFCOSE_PREHASH_FLAG extPreHash = 0u;
 
         /* A pre-hashing algorithm has its digest copied out before the
          * callback runs, so the signature may reuse the whole scratch.
@@ -666,7 +666,7 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
          * signature has to start past it. */
         ret = wolfCose_ExtSignAlg(alg, &extPreHash);
         if (ret == WOLFCOSE_SUCCESS) {
-            sigOff = (extPreHash != 0) ? 0u : sigStructLen;
+            sigOff = (extPreHash != 0u) ? 0u : sigStructLen;
             if (scratchSz <= sigOff) {
                 ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
             }
@@ -811,7 +811,7 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
         (alg == WOLFCOSE_ALG_PS384) || (alg == WOLFCOSE_ALG_PS512))) {
         enum wc_HashType hashType;
         int digestSz = 0;
-        int mgf = 0;
+        WOLFCOSE_MGF_ID mgf = 0;
 
         ret = wolfCose_RsaPssCheckKey(key, NULL);
 
@@ -846,7 +846,7 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
             INJECT_FAILURE(WOLF_FAIL_RSA_SSL_SIGN, -1,
                 ret = wc_RsaPSS_Sign_ex(hashBuf, (word32)digestSz,
                                           scratch, rsaSigLen,
-                                          hashType, mgf, digestSz,
+                                          hashType, (int)mgf, digestSz,
                                           key->key.rsa, rng));
             if (ret <= 0) {
                 ret = WOLFCOSE_E_CRYPTO;
@@ -1332,7 +1332,7 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
         RsaKey* rsaKey = NULL;
         enum wc_HashType hashType = WC_HASH_TYPE_NONE;
         int digestSz = 0;
-        int mgf = 0;
+        WOLFCOSE_MGF_ID mgf = 0;
 
         ret = wolfCose_RsaPssCheckKey(key, NULL);
         if (ret == WOLFCOSE_SUCCESS) {
@@ -1370,7 +1370,7 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
                 ret = wc_RsaPSS_VerifyCheck(scratch, (word32)sigDataLen,
                                               scratch, (word32)scratchSz,
                                               hashBuf, (word32)digestSz,
-                                              hashType, mgf, rsaKey));
+                                              hashType, (int)mgf, rsaKey));
             if (ret < 0) {
                 ret = WOLFCOSE_E_COSE_SIG_FAIL;
             }
