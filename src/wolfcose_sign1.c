@@ -86,6 +86,7 @@ int wolfCose_MlDsaCheckKey(const WOLFCOSE_KEY* key, int32_t alg)
     byte reqLevel = 0;
 
     if ((key == NULL) || (key->kty != WOLFCOSE_KTY_AKP) ||
+        (key->attachedType != WOLFCOSE_ATT_MLDSA) ||
         (key->key.mldsa == NULL)) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
     }
@@ -1270,7 +1271,8 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
         enum wc_HashType hashType = WC_HASH_TYPE_NONE;
         int digestSz = 0;
 
-        if (key->kty != WOLFCOSE_KTY_EC2) {
+        if ((key->kty != WOLFCOSE_KTY_EC2) ||
+            (key->attachedType != WOLFCOSE_ATT_ECC)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         /* Each ECDSA alg is bound to one curve. */
