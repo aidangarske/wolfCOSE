@@ -1094,7 +1094,8 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         int verified = 0;
         size_t coordSz = 0;
         int32_t expectedCrv;
-        if (verifyKey->kty != WOLFCOSE_KTY_EC2) {
+        if ((verifyKey->kty != WOLFCOSE_KTY_EC2) ||
+            (verifyKey->attachedType != WOLFCOSE_ATT_ECC)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         if (alg == WOLFCOSE_ALG_ES256) {
