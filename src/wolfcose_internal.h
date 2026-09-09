@@ -423,7 +423,7 @@ WOLFCOSE_LOCAL int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
                                    size_t* modulusLen);
 
 /* HashToMgf -- defined in wolfcose_alg.c */
-typedef int32_t WOLFCOSE_MGF_ID;
+typedef int WOLFCOSE_MGF_ID;
 WOLFCOSE_LOCAL int wolfCose_HashToMgf(enum wc_HashType hashType,
                                        WOLFCOSE_MGF_ID* mgf);
 #endif

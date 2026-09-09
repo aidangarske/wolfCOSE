@@ -364,7 +364,8 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             size_t need = 0;
             int inPlace = 0;
 #if defined(WOLFCOSE_EXT_SIGN)
-            WOLFCOSE_PREHASH_FLAG extPreHash = 0u;
+            WOLFCOSE_PREHASH_FLAG extPreHash =
+                (WOLFCOSE_PREHASH_FLAG)0u;
 #endif
 
             /* ML-DSA and HSS-LMS sign the Sig_structure in place; a delegated
@@ -556,7 +557,8 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         if ((ret == WOLFCOSE_SUCCESS) && (signerKey->signCb != NULL)) {
             size_t extSigLen = 0;
             size_t sigOff = 0;
-            WOLFCOSE_PREHASH_FLAG extPreHash = 0u;
+            WOLFCOSE_PREHASH_FLAG extPreHash =
+                (WOLFCOSE_PREHASH_FLAG)0u;
 
             /* Same placement rule as wc_CoseSign1_Sign: only an in-place
              * Sig_structure signer needs the structure kept intact. */
@@ -661,7 +663,7 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
                 word32 rsaSigLen = (word32)scratchSz;
                 ret = wc_RsaPSS_Sign_ex(hashBuf, (word32)hashLen,
                                           scratch, rsaSigLen,
-                                          hashType, (int)mgf, (int)hashLen,
+                                          hashType, mgf, (int)hashLen,
                                           signerKey->key.rsa, rng);
                 if (ret <= 0) {
                     ret = WOLFCOSE_E_CRYPTO;
@@ -1204,7 +1206,7 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
             ret = wc_RsaPSS_VerifyCheck(scratch, (word32)signatureLen,
                                           scratch, (word32)scratchSz,
                                           hashBuf, (word32)hashLen,
-                                          hashType, (int)mgf, rsaKey);
+                                          hashType, mgf, rsaKey);
             if (ret < 0) {
                 ret = WOLFCOSE_E_COSE_SIG_FAIL;
             }
