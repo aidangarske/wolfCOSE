@@ -1137,7 +1137,8 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
             (verifyKey->crv == WOLFCOSE_CRV_ED25519)) {
             ed25519_key* ed25519Key = verifyKey->key.ed25519;
 
-            if (ed25519Key == NULL) {
+            if ((verifyKey->attachedType != WOLFCOSE_ATT_ED25519) ||
+                (ed25519Key == NULL)) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             else {
@@ -1156,7 +1157,8 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
             (verifyKey->crv == WOLFCOSE_CRV_ED448)) {
             ed448_key* ed448Key = verifyKey->key.ed448;
 
-            if (ed448Key == NULL) {
+            if ((verifyKey->attachedType != WOLFCOSE_ATT_ED448) ||
+                (ed448Key == NULL)) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             else {
