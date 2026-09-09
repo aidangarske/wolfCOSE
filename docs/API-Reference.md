@@ -482,7 +482,9 @@ Decode a COSE key from CBOR format.
 Attach the wolfCrypt key with `wc_CoseKey_SetEcc()`, `wc_CoseKey_SetEd25519()`,
 `wc_CoseKey_SetEd448()`, `wc_CoseKey_SetRsa()`, `wc_CoseKey_SetMlDsa()`, or
 `wc_CoseKey_SetSymmetric()`. These record which wolfCrypt object is attached;
-assigning the `key.*` union directly does not, and no key material is imported.
+assigning the `key.*` union directly does not. Only attachments recorded by a
+setter are preserved across decode; an untyped `key.*` union is cleared before
+parsing, and no key material is imported.
 
 The decoded `kty`/`crv` must name the attached key type or
 `WOLFCOSE_E_COSE_KEY_TYPE` is returned before any importer runs. To learn which
