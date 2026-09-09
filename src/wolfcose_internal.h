@@ -384,9 +384,8 @@ WOLFCOSE_LOCAL int wolfCose_ExtSign(const WOLFCOSE_KEY* key, int32_t alg,
 /* ----- Internal helpers shared across the split source files ----- */
 
 #ifdef WOLFCOSE_HAVE_RSAPSS
-/* Widest RSA public exponent wolfCOSE emits and the RFC 8230 RSA-PSS
- * minimum modulus width. These are shared by COSE_Key encoding and message
- * operations, including builds that disable COSE_Key encoding. */
+/* RSA component limits shared by COSE_Key encoding and message operations,
+ * including builds that disable COSE_Key encoding. */
 #define WOLFCOSE_RSA_E_MAX_SZ    8u
 #define WOLFCOSE_RSA_PSS_MIN_SZ  256u
 #endif

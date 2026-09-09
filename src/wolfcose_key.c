@@ -472,7 +472,8 @@ static int wolfCose_RsaExponentSize(RsaKey* rsa, size_t* eLen)
     size_t lead = 0u;
     int ret = WOLFCOSE_SUCCESS;
 #if !defined(HAVE_ECC) && !defined(WOLFSSL_EXPORT_INT)
-    uint8_t nBuf[WOLFCOSE_MAX_SCRATCH_SZ];
+    /* RSA_MAX_SIZE is in bits. */
+    uint8_t nBuf[(RSA_MAX_SIZE + 7) / 8];
     word32 nLen = (word32)sizeof(nBuf);
 #endif
 
@@ -485,21 +486,12 @@ static int wolfCose_RsaExponentSize(RsaKey* rsa, size_t* eLen)
     }
 #else
     /* Without wc_export_int() the only public reader of e also wants the
-     * modulus; take it into scratch and drop it. n is public, but there is
-     * no reason to leave a copy on the stack.
-     *
-     * wc_RsaFlattenPublicKey() has no way to decline the modulus, so this
-     * caps the size query at a WOLFCOSE_MAX_SCRATCH_SZ modulus while the
-     * encoder, which flattens n straight into the caller's output buffer,
-     * handles any modulus that fits there. A key wider than scratch (e.g.
-     * RSA-8192 with the 512-byte WOLFCOSE_MIN_BUFFERS scratch) therefore
-     * sizes as WOLFCOSE_E_CRYPTO but still encodes. Documented on
-     * wc_CoseKey_EncodeSize_ex(); it costs nothing in a build with ECC or
-     * WOLFSSL_EXPORT_INT, which is every build that reaches the branch above. */
+     * modulus. Size that temporary from wolfCrypt's configured RSA limit,
+     * independently of the COSE scratch setting, then erase it. */
     if (wc_RsaFlattenPublicKey(rsa, eBuf, &len, nBuf, &nLen) != 0) {
         ret = WOLFCOSE_E_CRYPTO;
     }
-    wolfCose_ForceZero(nBuf, sizeof(nBuf));
+    (void)wolfCose_ForceZero(nBuf, sizeof(nBuf));
 #endif
 
     if (ret == WOLFCOSE_SUCCESS) {
