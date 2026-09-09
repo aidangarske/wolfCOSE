@@ -2526,7 +2526,7 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                             ret = WOLFCOSE_E_COSE_BAD_HDR;
                         }
                         else if (ret == 0) {
-                            key->hasPrivate = 1;
+                            key->hasPrivate = 1u;
                             /* Retain the seed (zero-copy into the input,
                              * like kid) so a decode->encode round-trip can
                              * re-emit the private key. */
