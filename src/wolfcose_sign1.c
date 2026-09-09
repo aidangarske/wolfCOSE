@@ -694,7 +694,8 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
         if (ret == WOLFCOSE_SUCCESS) {
 #ifdef WOLFCOSE_HAVE_EDDSA
             if (key->crv == WOLFCOSE_CRV_ED25519) {
-                if (key->key.ed25519 == NULL) {
+                if ((key->attachedType != WOLFCOSE_ATT_ED25519) ||
+                    (key->key.ed25519 == NULL)) {
                     ret = WOLFCOSE_E_COSE_KEY_TYPE;
                 }
                 else {
@@ -714,7 +715,8 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
 #endif
 #ifdef WOLFCOSE_HAVE_ED448
             if (key->crv == WOLFCOSE_CRV_ED448) {
-                if (key->key.ed448 == NULL) {
+                if ((key->attachedType != WOLFCOSE_ATT_ED448) ||
+                    (key->key.ed448 == NULL)) {
                     ret = WOLFCOSE_E_COSE_KEY_TYPE;
                 }
                 else {
