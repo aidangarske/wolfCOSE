@@ -657,8 +657,8 @@ WOLFCOSE_LOCAL void wolfCose_HdrClearOnFail(int ret, WOLFCOSE_HDR* hdr);
 
 #if defined(WOLFCOSE_MAC0_VERIFY) || defined(WOLFCOSE_MAC_VERIFY)
 /* ConstantCompare -- defined in wolfcose_util.c */
-WOLFCOSE_LOCAL int wolfCose_ConstantCompare(const byte* a, const byte* b,
-                                     word32 length);
+WOLFCOSE_LOCAL int32_t wolfCose_ConstantCompare(const byte* a, const byte* b,
+                                                 word32 length);
 #endif
 
 #ifdef __cplusplus

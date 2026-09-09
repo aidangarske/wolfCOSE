@@ -332,18 +332,18 @@ void wolfCose_HdrClearOnFail(int ret, WOLFCOSE_HDR* hdr)
  * Returns 0 if equal, non-zero otherwise.
  * Timing is independent of comparison result.
  */
-int wolfCose_ConstantCompare(const byte* a, const byte* b,
-                                     word32 length)
+int32_t wolfCose_ConstantCompare(const byte* a, const byte* b,
+                                 word32 length)
 {
     word32 i;
     /* volatile prevents the compiler from converting the OR-accumulate
      * loop into an early-exit comparison once result is non-zero. */
-    volatile unsigned int result = 0;
+    volatile uint32_t result = 0u;
 
-    for (i = 0; i < length; i++) {
-        result |= (unsigned int)a[i] ^ (unsigned int)b[i];
+    for (i = 0u; i < length; i++) {
+        result |= (uint32_t)a[i] ^ (uint32_t)b[i];
     }
-    return (int)result;
+    return (int32_t)result;
 }
 #endif /* WOLFCOSE_MAC0_VERIFY || WOLFCOSE_MAC_VERIFY */
 
