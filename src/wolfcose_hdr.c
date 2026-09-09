@@ -240,7 +240,10 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
     if ((hdr == NULL) || (hdrState == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
-    else if ((data == NULL) || (dataLen == 0u)) {
+    else if ((data == NULL) && (dataLen != 0u)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if (dataLen == 0u) {
         /* Empty protected header is valid */
         wolfCose_HdrStateInit(hdrState);
         ret = WOLFCOSE_SUCCESS;
