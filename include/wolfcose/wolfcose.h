@@ -935,7 +935,7 @@ WOLFCOSE_API int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out,
  * \param flags   Bitmask of WOLFCOSE_KEY_* output options.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
-WOLFCOSE_API int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out,
+WOLFCOSE_API int wc_CoseKey_Encode_ex(const WOLFCOSE_KEY* key, uint8_t* out,
                                        size_t outSz, size_t* outLen,
                                        uint32_t flags);
 

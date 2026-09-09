@@ -364,7 +364,7 @@ Encode a COSE key to CBOR format.
 ### wc_CoseKey_Encode_ex
 
 ```c
-int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* buf, size_t bufSz,
+int wc_CoseKey_Encode_ex(const WOLFCOSE_KEY* key, uint8_t* buf, size_t bufSz,
                          size_t* outLen, uint32_t flags);
 ```
 

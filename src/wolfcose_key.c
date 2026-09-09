@@ -641,8 +641,8 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
     return wc_CoseKey_Encode_ex(key, out, outSz, outLen, 0u);
 }
 
-int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
-                          size_t* outLen, uint32_t flags)
+int wc_CoseKey_Encode_ex(const WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
+                         size_t* outLen, uint32_t flags)
 {
     int ret = WOLFCOSE_SUCCESS;
     WOLFCOSE_CBOR_CTX ctx;
