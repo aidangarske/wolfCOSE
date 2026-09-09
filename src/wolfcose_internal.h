@@ -655,7 +655,10 @@ WOLFCOSE_LOCAL void wolfCose_EccPrivateImportRollback(ecc_key* ecc,
 WOLFCOSE_LOCAL void wolfCose_HdrClearOnFail(int ret, WOLFCOSE_HDR* hdr);
 #endif
 
-#if defined(WOLFCOSE_MAC0_VERIFY) || defined(WOLFCOSE_MAC_VERIFY)
+#if defined(WOLFCOSE_MAC0_VERIFY) || defined(WOLFCOSE_MAC_VERIFY) || \
+    (defined(WOLFCOSE_KEY_DECODE) && defined(WOLFCOSE_HAVE_MLDSA) && \
+     !defined(WOLFSSL_MLDSA_NO_MAKE_KEY))
+#define WOLFCOSE_NEED_CONSTANT_COMPARE
 /* ConstantCompare -- defined in wolfcose_util.c */
 WOLFCOSE_LOCAL int32_t wolfCose_ConstantCompare(const byte* a, const byte* b,
                                                  word32 length);

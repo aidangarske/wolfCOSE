@@ -2516,8 +2516,8 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                             ret = wc_MlDsaKey_MakeKeyFromSeed(
                                 key->key.mldsa, akpSeed));
                         if ((ret == 0) &&
-                            (XMEMCMP(key->key.mldsa->p, akpPub,
-                                     akpPubLen) != 0)) {
+                            (wolfCose_ConstantCompare(key->key.mldsa->p,
+                                akpPub, (word32)akpPubLen) != 0)) {
                             wolfCose_MlDsaImportRollback(
                                 key->key.mldsa, dlLevel);
                             key->hasPrivate = 0u;
