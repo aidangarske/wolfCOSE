@@ -1173,7 +1173,8 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
                                                scratch, scratchSz, &encStructLen);
     }
 
-    /* Decrypt with the algorithm declared in the protected header. */
+    /* Decrypt with the merged body algorithm. An unprotected value is
+     * accepted only for a direct recipient whose key pins it. */
 #ifdef WOLFCOSE_HAVE_AESGCM
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((alg == WOLFCOSE_ALG_A128GCM) || (alg == WOLFCOSE_ALG_A192GCM) ||
