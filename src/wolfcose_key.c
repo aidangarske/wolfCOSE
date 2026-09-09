@@ -949,7 +949,10 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 emitPriv = 1;
             }
 
-            if (key->alg == WOLFCOSE_ALG_UNSET) {
+            if (key->key.mldsa == NULL) {
+                ret = WOLFCOSE_E_INVALID_ARG;
+            }
+            else if (key->alg == WOLFCOSE_ALG_UNSET) {
                 /* RFC 9964: alg is REQUIRED for AKP keys (it carries the
                  * ML-DSA level). Never emit a key without it. */
                 ret = WOLFCOSE_E_COSE_BAD_ALG;
@@ -1116,22 +1119,32 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
 
 #ifdef WOLFCOSE_HAVE_EDDSA
             if (key->crv == WOLFCOSE_CRV_ED25519) {
-                INJECT_FAILURE(WOLF_FAIL_ED25519_EXPORT_PUB, -1,
-                    ret = wc_ed25519_export_public(key->key.ed25519,
-                                                    pubBuf, &pubLen));
-                if (ret != 0) {
-                    ret = WOLFCOSE_E_CRYPTO;
+                if (key->key.ed25519 == NULL) {
+                    ret = WOLFCOSE_E_INVALID_ARG;
+                }
+                else {
+                    INJECT_FAILURE(WOLF_FAIL_ED25519_EXPORT_PUB, -1,
+                        ret = wc_ed25519_export_public(key->key.ed25519,
+                                                       pubBuf, &pubLen));
+                    if (ret != 0) {
+                        ret = WOLFCOSE_E_CRYPTO;
+                    }
                 }
             }
             else
 #endif
 #ifdef WOLFCOSE_HAVE_ED448
             if (key->crv == WOLFCOSE_CRV_ED448) {
-                INJECT_FAILURE(WOLF_FAIL_ED448_EXPORT_PUB, -1,
-                    ret = wc_ed448_export_public(key->key.ed448,
-                                                  pubBuf, &pubLen));
-                if (ret != 0) {
-                    ret = WOLFCOSE_E_CRYPTO;
+                if (key->key.ed448 == NULL) {
+                    ret = WOLFCOSE_E_INVALID_ARG;
+                }
+                else {
+                    INJECT_FAILURE(WOLF_FAIL_ED448_EXPORT_PUB, -1,
+                        ret = wc_ed448_export_public(key->key.ed448,
+                                                     pubBuf, &pubLen));
+                    if (ret != 0) {
+                        ret = WOLFCOSE_E_CRYPTO;
+                    }
                 }
             }
             else
