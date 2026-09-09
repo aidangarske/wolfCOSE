@@ -246,6 +246,8 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
         ret = WOLFCOSE_SUCCESS;
     }
     else {
+        uint8_t contentTypeUnderstood = 0u;
+
         wolfCose_HdrStateInit(hdrState);
         ctx.cbuf = data;
         ctx.bufSz = dataLen;
@@ -336,6 +338,7 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
                     }
                     if (ret == WOLFCOSE_SUCCESS) {
                         hdr->contentType = (int32_t)contentTypeVal;
+                        contentTypeUnderstood = 1u;
                     }
                 }
             }
@@ -383,6 +386,11 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
         /* Every label listed in crit must appear in the protected header. */
         if ((ret == WOLFCOSE_SUCCESS) &&
             ((critLabels & ~hdrState->labelBits) != 0u)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((critLabels & wolfCose_LabelBit(WOLFCOSE_HDR_CONTENT_TYPE)) !=
+             0u) && (contentTypeUnderstood == 0u)) {
             ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
 
