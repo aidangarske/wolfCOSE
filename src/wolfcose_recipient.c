@@ -379,6 +379,13 @@ int wolfCose_EcdhEsDirect(int32_t alg,
         ret = wolfCose_EccKeyCheckCurve(recipientPub->crv,
                                          recipientPub->key.ecc);
     }
+    if (ret == WOLFCOSE_SUCCESS) {
+        int eccRet = wc_ecc_check_key(recipientPub->key.ecc);
+
+        if (eccRet != 0) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+    }
 
     /* Determine hash type from algorithm */
     if (ret == WOLFCOSE_SUCCESS) {
