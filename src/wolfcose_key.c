@@ -1945,8 +1945,8 @@ int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
         if ((ret == WOLFCOSE_SUCCESS) && (info->kty == 0)) {
             ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
-        /* RFC 8949 Section 5.3.1: reject trailing data, as wc_CoseKey_Decode
-         * does, so a successful peek predicts a successful decode. */
+        /* RFC 8949 Section 5.3.1: reject trailing data so peeking and decoding
+         * agree on framing. Decoding still performs per-key validation. */
         if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
