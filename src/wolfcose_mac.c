@@ -624,17 +624,10 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
 
-    /* COSE_Mac is direct-keyed here and the recipient algorithm is mandatory. */
-    if (ret == WOLFCOSE_SUCCESS) {
-        if (recipientAlgId == WOLFCOSE_ALG_UNSET) {
-            ret = WOLFCOSE_E_COSE_BAD_ALG;
-        }
-        else if (recipientAlgId != WOLFCOSE_ALG_DIRECT) {
-            ret = WOLFCOSE_E_UNSUPPORTED;
-        }
-        else {
-            /* No action required */
-        }
+    /* COSE_Mac is direct-keyed here. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipientAlgId != WOLFCOSE_ALG_DIRECT)) {
+        ret = WOLFCOSE_E_UNSUPPORTED;
     }
     if (ret == WOLFCOSE_SUCCESS) {
         if ((recipientValueIsNull == 0) && (recipientValueLen != 0u)) {
