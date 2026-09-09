@@ -134,7 +134,7 @@ WOLFCOSE_LOCAL int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx,
 
 /**
  * \brief Decode a CBOR initial byte + argument. Sets item fields.
- * For bstr/tstr: item->data points into ctx->buf, item->dataLen set.
+ * For bstr/tstr: item->data points into ctx->cbuf, item->dataLen set.
  */
 WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx,
                                              WOLFCOSE_CBOR_ITEM* item);
