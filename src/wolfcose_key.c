@@ -2196,6 +2196,19 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
 
+#ifdef WOLFCOSE_HAVE_RSAPSS
+        /* RFC 8230 requires nonempty public modulus and exponent fields,
+         * including when no wolfCrypt RSA object is attached for import. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (key->kty == WOLFCOSE_KTY_RSA) &&
+            ((key->attachedType == WOLFCOSE_ATT_NONE) ||
+             (key->attachedType == WOLFCOSE_ATT_RSA)) &&
+            ((nData == NULL) || (nLen == 0u) ||
+             (xData == NULL) || (xLen == 0u))) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+#endif
+
 #if defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)
         /* wolfCrypt key import APIs take word32 lengths. Reject every parsed
          * component before any conversion can truncate it. */
