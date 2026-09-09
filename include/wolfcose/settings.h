@@ -440,6 +440,14 @@ extern "C" {
     #error "wolfCOSE RSA-PSS key validation requires WOLFSSL_EXPORT_INT"
 #endif
 
+/* The local ECDSA signing path converts a wolfCrypt DER signature to the
+ * fixed-width COSE representation. NO_ASN is supported for verification
+ * builds only. */
+#if defined(NO_ASN) && defined(WOLFCOSE_HAVE_ECDSA) && \
+    (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN))
+    #error "wolfCOSE ECDSA signing requires ASN support"
+#endif
+
 /* Optional RFC 6979 deterministic ECDSA signing. */
 #if defined(WOLFCOSE_ENABLE_DETERMINISTIC_ECDSA) && \
     defined(WOLFCOSE_HAVE_ECDSA) && \
