@@ -1159,16 +1159,14 @@ int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label,
 
 RFC 9052 defines `label = int / tstr`, and real COSE and CTAP2 maps use both
 spellings for the same field (`3` vs `"alg"`, `1` vs `"type"`, `2` vs `"id"`).
-`wc_CBOR_DecodeLabel()` consumes one CBOR head and any byte- or text-string
-data, then reports whichever supported label form it found. A parser can write
-the dispatch once instead of duplicating a `wc_CBOR_PeekType()` branch at every
-map.
-
-Major types 0 and 1 fill `val` with `isText == 0`; major type 3 fills
-`text`/`textLen` with `isText == 1` and no copy. Anything else returns
-`WOLFCOSE_E_CBOR_TYPE`. For a tag, array, or map, only the head is consumed.
-Use `wc_CBOR_Skip()` instead when the complete unsupported item must be
-skipped.
+`wc_CBOR_DecodeLabel()` consumes one CBOR head. Major types 0 and 1 fill `val`
+with `isText == 0`; major type 3 consumes the text and fills
+`text`/`textLen` with `isText == 1` and no copy. A byte string is fully
+consumed and rejected with `WOLFCOSE_E_CBOR_TYPE`. For a tag, array, or map,
+only the head is consumed. Use `wc_CBOR_Skip()` instead when the complete
+unsupported item must be skipped.
+A parser can therefore write the dispatch once instead of duplicating a
+`wc_CBOR_PeekType()` branch at every map.
 
 `wc_CBOR_LabelIsInt()` and `wc_CBOR_LabelIsText()` return 1 on match and 0
 otherwise, including for a `NULL` label. Text comparison is byte-exact: no

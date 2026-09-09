@@ -549,11 +549,14 @@ static int wolfCose_CBOR_DecodeContainerStart(WOLFCOSE_CBOR_CTX* ctx,
             if (item.majorType != majorType) {
                 ret = WOLFCOSE_E_CBOR_TYPE;
             }
-            /* An array needs at least one byte per item. A map needs at least
-             * one byte per declared pair-count unit, although each pair is two
-             * items. This conservative check also rejects counts that would not
-             * fit in size_t. */
-            else if (item.val > (uint64_t)(ctx->bufSz - ctx->idx)) {
+            /* An array needs at least one byte per item, and a map needs at
+             * least two bytes per pair. These checks also reject counts that
+             * would not fit in size_t. */
+            else if (((majorType == WOLFCOSE_CBOR_ARRAY) &&
+                      (item.val > (uint64_t)(ctx->bufSz - ctx->idx))) ||
+                     ((majorType == WOLFCOSE_CBOR_MAP) &&
+                      (item.val >
+                       (uint64_t)((ctx->bufSz - ctx->idx) / 2u)))) {
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
             else {
