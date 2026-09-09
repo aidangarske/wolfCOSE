@@ -1352,7 +1352,8 @@ WOLFCOSE_API int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
  * \param out             Output buffer.
  * \param outSz           Output buffer size.
  * \param outLen          Output: bytes written to out.
- * \param rng             Initialized WC_RNG.
+ * \param rng             Initialized WC_RNG for any local signer. May be NULL
+ *                        when every signer uses an external signing callback.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
 WOLFCOSE_API int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers,
