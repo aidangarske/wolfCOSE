@@ -155,25 +155,6 @@ int wolfCose_HdrStateCheckAndAdd(WOLFCOSE_HDR_STATE* state,
     return ret;
 }
 
-static int wolfCose_HdrStateMerge(WOLFCOSE_HDR_STATE* dst,
-    const WOLFCOSE_HDR_STATE* src)
-{
-    int ret = WOLFCOSE_SUCCESS;
-
-    if ((dst == NULL) || (src == NULL)) {
-        ret = WOLFCOSE_E_INVALID_ARG;
-    }
-    else {
-        size_t i;
-        dst->labelBits |= src->labelBits;
-        for (i = 0u; (ret == WOLFCOSE_SUCCESS) && (i < src->extraCount); i++) {
-            ret = wolfCose_HdrStateAdd(dst, src->extraLabels[i]);
-        }
-    }
-
-    return ret;
-}
-
 /* If the next decoder item is a tstr label, reject it. The implementation
  * only supports integer labels, and silently skipping text labels breaks
  * duplicate-label enforcement across header and key maps. */
@@ -519,7 +500,10 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
         }
 
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wolfCose_HdrStateMerge(hdrState, &unprotState);
+            /* Cross-bucket checks above already consumed every unprotected
+             * label. Only supported-label presence is needed by callers, so
+             * do not retain unknown labels and double the state size. */
+            hdrState->labelBits |= unprotState.labelBits;
         }
     }
     return ret;
