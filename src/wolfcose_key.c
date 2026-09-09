@@ -2001,9 +2001,12 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
         ctx.idx = 0;
         wolfCose_HdrStateInit(&keyLabelState);
 
-        /* Reset decoded metadata so a malformed key cannot reuse caller state
-         * (e.g. a prior kty/hasPrivate). The key.* union is left untouched: it
-         * holds the caller-attached wolfCrypt object used for import. */
+        /* Reset decoded state so malformed input cannot reuse caller state.
+         * Preserve a setter-recorded attachment for import, but clear an
+         * untyped union that cannot be used safely. */
+        if (key->attachedType == WOLFCOSE_ATT_NONE) {
+            (void)XMEMSET(&key->key, 0, sizeof(key->key));
+        }
         key->kty = 0;
         key->alg = WOLFCOSE_ALG_UNSET;
         key->crv = 0;
