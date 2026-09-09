@@ -44,7 +44,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-${{ matrix.os }}-${{ matrix.wolfssl-ref }}-v4
+        key: wolfssl-${{ matrix.os }}-${{ matrix.wolfssl-ref }}-v5-lms
 
     - name: Build wolfSSL (${{ matrix.wolfssl-ref }})
       if: matrix.wolfssl-ref == 'master' || steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -69,6 +69,7 @@ jobs:
                     --enable-sha384 --enable-sha512 \
                     --enable-keygen --enable-hkdf --enable-aeskeywrap \
                     --enable-chacha --enable-poly1305 \
+                    --enable-lms \
                     $PQC_FLAGS --enable-rsapss \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
@@ -120,6 +121,140 @@ jobs:
         make tool-test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
+  lms-lean:
+    name: LMS lean profiles (wolfSSL ${{ matrix.wolfssl-ref }})
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        wolfssl-ref: ${{ fromJson(needs.discover.outputs.refs) }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool
+
+    - name: Cache wolfSSL (${{ matrix.wolfssl-ref }})
+      if: matrix.wolfssl-ref != 'master'
+      id: cache-wolfssl
+      uses: actions/cache@v4
+      with:
+        path: ~/wolfssl-install
+        key: wolfssl-ubuntu-latest-${{ matrix.wolfssl-ref }}-v5-lms
+
+    - name: Build wolfSSL (${{ matrix.wolfssl-ref }})
+      if: matrix.wolfssl-ref == 'master' || steps.cache-wolfssl.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        git clone --depth 1 --branch ${{ matrix.wolfssl-ref }} \
+            https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        REF="${{ matrix.wolfssl-ref }}"
+        if [ "$REF" = "master" ] || \
+           [ "$(printf '%s\n%s\n' v5.9.1-stable "$REF" | sort -V | tail -n1)" != "v5.9.1-stable" ]; then
+          PQC_FLAGS="--enable-mldsa"
+        else
+          PQC_FLAGS=""
+        fi
+        ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
+                    --enable-curve25519 --enable-curve448 \
+                    --enable-aesgcm --enable-aesccm \
+                    --enable-sha384 --enable-sha512 \
+                    --enable-keygen --enable-hkdf --enable-aeskeywrap \
+                    --enable-chacha --enable-poly1305 \
+                    --enable-lms \
+                    $PQC_FLAGS --enable-rsapss \
+                    --prefix=$HOME/wolfssl-install
+        make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+        make install
+
+    # LMS-only sign+verify profile (WOLFCOSE_LEAN_LMS), warnings fatal.
+    - name: LMS lean sign and verify
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make lms-demo CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror -I./include -isystem $WOLFSSL_DIR/include" \
+                      LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    # Smallest verify-only profile (WOLFCOSE_LEAN_VERIFY_LMS), warnings fatal.
+    - name: LMS lean verify-only
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make lms-verify CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror -I./include -isystem $WOLFSSL_DIR/include" \
+                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    # Strict ISO C99 (-pedantic-errors, -Wvla) over the LMS-gated branches and
+    # both lean LMS profiles, which the default c99-check cannot reach without
+    # an LMS wolfSSL.
+    - name: Strict C99 gate (LMS)
+      run: |
+        make c99-check-lms WOLFSSL_INC=$HOME/wolfssl-install/include
+
+  lms-verify-only:
+    name: LMS verify-only wolfSSL profile
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool
+
+    # Build wolfSSL with LMS support that cannot sign, mirroring a verifier
+    # deployment. --enable-lms=verify-only records WOLFSSL_LMS_VERIFY_ONLY in
+    # options.h, which wolfCOSE reads to compile out its own signing paths.
+    - name: Build wolfSSL (LMS verify-only)
+      run: |
+        cd ~
+        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git
+        cd wolfssl
+        ./autogen.sh
+        ./configure --enable-ecc --enable-ed25519 --enable-ed448 \
+                    --enable-curve25519 --enable-curve448 \
+                    --enable-aesgcm --enable-aesccm \
+                    --enable-sha384 --enable-sha512 \
+                    --enable-keygen --enable-hkdf --enable-aeskeywrap \
+                    --enable-chacha --enable-poly1305 \
+                    --enable-lms=verify-only \
+                    --enable-mldsa --enable-rsapss \
+                    --prefix=$HOME/wolfssl-lmsvo
+        make -j$(nproc)
+        make install
+
+    - name: Assert signing symbol absent from verify-only build
+      run: |
+        if nm -D $HOME/wolfssl-lmsvo/lib/libwolfssl.so 2>/dev/null \
+             | grep -qw wc_LmsKey_Sign; then
+          echo "FAIL: wc_LmsKey_Sign present in a verify-only wolfSSL"
+          exit 1
+        fi
+        echo "OK: wc_LmsKey_Sign absent from verify-only wolfSSL"
+
+    # Fixed-vector verify with no sign-capable code in either library.
+    - name: LMS fixed-vector verify
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-lmsvo
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make lms-verify CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror -I./include -isystem $WOLFSSL_DIR/include" \
+                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    # Delegated LMS signing against a backend that cannot sign: the callback
+    # supplies the signature, the public LmsKey only its length.
+    - name: Delegated LMS with verify-only backend
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-lmsvo
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make ext-sign-test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror -I./include -isystem $WOLFSSL_DIR/include" \
+                           LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
   coverage:
     name: Code Coverage (wolfSSL ${{ matrix.wolfssl-version }})
     needs: discover
@@ -142,7 +277,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/wolfssl-install
-        key: wolfssl-coverage-${{ matrix.wolfssl-version }}-v4
+        key: wolfssl-coverage-${{ matrix.wolfssl-version }}-v5-lms
 
     - name: Build wolfSSL (${{ matrix.wolfssl-version }})
       if: matrix.wolfssl-version == 'master' || steps.cache-wolfssl.outputs.cache-hit != 'true'
@@ -165,6 +300,7 @@ jobs:
                     --enable-sha384 --enable-sha512 \
                     --enable-keygen --enable-hkdf --enable-aeskeywrap \
                     --enable-chacha --enable-poly1305 \
+                    --enable-lms \
                     $PQC_FLAGS --enable-rsapss \
                     --prefix=$HOME/wolfssl-install
         make -j$(nproc)

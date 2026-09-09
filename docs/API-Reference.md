@@ -282,6 +282,33 @@ Associate an RSA key with a COSE key structure.
 
 ---
 
+### wc_CoseKey_SetLms
+
+```c
+int wc_CoseKey_SetLms(WOLFCOSE_KEY* key, LmsKey* lmsKey);
+```
+
+Attach an HSS/LMS stateful hash-based key (RFC 8778) to a COSE key structure.
+The caller owns the `LmsKey`: for signing it configures the parameter set and
+the wolfCrypt private-key read/write callbacks, then calls `wc_LmsKey_MakeKey()`
+or `wc_LmsKey_Reload()` before attaching. Each successful signing call consumes
+one one-time signature and persists the advanced state through those callbacks.
+If a signing call fails, wolfCOSE marks the `LmsKey` bad and it cannot sign
+again through any attachment until the caller reloads it with
+`wc_LmsKey_Reload()`.
+
+**Parameters:**
+| Name | Description |
+|------|-------------|
+| `key` | Pointer to initialized COSE key |
+| `lmsKey` | Pointer to initialized wolfCrypt `LmsKey` (caller-owned) |
+
+**Returns:** `WOLFCOSE_SUCCESS` or error code
+
+**Requires:** `WOLFSSL_HAVE_LMS` (wolfSSL 5.9.2 or later)
+
+---
+
 ### wc_CoseKey_SetSymmetric
 
 ```c

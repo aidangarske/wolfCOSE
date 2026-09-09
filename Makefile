@@ -104,6 +104,8 @@ LEANV_DEMO = examples/sign1_verify_lean
 MLDSA_DEMO  = examples/sign1_mldsa
 EXTSIGN_DEMO = examples/ext_sign_demo
 MLDSAV_DEMO = examples/sign1_verify_mldsa
+LMS_DEMO  = examples/sign1_lms
+LMSV_DEMO = examples/sign1_verify_lms
 
 # Comprehensive tests (CI)
 COMP_SIGN     = examples/comprehensive/sign_all
@@ -118,7 +120,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test pkg-config-test ecdsa-policy-test rsapss-policy-test zero-alloc-check zeroize-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify comprehensive scenarios interop-tcose tcose-upstream interop-go-cose interop-python-cwt interop-rust-coset c99-check experimental-check clean FORCE
+.PHONY: all shared test pkg-config-test ecdsa-policy-test rsapss-policy-test zero-alloc-check zeroize-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage tool tool-test cmdline-test demo demos lean-verify mldsa-demo mldsa-verify lms-demo lms-verify comprehensive scenarios interop-tcose tcose-upstream interop-go-cose interop-python-cwt interop-rust-coset c99-check c99-check-lms experimental-check clean FORCE
 
 # --- Core library ---
 all: $(LIB_A)
@@ -151,7 +153,9 @@ ECDSA_POLICY_BASE_FLAGS = $(CFLAGS) -x c -fsyntax-only -Wno-error \
                           -UWOLFCOSE_NO_ES256 -UWOLFCOSE_NO_SIGN1 \
                           -UWOLFCOSE_NO_SIGN1_SIGN -UWOLFCOSE_LEAN_VERIFY \
                           -UWOLFCOSE_LEAN_VERIFY_MLDSA \
-                          -UWOLFCOSE_LEAN_MLDSA
+                          -UWOLFCOSE_LEAN_MLDSA \
+                          -UWOLFCOSE_LEAN_VERIFY_LMS \
+                          -UWOLFCOSE_LEAN_LMS
 ECDSA_POLICY_NO_SUPPORT_FLAGS = $(CFLAGS) -x c -fsyntax-only -Wno-error \
                                 -DWOLFSSL_NO_OPTIONS_H -DHAVE_ECC \
                                 -UWOLFSSL_ECDSA_DETERMINISTIC_K \
@@ -160,7 +164,9 @@ ECDSA_POLICY_NO_SUPPORT_FLAGS = $(CFLAGS) -x c -fsyntax-only -Wno-error \
                                 -UWOLFCOSE_NO_SIGN1_SIGN \
                                 -UWOLFCOSE_LEAN_VERIFY \
                                 -UWOLFCOSE_LEAN_VERIFY_MLDSA \
-                                -UWOLFCOSE_LEAN_MLDSA
+                                -UWOLFCOSE_LEAN_MLDSA \
+                                -UWOLFCOSE_LEAN_VERIFY_LMS \
+                                -UWOLFCOSE_LEAN_LMS
 ECDSA_POLICY_FLAGS = $(ECDSA_POLICY_BASE_FLAGS) \
                      -DWOLFSSL_ECDSA_DETERMINISTIC_K \
                      -DWOLFCOSE_ENABLE_DETERMINISTIC_ECDSA
@@ -439,6 +445,21 @@ mldsa-verify:
 	@echo "=== Running lean ML-DSA verify-only example ==="
 	./$(MLDSAV_DEMO)
 
+# --- Stateful hash-based HSS/LMS lean sign + verify (WOLFCOSE_LEAN_LMS) ---
+# Requires wolfSSL built with LMS (./configure --enable-lms).
+lms-demo:
+	$(CC) $(CFLAGS) -DWOLFCOSE_LEAN_LMS -o $(LMS_DEMO) \
+		$(LMS_DEMO).c $(SRC) $(LDFLAGS) $(LDLIBS)
+	@echo "=== Running HSS/LMS sign + verify example ==="
+	./$(LMS_DEMO)
+
+# --- Smallest hash-based verify-only (WOLFCOSE_LEAN_VERIFY_LMS) ---
+lms-verify:
+	$(CC) $(CFLAGS) -DWOLFCOSE_LEAN_VERIFY_LMS -o $(LMSV_DEMO) \
+		$(LMSV_DEMO).c $(SRC) $(LDFLAGS) $(LDLIBS)
+	@echo "=== Running lean HSS/LMS verify-only example ==="
+	./$(LMSV_DEMO)
+
 # --- Comprehensive algorithm tests (CI) ---
 comprehensive: $(LIB_A)
 	@mkdir -p examples/comprehensive
@@ -609,6 +630,25 @@ c99-check:
 	    -fsyntax-only $(SRC)
 	@echo "PASS: all sources conform to ISO C99 (-pedantic-errors)"
 
+# Strict C99 gate for the LMS-gated branches and profiles. Needs an
+# LMS-enabled wolfSSL (WOLFSSL_INC), so it runs in the LMS CI job rather than
+# the default gate whose wolfSSL may lack LMS.
+C99_LMS_CONFIGS = "-DWOLFCOSE_ENABLE_LMS" \
+    "-DWOLFCOSE_ENABLE_LMS -DWOLFCOSE_ENABLE_EXT_SIGN"
+
+c99-check-lms:
+	@for cfg in $(C99_LMS_CONFIGS); do \
+	    for f in $(SRC); do \
+	        echo "  C99-LMS $$cfg $$f"; \
+	        $(CC) $(C99_FLAGS) $$cfg -fsyntax-only $$f || exit 1; \
+	    done; \
+	done
+	@echo "  C99-LMS -DWOLFCOSE_LEAN_LMS $(LMS_DEMO).c"
+	@$(CC) $(C99_FLAGS) -DWOLFCOSE_LEAN_LMS -fsyntax-only $(LMS_DEMO).c
+	@echo "  C99-LMS -DWOLFCOSE_LEAN_VERIFY_LMS $(LMSV_DEMO).c"
+	@$(CC) $(C99_FLAGS) -DWOLFCOSE_LEAN_VERIFY_LMS -fsyntax-only $(LMSV_DEMO).c
+	@echo "PASS: LMS sources conform to ISO C99 (-pedantic-errors)"
+
 # Experimental-feature acknowledgement gate. Proves WOLFCOSE_EXPERIMENTAL guards
 # draft (pre-RFC) features: enabling one without it is a hard error, enabling
 # both compiles, and a normal build pulls in zero experimental code.
@@ -641,7 +681,8 @@ experimental-check:
 # --- Cleanup ---
 clean:
 	rm -f $(OBJ) $(TEST_BIN) $(TOOL_BIN) $(DEMO_BIN) $(ENC_DEMO) $(MAC_DEMO) \
-	    $(EXTSIGN_DEMO) $(SIGN1_DEMO) $(COMP_SIGN) $(COMP_ENCRYPT) $(COMP_MAC) $(COMP_ERRORS) \
+	    $(EXTSIGN_DEMO) $(SIGN1_DEMO) $(MLDSA_DEMO) $(MLDSAV_DEMO) $(LMS_DEMO) $(LMSV_DEMO) \
+	    $(COMP_SIGN) $(COMP_ENCRYPT) $(COMP_MAC) $(COMP_ERRORS) \
 	    $(SCEN_FIRMWARE) $(SCEN_MULTIPARTY) $(SCEN_IOTFLEET) $(SCEN_SENSOR) $(SCEN_BROADCAST) \
 	    $(INTEROP_DIR)/*.o $(INTEROP_DIR)/*.su $(INTEROP_BIN) \
 	    $(GO_COSE_BIN) $(GO_COSE_ORACLE) \

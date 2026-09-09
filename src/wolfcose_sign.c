@@ -44,6 +44,7 @@
     #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #endif
 #include <string.h>
+#include <limits.h>
 
 
 /* -----
@@ -56,10 +57,96 @@
 #if defined(WOLFCOSE_SIGN)
 
 #if defined(WOLFCOSE_SIGN_SIGN)
+
+#if defined(WOLFCOSE_HAVE_LMS) && \
+    (defined(WOLFCOSE_EXT_SIGN) || !defined(WOLFSSL_LMS_VERIFY_ONLY))
+/* Exact encoded size of the tagged COSE_Sign that wc_CoseSign_Sign() emits for
+ * this signer set. Used only when a stateful HSS/LMS signer is present, so it
+ * is never advanced for an output buffer that cannot hold the result, whether
+ * signed locally or through a delegated callback. Mirrors the field order of
+ * the encoder below. */
+static int wolfCose_SignEncodedSize(const WOLFCOSE_SIGNATURE* signers,
+                                    size_t signerCount, size_t payloadLen,
+                                    uint8_t isDetached, size_t* outLen)
+{
+    uint8_t protectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
+    size_t protectedLen = 0;
+    size_t total = 0;
+    size_t itemLen = 0;
+    size_t sigLen = 0;
+    size_t i;
+    int ret;
+
+    /* tag 98 (2 bytes) + array(4) + empty body-protected bstr + map(0). */
+    ret = wolfCose_SizeAdd(&total, 5u);
+    if (ret == WOLFCOSE_SUCCESS) {
+        if (isDetached != 0u) {
+            ret = wolfCose_SizeAdd(&total, 1u); /* nil payload */
+        }
+        else {
+            ret = wolfCose_CborStringSize(payloadLen, &itemLen);
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_SizeAdd(&total, itemLen);
+            }
+        }
+    }
+    /* Signatures array header. CBOR argument width is identical across major
+     * types, so the bstr sizer minus the length yields the header bytes. */
+    if (ret == WOLFCOSE_SUCCESS) {
+        ret = wolfCose_CborStringSize(signerCount, &itemLen);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_SizeAdd(&total, itemLen - signerCount);
+        }
+    }
+    for (i = 0; (ret == WOLFCOSE_SUCCESS) && (i < signerCount); i++) {
+        ret = wolfCose_EncodeProtectedHdr(signers[i].algId, protectedBuf,
+                                          sizeof(protectedBuf), &protectedLen);
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_SignSigLen(signers[i].key, signers[i].algId,
+                                      &sigLen);
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_SizeAdd(&total, 1u); /* array(3) */
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_CborStringSize(protectedLen, &itemLen);
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_SizeAdd(&total, itemLen);
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_SizeAdd(&total, 1u); /* map(0) or map(1) */
+        }
+        if ((ret == WOLFCOSE_SUCCESS) && (signers[i].kid != NULL) &&
+            (signers[i].kidLen > 0u)) {
+            ret = wolfCose_SizeAdd(&total, 1u); /* kid label 4 */
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_CborStringSize(signers[i].kidLen, &itemLen);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_SizeAdd(&total, itemLen);
+            }
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            ret = wolfCose_CborStringSize(sigLen, &itemLen);
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_SizeAdd(&total, itemLen);
+            }
+        }
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        *outLen = total;
+    }
+    return ret;
+}
+#endif /* WOLFCOSE_HAVE_LMS && (EXT_SIGN || !WOLFSSL_LMS_VERIFY_ONLY) */
+
 /**
  * Create a multi-signer COSE_Sign message.
  *
- * \param signers       Array of signer configurations
+ * \param signers       Array of signer configurations. At most one may use
+ *                      HSS-LMS, and it must be the last entry: a later
+ *                      signer failing could not give back its spent leaf.
  * \param signerCount   Number of signers (must be >= 1)
  * \param payload       Payload to sign
  * \param payloadLen    Payload length
@@ -237,6 +324,119 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         }
     }
 
+#if defined(WOLFCOSE_HAVE_LMS) && \
+    (defined(WOLFCOSE_EXT_SIGN) || !defined(WOLFSSL_LMS_VERIFY_ONLY))
+    /* A stateful HSS/LMS signer is advanced inside the loop below, before the
+     * later signers and the output encoding run, whether signed locally or
+     * through a delegated callback. Verify every signer resolves and the whole
+     * COSE_Sign fits in out before signing any of them, so an LMS one-time
+     * signature is never spent on an operation that then fails. */
+    if (ret == WOLFCOSE_SUCCESS) {
+        int haveLms = 0;
+        size_t neededOut = 0;
+        for (i = 0; i < signerCount; i++) {
+            if (signers[i].algId == WOLFCOSE_ALG_HSS_LMS) {
+                haveLms++;
+            }
+        }
+        /* Signing is sequential and a spent LMS leaf cannot be recovered, so
+         * any signer failing after it would waste that leaf. Allow one HSS-LMS
+         * signer, and only in the last slot, so nothing runs after it. */
+        if ((haveLms > 1) ||
+            ((haveLms == 1) &&
+             (signers[signerCount - 1u].algId != WOLFCOSE_ALG_HSS_LMS))) {
+            ret = WOLFCOSE_E_INVALID_ARG;
+        }
+        if ((ret == WOLFCOSE_SUCCESS) && (haveLms != 0)) {
+            ret = wolfCose_SignEncodedSize(signers, signerCount, payloadLen,
+                                           isDetached, &neededOut);
+            if ((ret == WOLFCOSE_SUCCESS) && (outSz < neededOut)) {
+                ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+            }
+        }
+        /* Every signer's scratch layout too: a later signer's scratch failure
+         * would otherwise surface after an earlier LMS signer spent its state.
+         * In-place signers need the Sig_structure plus the signature; the rest
+         * reuse the structure's space. */
+        for (i = 0; (ret == WOLFCOSE_SUCCESS) && (haveLms != 0) &&
+                    (i < signerCount); i++) {
+            size_t sigLen = 0;
+            size_t need = 0;
+            int inPlace = 0;
+#if defined(WOLFCOSE_EXT_SIGN)
+            int extPreHash = 0;
+#endif
+
+            /* ML-DSA and HSS-LMS sign the Sig_structure in place; a delegated
+             * signer's placement is refined once its pre-hash is known. */
+            if ((signers[i].algId == WOLFCOSE_ALG_ML_DSA_44) ||
+                (signers[i].algId == WOLFCOSE_ALG_ML_DSA_65) ||
+                (signers[i].algId == WOLFCOSE_ALG_ML_DSA_87) ||
+                (signers[i].algId == WOLFCOSE_ALG_HSS_LMS)) {
+                inPlace = 1;
+            }
+
+            ret = wolfCose_EncodeProtectedHdr(signers[i].algId,
+                                              signerProtectedBuf,
+                                              sizeof(signerProtectedBuf),
+                                              &signerProtectedLen);
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_BuildToBeSignedMaced(
+                    WOLFCOSE_CTX_SIGNATURE, sizeof(WOLFCOSE_CTX_SIGNATURE),
+                    bodyProtectedBuf, bodyProtectedLen,
+                    signerProtectedBuf, signerProtectedLen,
+                    extAad, extAadLen,
+                    sigPayload, sigPayloadLen,
+                    scratch, scratchSz, &sigStructLen);
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                ret = wolfCose_SignSigLen(signers[i].key, signers[i].algId,
+                                          &sigLen);
+            }
+#if !defined(WOLFSSL_LMS_VERIFY_ONLY)
+            /* A local LMS signer must be able to sign right now; GetSigLen
+             * above only proves the parameter set. */
+            if ((ret == WOLFCOSE_SUCCESS) &&
+#if defined(WOLFCOSE_EXT_SIGN)
+                (signers[i].key->signCb == NULL) &&
+#endif
+                (signers[i].algId == WOLFCOSE_ALG_HSS_LMS)) {
+                LmsKey* lmsCheck = signers[i].key->key.lms;
+                if ((lmsCheck->state != WC_LMS_STATE_OK) ||
+                    (wc_LmsKey_SigsLeft(lmsCheck) != 1)) {
+                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
+                }
+            }
+#endif /* !WOLFSSL_LMS_VERIFY_ONLY */
+#if defined(WOLFCOSE_EXT_SIGN)
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (signers[i].key->signCb != NULL)) {
+                ret = wolfCose_ExtSignAlg(signers[i].algId, &extPreHash);
+                inPlace = 0;
+                if (extPreHash == 0) {
+                    inPlace = 1;
+                }
+            }
+#endif
+            if (ret == WOLFCOSE_SUCCESS) {
+                need = sigStructLen;
+                if (inPlace != 0) {
+                    ret = wolfCose_SizeAdd(&need, sigLen);
+                }
+                else if (sigLen > need) {
+                    need = sigLen;
+                }
+                else {
+                    /* No action required */
+                }
+            }
+            if ((ret == WOLFCOSE_SUCCESS) && (need > scratchSz)) {
+                ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+            }
+        }
+    }
+#endif /* WOLFCOSE_HAVE_LMS && (EXT_SIGN || !WOLFSSL_LMS_VERIFY_ONLY) */
+
     /* Body protected headers: zero-length bstr for multi-signer (RFC 9052 §3.1) */
     if (ret == WOLFCOSE_SUCCESS) {
         bodyProtectedLen = 0;
@@ -293,15 +493,17 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
          * inside each algorithm branch so this dispatch tolerates
          * algorithms whose signature size is computed dynamically
          * (RSA-PSS) or whose entry is gated by a different feature
-         * macro (ML-DSA). ML-DSA signs the Sig_structure directly
-         * without a pre-hash so the hash type lookup is skipped. */
+         * macro (ML-DSA). ML-DSA and HSS-LMS sign the Sig_structure
+         * directly without a pre-hash so the hash type lookup is
+         * skipped. */
         if ((ret == WOLFCOSE_SUCCESS) &&
 #if defined(WOLFCOSE_EXT_SIGN)
             (signerKey->signCb == NULL) &&
 #endif
             (signer->algId != WOLFCOSE_ALG_ML_DSA_44) &&
             (signer->algId != WOLFCOSE_ALG_ML_DSA_65) &&
-            (signer->algId != WOLFCOSE_ALG_ML_DSA_87)) {
+            (signer->algId != WOLFCOSE_ALG_ML_DSA_87) &&
+            (signer->algId != WOLFCOSE_ALG_HSS_LMS)) {
             ret = wolfCose_AlgToHashType(signer->algId, &hashType);
         }
 
@@ -323,9 +525,9 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
                 scratch, scratchSz, &sigStructLen);
         }
 
-        /* Hash the Sig_structure for algorithms that pre-hash. EdDSA
-         * and ML-DSA sign the structure directly, and a delegated signer
-         * does its own hashing inside wolfCose_ExtSign. */
+        /* Hash the Sig_structure for algorithms that pre-hash. EdDSA,
+         * ML-DSA and HSS-LMS sign the structure directly, and a delegated
+         * signer does its own hashing inside wolfCose_ExtSign. */
         if ((ret == WOLFCOSE_SUCCESS) &&
 #if defined(WOLFCOSE_EXT_SIGN)
             (signerKey->signCb == NULL) &&
@@ -333,7 +535,8 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             (signer->algId != WOLFCOSE_ALG_EDDSA) &&
             (signer->algId != WOLFCOSE_ALG_ML_DSA_44) &&
             (signer->algId != WOLFCOSE_ALG_ML_DSA_65) &&
-            (signer->algId != WOLFCOSE_ALG_ML_DSA_87)) {
+            (signer->algId != WOLFCOSE_ALG_ML_DSA_87) &&
+            (signer->algId != WOLFCOSE_ALG_HSS_LMS)) {
             int digestSz = wc_HashGetDigestSize(hashType);
             if (digestSz <= 0) {
                 ret = WOLFCOSE_E_CRYPTO;
@@ -507,6 +710,61 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
         }
         else
 #endif /* WOLFCOSE_HAVE_MLDSA */
+#if defined(WOLFCOSE_HAVE_LMS) && !defined(WOLFSSL_LMS_VERIFY_ONLY)
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (signer->algId == WOLFCOSE_ALG_HSS_LMS)) {
+            size_t expectedSigSz = 0;
+
+            /* RFC 8778: HSS-LMS key attached via wc_CoseKey_SetLms();
+             * signature length comes from the key's parameter set. */
+            ret = wolfCose_LmsCheckKey(signerKey);
+            if (ret == WOLFCOSE_SUCCESS) {
+                word32 lmsSigLen = 0;
+                if (wc_LmsKey_GetSigLen(signerKey->key.lms,
+                                        &lmsSigLen) != 0) {
+                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
+                }
+                else {
+                    expectedSigSz = (size_t)lmsSigLen;
+                }
+            }
+            /* wolfSSL takes the message length as int. */
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (sigStructLen > (size_t)INT_MAX)) {
+                ret = WOLFCOSE_E_INVALID_ARG;
+            }
+            /* Sig output goes after Sig_structure in scratch; subtraction
+             * form so the capacity check cannot wrap. */
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                ((expectedSigSz > scratchSz) ||
+                 (sigStructLen > (scratchSz - expectedSigSz)))) {
+                ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+            }
+            if (ret == WOLFCOSE_SUCCESS) {
+                word32 lmsSigLen = (word32)expectedSigSz;
+                INJECT_FAILURE(WOLF_FAIL_LMS_SIGN, -1,
+                    ret = wc_LmsKey_Sign(signerKey->key.lms,
+                        &scratch[sigStructLen], &lmsSigLen,
+                        scratch, (int)sigStructLen));
+                if (ret != 0) {
+                    /* wolfSSL 5.9.2 can leave the key WC_LMS_STATE_OK after a
+                     * persistence-write failure, so mark it bad here; the
+                     * preflight refuses a bad key before any signer runs. Keep
+                     * an exhausted key as WC_LMS_STATE_NOSIGS so its public key
+                     * can still be exported. */
+                    if (signerKey->key.lms->state != WC_LMS_STATE_NOSIGS) {
+                        signerKey->key.lms->state = WC_LMS_STATE_BAD;
+                    }
+                    ret = WOLFCOSE_E_CRYPTO;
+                }
+                else {
+                    sigPtr = &scratch[sigStructLen];
+                    sigSz = (size_t)lmsSigLen;
+                }
+            }
+        }
+        else
+#endif /* WOLFCOSE_HAVE_LMS && !WOLFSSL_LMS_VERIFY_ONLY */
         if (ret == WOLFCOSE_SUCCESS) {
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
@@ -791,23 +1049,25 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
             scratch, scratchSz, &sigStructLen);
     }
 
-    /* Get hash type for algorithms that pre-hash. EdDSA and ML-DSA
-     * verify against the raw Sig_structure so the hash type lookup is
-     * skipped (also avoids WOLFCOSE_E_COSE_BAD_ALG for ML-DSA since
-     * the algorithm has no external hash). */
+    /* Get hash type for algorithms that pre-hash. EdDSA, ML-DSA and
+     * HSS-LMS verify against the raw Sig_structure so the hash type
+     * lookup is skipped (also avoids WOLFCOSE_E_COSE_BAD_ALG since
+     * these algorithms have no external hash). */
     if ((ret == WOLFCOSE_SUCCESS) && (alg != WOLFCOSE_ALG_EDDSA) &&
         (alg != WOLFCOSE_ALG_ML_DSA_44) &&
         (alg != WOLFCOSE_ALG_ML_DSA_65) &&
-        (alg != WOLFCOSE_ALG_ML_DSA_87)) {
+        (alg != WOLFCOSE_ALG_ML_DSA_87) &&
+        (alg != WOLFCOSE_ALG_HSS_LMS)) {
         ret = wolfCose_AlgToHashType(alg, &hashType);
     }
 
-    /* Hash the Sig_structure for algorithms that pre-hash. EdDSA and
-     * ML-DSA verify the structure directly. */
+    /* Hash the Sig_structure for algorithms that pre-hash. EdDSA,
+     * ML-DSA and HSS-LMS verify the structure directly. */
     if ((ret == WOLFCOSE_SUCCESS) && (alg != WOLFCOSE_ALG_EDDSA) &&
         (alg != WOLFCOSE_ALG_ML_DSA_44) &&
         (alg != WOLFCOSE_ALG_ML_DSA_65) &&
-        (alg != WOLFCOSE_ALG_ML_DSA_87)) {
+        (alg != WOLFCOSE_ALG_ML_DSA_87) &&
+        (alg != WOLFCOSE_ALG_HSS_LMS)) {
         int digestSz = wc_HashGetDigestSize(hashType);
         if (digestSz <= 0) {
             ret = WOLFCOSE_E_CRYPTO;
@@ -983,6 +1243,33 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
     }
     else
 #endif /* WOLFCOSE_HAVE_MLDSA */
+#ifdef WOLFCOSE_HAVE_LMS
+    if ((ret == WOLFCOSE_SUCCESS) && (alg == WOLFCOSE_ALG_HSS_LMS)) {
+        /* RFC 8778: HSS-LMS verifies the raw Sig_structure directly. Only a
+         * genuine mismatch (SIG_VERIFY_E) is an auth failure. */
+        ret = wolfCose_LmsCheckKey(verifyKey);
+        if ((ret == WOLFCOSE_SUCCESS) && (sigStructLen > (size_t)INT_MAX)) {
+            ret = WOLFCOSE_E_INVALID_ARG;
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            LmsKey* lmsKey = verifyKey->key.lms;
+            INJECT_FAILURE(WOLF_FAIL_LMS_VERIFY, SIG_VERIFY_E,
+                ret = wc_LmsKey_Verify(lmsKey,
+                    signature, (word32)signatureLen,
+                    scratch, (int)sigStructLen));
+            if (ret == (int)SIG_VERIFY_E) {
+                ret = WOLFCOSE_E_COSE_SIG_FAIL;
+            }
+            else if (ret != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+            else {
+                /* No action required */
+            }
+        }
+    }
+    else
+#endif /* WOLFCOSE_HAVE_LMS */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }

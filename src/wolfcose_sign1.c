@@ -44,6 +44,7 @@
     #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #endif
 #include <string.h>
+#include <limits.h>
 
 
 /* ----- COSE_Sign1 API ----- */
@@ -99,12 +100,31 @@ int wolfCose_MlDsaCheckKey(const WOLFCOSE_KEY* key, int32_t alg)
 }
 #endif /* WOLFCOSE_HAVE_MLDSA */
 
-#if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_EXT_SIGN)
+#if defined(WOLFCOSE_HAVE_LMS) && \
+    (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
+     defined(WOLFCOSE_EXT_SIGN))
+/* RFC 8778: validate that the key is HSS-LMS-typed and was attached through
+ * wc_CoseKey_SetLms() so the union member is known to be an LmsKey. */
+int wolfCose_LmsCheckKey(const WOLFCOSE_KEY* key)
+{
+    int ret = WOLFCOSE_SUCCESS;
+
+    if ((key == NULL) || (key->kty != WOLFCOSE_KTY_HSS_LMS) ||
+        (key->attachedType != WOLFCOSE_ATT_LMS) || (key->key.lms == NULL)) {
+        ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
+    return ret;
+}
+#endif /* WOLFCOSE_HAVE_LMS */
+
+#if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN) || \
+    defined(WOLFCOSE_EXT_SIGN)
 /* Exact signature length for this key and algorithm. wolfCose_SigSize() alone
  * reports EdDSA's worst case rather than the key's curve, and has no RSA case.
  * Fails closed when the exact length cannot be determined. */
-static int wolfCose_SignSigLen(const WOLFCOSE_KEY* key, int32_t alg,
-                               size_t* expSigLen)
+int wolfCose_SignSigLen(const WOLFCOSE_KEY* key, int32_t alg,
+                        size_t* expSigLen)
 {
     int ret;
 
@@ -156,6 +176,27 @@ static int wolfCose_SignSigLen(const WOLFCOSE_KEY* key, int32_t alg,
 #endif
         {
             ret = wolfCose_RsaPssCheckKey(key, expSigLen);
+        }
+        break;
+#endif
+#if defined(WOLFCOSE_HAVE_LMS) && \
+    (defined(WOLFCOSE_EXT_SIGN) || !defined(WOLFSSL_LMS_VERIFY_ONLY))
+        case WOLFCOSE_ALG_HSS_LMS:
+        {
+            /* The exact length lives in the attached key's parameter set,
+             * so an LMS key must be attached even for a delegated signer.
+             * wc_LmsKey_GetSigLen is available in verify-only builds, so a
+             * delegated signer can size an LMS signature there too. */
+            ret = wolfCose_LmsCheckKey(key);
+            if (ret == WOLFCOSE_SUCCESS) {
+                word32 lmsSigLen = 0;
+                if (wc_LmsKey_GetSigLen(key->key.lms, &lmsSigLen) != 0) {
+                    ret = WOLFCOSE_E_COSE_KEY_TYPE;
+                }
+                else {
+                    *expSigLen = (size_t)lmsSigLen;
+                }
+            }
         }
         break;
 #endif
@@ -249,6 +290,13 @@ int wolfCose_ExtSignAlg(int32_t alg, int* preHashes)
         case WOLFCOSE_ALG_ML_DSA_44:
         case WOLFCOSE_ALG_ML_DSA_65:
         case WOLFCOSE_ALG_ML_DSA_87:
+            *preHashes = 0;
+            break;
+#endif
+#if defined(WOLFCOSE_HAVE_LMS)
+        /* Delegated signing only needs the length and dispatch, not the local
+         * wc_LmsKey_Sign, so this stays available in verify-only builds. */
+        case WOLFCOSE_ALG_HSS_LMS:
             *preHashes = 0;
             break;
 #endif
@@ -590,6 +638,21 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
                                           scratch, scratchSz, &sigStructLen);
     }
 
+#if defined(WOLFCOSE_HAVE_LMS)
+    /* HSS-LMS is one-time state whether signed locally or through a delegated
+     * callback. A too-small out is otherwise caught only at the encode step
+     * below, after the signature is spent and a retry burns another. Reject it
+     * before any signing runs, ahead of the local-vs-delegated dispatch. */
+    if ((ret == WOLFCOSE_SUCCESS) && (alg == WOLFCOSE_ALG_HSS_LMS)) {
+        size_t neededOut = 0;
+        ret = wc_CoseSign1_SignSize_ex(key, alg, kidLen, payloadLen,
+                                       detachedLen, flags, &neededOut);
+        if ((ret == WOLFCOSE_SUCCESS) && (outSz < neededOut)) {
+            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+        }
+    }
+#endif /* WOLFCOSE_HAVE_LMS */
+
     /* Sign based on algorithm */
 #if defined(WOLFCOSE_EXT_SIGN)
     if ((ret == WOLFCOSE_SUCCESS) && (key->signCb != NULL)) {
@@ -836,6 +899,77 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
     }
     else
 #endif /* WOLFCOSE_HAVE_MLDSA */
+#if defined(WOLFCOSE_HAVE_LMS) && !defined(WOLFSSL_LMS_VERIFY_ONLY)
+    if ((ret == WOLFCOSE_SUCCESS) && (alg == WOLFCOSE_ALG_HSS_LMS)) {
+        size_t expectedSigSz = 0;
+
+        /* RFC 8778: HSS-LMS key attached via wc_CoseKey_SetLms(). The
+         * signature length comes from the key's parameter set. Signing
+         * consumes one-time-signature state; the caller-installed wolfCrypt
+         * write callback persists it. The out-buffer capacity was already
+         * checked above, before the local-vs-delegated dispatch. */
+        ret = wolfCose_LmsCheckKey(key);
+
+        /* Must be able to sign now: reject a non-OK (for example a key wolfSSL
+         * marked bad after a persistence failure) or exhausted key before the
+         * backend runs, matching wc_CoseSign_Sign and leaving wolfSSL's own
+         * state for the caller to inspect. SigsLeft returns 1 while any remain,
+         * 0 when exhausted. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((key->key.lms->state != WC_LMS_STATE_OK) ||
+             (wc_LmsKey_SigsLeft(key->key.lms) != 1))) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+
+        if (ret == WOLFCOSE_SUCCESS) {
+            word32 lmsSigLen = 0;
+            if (wc_LmsKey_GetSigLen(key->key.lms, &lmsSigLen) != 0) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            else {
+                expectedSigSz = (size_t)lmsSigLen;
+            }
+        }
+
+        /* wolfSSL takes the message length as int. */
+        if ((ret == WOLFCOSE_SUCCESS) && (sigStructLen > (size_t)INT_MAX)) {
+            ret = WOLFCOSE_E_INVALID_ARG;
+        }
+        /* Sig output goes after Sig_structure in scratch. LMS signs the
+         * raw Sig_structure directly (no pre-hash). Subtraction form so the
+         * capacity check cannot wrap. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((expectedSigSz > scratchSz) ||
+             (sigStructLen > (scratchSz - expectedSigSz)))) {
+            ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+        }
+
+        if (ret == WOLFCOSE_SUCCESS) {
+            word32 lmsSigLen = (word32)expectedSigSz;
+            INJECT_FAILURE(WOLF_FAIL_LMS_SIGN, -1,
+                ret = wc_LmsKey_Sign(key->key.lms,
+                    &scratch[sigStructLen], &lmsSigLen,
+                    scratch, (int)sigStructLen));
+            if (ret != 0) {
+                /* wolfSSL 5.9.2 can leave the key WC_LMS_STATE_OK after a
+                 * persistence-write failure, so mark it bad here to stop later
+                 * signing from state that may not have been persisted; the
+                 * pre-sign check above then refuses it. Keep an exhausted key
+                 * as WC_LMS_STATE_NOSIGS so exhaustion stays distinguishable
+                 * and its public key can still be exported. */
+                if (key->key.lms->state != WC_LMS_STATE_NOSIGS) {
+                    key->key.lms->state = WC_LMS_STATE_BAD;
+                }
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+            else {
+                sigPtr = &scratch[sigStructLen];
+                sigSz = (size_t)lmsSigLen;
+            }
+        }
+    }
+    else
+#endif /* WOLFCOSE_HAVE_LMS && !WOLFSSL_LMS_VERIFY_ONLY */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }
@@ -1276,6 +1410,34 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     }
     else
 #endif /* WOLFCOSE_HAVE_MLDSA */
+#ifdef WOLFCOSE_HAVE_LMS
+    if ((ret == WOLFCOSE_SUCCESS) && (alg == WOLFCOSE_ALG_HSS_LMS)) {
+        /* RFC 8778: HSS-LMS verifies the raw Sig_structure (no pre-hash).
+         * Only a genuine signature mismatch (SIG_VERIFY_E) is an auth
+         * failure; a bad-arg/state/length error is an operational fault. */
+        ret = wolfCose_LmsCheckKey(key);
+        if ((ret == WOLFCOSE_SUCCESS) && (sigStructLen > (size_t)INT_MAX)) {
+            ret = WOLFCOSE_E_INVALID_ARG;
+        }
+        if (ret == WOLFCOSE_SUCCESS) {
+            LmsKey* lmsKey = key->key.lms;
+            INJECT_FAILURE(WOLF_FAIL_LMS_VERIFY, SIG_VERIFY_E,
+                ret = wc_LmsKey_Verify(lmsKey,
+                    sigData, (word32)sigDataLen,
+                    scratch, (int)sigStructLen));
+            if (ret == (int)SIG_VERIFY_E) {
+                ret = WOLFCOSE_E_COSE_SIG_FAIL;
+            }
+            else if (ret != 0) {
+                ret = WOLFCOSE_E_CRYPTO;
+            }
+            else {
+                /* No action required */
+            }
+        }
+    }
+    else
+#endif /* WOLFCOSE_HAVE_LMS */
     if (ret == WOLFCOSE_SUCCESS) {
         ret = WOLFCOSE_E_COSE_BAD_ALG;
     }

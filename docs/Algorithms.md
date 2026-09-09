@@ -1,6 +1,6 @@
 # Supported Algorithms
 
-wolfCOSE supports 40 algorithms across signing, encryption, MAC, and key distribution. This page provides the complete list with COSE algorithm IDs and required wolfSSL compile-time guards. All algorithms are usable in both single-actor messages (Sign1/Encrypt0/Mac0) and multi-actor messages (Sign/Encrypt/Mac) — see [[Message Types]] for details.
+wolfCOSE supports 41 algorithms across signing, encryption, MAC, and key distribution. This page provides the complete list with COSE algorithm IDs and required wolfSSL compile-time guards. All algorithms are usable in both single-actor messages (Sign1/Encrypt0/Mac0) and multi-actor messages (Sign/Encrypt/Mac) — see [[Message Types]] for details.
 
 ## COSE_Sign1 (Digital Signatures)
 
@@ -17,6 +17,7 @@ wolfCOSE supports 40 algorithms across signing, encryption, MAC, and key distrib
 | ML-DSA-44 | -48 | `WOLFSSL_HAVE_MLDSA` | Post-quantum (FIPS 204) |
 | ML-DSA-65 | -49 | `WOLFSSL_HAVE_MLDSA` | Post-quantum (FIPS 204) |
 | ML-DSA-87 | -50 | `WOLFSSL_HAVE_MLDSA` | Post-quantum (FIPS 204) |
+| HSS-LMS | -46 | `WOLFSSL_HAVE_LMS` | Post-quantum stateful hash-based (RFC 8778, SP 800-208); COSE_Key kty 5; signature size follows the key's parameter set; signing state is caller-managed, verify-only builds pair with `WOLFSSL_LMS_VERIFY_ONLY` |
 
 ### ML-DSA Signature Sizes
 
@@ -91,6 +92,7 @@ AES Key Wrap-based algorithms also require wolfSSL 5.9.0 or later.
 | RSA | 3 | `WC_RSA_PSS` | PS256, PS384, PS512 |
 | Symmetric | 4 | always | AES-GCM, AES-CCM, ChaCha20, HMAC |
 | AKP | 7 | `WOLFSSL_HAVE_MLDSA` | ML-DSA (RFC 9964) |
+| HSS-LMS | 5 | `WOLFSSL_HAVE_LMS` | HSS/LMS (RFC 8778) |
 
 ML-DSA keys use the RFC 9964 **AKP** (Algorithm Key Pair) key type: the `alg`
 parameter is REQUIRED, the public key is in `pub` (-1), and the private key is
@@ -133,6 +135,7 @@ wolfCOSE defines these constants in `wolfcose.h`:
 #define WOLFCOSE_ALG_ML_DSA_44  (-48)
 #define WOLFCOSE_ALG_ML_DSA_65  (-49)
 #define WOLFCOSE_ALG_ML_DSA_87  (-50)
+#define WOLFCOSE_ALG_HSS_LMS    (-46)
 
 /* Encryption algorithms */
 #define WOLFCOSE_ALG_A128GCM              (1)
@@ -181,8 +184,8 @@ Future algorithm support planned:
 
 | Algorithm | Standard | Description |
 |-----------|----------|-------------|
-| ML-KEM | FIPS 203 (Kyber) | Post-quantum key encapsulation for COSE_Encrypt |
-| XMSS / LMS | NIST SP 800-208 | Hash-based stateful signatures |
+| ML-KEM | FIPS 203 (Kyber) | Post-quantum key encapsulation for COSE_Encrypt (IETF draft, no codepoints yet) |
+| XMSS | NIST SP 800-208 | Hash-based stateful signatures (no COSE codepoints assigned yet) |
 | SLH-DSA | SPHINCS+ | Stateless hash-based signatures |
 
 ## See Also
