@@ -603,7 +603,8 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             word32 edSigSz = (word32)sizeof(sigBuf);
 #ifdef WOLFCOSE_HAVE_EDDSA
             if (signerKey->crv == WOLFCOSE_CRV_ED25519) {
-                if (signerKey->key.ed25519 == NULL) {
+                if ((signerKey->attachedType != WOLFCOSE_ATT_ED25519) ||
+                    (signerKey->key.ed25519 == NULL)) {
                     ret = WOLFCOSE_E_COSE_KEY_TYPE;
                 }
                 else {
@@ -622,7 +623,8 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
 #endif
 #ifdef WOLFCOSE_HAVE_ED448
             if (signerKey->crv == WOLFCOSE_CRV_ED448) {
-                if (signerKey->key.ed448 == NULL) {
+                if ((signerKey->attachedType != WOLFCOSE_ATT_ED448) ||
+                    (signerKey->key.ed448 == NULL)) {
                     ret = WOLFCOSE_E_COSE_KEY_TYPE;
                 }
                 else {
