@@ -548,16 +548,13 @@ int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
             int modulusMaterialized = 0;
             uint8_t modulus[WOLFCOSE_RSA_PSS_MIN_SZ] = {0};
             word32 modulusLen32 = (word32)sizeof(modulus);
-#if !defined(HAVE_ECC) && !defined(WOLFSSL_EXPORT_INT) && \
-    !defined(WOLFSSL_RSA_VERIFY_ONLY)
+#if !defined(HAVE_ECC) && !defined(WOLFSSL_EXPORT_INT)
             word32 exponentLen = (word32)sizeof(modulus);
 #endif
 #if defined(HAVE_ECC) || defined(WOLFSSL_EXPORT_INT)
             int modulusExportRet = wc_export_int(&rsaKey->n, modulus,
                 &modulusLen32, (word32)sizeof(modulus),
                 WC_TYPE_UNSIGNED_BIN);
-#elif defined(WOLFSSL_RSA_VERIFY_ONLY)
-            int modulusExportRet = -1;
 #else
             /* The modulus output overwrites the unused exponent output. */
             int modulusExportRet = wc_RsaFlattenPublicKey(rsaKey,
