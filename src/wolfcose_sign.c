@@ -551,7 +551,8 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             }
         }
 
-        /* Sign the hash */
+        /* Sign the digest for pre-hashing algorithms or the raw Sig_structure
+         * for EdDSA and ML-DSA. */
 #if defined(WOLFCOSE_EXT_SIGN)
         if ((ret == WOLFCOSE_SUCCESS) && (signerKey->signCb != NULL)) {
             size_t extSigLen = 0;
