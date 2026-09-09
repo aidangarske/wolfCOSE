@@ -549,9 +549,10 @@ static int wolfCose_CBOR_DecodeContainerStart(WOLFCOSE_CBOR_CTX* ctx,
             if (item.majorType != majorType) {
                 ret = WOLFCOSE_E_CBOR_TYPE;
             }
-            /* A definite-length container needs at least one byte per declared
-             * element, so a count larger than the bytes remaining is malformed.
-             * This also rejects any count that would not fit in size_t. */
+            /* An array needs at least one byte per item. A map needs at least
+             * one byte per declared pair-count unit, although each pair is two
+             * items. This conservative check also rejects counts that would not
+             * fit in size_t. */
             else if (item.val > (uint64_t)(ctx->bufSz - ctx->idx)) {
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
