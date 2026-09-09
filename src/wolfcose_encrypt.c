@@ -152,6 +152,10 @@ int wc_CoseEncrypt_Encrypt(const WOLFCOSE_RECIPIENT* recipients,
         (iv == NULL) || (ivLen == 0u)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
+    if ((ret == WOLFCOSE_SUCCESS) && (detachedPayload == NULL) &&
+        (detachedLen != 0u)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
 
 #ifdef WOLFCOSE_CHECK_WORD32_LEN
     if ((ret == WOLFCOSE_SUCCESS) &&
