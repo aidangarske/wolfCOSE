@@ -473,18 +473,20 @@ Decode a COSE key from CBOR format.
 **Parameters:**
 | Name | Description |
 |------|-------------|
-| `key` | Pointer to COSE key structure (with pre-allocated wolfCrypt key) |
+| `key` | Initialized COSE key structure; may have a wolfCrypt key attached |
 | `buf` | Input CBOR buffer |
 | `bufSz` | Size of input buffer |
 
 **Returns:** `WOLFCOSE_SUCCESS` or error code
 
-Attach the wolfCrypt key with `wc_CoseKey_SetEcc()`, `wc_CoseKey_SetEd25519()`,
-`wc_CoseKey_SetEd448()`, `wc_CoseKey_SetRsa()`, `wc_CoseKey_SetMlDsa()`, or
-`wc_CoseKey_SetSymmetric()`. These record which wolfCrypt object is attached;
-assigning the `key.*` union directly does not, and no key material is imported.
+Attach a wolfCrypt key with `wc_CoseKey_SetEcc()`, `wc_CoseKey_SetEd25519()`,
+`wc_CoseKey_SetEd448()`, `wc_CoseKey_SetRsa()`, or `wc_CoseKey_SetMlDsa()` when
+asymmetric key material should be imported. Without an attachment, supported
+asymmetric metadata is still validated and returned, but key material is not
+imported. Assigning the `key.*` union directly records no attached type and
+imports nothing.
 
-The decoded `kty`/`crv` must name the attached key type or
+When a key is attached, the decoded `kty`/`crv` must name that key type or
 `WOLFCOSE_E_COSE_KEY_TYPE` is returned before any importer runs. To learn which
 key type a buffer holds before attaching anything, use
 [`wc_CoseKey_PeekInfo()`](#wc_cosekey_peekinfo).
@@ -525,10 +527,8 @@ int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
 Read `kty`, `alg`, `crv`, and `kid` out of a `COSE_Key` buffer without
 importing any key material and without needing a wolfCrypt key object.
 
-`wc_CoseKey_Decode()` requires the caller to have attached a key of the
-matching type up front and returns `WOLFCOSE_E_COSE_KEY_TYPE` otherwise, so a
-parser that accepts more than one key type would have to guess and retry.
-Peek first, then attach once:
+When asymmetric key material is to be imported, peek first to identify its
+type, then attach the matching wolfCrypt object once:
 
 ```c
 WOLFCOSE_KEY_INFO info;
