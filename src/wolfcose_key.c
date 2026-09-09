@@ -2201,7 +2201,15 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
          * equal the curve size, even when no key is attached for import. */
         if ((ret == WOLFCOSE_SUCCESS) && (key->kty == WOLFCOSE_KTY_EC2)) {
             size_t coordSz = 0;
-            ret = wolfCose_CrvKeySize(key->crv, &coordSz);
+
+            if ((key->crv != WOLFCOSE_CRV_P256) &&
+                (key->crv != WOLFCOSE_CRV_P384) &&
+                (key->crv != WOLFCOSE_CRV_P521)) {
+                ret = WOLFCOSE_E_COSE_BAD_ALG;
+            }
+            else {
+                ret = wolfCose_CrvKeySize(key->crv, &coordSz);
+            }
             if ((ret == WOLFCOSE_SUCCESS) &&
                 (((xData != NULL) && (xLen != coordSz)) ||
                  ((yData != NULL) && (yLen != coordSz)) ||
