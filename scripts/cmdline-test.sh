@@ -68,6 +68,42 @@ for A in $SIGN_ALGS; do
     fi
 done
 
+echo "== Countersignatures: sign -> countersign -> verify both layers =="
+PK="$WORK/primary.key"; CK="$WORK/counter.key"
+BASE="$WORK/primary.cose"; COUNTER="$WORK/counter.cose"
+COUNTER2="$WORK/counter2.cose"; AAD="$WORK/counter.aad"
+printf 'release approval policy' > "$AAD"
+if "$TOOL" keygen -a ES256 -o "$PK" >/dev/null 2>&1 && \
+   "$TOOL" keygen -a ES256 -o "$CK" >/dev/null 2>&1 && \
+   "$TOOL" sign -k "$PK" -a ES256 -i "$IN" -o "$BASE" \
+       >/dev/null 2>&1; then
+    if "$TOOL" countersign -k "$CK" -a ES256 -i "$BASE" \
+        -o "$COUNTER" --aad "$AAD" >/dev/null 2>&1 && \
+       "$TOOL" counterverify -k "$CK" -i "$COUNTER" --aad "$AAD" \
+        >/dev/null 2>&1 && \
+       "$TOOL" verify -k "$PK" -i "$COUNTER" >/dev/null 2>&1; then
+        ok "ES256 countersign and verify both layers"
+    else
+        bad "ES256 countersign round-trip"
+    fi
+    if "$TOOL" countersign -k "$CK" -a ES256 -i "$COUNTER" \
+        -o "$COUNTER2" --aad "$AAD" >/dev/null 2>&1 && \
+       "$TOOL" counterverify -k "$CK" -i "$COUNTER2" --index 1 \
+        --aad "$AAD" >/dev/null 2>&1; then
+        ok "ES256 second countersignature index"
+    else
+        bad "ES256 second countersignature index"
+    fi
+    if "$TOOL" counterverify -k "$CK" -i "$COUNTER" \
+        >/dev/null 2>&1; then
+        bad "countersignature wrong AAD rejected"
+    else
+        ok "countersignature wrong AAD rejected"
+    fi
+else
+    skip "countersignature (ES256)"
+fi
+
 # Public-only RSA builds can't sign a decoded key, so skip; the self-test
 # still covers RSA signing.
 echo "== RSA-PSS: keygen -> sign -> verify -> self-test =="
@@ -157,6 +193,11 @@ fi
 echo "== Usage errors must exit non-zero =="
 if "$TOOL" >/dev/null 2>&1; then bad "no-args exits non-zero"; else ok "no-args exits non-zero"; fi
 if "$TOOL" boguscmd >/dev/null 2>&1; then bad "bad command exits non-zero"; else ok "bad command exits non-zero"; fi
+if "$TOOL" verify -k x -i y --index 1 >/dev/null 2>&1; then bad "counter-only option on verify exits non-zero"; else ok "counter-only option on verify exits non-zero"; fi
+if "$TOOL" sign -k x -a ES256 -i y -o z --aad w >/dev/null 2>&1; then bad "counter-only option on sign exits non-zero"; else ok "counter-only option on sign exits non-zero"; fi
+head -c 65536 /dev/zero > "$WORK/oversize.bin"
+if "$TOOL" verify -k "$WORK/oversize.bin" -i "$WORK/oversize.bin" 2>&1 | grep -q "File too large"; then ok "oversized input file is rejected, not truncated"; else bad "oversized input file is rejected, not truncated"; fi
+if "$TOOL" countersign -k x -a ES256 -i y -o z --index 1 >/dev/null 2>&1; then bad "--index on countersign exits non-zero"; else ok "--index on countersign exits non-zero"; fi
 
 echo
 echo "== Command-line test summary: $PASS passed, $FAIL failed, $SKIP skipped =="

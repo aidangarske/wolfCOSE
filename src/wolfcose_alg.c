@@ -511,7 +511,9 @@ int wolfCose_HmacCheckKeyLen(int32_t alg, size_t keyLen)
 /* ----- Internal: RSA-PSS hash-to-MGF mapping ----- */
 #if defined(WOLFCOSE_HAVE_RSAPSS) && \
     (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
-     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
+     defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
+     defined(WOLFCOSE_COUNTERSIGN_VERIFY))
 /* RFC 8230 Section 6.1 requires RSA-PSS keys of at least 2048 bits. */
 int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
                                    size_t* modulusLen)
@@ -604,7 +606,9 @@ int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
 
 #if defined(WOLFCOSE_HAVE_RSAPSS) && \
     (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
-     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
+     defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
+     defined(WOLFCOSE_COUNTERSIGN_VERIFY))
 int wolfCose_HashToMgf(enum wc_HashType hashType, int* mgf)
 {
     int ret = WOLFCOSE_SUCCESS;

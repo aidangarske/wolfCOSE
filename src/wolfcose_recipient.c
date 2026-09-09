@@ -953,7 +953,7 @@ int wolfCose_UpdateRecipientMode(int32_t alg, int* commonMode)
  * platforms the cast cannot truncate, so the guard and helper are omitted (and
  * the condition would otherwise be a compile-time constant). */
 #if (defined(WOLFCOSE_KEY_DECODE) || defined(WOLFCOSE_SIGN1) || \
-     defined(WOLFCOSE_SIGN) || \
+     defined(WOLFCOSE_SIGN) || defined(WOLFCOSE_COUNTERSIGN) || \
      defined(WOLFCOSE_MAC0) || defined(WOLFCOSE_MAC) || \
      defined(WOLFCOSE_ENCRYPT0) || defined(WOLFCOSE_ENCRYPT)) && \
     defined(SIZE_MAX) && (SIZE_MAX > 0xFFFFFFFFUL)

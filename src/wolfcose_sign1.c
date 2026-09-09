@@ -54,7 +54,9 @@
  * operations that actually call them. */
 #if defined(WOLFCOSE_HAVE_MLDSA) && \
     (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
-     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
+     defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
+     defined(WOLFCOSE_COUNTERSIGN_VERIFY))
 /* Map an ML-DSA COSE algorithm to the FIPS 204 security level its key must
  * report, so a key of the wrong level cannot satisfy a higher-level alg. */
 static int wolfCose_MlDsaAlgLevel(int32_t alg, byte* level)
@@ -103,7 +105,7 @@ int wolfCose_MlDsaCheckKey(const WOLFCOSE_KEY* key, int32_t alg)
 #if defined(WOLFCOSE_HAVE_LMS) && \
     (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
      defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
-     defined(WOLFCOSE_EXT_SIGN))
+     defined(WOLFCOSE_COUNTERSIGN_SIGN) || defined(WOLFCOSE_EXT_SIGN))
 /* RFC 8778: validate that the key is HSS-LMS-typed and was attached through
  * wc_CoseKey_SetLms() so the union member is known to be an LmsKey. */
 int wolfCose_LmsCheckKey(const WOLFCOSE_KEY* key)
@@ -119,7 +121,7 @@ int wolfCose_LmsCheckKey(const WOLFCOSE_KEY* key)
 #endif /* WOLFCOSE_HAVE_LMS */
 
 #if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN) || \
-    defined(WOLFCOSE_EXT_SIGN)
+    defined(WOLFCOSE_COUNTERSIGN_SIGN) || defined(WOLFCOSE_EXT_SIGN)
 /* Exact signature length for this key and algorithm. wolfCose_SigSize() alone
  * reports EdDSA's worst case rather than the key's curve, and has no RSA case.
  * Fails closed when the exact length cannot be determined. */

@@ -47,7 +47,7 @@ Defining `WOLFCOSE_LEAN` keeps only the core — `COSE_Sign1`/`Encrypt0`/`Mac0` 
 | `WOLFCOSE_LEAN` | Core-only base; all extensions become opt-in |
 | `WOLFCOSE_ENABLE_<X>` | Opt in a single extension (see list below) |
 
-Extension names for `WOLFCOSE_ENABLE_<X>`: `ES384`, `ES512`, `EDDSA`, `ED448`, `RSAPSS`, `MLDSA`, `LMS`, `HMAC384`, `HMAC512`, `AESCCM`, `CHACHA20`, `AESMAC`, `AESWRAP`, `ECDH_ES`, `SIGN` (multi-signer), `ENCRYPT` (multi-recipient), `MAC` (multi-recipient).
+Extension names for `WOLFCOSE_ENABLE_<X>`: `ES384`, `ES512`, `EDDSA`, `ED448`, `RSAPSS`, `MLDSA`, `LMS`, `HMAC384`, `HMAC512`, `AESCCM`, `CHACHA20`, `AESMAC`, `AESWRAP`, `ECDH_ES`, `SIGN` (multi-signer), `ENCRYPT` (multi-recipient), `MAC` (multi-recipient), and `COUNTERSIGN` (RFC 9338 countersignatures).
 
 An extension is compiled in when it is explicitly enabled (`WOLFCOSE_ENABLE_<X>`), or — in a non-lean build — when wolfSSL provides the primitive and it is not opted out with `WOLFCOSE_NO_<X>`. Enabling an extension wolfSSL cannot provide is a compile error. The resolved state is exposed internally as read-only `WOLFCOSE_HAVE_<X>` gates (e.g. `WOLFCOSE_HAVE_MLDSA`); sources, tests, and examples compile against those, so you set `WOLFCOSE_ENABLE_*`/`WOLFCOSE_NO_*`, not `WOLFCOSE_HAVE_*`.
 
@@ -131,6 +131,24 @@ is platform and wolfSSL-configuration dependent, which is why the feature is
 off by default.
 
 ## Message Type Gates
+
+### COSE Countersignatures
+
+| Define | Description | Default |
+|--------|-------------|---------|
+| `WOLFCOSE_COUNTERSIGN` | Enable RFC 9338 countersignatures | Enabled |
+| `WOLFCOSE_ENABLE_COUNTERSIGN` | Opt in under `WOLFCOSE_LEAN` | - |
+| `WOLFCOSE_NO_COUNTERSIGN` | Disable countersignatures entirely | - |
+| `WOLFCOSE_COUNTERSIGN_SIGN` | Enable countersignature creation | Enabled |
+| `WOLFCOSE_NO_COUNTERSIGN_SIGN` | Disable countersignature creation | - |
+| `WOLFCOSE_COUNTERSIGN_VERIFY` | Enable countersignature verification | Enabled |
+| `WOLFCOSE_NO_COUNTERSIGN_VERIFY` | Disable countersignature verification | - |
+
+The default full build includes countersignatures. `WOLFCOSE_LEAN` excludes
+them unless `WOLFCOSE_ENABLE_COUNTERSIGN` is defined. Creation and verification
+both require CBOR encoding and decoding because each operation decodes the
+target message and encodes its `Countersign_structure`. Creation also requires
+a signing algorithm, and verification requires a verification algorithm.
 
 ### COSE_Sign1 (Single Signer)
 
@@ -275,7 +293,7 @@ Two limits worth knowing before designing around this:
 
 | Define | Description | Default |
 |--------|-------------|---------|
-| `WOLFCOSE_MAX_SCRATCH_SZ` | Scratch buffer size for Sig_structure/Enc_structure | 512 |
+| `WOLFCOSE_MAX_SCRATCH_SZ` | Scratch buffer size for Sig_structure/Enc_structure | 512 (1024 with RSA-PSS countersigning) |
 | `WOLFCOSE_PROTECTED_HDR_MAX` | Max protected header size | 64 |
 | `WOLFCOSE_CBOR_MAX_DEPTH` | Max CBOR nesting depth | 8 |
 | `WOLFCOSE_MIN_BUFFERS` | Trim the working set to the minimum that fits the enabled algorithms | - |
@@ -287,11 +305,13 @@ One define that trims the caller working set to the minimum that still fits the 
 | Enabled signature algorithm | `WOLFCOSE_MAX_SIG_SZ` | `WOLFCOSE_MAX_SCRATCH_SZ` |
 |---|---|---|
 | ES256/384/512, EdDSA (Ed25519/Ed448) | 132 | 512 |
-| RSA-PSS (PS256/384/512) | 512 | 512 |
+| RSA-PSS (PS256/384/512) | 512 | 512 (1024 with countersigning) |
 | ML-DSA-44/65/87 | 4627 | 8192 |
 | HSS-LMS | 10240 | 11264 |
 
 Because the floor follows the algorithm, `WOLFCOSE_MIN_BUFFERS` stays valid with any algorithm — ML-DSA, HSS-LMS, and RSA-PSS simply use that algorithm's floor rather than the ECC floor. HSS-LMS uses the largest default floors because its signature size follows the key's parameter set rather than a fixed constant: the `WOLFCOSE_MAX_SIG_SZ` default of 10240 and `WOLFCOSE_MAX_SCRATCH_SZ` default of 11264 (scratch also holds the `Sig_structure`) cover every W4 and W8 predefined set, the largest being L4_H10_W4 at 10204 bytes. The low-Winternitz (W1/W2) multi-level sets reach 18012 bytes and need a `-D` override; a key whose signature exceeds these buffers is rejected via `wc_LmsKey_GetSigLen()` before any signing, so no one-time state is consumed. It stays zero-heap and shrinks buffers, not stack frames. An explicit `-D` override of any individual limit takes precedence.
+
+**Countersignature sizing.** Countersigning builds the `Countersign_structure` and then keeps the signature after it in scratch, so `WOLFCOSE_MAX_SCRATCH_SZ` must be at least `WOLFCOSE_MAX_SIG_SZ` + 256. The RSA-PSS default therefore rises to 1024 (a 4096-bit signature is 512 bytes) only when countersignature creation is enabled; RSA-PSS builds without it keep 512. An override below the floor is a build error.
 
 ---
 

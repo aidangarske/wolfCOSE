@@ -312,7 +312,8 @@ void wolfCose_EccPrivateImportRollback(ecc_key* ecc,
  * not exposed to callers that inspect hdr without gating on the return code. */
 #if defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_SIGN_VERIFY) || \
     defined(WOLFCOSE_ENCRYPT0_DECRYPT) || defined(WOLFCOSE_MAC0_VERIFY) || \
-    defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY)
+    defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY) || \
+    defined(WOLFCOSE_COUNTERSIGN_VERIFY)
 void wolfCose_HdrClearOnFail(int ret, WOLFCOSE_HDR* hdr)
 {
     if ((ret != WOLFCOSE_SUCCESS) && (hdr != NULL)) {
