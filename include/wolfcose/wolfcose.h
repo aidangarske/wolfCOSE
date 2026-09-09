@@ -724,9 +724,11 @@ typedef struct WOLFCOSE_CBOR_LABEL {
 /**
  * \brief Decode a map label that may be an integer or a text string.
  *
- * Consumes exactly one item. Major types 0 and 1 populate label->val with
- * isText 0; major type 3 populates label->text / label->textLen with isText 1
- * and no copy. Anything else is WOLFCOSE_E_CBOR_TYPE with the item consumed.
+ * Consumes one CBOR head and, for byte or text strings, the string data.
+ * Major types 0 and 1 populate label->val with isText 0; major type 3
+ * populates label->text / label->textLen with isText 1 and no copy. Anything
+ * else is WOLFCOSE_E_CBOR_TYPE. For a tag or container, only its head is
+ * consumed; use wc_CBOR_Skip() instead when the complete item must be skipped.
  *
  * \param ctx    Decoder context.
  * \param label  Output: decoded label.
