@@ -1223,6 +1223,11 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             if ((flags & WOLFCOSE_KEY_PUBLIC_ONLY) != 0u) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                ((key->key.symm.key == NULL) ||
+                 (key->key.symm.keyLen == 0u))) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
 #if defined(WOLFCOSE_EXT_SIGN)
             if ((ret == WOLFCOSE_SUCCESS) && (key->signCb != NULL)) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
@@ -1737,6 +1742,11 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
 #endif /* WOLFCOSE_HAVE_EDDSA || WOLFCOSE_HAVE_ED448 */
         if (key->kty == WOLFCOSE_KTY_SYMMETRIC) {
             if ((flags & WOLFCOSE_KEY_PUBLIC_ONLY) != 0u) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                ((key->key.symm.key == NULL) ||
+                 (key->key.symm.keyLen == 0u))) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
 #if defined(WOLFCOSE_EXT_SIGN)
