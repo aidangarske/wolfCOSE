@@ -560,7 +560,7 @@ int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
                 &modulusLen32, (word32)sizeof(modulus),
                 WC_TYPE_UNSIGNED_BIN);
 #elif defined(WOLFSSL_RSA_VERIFY_ONLY)
-            int modulusExportRet = -1;
+            modulusExportRet = -1;
 #else
             /* The modulus output overwrites the unused exponent output. */
             modulusExportRet = wc_RsaFlattenPublicKey(rsaKey,
