@@ -101,7 +101,7 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
     size_t i;
 #ifdef WOLFCOSE_HAVE_HMAC
     Hmac hmac;
-    int hashType = 0;
+    enum wc_HashType hashType = WC_HASH_TYPE_NONE;
     int hmacInited = 0;
 #endif
 
@@ -216,7 +216,7 @@ int wc_CoseMac_Create(const WOLFCOSE_RECIPIENT* recipients,
                 recipients[0].key->key.symm.keyLen);
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            int hmacRet = wc_HmacSetKey(&hmac, hashType,
+            int hmacRet = wc_HmacSetKey(&hmac, (int)hashType,
                              recipients[0].key->key.symm.key,
                              (word32)recipients[0].key->key.symm.keyLen);
             if (hmacRet != 0) {
@@ -405,7 +405,7 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
     int bodyAlgProtected = 0;
 #ifdef WOLFCOSE_HAVE_HMAC
     Hmac hmac;
-    int hashType = 0;
+    enum wc_HashType hashType = WC_HASH_TYPE_NONE;
     int hmacInited = 0;
 #endif
     const uint8_t* verifyPayload = NULL;
@@ -690,7 +690,7 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
                 recipient->key->key.symm.keyLen);
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            int hmacRet = wc_HmacSetKey(&hmac, hashType,
+            int hmacRet = wc_HmacSetKey(&hmac, (int)hashType,
                              recipient->key->key.symm.key,
                              (word32)recipient->key->key.symm.keyLen);
             if (hmacRet != 0) {

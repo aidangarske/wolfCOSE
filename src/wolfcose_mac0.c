@@ -321,7 +321,7 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
 #ifdef WOLFCOSE_HAVE_HMAC
     Hmac hmac;
     int hmacInited = 0;
-    int hmacType = 0;
+    enum wc_HashType hmacType = WC_HASH_TYPE_NONE;
 #endif
     uint8_t protectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
     size_t protectedLen = 0;
@@ -428,7 +428,7 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
         }
         if (ret == WOLFCOSE_SUCCESS) {
             INJECT_FAILURE(WOLF_FAIL_HMAC_SET_KEY, -1,
-                ret = wc_HmacSetKey(&hmac, hmacType, key->key.symm.key,
+                ret = wc_HmacSetKey(&hmac, (int)hmacType, key->key.symm.key,
                                      (word32)key->key.symm.keyLen));
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
@@ -556,7 +556,7 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
 #ifdef WOLFCOSE_HAVE_HMAC
     Hmac hmac;
     int hmacInited = 0;
-    int hmacType = 0;
+    enum wc_HashType hmacType = WC_HASH_TYPE_NONE;
 #endif
     WOLFCOSE_CBOR_CTX ctx;
     uint64_t tag;
@@ -722,7 +722,7 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
             ret = wolfCose_HmacCheckKeyLen(alg, key->key.symm.keyLen);
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_HmacSetKey(&hmac, hmacType, key->key.symm.key,
+            ret = wc_HmacSetKey(&hmac, (int)hmacType, key->key.symm.key,
                                  (word32)key->key.symm.keyLen);
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;

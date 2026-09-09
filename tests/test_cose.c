@@ -18570,7 +18570,7 @@ static void test_cose_encrypt0_large_payload(void)
 static void test_cose_hmac_type_constants(void)
 {
     int ret;
-    int hmacType = 0;
+    enum wc_HashType hmacType = WC_HASH_TYPE_NONE;
 
     TEST_LOG("  [HmacType constants]\n");
 
@@ -20523,6 +20523,9 @@ static void test_internal_helpers(void)
 {
     int ret;
     enum wc_HashType hashType;
+#if defined(WOLFCOSE_HAVE_HMAC256)
+    enum wc_HashType hmacType = WC_HASH_TYPE_NONE;
+#endif
     size_t sz;
     int wcType;
 
@@ -20600,7 +20603,7 @@ static void test_internal_helpers(void)
     TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG, "HmacType NULL");
 
     /* Invalid algorithm (default case) */
-    ret = wolfCose_HmacType(9999, &wcType);
+    ret = wolfCose_HmacType(9999, &hmacType);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG, "HmacType bad alg");
 #endif
 
