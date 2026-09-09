@@ -12451,10 +12451,12 @@ static void test_cose_encrypt_a128kw_unprotected_alg(void)
     uint8_t iv[12] = {0};
     uint8_t scratch[256];
     uint8_t out[512];
+    uint8_t malformed[513];
     uint8_t plaintext[128];
     size_t outLen = 0u;
     size_t plaintextLen = 0u;
     size_t count = 0u;
+    size_t protectedOffset = 0u;
     const uint8_t* protectedData = NULL;
     size_t protectedLen = 0u;
     int64_t label = 0;
@@ -12517,6 +12519,7 @@ static void test_cose_encrypt_a128kw_unprotected_alg(void)
     /* RFC 9053 6.2.1: the AES Key Wrap recipient's protected bucket is empty
      * and the algorithm is carried in the unprotected header. */
     if (ret == 0) {
+        protectedOffset = ctx.idx;
         ret = wc_CBOR_DecodeBstr(&ctx, &protectedData, &protectedLen);
     }
     if ((ret == 0) && (protectedLen != 0u)) {
@@ -12552,6 +12555,28 @@ static void test_cose_encrypt_a128kw_unprotected_alg(void)
         TEST_ASSERT((plaintextLen == (sizeof(payload) - 1u)) &&
                     (XMEMCMP(plaintext, payload, plaintextLen) == 0),
                     "a128kw unprotected payload");
+    }
+    TEST_ASSERT((ret != 0) || ((protectedOffset < outLen) &&
+                (outLen < sizeof(malformed)) &&
+                (out[protectedOffset] == 0x40u)),
+                "a128kw unprotected mutation bounds");
+    if ((ret == 0) && (protectedOffset < outLen) &&
+        (outLen < sizeof(malformed)) &&
+        (out[protectedOffset] == 0x40u)) {
+        (void)XMEMCPY(malformed, out, protectedOffset);
+        malformed[protectedOffset] = 0x41u;
+        malformed[protectedOffset + 1u] = 0xA0u;
+        (void)XMEMCPY(&malformed[protectedOffset + 2u],
+            &out[protectedOffset + 1u],
+            outLen - protectedOffset - 1u);
+        plaintextLen = 0u;
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u,
+            malformed, outLen + 1u,
+            NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                    "a128kw rejects nonempty protected bucket");
     }
 
     wc_CoseKey_Free(&kek);
@@ -13594,7 +13619,7 @@ static void test_cose_mac_rejects_float_recipient_ciphertext(void)
         ret = wc_CoseMac_Verify(&recipient, 0, msg, msgLen,
             NULL, 0, NULL, 0, scratch, sizeof(scratch),
             &hdr, &payload, &payloadLen);
-        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE,
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                     "Mac_Verify rejects float recipient ciphertext");
     }
 
@@ -13645,7 +13670,7 @@ static void test_cose_mac_rejects_nonempty_recipient_ciphertext(void)
     ret = wc_CoseMac_Verify(&recipient, 0, msg, outLen + 1u,
         NULL, 0, NULL, 0, scratch, sizeof(scratch),
         &hdr, &payload, &payloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "Mac_Verify rejects nonempty recipient ciphertext");
 
     (void)memcpy(msg, out, outLen);
@@ -13654,8 +13679,8 @@ static void test_cose_mac_rejects_nonempty_recipient_ciphertext(void)
     ret = wc_CoseMac_Verify(&recipient, 0, msg, outLen,
         NULL, 0, NULL, 0, scratch, sizeof(scratch),
         &hdr, &payload, &payloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
-                "Mac_Verify accepts null recipient ciphertext");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "Mac_Verify rejects null recipient ciphertext");
 
     wc_CoseKey_Free(&key);
 }
@@ -17758,17 +17783,15 @@ static void test_cose_encrypt_direct_recipient_value(void)
     ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, outLen,
         NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
-    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) &&
-                (plaintextLen == (sizeof(payload) - 1u)) &&
-                (XMEMCMP(plaintext, payload, plaintextLen) == 0),
-                "direct value accepts null");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "direct value rejects null");
 
     (void)XMEMCPY(msg, out, outLen);
     msg[outLen - 1u] = 0x00u;
     ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, outLen,
         NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE,
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "direct value rejects integer");
 
     (void)XMEMCPY(msg, out, outLen);
@@ -17777,7 +17800,7 @@ static void test_cose_encrypt_direct_recipient_value(void)
     ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, outLen + 1u,
         NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "direct value rejects nonempty bstr");
 
     wc_CoseKey_Free(&key);

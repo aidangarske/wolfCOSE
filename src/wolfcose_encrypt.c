@@ -1061,6 +1061,12 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         }
         ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
         if ((ret == WOLFCOSE_SUCCESS) &&
+            (recipientAlgId == WOLFCOSE_ALG_DIRECT) &&
+            ((item.majorType != WOLFCOSE_CBOR_BSTR) ||
+             (item.dataLen != 0u))) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+        else if ((ret == WOLFCOSE_SUCCESS) &&
             (recipientValueIsNull == 0) &&
             (item.majorType != WOLFCOSE_CBOR_BSTR)) {
             ret = WOLFCOSE_E_CBOR_TYPE;

@@ -587,7 +587,13 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
             }
             ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
         }
-        if (ret == WOLFCOSE_SUCCESS) {
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (recipientAlgId == WOLFCOSE_ALG_DIRECT) &&
+            ((item.majorType != WOLFCOSE_CBOR_BSTR) ||
+             (item.dataLen != 0u))) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+        else if (ret == WOLFCOSE_SUCCESS) {
             if (recipientValueIsNull != 0) {
                 /* Validate after recipient algorithm classification. */
             }
@@ -597,6 +603,9 @@ int wc_CoseMac_Verify(const WOLFCOSE_RECIPIENT* recipient,
             else {
                 ret = WOLFCOSE_E_CBOR_TYPE;
             }
+        }
+        else {
+            /* No action required */
         }
     }
 
