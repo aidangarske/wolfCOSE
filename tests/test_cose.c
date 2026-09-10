@@ -20394,6 +20394,23 @@ static void test_cose_key_decode_symmetric_missing_k(void)
                 "CoseKey_Decode rejects empty symmetric k");
 }
 
+#ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY_DECODE
+static void test_cose_key_decode_rsa_private_component_type(void)
+{
+    WOLFCOSE_KEY key;
+    int ret;
+    /* {1: 3, -5: 0}: RSA q must be a byte string. */
+    uint8_t nonBstrQ[] = {0xA2u, 0x01u, 0x03u, 0x24u, 0x00u};
+
+    TEST_LOG("  [CoseKey_Decode RSA private component type]\n");
+
+    (void)wc_CoseKey_Init(&key);
+    ret = wc_CoseKey_Decode(&key, nonBstrQ, sizeof(nonBstrQ));
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "CoseKey_Decode rejects non-bstr RSA q");
+}
+#endif
+
 #if defined(WOLFCOSE_HAVE_ES256)
 static void test_cose_key_decode_ec2_short_coord(void)
 {
@@ -25869,6 +25886,9 @@ int test_cose(void)
     test_cose_key_decode_trailing_bytes();
     test_cose_key_decode_no_material_on_failure();
     test_cose_key_decode_symmetric_missing_k();
+#ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY_DECODE
+    test_cose_key_decode_rsa_private_component_type();
+#endif
 #if defined(WOLFCOSE_HAVE_ES256)
     test_cose_key_decode_ec2_short_coord();
 #endif
