@@ -18098,6 +18098,10 @@ static void test_cose_protected_hdr_crit(void)
     uint8_t critMissing[] = {0xA2u, 0x01u, 0x26u, 0x02u, 0x81u, 0x05u};
     /* {1: -7, 2: []} : crit is an empty array -> RFC 9052 rejects */
     uint8_t critEmpty[] = {0xA2u, 0x01u, 0x26u, 0x02u, 0x80u};
+    /* {2: [3], 3: "x"} : critical tstr content type is not understood */
+    uint8_t critTstrContentType[] = {
+        0xA2u, 0x02u, 0x81u, 0x03u, 0x03u, 0x61u, 'x'
+    };
 
     TEST_LOG("  [Protected Header: crit]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -18123,6 +18127,12 @@ static void test_cose_protected_hdr_crit(void)
                                       &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "DecodeProtectedHdr crit empty array");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(critTstrContentType,
+        sizeof(critTstrContentType), &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "DecodeProtectedHdr rejects critical tstr content-type");
 }
 
 static void test_cose_cross_bucket_dup(void)
