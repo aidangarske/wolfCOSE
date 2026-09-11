@@ -17503,6 +17503,18 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         0x84u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
         0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
     };
+    /* An unselected key-distribution recipient may contain recipients. */
+    uint8_t nestedKeyDistSibling[] = {
+        0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
+        0xA1u, 0x05u, 0x4Cu,
+        0,0,0,0,0,0,0,0,0,0,0,0,
+        0x50u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x82u,
+        0x84u, 0x40u, 0xA1u, 0x01u, 0x22u, 0x40u,
+        0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
+    };
     uint8_t tstrSibling[] = {
         0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
         0xA1u, 0x05u, 0x4Cu,
@@ -17544,6 +17556,13 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         plaintext, sizeof(plaintext), &plaintextLen);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "nested skipped Direct recipient rejected (encrypt)");
+
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 1, nestedKeyDistSibling,
+        sizeof(nestedKeyDistSibling), NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "nested skipped key-distribution recipient traversed");
 
     ret = wc_CoseEncrypt_Decrypt(&recipient, 1, tstrSibling,
         sizeof(tstrSibling), NULL, 0, NULL, 0,
