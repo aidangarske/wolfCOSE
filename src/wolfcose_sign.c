@@ -159,7 +159,8 @@ static int wolfCose_SignEncodedSize(const WOLFCOSE_SIGNATURE* signers,
  * \param out           Output buffer for COSE_Sign message
  * \param outSz         Output buffer size
  * \param outLen        Output: message length
- * \param rng           Initialized RNG
+ * \param rng           Initialized RNG for local signers; may be NULL with
+ *                      WOLFCOSE_EXT_SIGN when every signer has a signCb
  * \return WOLFCOSE_SUCCESS or error code
  */
 int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
@@ -551,7 +552,8 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             }
         }
 
-        /* Sign the hash */
+        /* Sign the digest for pre-hashing algorithms or the raw Sig_structure
+         * for EdDSA and ML-DSA. */
 #if defined(WOLFCOSE_EXT_SIGN)
         if ((ret == WOLFCOSE_SUCCESS) && (signerKey->signCb != NULL)) {
             size_t extSigLen = 0;
