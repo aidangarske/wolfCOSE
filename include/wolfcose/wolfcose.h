@@ -1058,6 +1058,8 @@ WOLFCOSE_API int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
  *        For ECC/Ed25519, caller must attach a key struct via
  *        wc_CoseKey_SetEcc()/SetEd25519()/SetEd448()/SetRsa()/SetMlDsa();
  *        assigning key.* directly records no type and imports nothing.
+ *        Only attachments recorded by a wc_CoseKey_Set*() API are preserved
+ *        across decode; an untyped key union is cleared before parsing.
  *        A decoded kty/crv that does not match the attached type returns
  *        WOLFCOSE_E_COSE_KEY_TYPE before any import runs.
  *        Keys containing key_ops return WOLFCOSE_E_UNSUPPORTED before any
