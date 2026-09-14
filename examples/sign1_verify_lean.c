@@ -38,15 +38,15 @@
 
 /* P-256 public key (X and Y, 32 bytes each). The matching private key lives
  * off-device and is never present in a lean verify build. */
-static const unsigned char PUB_X[32] = {
+static const uint8_t PUB_X[32] = {
     0x2c,0x3c,0x9f,0xd7,0xfc,0x15,0x48,0x7b,0x37,0x18,0x0e,0x37,0x95,0x56,0xb4,0xfd,
     0xbb,0x11,0x3c,0x78,0xe0,0xa5,0x3a,0x0b,0x25,0x71,0xf5,0xff,0xb0,0xdf,0x93,0x28};
-static const unsigned char PUB_Y[32] = {
+static const uint8_t PUB_Y[32] = {
     0x10,0xc3,0x85,0xc2,0xb6,0x8f,0x79,0xd7,0xe9,0x5e,0x43,0x62,0xf5,0xf4,0x06,0x21,
     0xdc,0x2c,0xf6,0x55,0x87,0xeb,0x94,0x61,0x13,0xe5,0xe2,0x8c,0xeb,0x2e,0xd2,0xce};
 
 /* A COSE_Sign1 (ES256) over the payload below, signed off-device. */
-static const unsigned char COSE_SIGN1[] = {
+static const uint8_t COSE_SIGN1[] = {
     210,132,67,161,1,38,160,88,31,119,111,108,102,67,79,83,69,32,115,105,122,101,
     32,98,101,110,99,104,109,97,114,107,32,112,97,121,108,111,97,100,88,64,59,0,
     231,221,224,83,68,247,200,191,96,153,241,21,82,224,140,57,84,22,93,156,13,27,
@@ -60,7 +60,7 @@ int main(void)
     ecc_key        eccKey;
     WOLFCOSE_KEY   key;
     WOLFCOSE_HDR   hdr;
-    unsigned char  scratch[256];
+    uint8_t scratch[256];
     const uint8_t* payload = NULL;
     size_t         payloadLen = 0;
     int            ret;

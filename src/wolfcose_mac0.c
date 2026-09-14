@@ -322,7 +322,7 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
 #ifdef WOLFCOSE_HAVE_HMAC
     Hmac hmac;
     int hmacInited = 0;
-    int hmacType = 0;
+    enum wc_HashType hmacType = WC_HASH_TYPE_NONE;
 #endif
     uint8_t protectedBuf[WOLFCOSE_PROTECTED_HDR_MAX];
     size_t protectedLen = 0;
@@ -429,7 +429,7 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
         }
         if (ret == WOLFCOSE_SUCCESS) {
             INJECT_FAILURE(WOLF_FAIL_HMAC_SET_KEY, -1,
-                ret = wc_HmacSetKey(&hmac, hmacType, key->key.symm.key,
+                ret = wc_HmacSetKey(&hmac, (int)hmacType, key->key.symm.key,
                                      (word32)key->key.symm.keyLen));
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;
@@ -496,7 +496,8 @@ int wc_CoseMac0_Create(const WOLFCOSE_KEY* key, int32_t alg,
 
     /* unprotected headers map (with kid if present) */
     if (ret == WOLFCOSE_SUCCESS) {
-        unprotectedEntries = (size_t)(((kid != NULL) && (kidLen > 0u)) ? 1u : 0u);
+        unprotectedEntries = ((kid != NULL) && (kidLen > 0u)) ?
+                             (size_t)1u : (size_t)0u;
         ret = wc_CBOR_EncodeMapStart(&outCtx, unprotectedEntries);
     }
     if ((ret == WOLFCOSE_SUCCESS) && (kid != NULL) && (kidLen > 0u)) {
@@ -556,7 +557,7 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
 #ifdef WOLFCOSE_HAVE_HMAC
     Hmac hmac;
     int hmacInited = 0;
-    int hmacType = 0;
+    enum wc_HashType hmacType = WC_HASH_TYPE_NONE;
 #endif
     WOLFCOSE_CBOR_CTX ctx;
     uint64_t tag;
@@ -722,7 +723,7 @@ int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
             ret = wolfCose_HmacCheckKeyLen(alg, key->key.symm.keyLen);
         }
         if (ret == WOLFCOSE_SUCCESS) {
-            ret = wc_HmacSetKey(&hmac, hmacType, key->key.symm.key,
+            ret = wc_HmacSetKey(&hmac, (int)hmacType, key->key.symm.key,
                                  (word32)key->key.symm.keyLen);
             if (ret != 0) {
                 ret = WOLFCOSE_E_CRYPTO;

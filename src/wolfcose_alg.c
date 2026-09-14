@@ -428,7 +428,7 @@ int wolfCose_AeadCheckPayloadLen(int32_t alg, size_t payloadLen)
 /* ----- Internal: HMAC helpers ----- */
 
 #if defined(WOLFCOSE_HAVE_HMAC)
-int wolfCose_HmacType(int32_t alg, int* hmacType)
+int wolfCose_HmacType(int32_t alg, enum wc_HashType* hmacType)
 {
     int ret = WOLFCOSE_SUCCESS;
 
@@ -439,17 +439,17 @@ int wolfCose_HmacType(int32_t alg, int* hmacType)
         switch (alg) {
 #ifdef WOLFCOSE_HAVE_HMAC256
             case WOLFCOSE_ALG_HMAC_256_256:
-                *hmacType = WC_SHA256;
+                *hmacType = WC_HASH_TYPE_SHA256;
                 break;
 #endif
 #ifdef WOLFCOSE_HAVE_HMAC384
             case WOLFCOSE_ALG_HMAC_384_384:
-                *hmacType = WC_SHA384;
+                *hmacType = WC_HASH_TYPE_SHA384;
                 break;
 #endif
 #ifdef WOLFCOSE_HAVE_HMAC512
             case WOLFCOSE_ALG_HMAC_512_512:
-                *hmacType = WC_SHA512;
+                *hmacType = WC_HASH_TYPE_SHA512;
                 break;
 #endif
             default:
@@ -612,7 +612,7 @@ int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
      defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
      defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
      defined(WOLFCOSE_COUNTERSIGN_VERIFY))
-int wolfCose_HashToMgf(enum wc_HashType hashType, int* mgf)
+int wolfCose_HashToMgf(enum wc_HashType hashType, WOLFCOSE_MGF_ID* mgf)
 {
     int ret = WOLFCOSE_SUCCESS;
 

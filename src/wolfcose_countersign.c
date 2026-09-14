@@ -824,7 +824,7 @@ static int wolfCose_CounterSignTbs(WOLFCOSE_KEY* key, int32_t alg,
          (alg == WOLFCOSE_ALG_PS512))) {
         enum wc_HashType hashType = WC_HASH_TYPE_NONE;
         int digestSz = 0;
-        int mgf = 0;
+        WOLFCOSE_MGF_ID mgf = 0;
 
         ret = wolfCose_RsaPssCheckKey(key, NULL);
         if (ret == WOLFCOSE_SUCCESS) {
@@ -1051,7 +1051,7 @@ static int wolfCose_CounterVerifyTbs(const WOLFCOSE_KEY* key, int32_t alg,
         RsaKey* rsaKey = NULL;
         enum wc_HashType hashType = WC_HASH_TYPE_NONE;
         int digestSz = 0;
-        int mgf = 0;
+        WOLFCOSE_MGF_ID mgf = 0;
 
         ret = wolfCose_RsaPssCheckKey(key, NULL);
         if (ret == WOLFCOSE_SUCCESS) {

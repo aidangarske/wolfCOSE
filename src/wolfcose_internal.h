@@ -302,7 +302,8 @@ WOLFCOSE_LOCAL int wolfCose_AeadTagLen(int32_t alg, size_t* tagLen);
  * \param hmacType  Output: wolfCrypt hash type for HMAC.
  * \return WOLFCOSE_SUCCESS or WOLFCOSE_E_COSE_BAD_ALG.
  */
-WOLFCOSE_LOCAL int wolfCose_HmacType(int32_t alg, int* hmacType);
+WOLFCOSE_LOCAL int wolfCose_HmacType(int32_t alg,
+                                      enum wc_HashType* hmacType);
 #endif /* WOLFCOSE_HAVE_HMAC */
 
 #ifdef WOLFCOSE_HAVE_ECDSA
@@ -430,7 +431,9 @@ WOLFCOSE_LOCAL int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
                                    size_t* modulusLen);
 
 /* HashToMgf -- defined in wolfcose_alg.c */
-WOLFCOSE_LOCAL int wolfCose_HashToMgf(enum wc_HashType hashType, int* mgf);
+typedef int WOLFCOSE_MGF_ID;
+WOLFCOSE_LOCAL int wolfCose_HashToMgf(enum wc_HashType hashType,
+                                       WOLFCOSE_MGF_ID* mgf);
 #endif
 
 /* InInt32Range -- defined in wolfcose_hdr.c */
@@ -625,7 +628,9 @@ WOLFCOSE_LOCAL int wolfCose_LmsCheckKey(const WOLFCOSE_KEY* key);
 
 #if defined(WOLFCOSE_EXT_SIGN)
 /* ExtSignAlg -- defined in wolfcose_sign1.c */
-WOLFCOSE_LOCAL int wolfCose_ExtSignAlg(int32_t alg, int* preHashes);
+typedef uint8_t WOLFCOSE_PREHASH_FLAG;
+WOLFCOSE_LOCAL int wolfCose_ExtSignAlg(int32_t alg,
+                                       WOLFCOSE_PREHASH_FLAG* preHashes);
 #endif
 
 #if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN) || \

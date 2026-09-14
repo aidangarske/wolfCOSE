@@ -35,8 +35,8 @@
 static const char PAYLOAD[] = "wolfCOSE ML-DSA payload";
 
 /* ML-DSA messages and scratch are large; keep them off the stack. */
-static unsigned char gScratch[20000];
-static unsigned char gMsg[8192];
+static uint8_t gScratch[20000];
+static uint8_t gMsg[8192];
 
 int main(void)
 {
