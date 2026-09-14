@@ -227,28 +227,40 @@ extern "C" {
 
 /* ML-DSA (44/65/87) — extension */
 #if defined(WOLFCOSE_ENABLE_MLDSA)
-    #ifndef WOLFSSL_HAVE_MLDSA
+    #if !defined(WOLFSSL_HAVE_MLDSA)
         #error "WOLFCOSE_ENABLE_MLDSA requires wolfSSL WOLFSSL_HAVE_MLDSA"
+    #elif LIBWOLFSSL_VERSION_HEX < 0x05009002
+        #error "wolfCOSE ML-DSA requires wolfSSL newer than 5.9.1"
+    #else
+        #define WOLFCOSE_HAVE_MLDSA
     #endif
-    #define WOLFCOSE_HAVE_MLDSA
-#elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_MLDSA) && defined(WOLFSSL_HAVE_MLDSA)
-    #define WOLFCOSE_HAVE_MLDSA
+#elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_MLDSA) && \
+      defined(WOLFSSL_HAVE_MLDSA)
+    #if LIBWOLFSSL_VERSION_HEX < 0x05009002
+        #error "wolfCOSE ML-DSA requires wolfSSL newer than 5.9.1"
+    #else
+        #define WOLFCOSE_HAVE_MLDSA
+    #endif
 #endif
 
 /* HSS/LMS (RFC 8778) — extension */
 /* wc_LmsKey_ImportPubRaw() derives the parameter set from the key bytes only
  * from wolfSSL 5.9.2; earlier releases dereference unset parameters. */
 #if defined(WOLFCOSE_ENABLE_LMS)
-    #ifndef WOLFSSL_HAVE_LMS
+    #if !defined(WOLFSSL_HAVE_LMS)
         #error "WOLFCOSE_ENABLE_LMS requires wolfSSL WOLFSSL_HAVE_LMS"
-    #endif
-    #if LIBWOLFSSL_VERSION_HEX < 0x05009002
+    #elif LIBWOLFSSL_VERSION_HEX < 0x05009002
         #error "WOLFCOSE_ENABLE_LMS requires wolfSSL 5.9.2 or later"
+    #else
+        #define WOLFCOSE_HAVE_LMS
     #endif
-    #define WOLFCOSE_HAVE_LMS
 #elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_LMS) && \
-      defined(WOLFSSL_HAVE_LMS) && (LIBWOLFSSL_VERSION_HEX >= 0x05009002)
-    #define WOLFCOSE_HAVE_LMS
+      defined(WOLFSSL_HAVE_LMS)
+    #if LIBWOLFSSL_VERSION_HEX < 0x05009002
+        #error "wolfCOSE HSS/LMS requires wolfSSL 5.9.2 or later"
+    #else
+        #define WOLFCOSE_HAVE_LMS
+    #endif
 #endif
 
 /* RSA-PSS (PS256/384/512) — extension */
@@ -278,11 +290,31 @@ extern "C" {
     defined(WOLFCOSE_HAVE_PS512)
     #define WOLFCOSE_HAVE_RSAPSS
 #endif
-/* Private RSA round-trip needs wc_export_int + RsaKey.u; else public-only. */
+/* Private-capable RSA builds enable private serialization with key encoding.
+ * Do not silently downgrade that configuration on an older backend. */
 #if defined(WOLFCOSE_HAVE_RSAPSS) && !defined(WOLFCOSE_RSA_PUBLIC_ONLY) && \
     !defined(WOLFSSL_RSA_PUBLIC_ONLY) && \
+    !defined(WOLFCOSE_NO_KEY_ENCODE) && \
     (defined(HAVE_ECC) || defined(WOLFSSL_EXPORT_INT)) && \
-    (defined(WOLFSSL_KEY_GEN) || defined(OPENSSL_EXTRA) || !defined(RSA_LOW_MEM))
+    (defined(WOLFSSL_KEY_GEN) || defined(OPENSSL_EXTRA) || \
+     !defined(RSA_LOW_MEM)) && \
+    (LIBWOLFSSL_VERSION_HEX < 0x05009002)
+    #error "Private RSA serialization requires wolfSSL 5.9.2 or later"
+#endif
+/* Private RSA decoding requires wolfSSL's hardened raw decoder from 5.9.0.
+ * Older backends explicitly reject private components. */
+#if defined(WOLFCOSE_HAVE_RSAPSS) && !defined(WOLFCOSE_RSA_PUBLIC_ONLY) && \
+    !defined(WOLFSSL_RSA_PUBLIC_ONLY) && \
+    (LIBWOLFSSL_VERSION_HEX >= 0x05009000)
+    #define WOLFCOSE_HAVE_RSA_PRIVATE_KEY_DECODE
+#endif
+/* Private RSA serialization additionally needs wc_export_int + RsaKey.u and
+ * wolfSSL 5.9.2's bounds-checked fixed-width export. */
+#if defined(WOLFCOSE_HAVE_RSA_PRIVATE_KEY_DECODE) && \
+    (defined(HAVE_ECC) || defined(WOLFSSL_EXPORT_INT)) && \
+    (defined(WOLFSSL_KEY_GEN) || defined(OPENSSL_EXTRA) || \
+     !defined(RSA_LOW_MEM)) && \
+    (LIBWOLFSSL_VERSION_HEX >= 0x05009002)
     #define WOLFCOSE_HAVE_RSA_PRIVATE_KEY
 #endif
 #if defined(WOLFCOSE_HAVE_ECDSA) || defined(WOLFCOSE_HAVE_EDDSA) || \
@@ -429,6 +461,35 @@ extern "C" {
     #endif
 #endif
 
+/* RFC 9338 countersignatures, extension */
+#if defined(WOLFCOSE_ENABLE_COUNTERSIGN)
+    #define WOLFCOSE_COUNTERSIGN_WANT
+#elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_COUNTERSIGN)
+    #define WOLFCOSE_COUNTERSIGN_WANT
+#endif
+/* Countersignatures implement ECDSA, EdDSA, RSA-PSS, and ML-DSA only; the
+ * HSS/LMS one-time-state path is not provided, so LMS alone enables nothing. */
+#if defined(WOLFCOSE_HAVE_ECDSA) || defined(WOLFCOSE_HAVE_EDDSA) || \
+    defined(WOLFCOSE_HAVE_ED448) || defined(WOLFCOSE_HAVE_RSAPSS) || \
+    defined(WOLFCOSE_HAVE_MLDSA)
+    #define WOLFCOSE_HAVE_COUNTERSIGN_ALG
+#endif
+#if defined(WOLFCOSE_ENABLE_COUNTERSIGN) && \
+    !defined(WOLFCOSE_HAVE_COUNTERSIGN_ALG)
+    #error "WOLFCOSE_ENABLE_COUNTERSIGN requires an ECDSA, EdDSA, RSA-PSS, or ML-DSA algorithm; HSS/LMS is not supported for countersignatures"
+#endif
+#if defined(WOLFCOSE_COUNTERSIGN_WANT) && defined(WOLFCOSE_HAVE_COUNTERSIGN_ALG) && \
+    (!defined(WOLFCOSE_NO_COUNTERSIGN_SIGN) || \
+     !defined(WOLFCOSE_NO_COUNTERSIGN_VERIFY))
+    #define WOLFCOSE_COUNTERSIGN
+    #ifndef WOLFCOSE_NO_COUNTERSIGN_SIGN
+        #define WOLFCOSE_COUNTERSIGN_SIGN
+    #endif
+    #ifndef WOLFCOSE_NO_COUNTERSIGN_VERIFY
+        #define WOLFCOSE_COUNTERSIGN_VERIFY
+    #endif
+#endif
+
 /* Exact enforcement of RFC 8230's 2048-bit RSA-PSS minimum needs access to
  * the modulus at the byte boundary. Backend-enabled builds may also carry
  * software keys, so verify-only builds must export the modulus. */
@@ -436,14 +497,17 @@ extern "C" {
     defined(WOLFSSL_RSA_VERIFY_ONLY) && !defined(HAVE_ECC) && \
     !defined(WOLFSSL_EXPORT_INT) && \
     (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
-     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
+     defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
+     defined(WOLFCOSE_COUNTERSIGN_VERIFY))
     #error "wolfCOSE RSA-PSS key validation requires WOLFSSL_EXPORT_INT"
 #endif
 
 /* Optional RFC 6979 deterministic ECDSA signing. */
 #if defined(WOLFCOSE_ENABLE_DETERMINISTIC_ECDSA) && \
     defined(WOLFCOSE_HAVE_ECDSA) && \
-    (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN)) && \
+    (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN) || \
+     defined(WOLFCOSE_COUNTERSIGN_SIGN)) && \
     !defined(WOLFCOSE_HAVE_DETERMINISTIC_ECDSA)
     #if !defined(WOLFSSL_ECDSA_DETERMINISTIC_K) && \
         !defined(WOLFSSL_ECDSA_DETERMINISTIC_K_VARIANT)
@@ -561,13 +625,17 @@ extern "C" {
 
 /* ----- CBOR layer -----
  * Encode is required by any sign/encrypt/MAC-create op and by COSE_Key encode;
- * decode by any verify/decrypt/MAC-verify op and COSE_Key decode. On by
+ * decode by any verify/decrypt/MAC-verify op and COSE_Key decode.
+ * Countersignature creation and verification require both layers because each
+ * operation decodes its target and encodes a Countersign_structure. On by
  * default; fail loud if explicitly disabled while still required. */
 #if !defined(WOLFCOSE_NO_CBOR_ENCODE)
     #define WOLFCOSE_CBOR_ENCODE
 #elif defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_ENCRYPT0_ENCRYPT) || \
       defined(WOLFCOSE_MAC0_CREATE) || defined(WOLFCOSE_SIGN_SIGN) || \
       defined(WOLFCOSE_ENCRYPT_ENCRYPT) || defined(WOLFCOSE_MAC_CREATE) || \
+      defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
+      defined(WOLFCOSE_COUNTERSIGN_VERIFY) || \
       defined(WOLFCOSE_KEY_ENCODE)
     #error "WOLFCOSE_NO_CBOR_ENCODE conflicts with an enabled encode operation"
 #endif
@@ -576,6 +644,8 @@ extern "C" {
 #elif defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_ENCRYPT0_DECRYPT) || \
       defined(WOLFCOSE_MAC0_VERIFY) || defined(WOLFCOSE_SIGN_VERIFY) || \
       defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY) || \
+      defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
+      defined(WOLFCOSE_COUNTERSIGN_VERIFY) || \
       defined(WOLFCOSE_KEY_DECODE)
     #error "WOLFCOSE_NO_CBOR_DECODE conflicts with an enabled decode operation"
 #endif
@@ -589,6 +659,10 @@ extern "C" {
         #define WOLFCOSE_MAX_SCRATCH_SZ      11264u
     #elif defined(WOLFCOSE_HAVE_MLDSA)
         #define WOLFCOSE_MAX_SCRATCH_SZ      8192u
+    #elif defined(WOLFCOSE_HAVE_RSAPSS) && defined(WOLFCOSE_COUNTERSIGN_SIGN)
+        /* A countersignature keeps the 512-byte RSA-4096 signature after the
+         * Countersign_structure in the same buffer. */
+        #define WOLFCOSE_MAX_SCRATCH_SZ      1024u
     #else
         #define WOLFCOSE_MAX_SCRATCH_SZ      512u
     #endif
@@ -656,8 +730,15 @@ extern "C" {
     #error "wolfCOSE: HSS/LMS enabled but WOLFCOSE_MAX_SCRATCH_SZ too small"
 #endif
 
+/* Countersigning builds the Countersign_structure and then places the signature
+ * after it in scratch, so the buffer must hold both. */
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN) && \
+    (WOLFCOSE_MAX_SCRATCH_SZ < (WOLFCOSE_MAX_SIG_SZ + 256u))
+    #error "wolfCOSE: countersigning needs WOLFCOSE_MAX_SCRATCH_SZ >= WOLFCOSE_MAX_SIG_SZ + 256"
+#endif
+
 #if defined(WOLFCOSE_EXT_SIGN) && !defined(WOLFCOSE_SIGN1_SIGN) && \
-    !defined(WOLFCOSE_SIGN_SIGN)
+    !defined(WOLFCOSE_SIGN_SIGN) && !defined(WOLFCOSE_COUNTERSIGN_SIGN)
     #error "WOLFCOSE_ENABLE_EXT_SIGN needs a signing op, which needs at least one local signature algorithm; the LEAN_VERIFY profiles are incompatible"
 #endif
 

@@ -159,7 +159,8 @@ static int wolfCose_SignEncodedSize(const WOLFCOSE_SIGNATURE* signers,
  * \param out           Output buffer for COSE_Sign message
  * \param outSz         Output buffer size
  * \param outLen        Output: message length
- * \param rng           Initialized RNG
+ * \param rng           Initialized RNG for local signers; may be NULL with
+ *                      WOLFCOSE_EXT_SIGN when every signer has a signCb
  * \return WOLFCOSE_SUCCESS or error code
  */
 int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
@@ -552,7 +553,8 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             }
         }
 
-        /* Sign the hash */
+        /* Sign the digest for pre-hashing algorithms or the raw Sig_structure
+         * for EdDSA and ML-DSA. */
 #if defined(WOLFCOSE_EXT_SIGN)
         if ((ret == WOLFCOSE_SUCCESS) && (signerKey->signCb != NULL)) {
             size_t extSigLen = 0;
@@ -605,7 +607,8 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
             word32 edSigSz = (word32)sizeof(sigBuf);
 #ifdef WOLFCOSE_HAVE_EDDSA
             if (signerKey->crv == WOLFCOSE_CRV_ED25519) {
-                if (signerKey->key.ed25519 == NULL) {
+                if ((signerKey->attachedType != WOLFCOSE_ATT_ED25519) ||
+                    (signerKey->key.ed25519 == NULL)) {
                     ret = WOLFCOSE_E_COSE_KEY_TYPE;
                 }
                 else {
@@ -624,7 +627,8 @@ int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers, size_t signerCount,
 #endif
 #ifdef WOLFCOSE_HAVE_ED448
             if (signerKey->crv == WOLFCOSE_CRV_ED448) {
-                if (signerKey->key.ed448 == NULL) {
+                if ((signerKey->attachedType != WOLFCOSE_ATT_ED448) ||
+                    (signerKey->key.ed448 == NULL)) {
                     ret = WOLFCOSE_E_COSE_KEY_TYPE;
                 }
                 else {
@@ -1094,7 +1098,8 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
         int verified = 0;
         size_t coordSz = 0;
         int32_t expectedCrv;
-        if (verifyKey->kty != WOLFCOSE_KTY_EC2) {
+        if ((verifyKey->kty != WOLFCOSE_KTY_EC2) ||
+            (verifyKey->attachedType != WOLFCOSE_ATT_ECC)) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         if (alg == WOLFCOSE_ALG_ES256) {
@@ -1139,7 +1144,8 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
             (verifyKey->crv == WOLFCOSE_CRV_ED25519)) {
             ed25519_key* ed25519Key = verifyKey->key.ed25519;
 
-            if (ed25519Key == NULL) {
+            if ((verifyKey->attachedType != WOLFCOSE_ATT_ED25519) ||
+                (ed25519Key == NULL)) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             else {
@@ -1158,7 +1164,8 @@ int wc_CoseSign_Verify(const WOLFCOSE_KEY* verifyKey,
             (verifyKey->crv == WOLFCOSE_CRV_ED448)) {
             ed448_key* ed448Key = verifyKey->key.ed448;
 
-            if (ed448Key == NULL) {
+            if ((verifyKey->attachedType != WOLFCOSE_ATT_ED448) ||
+                (ed448Key == NULL)) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
             else {

@@ -511,7 +511,9 @@ int wolfCose_HmacCheckKeyLen(int32_t alg, size_t keyLen)
 /* ----- Internal: RSA-PSS hash-to-MGF mapping ----- */
 #if defined(WOLFCOSE_HAVE_RSAPSS) && \
     (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
-     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
+     defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
+     defined(WOLFCOSE_COUNTERSIGN_VERIFY))
 /* RFC 8230 Section 6.1 requires RSA-PSS keys of at least 2048 bits. */
 int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
                                    size_t* modulusLen)
@@ -546,18 +548,24 @@ int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
         }
         else if (modulusSz == (int)WOLFCOSE_RSA_PSS_MIN_SZ) {
             int modulusMaterialized = 0;
-            uint8_t modulus[WOLFCOSE_RSA_PSS_MIN_SZ] = {0};
+            int modulusExportRet;
+            uint8_t modulus[WOLFCOSE_RSA_PSS_MIN_SZ];
             word32 modulusLen32 = (word32)sizeof(modulus);
-#if !defined(HAVE_ECC) && !defined(WOLFSSL_EXPORT_INT)
+#if !defined(HAVE_ECC) && !defined(WOLFSSL_EXPORT_INT) && \
+    !defined(WOLFSSL_RSA_VERIFY_ONLY)
             word32 exponentLen = (word32)sizeof(modulus);
 #endif
+
+            (void)XMEMSET(modulus, 0, sizeof(modulus));
 #if defined(HAVE_ECC) || defined(WOLFSSL_EXPORT_INT)
-            int modulusExportRet = wc_export_int(&rsaKey->n, modulus,
+            modulusExportRet = wc_export_int(&rsaKey->n, modulus,
                 &modulusLen32, (word32)sizeof(modulus),
                 WC_TYPE_UNSIGNED_BIN);
+#elif defined(WOLFSSL_RSA_VERIFY_ONLY)
+            modulusExportRet = -1;
 #else
             /* The modulus output overwrites the unused exponent output. */
-            int modulusExportRet = wc_RsaFlattenPublicKey(rsaKey,
+            modulusExportRet = wc_RsaFlattenPublicKey(rsaKey,
                 modulus, &exponentLen, modulus, &modulusLen32);
 #endif
             if (modulusExportRet == 0) {
@@ -601,7 +609,9 @@ int wolfCose_RsaPssCheckKey(const WOLFCOSE_KEY* key,
 
 #if defined(WOLFCOSE_HAVE_RSAPSS) && \
     (defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN1_VERIFY) || \
-     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY))
+     defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_SIGN_VERIFY) || \
+     defined(WOLFCOSE_COUNTERSIGN_SIGN) || \
+     defined(WOLFCOSE_COUNTERSIGN_VERIFY))
 int wolfCose_HashToMgf(enum wc_HashType hashType, WOLFCOSE_MGF_ID* mgf)
 {
     int ret = WOLFCOSE_SUCCESS;
