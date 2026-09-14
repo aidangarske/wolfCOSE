@@ -638,8 +638,8 @@ int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
     return wc_CoseKey_Encode_ex(key, out, outSz, outLen, 0u);
 }
 
-int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
-                          size_t* outLen, uint32_t flags)
+int wc_CoseKey_Encode_ex(const WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
+                         size_t* outLen, uint32_t flags)
 {
     int ret = WOLFCOSE_SUCCESS;
     WOLFCOSE_CBOR_CTX ctx;
@@ -663,8 +663,9 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             word32 dLen = (word32)sizeof(dBuf);
             size_t coordSz;
             int emitPriv = 0;
+            ecc_key* eccKey = key->key.ecc;
 
-            if (key->key.ecc == NULL) {
+            if (eccKey == NULL) {
                 ret = WOLFCOSE_E_INVALID_ARG;
             }
             if (ret == WOLFCOSE_SUCCESS) {
@@ -673,7 +674,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
 
             if (ret == WOLFCOSE_SUCCESS) {
                 INJECT_FAILURE(WOLF_FAIL_ECC_EXPORT_X963, -1,
-                    ret = wc_ecc_export_public_raw(key->key.ecc, xBuf, &xLen,
+                    ret = wc_ecc_export_public_raw(eccKey, xBuf, &xLen,
                                                    yBuf, &yLen));
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
@@ -691,7 +692,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             }
             if ((ret == WOLFCOSE_SUCCESS) && (emitPriv != 0)) {
                 INJECT_FAILURE(WOLF_FAIL_ECC_EXPORT_PRIVATE, -1,
-                    ret = wc_ecc_export_private_only(key->key.ecc, dBuf,
+                    ret = wc_ecc_export_private_only(eccKey, dBuf,
                                                      &dLen));
                 if (ret != 0) {
                     ret = WOLFCOSE_E_CRYPTO;
@@ -730,11 +731,12 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             size_t hdrPos;
             size_t mapEntries;
             int rsaPriv = 0;
+            RsaKey* rsaKey = key->key.rsa;
 #ifdef WOLFCOSE_HAVE_RSA_PRIVATE_KEY
             word32 halfSz = 0;
 #endif
 
-            if (key->key.rsa == NULL) {
+            if (rsaKey == NULL) {
                 ret = WOLFCOSE_E_INVALID_ARG;
             }
             /* Private round-trip needs the CRT export; else public-only. */
@@ -743,7 +745,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 rsaPriv = 1;
 #ifdef WOLF_CRYPTO_CB
                 /* Device-backed keys have no local CRT to export. */
-                if (key->key.rsa->devId != INVALID_DEVID) {
+                if (rsaKey->devId != INVALID_DEVID) {
                     rsaPriv = 0;
                 }
 #endif
@@ -780,7 +782,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                 else {
                     ctx.idx += 3u; /* reserve bstr header */
                     nLen = (word32)(ctx.bufSz - ctx.idx);
-                    ret = wc_RsaFlattenPublicKey(key->key.rsa,
+                    ret = wc_RsaFlattenPublicKey(rsaKey,
                         eBuf, &eLen, &ctx.buf[ctx.idx], &nLen);
                     if (ret != 0) {
                         ret = WOLFCOSE_E_CRYPTO;
@@ -822,7 +824,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                         int rsaEncSz = 0;
 
                         INJECT_FAILURE(WOLF_FAIL_RSA_ENCRYPT_SIZE, rsaEncSz,
-                            rsaEncSz = wc_RsaEncryptSize(key->key.rsa));
+                            rsaEncSz = wc_RsaEncryptSize(rsaKey));
                         if (rsaEncSz <= 0) {
                             /* cppcheck-suppress redundantAssignment */
                             ret = WOLFCOSE_E_CRYPTO;
@@ -848,7 +850,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                                 qSz = (word32)((word32)rsaEncSz / 2u);
                                 INJECT_FAILURE(WOLF_FAIL_RSA_EXPORT_KEY, -1,
                                     ret = wc_RsaExportKey(
-                                        key->key.rsa,
+                                        rsaKey,
                                         &ctx.buf[scrOff], &eSz2,
                                         &ctx.buf[scrOff + 8u], &nSz2,
                                         &ctx.buf[dOff], &dSz,
@@ -887,7 +889,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             }
             /* -4 p, -5 q, -8 qInv: CRT factors so a decoded key can sign. */
             if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
-                int modSz = wc_RsaEncryptSize(key->key.rsa);
+                int modSz = wc_RsaEncryptSize(rsaKey);
                 if (modSz <= 0) {
                     ret = WOLFCOSE_E_CRYPTO;
                 }
@@ -897,26 +899,26 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             }
             if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
                 ret = wolfCose_EncodeRsaMp(&ctx, WOLFCOSE_KEY_LABEL_RSA_P,
-                    &key->key.rsa->p, halfSz);
+                    &rsaKey->p, halfSz);
             }
             if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
                 ret = wolfCose_EncodeRsaMp(&ctx, WOLFCOSE_KEY_LABEL_RSA_Q,
-                    &key->key.rsa->q, halfSz);
+                    &rsaKey->q, halfSz);
             }
             /* RFC 8230: dP and dQ are MUST-present for a two-prime private key.
              * Emitting them also avoids wolfCrypt recomputing the CRT exponents
              * on decode, which is fragile for some key values. */
             if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
                 ret = wolfCose_EncodeRsaMp(&ctx, WOLFCOSE_KEY_LABEL_RSA_DP,
-                    &key->key.rsa->dP, halfSz);
+                    &rsaKey->dP, halfSz);
             }
             if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
                 ret = wolfCose_EncodeRsaMp(&ctx, WOLFCOSE_KEY_LABEL_RSA_DQ,
-                    &key->key.rsa->dQ, halfSz);
+                    &rsaKey->dQ, halfSz);
             }
             if ((ret == WOLFCOSE_SUCCESS) && (rsaPriv != 0)) {
                 ret = wolfCose_EncodeRsaMp(&ctx, WOLFCOSE_KEY_LABEL_RSA_QINV,
-                    &key->key.rsa->u, halfSz);
+                    &rsaKey->u, halfSz);
             }
 #endif /* WOLFCOSE_HAVE_RSA_PRIVATE_KEY */
 
@@ -934,6 +936,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
              * large (1312-2592B) so it is exported directly into the output
              * buffer to avoid a large stack copy; the seed is small. */
             int emitPriv = 0;
+            wc_MlDsaKey* mldsaKey = key->key.mldsa;
 
             /* Emit priv only when a valid 32-byte seed is attached; wolfCrypt
              * does not retain the seed, so a keypair without one (e.g. from
@@ -986,7 +989,7 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
                     ctx.idx += 3u;
                     dlKeyLen = (word32)(ctx.bufSz - ctx.idx);
                     INJECT_FAILURE(WOLF_FAIL_MLDSA_EXPORT_PUB, -1,
-                        ret = wc_MlDsaKey_ExportPubRaw(key->key.mldsa,
+                        ret = wc_MlDsaKey_ExportPubRaw(mldsaKey,
                             &ctx.buf[ctx.idx], &dlKeyLen));
                     if (ret != 0) {
                         ret = WOLFCOSE_E_CRYPTO;
@@ -1231,6 +1234,11 @@ int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out, size_t outSz,
             /* k is the whole key, so there is no public-only form to fall
              * back on the way the asymmetric types have. */
             if ((flags & WOLFCOSE_KEY_PUBLIC_ONLY) != 0u) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                ((key->key.symm.key == NULL) ||
+                 (key->key.symm.keyLen == 0u))) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
 #if defined(WOLFCOSE_EXT_SIGN)
@@ -1749,6 +1757,11 @@ int wc_CoseKey_EncodeSize_ex(const WOLFCOSE_KEY* key, size_t* outLen,
             if ((flags & WOLFCOSE_KEY_PUBLIC_ONLY) != 0u) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
             }
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                ((key->key.symm.key == NULL) ||
+                 (key->key.symm.keyLen == 0u))) {
+                ret = WOLFCOSE_E_COSE_KEY_TYPE;
+            }
 #if defined(WOLFCOSE_EXT_SIGN)
             if ((ret == WOLFCOSE_SUCCESS) && (key->signCb != NULL)) {
                 ret = WOLFCOSE_E_COSE_KEY_TYPE;
@@ -1945,8 +1958,8 @@ int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
         if ((ret == WOLFCOSE_SUCCESS) && (info->kty == 0)) {
             ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
-        /* RFC 8949 Section 5.3.1: reject trailing data, as wc_CoseKey_Decode
-         * does, so a successful peek predicts a successful decode. */
+        /* RFC 8949 Section 5.3.1: reject trailing data so peeking and decoding
+         * agree on framing. Decoding still performs per-key validation. */
         if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx != ctx.bufSz)) {
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
@@ -2292,11 +2305,55 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
          * equal the curve size, even when no key is attached for import. */
         if ((ret == WOLFCOSE_SUCCESS) && (key->kty == WOLFCOSE_KTY_EC2)) {
             size_t coordSz = 0;
-            ret = wolfCose_CrvKeySize(key->crv, &coordSz);
+
+            if ((key->crv != WOLFCOSE_CRV_P256) &&
+                (key->crv != WOLFCOSE_CRV_P384) &&
+                (key->crv != WOLFCOSE_CRV_P521)) {
+                ret = WOLFCOSE_E_COSE_BAD_ALG;
+            }
+            else {
+                ret = wolfCose_CrvKeySize(key->crv, &coordSz);
+            }
             if ((ret == WOLFCOSE_SUCCESS) &&
                 (((xData != NULL) && (xLen != coordSz)) ||
                  ((yData != NULL) && (yLen != coordSz)) ||
                  ((dData != NULL) && (dLen != coordSz)))) {
+                ret = WOLFCOSE_E_COSE_BAD_HDR;
+            }
+        }
+#endif
+
+#if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448)
+        /* Validate OKP key material before the attachment-dependent import.
+         * Metadata-only decoding must not turn malformed input into a
+         * successfully validated COSE_Key. */
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (key->kty == WOLFCOSE_KTY_OKP)) {
+            size_t okpPubSz = 0u;
+            size_t okpPrivSz = 0u;
+
+            if ((xData == NULL) && (dData == NULL)) {
+                ret = WOLFCOSE_E_COSE_BAD_HDR;
+            }
+#ifdef WOLFCOSE_HAVE_EDDSA
+            else if (key->crv == WOLFCOSE_CRV_ED25519) {
+                okpPubSz = (size_t)ED25519_PUB_KEY_SIZE;
+                okpPrivSz = (size_t)ED25519_KEY_SIZE;
+            }
+#endif
+#ifdef WOLFCOSE_HAVE_ED448
+            else if (key->crv == WOLFCOSE_CRV_ED448) {
+                okpPubSz = (size_t)ED448_PUB_KEY_SIZE;
+                okpPrivSz = (size_t)ED448_KEY_SIZE;
+            }
+#endif
+            else {
+                ret = WOLFCOSE_E_COSE_BAD_ALG;
+            }
+
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (((xData != NULL) && (xLen != okpPubSz)) ||
+                 ((dData != NULL) && (dLen != okpPrivSz)))) {
                 ret = WOLFCOSE_E_COSE_BAD_HDR;
             }
         }
@@ -2541,11 +2598,6 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     /* RFC 9964 AKP keys carry no crv. */
                     ret = WOLFCOSE_E_COSE_BAD_HDR;
                 }
-                else if (akpPub == NULL) {
-                    /* RFC 9964: pub is REQUIRED for AKP keys, public or
-                     * private. Reject a seed-only key with no public part. */
-                    ret = WOLFCOSE_E_COSE_BAD_HDR;
-                }
                 else {
                     ret = wc_MlDsaKey_SetParams(key->key.mldsa, dlLevel);
                     if (ret != 0) {
@@ -2564,39 +2616,34 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
                     }
 #ifndef WOLFSSL_MLDSA_NO_MAKE_KEY
                     if ((ret == WOLFCOSE_SUCCESS) && (akpSeed != NULL)) {
-                        if (akpSeedLen != WOLFCOSE_MLDSA_SEED_SZ) {
+                        INJECT_FAILURE(WOLF_FAIL_MLDSA_IMPORT_PRIV, -1,
+                            ret = wc_MlDsaKey_MakeKeyFromSeed(
+                                key->key.mldsa, akpSeed));
+                        if ((ret == 0) &&
+                            (wolfCose_ConstantCompare(key->key.mldsa->p,
+                                akpPub, (word32)akpPubLen) != 0)) {
+                            wolfCose_MlDsaImportRollback(
+                                key->key.mldsa, dlLevel);
+                            key->hasPrivate = 0u;
+                            key->mldsaSeed = NULL;
+                            key->mldsaSeedLen = 0u;
                             ret = WOLFCOSE_E_COSE_BAD_HDR;
                         }
+                        else if (ret == 0) {
+                            key->hasPrivate = 1u;
+                            /* Retain the seed (zero-copy into the input,
+                             * like kid) so a decode->encode round-trip can
+                             * re-emit the private key. */
+                            key->mldsaSeed = akpSeed;
+                            key->mldsaSeedLen = akpSeedLen;
+                        }
                         else {
-                            INJECT_FAILURE(WOLF_FAIL_MLDSA_IMPORT_PRIV, -1,
-                                ret = wc_MlDsaKey_MakeKeyFromSeed(
-                                    key->key.mldsa, akpSeed));
-                            if ((ret == 0) &&
-                                (XMEMCMP(key->key.mldsa->p, akpPub,
-                                         akpPubLen) != 0)) {
-                                wolfCose_MlDsaImportRollback(
-                                    key->key.mldsa, dlLevel);
-                                key->hasPrivate = 0u;
-                                key->mldsaSeed = NULL;
-                                key->mldsaSeedLen = 0u;
-                                ret = WOLFCOSE_E_COSE_BAD_HDR;
-                            }
-                            else if (ret == 0) {
-                                key->hasPrivate = 1;
-                                /* Retain the seed (zero-copy into the input,
-                                 * like kid) so a decode->encode round-trip can
-                                 * re-emit the private key. */
-                                key->mldsaSeed = akpSeed;
-                                key->mldsaSeedLen = akpSeedLen;
-                            }
-                            else {
-                                wolfCose_MlDsaImportRollback(
-                                    key->key.mldsa, dlLevel);
-                                key->hasPrivate = 0u;
-                                key->mldsaSeed = NULL;
-                                key->mldsaSeedLen = 0u;
-                                ret = WOLFCOSE_E_CRYPTO;
-                            }
+                            wolfCose_MlDsaImportRollback(
+                                key->key.mldsa, dlLevel);
+                            key->hasPrivate = 0u;
+                            key->mldsaSeed = NULL;
+                            key->mldsaSeedLen = 0u;
+                            ret = WOLFCOSE_E_CRYPTO;
                         }
                     }
 #endif
@@ -2626,7 +2673,8 @@ int wc_CoseKey_Decode(WOLFCOSE_KEY* key, const uint8_t* in, size_t inSz)
             else
 #endif /* WOLFCOSE_HAVE_LMS */
 #if defined(WOLFCOSE_HAVE_EDDSA) || defined(WOLFCOSE_HAVE_ED448)
-            if (key->kty == WOLFCOSE_KTY_OKP) {
+            if ((key->kty == WOLFCOSE_KTY_OKP) &&
+                (key->attachedType != WOLFCOSE_ATT_NONE)) {
                 /* RFC 9052: x is recommended, not required, for a private OKP
                  * key, so accept {kty, crv, d} and recompute the public key. */
                 if ((xData == NULL) && (dData == NULL)) {

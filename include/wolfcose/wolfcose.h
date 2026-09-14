@@ -956,7 +956,7 @@ WOLFCOSE_API int wc_CoseKey_Encode(WOLFCOSE_KEY* key, uint8_t* out,
  * \param flags   Bitmask of WOLFCOSE_KEY_* output options.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
-WOLFCOSE_API int wc_CoseKey_Encode_ex(WOLFCOSE_KEY* key, uint8_t* out,
+WOLFCOSE_API int wc_CoseKey_Encode_ex(const WOLFCOSE_KEY* key, uint8_t* out,
                                        size_t outSz, size_t* outLen,
                                        uint32_t flags);
 
@@ -1046,10 +1046,9 @@ typedef struct WOLFCOSE_KEY_INFO {
 /**
  * \brief Read kty/alg/crv/kid from a COSE_Key buffer without importing it.
  *
- * wc_CoseKey_Decode() needs a wolfCrypt key of the matching type attached up
- * front and returns WOLFCOSE_E_COSE_KEY_TYPE otherwise, so a parser that
- * accepts more than one key type would have to guess and retry. This reads
- * the metadata first so the caller can attach the right key object once.
+ * wc_CoseKey_Decode() can validate metadata without an attached wolfCrypt
+ * key. When asymmetric key material is to be imported, this reads the
+ * metadata first so the caller can attach the right key object once.
  *
  * Nothing is imported, no key object is needed, and \p in is not modified.
  * The same structural checks wc_CoseKey_Decode() applies are applied here
@@ -1070,11 +1069,14 @@ WOLFCOSE_API int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
 /**
  * \brief Decode a CBOR COSE_Key map into a WOLFCOSE_KEY structure.
  *        For symmetric keys, pointers reference the input buffer.
- *        For ECC/Ed25519, caller must attach a key struct via
- *        wc_CoseKey_SetEcc()/SetEd25519()/SetEd448()/SetRsa()/SetMlDsa();
- *        assigning key.* directly records no type and imports nothing.
- *        Only attachments recorded by a wc_CoseKey_Set*() API are preserved
- *        across decode; an untyped key union is cleared before parsing.
+ *        Attach a matching asymmetric key object with wc_CoseKey_SetEcc(),
+ *        SetEd25519(), SetEd448(), SetRsa(), SetMlDsa(), or SetSymmetric() to
+ *        attach key material. Without an attachment, supported asymmetric
+ *        metadata is still validated and returned, but key material is not
+ *        imported. Assigning key.* directly records no type and imports
+ *        nothing. Only attachments recorded by a wc_CoseKey_Set*() API are
+ *        preserved across decode; an untyped key union is cleared before
+ *        parsing.
  *        A decoded kty/crv that does not match the attached type returns
  *        WOLFCOSE_E_COSE_KEY_TYPE before any import runs.
  *        Keys containing key_ops return WOLFCOSE_E_UNSUPPORTED before any
@@ -1085,8 +1087,8 @@ WOLFCOSE_API int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
  *        or a non-transactional callback or hardware backend, private EC2
  *        decode returns WOLFCOSE_E_UNSUPPORTED before importing key
  *        material.
- * \param key   Key structure (should be initialized, with wolfCrypt key
- *              attached for asymmetric types).
+ * \param key   Initialized key structure. Attach a wolfCrypt key when
+ *              asymmetric key material should be imported.
  * \param in    Input CBOR buffer.
  * \param inSz  Input buffer size.
  * \return WOLFCOSE_SUCCESS or negative error code.

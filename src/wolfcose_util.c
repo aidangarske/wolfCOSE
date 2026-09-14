@@ -324,29 +324,27 @@ void wolfCose_HdrClearOnFail(int ret, WOLFCOSE_HDR* hdr)
 
 /* ----- Constant-time comparison (side-channel safe) ----- */
 
-/* Only the MAC verify paths compare secret tags, so this helper is compiled
- * only when one of them is enabled. This keeps sign-only and verify-only
- * builds free of an unused-function warning. */
-#if defined(WOLFCOSE_MAC0_VERIFY) || defined(WOLFCOSE_MAC_VERIFY)
+/* Compile this helper only for paths that use it. */
+#ifdef WOLFCOSE_NEED_CONSTANT_COMPARE
 /**
  * Constant-time memory comparison (matches wolfSSL ConstantCompare pattern).
  * Returns 0 if equal, non-zero otherwise.
  * Timing is independent of comparison result.
  */
-int wolfCose_ConstantCompare(const byte* a, const byte* b,
-                                     word32 length)
+int32_t wolfCose_ConstantCompare(const byte* a, const byte* b,
+                                 word32 length)
 {
     word32 i;
     /* volatile prevents the compiler from converting the OR-accumulate
      * loop into an early-exit comparison once result is non-zero. */
-    volatile unsigned int result = 0;
+    volatile uint32_t result = 0u;
 
-    for (i = 0; i < length; i++) {
-        result |= (unsigned int)a[i] ^ (unsigned int)b[i];
+    for (i = 0u; i < length; i++) {
+        result |= (uint32_t)a[i] ^ (uint32_t)b[i];
     }
-    return (int)result;
+    return (int32_t)result;
 }
-#endif /* WOLFCOSE_MAC0_VERIFY || WOLFCOSE_MAC_VERIFY */
+#endif /* WOLFCOSE_NEED_CONSTANT_COMPARE */
 
 /* ----- RFC 9052 context strings ----- */
 WOLFCOSE_LOCAL const uint8_t WOLFCOSE_CTX_SIGNATURE1[10] = {
