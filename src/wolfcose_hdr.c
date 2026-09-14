@@ -61,19 +61,20 @@ int wolfCose_InInt32Range(int64_t val)
 static uint32_t wolfCose_LabelBit(int64_t label)
 {
     uint32_t bit;
-    uint32_t shift;
-    int64_t shift64;
+    uint32_t shift = 32u;
 
     if ((label >= 1) && (label <= 16)) {
-        shift64 = label;
-        shift64--;
-        shift = (uint32_t)shift64;
-        bit = ((uint32_t)1u) << shift;
+        shift = (uint32_t)label;
+        shift--;
     }
     else if ((label <= -1) && (label >= -16)) {
-        shift64 = -label;
-        shift = (uint32_t)shift64;
+        shift = (uint32_t)(-label);
         shift += 15u;
+    }
+    else {
+        /* No tracked bit. */
+    }
+    if (shift < 32u) {
         bit = ((uint32_t)1u) << shift;
     }
     else {
@@ -343,12 +344,17 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
     if ((hdr == NULL) || (hdrState == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
-    else if ((data == NULL) || (dataLen == 0u)) {
+    else if ((data == NULL) && (dataLen != 0u)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if (dataLen == 0u) {
         /* Empty protected header is valid */
         wolfCose_HdrStateInit(hdrState);
         ret = WOLFCOSE_SUCCESS;
     }
     else {
+        uint8_t contentTypeUnderstood = 0u;
+
         wolfCose_HdrStateInit(hdrState);
         ctx.cbuf = data;
         ctx.bufSz = dataLen;
@@ -443,6 +449,7 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
                     }
                     if (ret == WOLFCOSE_SUCCESS) {
                         hdr->contentType = (int32_t)contentTypeVal;
+                        contentTypeUnderstood = 1u;
                     }
                 }
             }
@@ -491,6 +498,11 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
         /* Every label listed in crit must appear in the protected header. */
         if ((ret == WOLFCOSE_SUCCESS) &&
             ((critLabels & ~hdrState->labelBits) != 0u)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((critLabels & wolfCose_LabelBit(WOLFCOSE_HDR_CONTENT_TYPE)) !=
+             0u) && (contentTypeUnderstood == 0u)) {
             ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
 

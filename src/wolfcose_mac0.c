@@ -257,6 +257,7 @@ int wolfCose_AesCbcMac(const uint8_t* key, size_t keyLen,
     /* Cleanup: always executed */
     if (aesInited != 0) {
         (void)wc_AesFree(&aes);
+        (void)wolfCose_ForceZero(&aes, sizeof(aes));
     }
     (void)wolfCose_ForceZero(inBlock, sizeof(inBlock));
     (void)wolfCose_ForceZero(outBlock, sizeof(outBlock));
