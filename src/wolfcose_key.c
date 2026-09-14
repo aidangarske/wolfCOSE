@@ -296,7 +296,8 @@ int wc_CoseKey_SetSymmetric(WOLFCOSE_KEY* key, const uint8_t* data,
     return ret;
 }
 
-#if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN)
+#if defined(WOLFCOSE_SIGN1_SIGN) || defined(WOLFCOSE_SIGN_SIGN) || \
+    defined(WOLFCOSE_COUNTERSIGN_SIGN)
 /* Signing needs either private key material in wolfCOSE or a delegated signer;
  * hasPrivate alone conflates that with "the private key is here", which
  * governs whether wc_CoseKey_Encode may serialise it. */
@@ -314,7 +315,7 @@ int wolfCose_KeyCanSign(const WOLFCOSE_KEY* key)
 #endif
     return can;
 }
-#endif /* WOLFCOSE_SIGN1_SIGN || WOLFCOSE_SIGN_SIGN */
+#endif /* signature creation */
 
 #if defined(WOLFCOSE_EXT_SIGN)
 int wc_CoseKey_SetExtSigner(WOLFCOSE_KEY* key, WOLFCOSE_SIGN_CB cb,
@@ -340,7 +341,7 @@ int wc_CoseKey_SetExtSigner(WOLFCOSE_KEY* key, WOLFCOSE_SIGN_CB cb,
  * Shared by the COSE_Key and COSE_Sign1 size queries. Every add is checked so
  * a size computation can never wrap into a too-small buffer request. */
 #if defined(WOLFCOSE_KEY_ENCODE) || defined(WOLFCOSE_SIGN1_SIGN) || \
-    defined(WOLFCOSE_SIGN_SIGN)
+    defined(WOLFCOSE_SIGN_SIGN) || defined(WOLFCOSE_COUNTERSIGN_SIGN)
 int wolfCose_SizeAdd(size_t* total, size_t add)
 {
     int ret = WOLFCOSE_SUCCESS;
@@ -354,7 +355,7 @@ int wolfCose_SizeAdd(size_t* total, size_t add)
     return ret;
 }
 
-static size_t wolfCose_CborHeadSize(uint64_t val)
+size_t wolfCose_CborHeadSize(uint64_t val)
 {
     size_t len;
 
@@ -387,7 +388,8 @@ int wolfCose_CborStringSize(size_t len, size_t* encodedLen)
     }
     return ret;
 }
-#endif /* WOLFCOSE_KEY_ENCODE || WOLFCOSE_SIGN1_SIGN || WOLFCOSE_SIGN_SIGN */
+#endif /* WOLFCOSE_KEY_ENCODE || WOLFCOSE_SIGN1_SIGN || WOLFCOSE_SIGN_SIGN ||
+        * WOLFCOSE_COUNTERSIGN_SIGN */
 
 #if defined(WOLFCOSE_KEY_ENCODE)
 

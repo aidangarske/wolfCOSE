@@ -879,7 +879,9 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         (wolfCose_IsEcdhEsDirectAlg(recipientHdr.alg) != 0)) {
         size_t mapCount = 0;
         size_t j;
+        WOLFCOSE_HDR_STATE unprotState;
 
+        wolfCose_HdrStateInit(&unprotState);
         ret = wc_CBOR_DecodeMapStart(&ctx, &mapCount);
 
         if ((ret == WOLFCOSE_SUCCESS) && (mapCount > (size_t)WOLFCOSE_MAX_MAP_ITEMS)) {
@@ -888,22 +890,32 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         }
 
         for (j = 0; (ret == WOLFCOSE_SUCCESS) && (j < mapCount); j++) {
-            int64_t label = 0;
-            int recipSkipped = 0;
+            WOLFCOSE_CBOR_LABEL label;
+            const uint8_t* encodedLabel = NULL;
 
-            ret = wolfCose_SkipIfTstrLabel(&ctx, &recipSkipped);
-            if ((ret == WOLFCOSE_SUCCESS) && (recipSkipped == 0)) {
-                ret = wc_CBOR_DecodeInt(&ctx, &label);
+            if ((ctx.cbuf != NULL) && (ctx.idx < ctx.bufSz)) {
+                encodedLabel = &ctx.cbuf[ctx.idx];
             }
+            ret = wc_CBOR_DecodeLabel(&ctx, &label);
 
             /* Reject duplicate labels within the unprotected map and labels
              * also present in the recipient protected bucket. */
             if (ret == WOLFCOSE_SUCCESS) {
-                ret = wolfCose_HdrStateCheckAndAdd(&recipientHdrState, label);
+                if ((wolfCose_HdrStateContainsLabel(&unprotState,
+                                                     &label) != 0) ||
+                    (wolfCose_HdrStateContainsLabel(&recipientHdrState,
+                                                     &label) != 0)) {
+                    ret = WOLFCOSE_E_CBOR_MALFORMED;
+                }
+                else {
+                    ret = wolfCose_HdrStateAddLabel(&unprotState, &label,
+                        encodedLabel);
+                }
             }
 
             if ((ret == WOLFCOSE_SUCCESS) &&
-                (label == WOLFCOSE_HDR_EPHEMERAL_KEY)) {
+                (wc_CBOR_LabelIsInt(&label,
+                    WOLFCOSE_HDR_EPHEMERAL_KEY) != 0)) {
                 if (haveEphemKey != 0) {
                     ret = WOLFCOSE_E_CBOR_MALFORMED;
                 }
