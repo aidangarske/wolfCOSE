@@ -25641,6 +25641,13 @@ static void test_skipped_recipient_tstr_alg(void)
         0xA1u, 0x02u, 0x00u,
         0x40u
     };
+    /* COSE_recipient [protected {1:-25}, unprotected {}, null]. */
+    uint8_t nullValue[] = {
+        0x83u,
+        0x44u, 0xA1u, 0x01u, 0x38u, 0x18u,
+        0xA0u,
+        0xF6u
+    };
 
     TEST_LOG("  [Skipped recipient with tstr alg]\n");
 
@@ -25660,6 +25667,18 @@ static void test_skipped_recipient_tstr_alg(void)
                 "skipped recipient ignores unrelated header errors");
     TEST_ASSERT(alg == WOLFCOSE_ALG_ES256,
                 "skipped recipient still decodes alg");
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.cbuf = nullValue;
+    ctx.bufSz = sizeof(nullValue);
+    alg = WOLFCOSE_ALG_UNSET;
+    ret = wolfCose_DecodeSkippedRecipient(&ctx, &alg);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "skipped recipient accepts null ciphertext");
+    TEST_ASSERT(ctx.idx == sizeof(nullValue),
+                "skipped null recipient consumed");
+    TEST_ASSERT(alg == WOLFCOSE_ALG_ECDH_ES_HKDF_256,
+                "skipped null recipient decodes alg");
 }
 #endif /* WOLFCOSE_ENCRYPT_DECRYPT || WOLFCOSE_MAC_VERIFY */
 
