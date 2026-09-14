@@ -1923,17 +1923,21 @@ static int tool_hpke_ke_enc(const char* const* keyPaths, size_t keyCount,
             rngInit = 1;
             ret = wc_RNG_GenerateBlock(&rng, iv, (word32)ivLen);
         }
+        if (ret != 0) {
+            fprintf(stderr, "HPKE-0-KE RNG failed: %d\n", ret);
+            ret = EXIT_CRYPTO;
+        }
     }
     if (ret == 0) {
         ret = wc_CoseEncrypt_Encrypt(recipients, keyCount, contentAlg, iv,
             ivLen, msgBuf, msgLen, NULL, 0u, NULL, 0u, scratch,
             sizeof(scratch), outBuf, sizeof(outBuf), &outLen, &rng);
+        if (ret != 0) {
+            fprintf(stderr, "HPKE-0-KE encrypt failed: %d\n", ret);
+            ret = EXIT_CRYPTO;
+        }
     }
-    if (ret != 0) {
-        fprintf(stderr, "HPKE-0-KE encrypt failed: %d\n", ret);
-        ret = EXIT_CRYPTO;
-    }
-    else {
+    if (ret == 0) {
         ret = write_file(outPath, outBuf, outLen);
     }
     if (ret == 0) {
@@ -2908,6 +2912,7 @@ int main(int argc, char* argv[])
 #endif
 #if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
     size_t recipientIndex = 0u;
+    int recipientIndexSet = 0;
 #endif
     int32_t alg = 0;
     int i;
@@ -2964,6 +2969,7 @@ int main(int argc, char* argv[])
                     return EXIT_USAGE;
                 }
                 recipientIndex = (size_t)value;
+                recipientIndexSet = 1;
 #else
                 fprintf(stderr, "HPKE recipient selection is not built in\n");
                 return EXIT_USAGE;
@@ -3022,6 +3028,12 @@ int main(int argc, char* argv[])
         fprintf(stderr, "--index applies only to counterverify\n");
         return EXIT_USAGE;
     }
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+    if ((recipientIndexSet != 0) && (strcmp(cmd, "hpke-ke-dec") != 0)) {
+        fprintf(stderr, "-r applies only to hpke-ke-dec\n");
+        return EXIT_USAGE;
+    }
+#endif
 
     /* Dispatch */
     if (strcmp(cmd, "test") == 0) {

@@ -320,6 +320,18 @@ if hpke_keygen_or "HPKE-0-KE" "$HKE0_PRIV" "$HKE0_PUB" && \
     else
         bad "HPKE-0-KE self-test"
     fi
+    if "$TOOL" info -r 0 -i "$HKE_COSE" >/dev/null 2>&1; then
+        bad "HPKE-0-KE recipient index is command-specific"
+    else
+        ok "HPKE-0-KE recipient index is command-specific"
+    fi
+    "$TOOL" hpke-ke-enc -a A128GCM -k "$WORK/missing-hpke-key" \
+        -i "$IN" -o "$HKE_COSE" >/dev/null 2>&1
+    if [ "$?" -eq 3 ]; then
+        ok "HPKE-0-KE preserves key input errors"
+    else
+        bad "HPKE-0-KE preserves key input errors"
+    fi
     HKE_MAX_IN="$WORK/hpke-ke-max.bin"; HKE_MAX_COSE="$WORK/hpke-ke-max.cose"
     HKE_MAX_OUT="$WORK/hpke-ke-max.out"
     if dd if=/dev/zero of="$HKE_MAX_IN" bs="$HPKE_TOOL_MAX_MSG" count=1 \
