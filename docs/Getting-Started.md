@@ -8,10 +8,18 @@ This guide covers prerequisites, building wolfCOSE, and basic usage examples.
 
 wolfCOSE requires wolfSSL 5.8.0 or later with the appropriate algorithms
 enabled. AES Key Wrap requires wolfSSL 5.9.0 or later because that release
-uses a constant-time integrity comparison during unwrap. ML-DSA requires a
-wolfSSL release newer than 5.9.1. HSS/LMS (RFC 8778) requires wolfSSL 5.9.2 or
-later, the first release whose public-key importer derives the parameter set
-from the key bytes.
+uses a constant-time integrity comparison during unwrap. Private RSA
+`COSE_Key` decoding requires wolfSSL 5.9.0 or later, and private RSA
+serialization requires wolfSSL 5.9.2 or later. ML-DSA requires a wolfSSL
+release newer than 5.9.1. HSS/LMS (RFC 8778) requires wolfSSL 5.9.2 or later,
+the first release whose public-key importer derives the parameter set from the
+key bytes.
+
+These dependency floors are enforced at compile time whenever wolfCOSE selects
+the corresponding feature. With an older wolfSSL, disable unused ML-DSA or LMS
+support with `WOLFCOSE_NO_MLDSA` or `WOLFCOSE_NO_LMS`. Define
+`WOLFCOSE_RSA_PUBLIC_ONLY` to retain RSA-PSS and public `COSE_Key` support
+without private RSA serialization.
 
 Here is a full-featured build using a release that meets those feature floors:
 
@@ -61,7 +69,9 @@ You can enable only the algorithms you need:
 | ECDH-ES key agreement | `--enable-ecc --enable-hkdf` |
 | AES Key Wrap | `--enable-aeskeywrap` (wolfSSL 5.9.0+) |
 | RSA-PSS signing | `--enable-rsapss --enable-keygen` |
-| ML-DSA (post-quantum) | `--enable-mldsa` |
+| Private RSA `COSE_Key` decoding | `--enable-rsapss` (wolfSSL 5.9.0+) |
+| Private RSA `COSE_Key` serialization | `--enable-rsapss --enable-keygen` (wolfSSL 5.9.2+) |
+| ML-DSA (post-quantum) | `--enable-mldsa` (wolfSSL newer than 5.9.1) |
 | HSS/LMS (stateful hash-based) | `--enable-lms` (wolfSSL 5.9.2+) |
 | AES-MAC | `--enable-aescbc` |
 
@@ -391,8 +401,10 @@ Related strictness that surprises integrators for the same reason:
 - EC2 coordinates must be exactly the curve size, with leading zeros preserved
   (RFC 9053 Section 7.1.1) - a 31-byte P-256 `x` is rejected, not left-padded.
 - A duplicate label in a header or `COSE_Key` map is rejected.
-- `COSE_Key` and COSE header maps accept integer labels only. For your own
-  protocol maps that mix integer and text labels, use
+- `COSE_Key` maps accept the registered integer labels. COSE header maps accept
+  both integer and text labels, retain unknown non-critical parameters in the
+  encoded message, and reject duplicates within or across header buckets. For
+  caller-written protocol maps, use
   [`wc_CBOR_DecodeLabel()`](API-Reference.md#wc_cbor_decodelabel).
 
 None of this is configurable: relaxing it would let a signature or MAC be

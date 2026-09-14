@@ -139,6 +139,7 @@ extern "C" {
 #define WOLFCOSE_TAG_SIGN1      18u
 #define WOLFCOSE_TAG_ENCRYPT0   16u
 #define WOLFCOSE_TAG_MAC0       17u
+#define WOLFCOSE_TAG_COUNTERSIGNATURE 19u
 #define WOLFCOSE_TAG_SIGN       98u  /* Multi-signer */
 #define WOLFCOSE_TAG_ENCRYPT    96u  /* Multi-recipient encryption */
 #define WOLFCOSE_TAG_MAC        97u  /* Multi-recipient MAC */
@@ -150,6 +151,10 @@ extern "C" {
 #define WOLFCOSE_HDR_KID         4
 #define WOLFCOSE_HDR_IV          5
 #define WOLFCOSE_HDR_PARTIAL_IV  6
+#define WOLFCOSE_HDR_COUNTERSIGNATURE_LEGACY  7
+#define WOLFCOSE_HDR_COUNTERSIGNATURE0_LEGACY 9
+#define WOLFCOSE_HDR_COUNTERSIGNATURE_V2  11
+#define WOLFCOSE_HDR_COUNTERSIGNATURE0_V2 12
 #define WOLFCOSE_HDR_EPHEMERAL_KEY (-1)  /* Ephemeral COSE_Key for ECDH */
 
 /*
@@ -443,6 +448,20 @@ typedef struct WOLFCOSE_SIGNATURE {
     size_t         kidLen;      /**< Key ID length */
 } WOLFCOSE_SIGNATURE;
 
+/** \brief Full RFC 9338 countersigner configuration. */
+typedef struct WOLFCOSE_COUNTERSIGNATURE {
+    int32_t        algId;  /**< Signature algorithm (ES256, EdDSA, etc.) */
+    WOLFCOSE_KEY*  key;    /**< Caller-owned countersigning key */
+    const uint8_t* kid;    /**< Optional countersigner key identifier */
+    size_t         kidLen; /**< Key identifier length */
+} WOLFCOSE_COUNTERSIGNATURE;
+
+/** \brief Abbreviated RFC 9338 countersigner configuration. */
+typedef struct WOLFCOSE_COUNTERSIGNATURE0 {
+    int32_t       algId; /**< Signature algorithm supplied out of band */
+    WOLFCOSE_KEY* key;   /**< Caller-owned countersigning key */
+} WOLFCOSE_COUNTERSIGNATURE0;
+
 /* -----
  * CBOR Encode API (RFC 8949)
  *
@@ -724,9 +743,11 @@ typedef struct WOLFCOSE_CBOR_LABEL {
 /**
  * \brief Decode a map label that may be an integer or a text string.
  *
- * Consumes exactly one item. Major types 0 and 1 populate label->val with
- * isText 0; major type 3 populates label->text / label->textLen with isText 1
- * and no copy. Anything else is WOLFCOSE_E_CBOR_TYPE with the item consumed.
+ * Consumes one CBOR head. Major types 0 and 1 populate label->val with isText
+ * 0; major type 3 consumes the text and populates label->text / label->textLen
+ * with isText 1 and no copy. A byte string is fully consumed and rejected with
+ * WOLFCOSE_E_CBOR_TYPE. For a tag or container, only its head is consumed; use
+ * wc_CBOR_Skip() instead when the complete item must be skipped.
  *
  * \param ctx    Decoder context.
  * \param label  Output: decoded label.
@@ -999,12 +1020,6 @@ WOLFCOSE_API int wc_CoseKey_EncodeSize(const WOLFCOSE_KEY* key,
  * bound, so it can be used to size a buffer or to reject an oversized key
  * before committing storage.
  *
- * One configuration limit: in a build with neither HAVE_ECC nor
- * WOLFSSL_EXPORT_INT, reading the RSA public exponent needs a scratch copy of
- * the modulus, so an RSA key whose modulus exceeds WOLFCOSE_MAX_SCRATCH_SZ
- * returns WOLFCOSE_E_CRYPTO here even though wc_CoseKey_Encode_ex() encodes
- * it. Any build with ECC or WOLFSSL_EXPORT_INT enabled is unaffected.
- *
  * \param key     Key to size.
  * \param outLen  Output: exact encoded size in bytes.
  * \param flags   Bitmask of WOLFCOSE_KEY_* output options.
@@ -1058,6 +1073,8 @@ WOLFCOSE_API int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
  *        For ECC/Ed25519, caller must attach a key struct via
  *        wc_CoseKey_SetEcc()/SetEd25519()/SetEd448()/SetRsa()/SetMlDsa();
  *        assigning key.* directly records no type and imports nothing.
+ *        Only attachments recorded by a wc_CoseKey_Set*() API are preserved
+ *        across decode; an untyped key union is cleared before parsing.
  *        A decoded kty/crv that does not match the attached type returns
  *        WOLFCOSE_E_COSE_KEY_TYPE before any import runs.
  *        Keys containing key_ops return WOLFCOSE_E_UNSUPPORTED before any
@@ -1190,6 +1207,84 @@ WOLFCOSE_API int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     const uint8_t** payload, size_t* payloadLen);
 #endif /* WOLFCOSE_SIGN1_VERIFY */
 
+/* ----- COSE Countersignature API (RFC 9338) ----- */
+
+#if defined(WOLFCOSE_COUNTERSIGN_SIGN)
+/**
+ * \brief Add a full V2 countersignature to a tagged COSE message.
+ *
+ * Existing full countersignatures are retained and the new value is appended.
+ * \p out may equal \p in for exact in-place growth. Other overlap is rejected.
+ * \p scratch must not overlap the input, output, detached payload, external
+ * AAD, or key identifier buffers.
+ * A detached target payload must be supplied through
+ * \p detachedPayload. The counter signature is stored in unprotected header
+ * parameter 11 as specified by RFC 9338.
+ */
+WOLFCOSE_API int wc_Cose_AddCounterSignature(
+    const WOLFCOSE_COUNTERSIGNATURE* counterSigner,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    uint8_t* out, size_t outSz, size_t* outLen,
+    WC_RNG* rng);
+
+/**
+ * \brief Add an abbreviated V2 countersignature to a tagged COSE message.
+ *
+ * The signature is stored in unprotected header parameter 12. The algorithm
+ * and key identifier remain application context and are not carried in the
+ * message. Only one abbreviated countersignature may be attached to a target.
+ * \p scratch must not overlap the input, output, detached payload, or external
+ * AAD buffers.
+ */
+WOLFCOSE_API int wc_Cose_AddCounterSignature0(
+    const WOLFCOSE_COUNTERSIGNATURE0* counterSigner,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    uint8_t* out, size_t outSz, size_t* outLen,
+    WC_RNG* rng);
+#endif /* WOLFCOSE_COUNTERSIGN_SIGN */
+
+#if defined(WOLFCOSE_COUNTERSIGN_VERIFY)
+/**
+ * \brief Verify one full countersignature on a tagged COSE message.
+ *
+ * \p counterIndex selects a value from V2 header parameter 11 or legacy
+ * header parameter 7. Zero selects the sole value when the compact
+ * single-value representation is used. Parsed countersigner headers are
+ * returned through \p counterHdr. V2 is preferred when both labels exist. An
+ * algorithm in the unprotected bucket is accepted only when \p key has the
+ * same non-UNSET alg value, providing the external authentication required by
+ * RFC 9052. \p scratch must not overlap any input buffer or \p counterHdr.
+ */
+WOLFCOSE_API int wc_Cose_VerifyCounterSignature(
+    const WOLFCOSE_KEY* key, size_t counterIndex,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    WOLFCOSE_HDR* counterHdr);
+
+/**
+ * \brief Verify an abbreviated countersignature on a tagged COSE message.
+ *
+ * The verification algorithm is supplied through \p counterSigner because a
+ * COSE_Countersignature0 carries only the signature bytes. V2 header
+ * parameter 12 and legacy header parameter 9 are accepted, with V2 preferred.
+ * \p scratch must not overlap any input buffer.
+ */
+WOLFCOSE_API int wc_Cose_VerifyCounterSignature0(
+    const WOLFCOSE_COUNTERSIGNATURE0* counterSigner,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz);
+#endif /* WOLFCOSE_COUNTERSIGN_VERIFY */
+
 /* ----- COSE_Encrypt0 API (RFC 9052 Section 5.3) ----- */
 
 #if defined(WOLFCOSE_ENCRYPT0_ENCRYPT)
@@ -1200,8 +1295,8 @@ WOLFCOSE_API int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
  * \param alg             Algorithm (WOLFCOSE_ALG_A128GCM/A192GCM/A256GCM).
  * \param iv              Initialization vector (12 bytes for AES-GCM).
  * \param ivLen           IV length.
- * \param payload         Plaintext payload (NULL if detached).
- * \param payloadLen      Payload length (0 if detached).
+ * \param payload         Plaintext payload to encrypt.
+ * \param payloadLen      Plaintext payload length.
  * \param detachedPayload Detached ciphertext destination (NULL if attached).
  *                        If non-NULL, ciphertext is stored here, message has nil.
  * \param detachedSz      Detached buffer size.
@@ -1352,7 +1447,8 @@ WOLFCOSE_API int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
  * \param out             Output buffer.
  * \param outSz           Output buffer size.
  * \param outLen          Output: bytes written to out.
- * \param rng             Initialized WC_RNG.
+ * \param rng             Initialized WC_RNG for any local signer. May be NULL
+ *                        when every signer uses an external signing callback.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
 WOLFCOSE_API int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers,
