@@ -781,8 +781,25 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
     else {
         /* No action required */
     }
+    /* RFC 9053 Section 6.1 requires an empty protected header bucket for
+     * Direct recipients. */
+    if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL) &&
+        (*alg == WOLFCOSE_ALG_DIRECT) && (protectedLen != 0u)) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
     if ((ret == WOLFCOSE_SUCCESS) && (isSignature != 0u)) {
         ret = wc_CBOR_DecodeBstr(ctx, &valueData, &valueLen);
+    }
+    else if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL) &&
+             (*alg == WOLFCOSE_ALG_DIRECT)) {
+        WOLFCOSE_CBOR_ITEM item;
+
+        ret = wolfCose_CBOR_DecodeHead(ctx, &item);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            ((item.majorType != WOLFCOSE_CBOR_BSTR) ||
+             (item.dataLen != 0u))) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
     }
     else if ((ret == WOLFCOSE_SUCCESS) &&
              (ctx->idx < ctx->bufSz) &&
@@ -839,6 +856,10 @@ int wolfCose_DecodeSkippedRecipient(WOLFCOSE_CBOR_CTX* ctx,
         ret = wolfCose_DecodeSkippedHeaderEntry(ctx, 4u, &arrayCount,
                                                  &decodedAlg, 0u);
         remaining--;
+        if ((ret == WOLFCOSE_SUCCESS) && (arrayCount == 4u) &&
+            (decodedAlg == WOLFCOSE_ALG_DIRECT)) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
         if ((ret == WOLFCOSE_SUCCESS) && (firstRecipient != 0)) {
             *recipientAlg = decodedAlg;
             firstRecipient = 0;

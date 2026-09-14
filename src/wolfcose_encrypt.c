@@ -973,6 +973,14 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         ret = wolfCose_UpdateRecipientMode(recipientAlgId, &recipientMode);
     }
 
+    /* RFC 9053 Section 6.1 requires an empty protected header bucket for
+     * Direct recipients. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (recipientAlgId == WOLFCOSE_ALG_DIRECT) &&
+        (recipientProtectedLen != 0u)) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
+
     /* Classify the recipient key-management algorithm. Only direct, ECDH-ES
      * direct, and AES key wrap are supported; reject anything else instead of
      * silently treating it as direct-key decryption. */
@@ -998,6 +1006,16 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
             ret = WOLFCOSE_E_COSE_BAD_ALG;
         }
     }
+
+#if defined(WOLFCOSE_KEY_WRAP)
+    /* RFC 9053 Section 6.2.1 requires an empty protected header bucket for
+     * AES Key Wrap recipients. */
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (wolfCose_IsKeyWrapAlg(recipientAlgId) != 0) &&
+        (recipientProtectedLen != 0u)) {
+        ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
+#endif
 
 #if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(HAVE_ECC) && \
     defined(HAVE_HKDF)
@@ -1060,6 +1078,12 @@ int wc_CoseEncrypt_Decrypt(const WOLFCOSE_RECIPIENT* recipient,
         }
         ret = wolfCose_CBOR_DecodeHead(&ctx, &item);
         if ((ret == WOLFCOSE_SUCCESS) &&
+            (recipientAlgId == WOLFCOSE_ALG_DIRECT) &&
+            ((item.majorType != WOLFCOSE_CBOR_BSTR) ||
+             (item.dataLen != 0u))) {
+            ret = WOLFCOSE_E_COSE_BAD_HDR;
+        }
+        else if ((ret == WOLFCOSE_SUCCESS) &&
             (recipientValueIsNull == 0) &&
             (item.majorType != WOLFCOSE_CBOR_BSTR)) {
             ret = WOLFCOSE_E_CBOR_TYPE;

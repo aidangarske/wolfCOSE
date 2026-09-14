@@ -12708,10 +12708,12 @@ static void test_cose_encrypt_a128kw_unprotected_alg(void)
     uint8_t iv[12] = {0};
     uint8_t scratch[256];
     uint8_t out[512];
+    uint8_t malformed[513];
     uint8_t plaintext[128];
     size_t outLen = 0u;
     size_t plaintextLen = 0u;
     size_t count = 0u;
+    size_t protectedOffset = 0u;
     const uint8_t* protectedData = NULL;
     size_t protectedLen = 0u;
     int64_t label = 0;
@@ -12774,6 +12776,7 @@ static void test_cose_encrypt_a128kw_unprotected_alg(void)
     /* RFC 9053 6.2.1: the AES Key Wrap recipient's protected bucket is empty
      * and the algorithm is carried in the unprotected header. */
     if (ret == 0) {
+        protectedOffset = ctx.idx;
         ret = wc_CBOR_DecodeBstr(&ctx, &protectedData, &protectedLen);
     }
     if ((ret == 0) && (protectedLen != 0u)) {
@@ -12809,6 +12812,28 @@ static void test_cose_encrypt_a128kw_unprotected_alg(void)
         TEST_ASSERT((plaintextLen == (sizeof(payload) - 1u)) &&
                     (XMEMCMP(plaintext, payload, plaintextLen) == 0),
                     "a128kw unprotected payload");
+    }
+    TEST_ASSERT((ret != 0) || ((protectedOffset < outLen) &&
+                (outLen < sizeof(malformed)) &&
+                (out[protectedOffset] == 0x40u)),
+                "a128kw unprotected mutation bounds");
+    if ((ret == 0) && (protectedOffset < outLen) &&
+        (outLen < sizeof(malformed)) &&
+        (out[protectedOffset] == 0x40u)) {
+        (void)XMEMCPY(malformed, out, protectedOffset);
+        malformed[protectedOffset] = 0x41u;
+        malformed[protectedOffset + 1u] = 0xA0u;
+        (void)XMEMCPY(&malformed[protectedOffset + 2u],
+            &out[protectedOffset + 1u],
+            outLen - protectedOffset - 1u);
+        plaintextLen = 0u;
+        ret = wc_CoseEncrypt_Decrypt(&recipient, 0u,
+            malformed, outLen + 1u,
+            NULL, 0u, NULL, 0u,
+            scratch, sizeof(scratch), &hdr,
+            plaintext, sizeof(plaintext), &plaintextLen);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                    "a128kw rejects nonempty protected bucket");
     }
 
     wc_CoseKey_Free(&kek);
@@ -13851,7 +13876,7 @@ static void test_cose_mac_rejects_float_recipient_ciphertext(void)
         ret = wc_CoseMac_Verify(&recipient, 0, msg, msgLen,
             NULL, 0, NULL, 0, scratch, sizeof(scratch),
             &hdr, &payload, &payloadLen);
-        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE,
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                     "Mac_Verify rejects float recipient ciphertext");
     }
 
@@ -13902,7 +13927,7 @@ static void test_cose_mac_rejects_nonempty_recipient_ciphertext(void)
     ret = wc_CoseMac_Verify(&recipient, 0, msg, outLen + 1u,
         NULL, 0, NULL, 0, scratch, sizeof(scratch),
         &hdr, &payload, &payloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "Mac_Verify rejects nonempty recipient ciphertext");
 
     (void)memcpy(msg, out, outLen);
@@ -13911,8 +13936,8 @@ static void test_cose_mac_rejects_nonempty_recipient_ciphertext(void)
     ret = wc_CoseMac_Verify(&recipient, 0, msg, outLen,
         NULL, 0, NULL, 0, scratch, sizeof(scratch),
         &hdr, &payload, &payloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
-                "Mac_Verify accepts null recipient ciphertext");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "Mac_Verify rejects null recipient ciphertext");
 
     wc_CoseKey_Free(&key);
 }
@@ -17561,8 +17586,8 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
         0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
         0x40u
     };
-    /* Valid four-element recipients appear on both sides of the selected
-     * recipient. Their nested direct recipients must also be decoded. */
+    /* Four-element Direct recipients appear on both sides of the selected
+     * recipient. Neither may contain nested recipients. */
     uint8_t nestedSiblings[] = {
         0x85u, 0x43u, 0xA1u, 0x01u, 0x05u, 0xA0u, 0x41u, 0x78u,
         0x58u, 0x20u,
@@ -17611,8 +17636,8 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
     ret = wc_CoseMac_Verify(&recipient, 1, nestedSiblings,
         sizeof(nestedSiblings), NULL, 0, NULL, 0,
         scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL,
-                "nested unselected recipients accepted (mac)");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "nested skipped Direct recipient rejected (mac)");
 
     ret = wc_CoseMac_Verify(&recipient, 1, tstrSibling,
         sizeof(tstrSibling), NULL, 0, NULL, 0,
@@ -17722,8 +17747,8 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         0x04u, 0x41u, 0x01u, 0x04u, 0x41u, 0x02u,
         0x40u
     };
-    /* Valid four-element recipients appear on both sides of the selected
-     * recipient. Their nested direct recipients must also be decoded. */
+    /* Four-element Direct recipients appear on both sides of the selected
+     * recipient. Neither may contain nested recipients. */
     uint8_t nestedSiblings[] = {
         0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
         0xA1u, 0x05u, 0x4Cu,
@@ -17736,6 +17761,18 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
         0x84u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
         0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
+    };
+    /* An unselected key-distribution recipient may contain recipients. */
+    uint8_t nestedKeyDistSibling[] = {
+        0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
+        0xA1u, 0x05u, 0x4Cu,
+        0,0,0,0,0,0,0,0,0,0,0,0,
+        0x50u,
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0x82u,
+        0x84u, 0x40u, 0xA1u, 0x01u, 0x22u, 0x40u,
+        0x81u, 0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u,
+        0x83u, 0x40u, 0xA1u, 0x01u, 0x25u, 0x40u
     };
     uint8_t tstrSibling[] = {
         0x84u, 0x43u, 0xA1u, 0x01u, 0x01u,
@@ -17776,8 +17813,15 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         sizeof(nestedSiblings), NULL, 0, NULL, 0,
         scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL,
-                "nested unselected recipients accepted (encrypt)");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "nested skipped Direct recipient rejected (encrypt)");
+
+    ret = wc_CoseEncrypt_Decrypt(&recipient, 1, nestedKeyDistSibling,
+        sizeof(nestedKeyDistSibling), NULL, 0, NULL, 0,
+        scratch, sizeof(scratch), &hdr,
+        plaintext, sizeof(plaintext), &plaintextLen);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
+                "nested skipped key-distribution recipient traversed");
 
     ret = wc_CoseEncrypt_Decrypt(&recipient, 1, tstrSibling,
         sizeof(tstrSibling), NULL, 0, NULL, 0,
@@ -18017,17 +18061,15 @@ static void test_cose_encrypt_direct_recipient_value(void)
     ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, outLen,
         NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
-    TEST_ASSERT((ret == WOLFCOSE_SUCCESS) &&
-                (plaintextLen == (sizeof(payload) - 1u)) &&
-                (XMEMCMP(plaintext, payload, plaintextLen) == 0),
-                "direct value accepts null");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "direct value rejects null");
 
     (void)XMEMCPY(msg, out, outLen);
     msg[outLen - 1u] = 0x00u;
     ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, outLen,
         NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_TYPE,
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "direct value rejects integer");
 
     (void)XMEMCPY(msg, out, outLen);
@@ -18036,7 +18078,7 @@ static void test_cose_encrypt_direct_recipient_value(void)
     ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, msg, outLen + 1u,
         NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "direct value rejects nonempty bstr");
 
     wc_CoseKey_Free(&key);
@@ -25612,6 +25654,13 @@ static void test_skipped_recipient_tstr_alg(void)
         0xA1u, 0x02u, 0x00u,
         0x40u
     };
+    /* COSE_recipient [protected {1:-25}, unprotected {}, null]. */
+    uint8_t nullValue[] = {
+        0x83u,
+        0x44u, 0xA1u, 0x01u, 0x38u, 0x18u,
+        0xA0u,
+        0xF6u
+    };
 
     TEST_LOG("  [Skipped recipient with tstr alg]\n");
 
@@ -25631,6 +25680,18 @@ static void test_skipped_recipient_tstr_alg(void)
                 "skipped recipient ignores unrelated header errors");
     TEST_ASSERT(alg == WOLFCOSE_ALG_ES256,
                 "skipped recipient still decodes alg");
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.cbuf = nullValue;
+    ctx.bufSz = sizeof(nullValue);
+    alg = WOLFCOSE_ALG_UNSET;
+    ret = wolfCose_DecodeSkippedRecipient(&ctx, &alg);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "skipped recipient accepts null ciphertext");
+    TEST_ASSERT(ctx.idx == sizeof(nullValue),
+                "skipped null recipient consumed");
+    TEST_ASSERT(alg == WOLFCOSE_ALG_ECDH_ES_HKDF_256,
+                "skipped null recipient decodes alg");
 }
 #endif /* WOLFCOSE_ENCRYPT_DECRYPT || WOLFCOSE_MAC_VERIFY */
 
@@ -25868,7 +25929,6 @@ static void test_cose_countersignatures(void)
         { mac0Target, sizeof(mac0Target) },
         { sign1Target, sizeof(sign1Target) },
         { encryptTarget, sizeof(encryptTarget) },
-        { encryptNullRecipientTarget, sizeof(encryptNullRecipientTarget) },
         { macTarget, sizeof(macTarget) },
         { signTarget, sizeof(signTarget) },
         { textHeaderTarget, sizeof(textHeaderTarget) },
@@ -25883,6 +25943,7 @@ static void test_cose_countersignatures(void)
         { malformedSignatureTarget, sizeof(malformedSignatureTarget) },
         { emptyRecipientsTarget, sizeof(emptyRecipientsTarget) },
         { malformedRecipientTarget, sizeof(malformedRecipientTarget) },
+        { encryptNullRecipientTarget, sizeof(encryptNullRecipientTarget) },
         { emptyNestedRecipientsTarget, sizeof(emptyNestedRecipientsTarget) }
     };
     WC_RNG rng;
