@@ -657,6 +657,65 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
 
 #if defined(WOLFCOSE_SIGN_VERIFY) || defined(WOLFCOSE_ENCRYPT_DECRYPT) || \
     defined(WOLFCOSE_MAC_VERIFY) || defined(WOLFCOSE_COUNTERSIGN)
+/* Decode only the algorithm from an unselected header map. Other labels and
+ * values are intentionally left to the application that selected the entry. */
+static int wolfCose_DecodeSkippedHdrAlg(WOLFCOSE_CBOR_CTX* ctx,
+    int32_t* alg, int* algFound)
+{
+    int ret;
+    size_t mapCount = 0u;
+    size_t i;
+
+    if ((ctx == NULL) || (alg == NULL) || (algFound == NULL)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else {
+        ret = wc_CBOR_DecodeMapStart(ctx, &mapCount);
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (mapCount > ctx->bufSz)) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+
+    for (i = 0u; (ret == WOLFCOSE_SUCCESS) && (i < mapCount); i++) {
+        WOLFCOSE_CBOR_LABEL label;
+
+        ret = wc_CBOR_DecodeLabel(ctx, &label);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (wc_CBOR_LabelIsInt(&label, WOLFCOSE_HDR_ALG) != 0)) {
+            if (*algFound != 0) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
+            }
+            else {
+                int64_t algVal;
+
+                *algFound = 1;
+                if ((ctx->idx < ctx->bufSz) &&
+                    (wc_CBOR_PeekType(ctx) == WOLFCOSE_CBOR_TSTR)) {
+                    ret = wc_CBOR_Skip(ctx);
+                }
+                else {
+                    ret = wc_CBOR_DecodeInt(ctx, &algVal);
+                    if ((ret == WOLFCOSE_SUCCESS) &&
+                        (wolfCose_InInt32Range(algVal) == 0)) {
+                        ret = WOLFCOSE_E_COSE_BAD_ALG;
+                    }
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        *alg = (int32_t)algVal;
+                    }
+                }
+            }
+        }
+        else if (ret == WOLFCOSE_SUCCESS) {
+            ret = wc_CBOR_Skip(ctx);
+        }
+        else {
+            /* No action required */
+        }
+    }
+
+    return ret;
+}
+
 /* Decode and validate the three fields shared by COSE_Signature and
  * COSE_recipient. A signature requires a bstr value. A recipient permits a
  * bstr or null value and may have a fourth nested-recipients field. */
@@ -669,8 +728,7 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
     const uint8_t* valueData = NULL;
     size_t protectedLen = 0u;
     size_t valueLen = 0u;
-    WOLFCOSE_HDR hdr;
-    WOLFCOSE_HDR_STATE hdrState;
+    int algFound = 0;
 
     if ((ctx == NULL) || (arrayCount == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
@@ -680,7 +738,6 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
         if (alg != NULL) {
             *alg = WOLFCOSE_ALG_UNSET;
         }
-        (void)XMEMSET(&hdr, 0, sizeof(hdr));
         ret = wc_CBOR_DecodeArrayStart(ctx, arrayCount);
     }
     if ((ret == WOLFCOSE_SUCCESS) &&
@@ -690,15 +747,27 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wc_CBOR_DecodeBstr(ctx, &protectedData, &protectedLen);
     }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wolfCose_DecodeProtectedHdr(protectedData, protectedLen,
-                                          &hdr, &hdrState);
-    }
-    if (ret == WOLFCOSE_SUCCESS) {
-        ret = wolfCose_DecodeUnprotectedHdr(ctx, &hdr, &hdrState);
+    if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL) &&
+        (protectedLen > 0u)) {
+        WOLFCOSE_CBOR_CTX protectedCtx;
+
+        (void)XMEMSET(&protectedCtx, 0, sizeof(protectedCtx));
+        protectedCtx.cbuf = protectedData;
+        protectedCtx.bufSz = protectedLen;
+        ret = wolfCose_DecodeSkippedHdrAlg(&protectedCtx, alg, &algFound);
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (protectedCtx.idx != protectedCtx.bufSz)) {
+            ret = WOLFCOSE_E_CBOR_MALFORMED;
+        }
     }
     if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL)) {
-        *alg = hdr.alg;
+        ret = wolfCose_DecodeSkippedHdrAlg(ctx, alg, &algFound);
+    }
+    else if (ret == WOLFCOSE_SUCCESS) {
+        ret = wc_CBOR_Skip(ctx);
+    }
+    else {
+        /* No action required */
     }
     if ((ret == WOLFCOSE_SUCCESS) && (isSignature != 0u)) {
         ret = wc_CBOR_DecodeBstr(ctx, &valueData, &valueLen);

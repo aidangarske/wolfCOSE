@@ -17518,8 +17518,8 @@ static void test_cose_sign_dup_signer_unprot_hdr(void)
         ret = wc_CoseSign_Verify(&key, 0, unselectedMsg,
             sizeof(unselectedMsg), NULL, 0, NULL, 0,
             scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
-        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
-                    "dup label in unselected signer rejected");
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_SIG_FAIL,
+                    "dup label in unselected signer skipped");
     }
 
     if (eccInited != 0) { (void)wc_ecc_free(&eccKey); }
@@ -17605,8 +17605,8 @@ static void test_cose_mac_dup_recipient_unprot_hdr(void)
     ret = wc_CoseMac_Verify(&recipient, 0, unselectedMsg,
         sizeof(unselectedMsg), NULL, 0, NULL, 0,
         scratch, sizeof(scratch), &hdr, &payload, &payloadLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
-                "dup label in unselected recipient rejected (mac)");
+    TEST_ASSERT(ret == WOLFCOSE_E_MAC_FAIL,
+                "dup label in unselected recipient skipped (mac)");
 
     ret = wc_CoseMac_Verify(&recipient, 1, nestedSiblings,
         sizeof(nestedSiblings), NULL, 0, NULL, 0,
@@ -17769,8 +17769,8 @@ static void test_cose_encrypt_dup_recipient_unprot_hdr(void)
         sizeof(unselectedMsg), NULL, 0, NULL, 0,
         scratch, sizeof(scratch), &hdr,
         plaintext, sizeof(plaintext), &plaintextLen);
-    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
-                "dup label in unselected recipient rejected (encrypt)");
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_DECRYPT_FAIL,
+                "dup label in unselected recipient skipped (encrypt)");
 
     ret = wc_CoseEncrypt_Decrypt(&recipient, 1, nestedSiblings,
         sizeof(nestedSiblings), NULL, 0, NULL, 0,
@@ -25575,6 +25575,13 @@ static void test_skipped_recipient_tstr_alg(void)
         0xA0u,
         0x40u
     };
+    /* Header-policy errors outside alg do not invalidate an unselected entry. */
+    uint8_t policyHeaders[] = {
+        0x83u,
+        0x45u, 0xA2u, 0x01u, 0x26u, 0x02u, 0x80u,
+        0xA1u, 0x02u, 0x00u,
+        0x40u
+    };
 
     TEST_LOG("  [Skipped recipient with tstr alg]\n");
 
@@ -25584,8 +25591,44 @@ static void test_skipped_recipient_tstr_alg(void)
     ret = wolfCose_DecodeSkippedRecipient(&ctx, &alg);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "skipped recipient tstr alg");
     TEST_ASSERT(alg == WOLFCOSE_ALG_UNSET, "skipped tstr alg stays unset");
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.cbuf = policyHeaders;
+    ctx.bufSz = sizeof(policyHeaders);
+    alg = WOLFCOSE_ALG_UNSET;
+    ret = wolfCose_DecodeSkippedRecipient(&ctx, &alg);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "skipped recipient ignores unrelated header errors");
+    TEST_ASSERT(alg == WOLFCOSE_ALG_ES256,
+                "skipped recipient still decodes alg");
 }
 #endif /* WOLFCOSE_ENCRYPT_DECRYPT || WOLFCOSE_MAC_VERIFY */
+
+#if defined(WOLFCOSE_SIGN_VERIFY)
+static void test_skipped_signature_headers(void)
+{
+    WOLFCOSE_CBOR_CTX ctx;
+    int ret;
+    /* The selected signer validates headers. Other signatures are skipped. */
+    uint8_t signature[] = {
+        0x83u,
+        0x43u, 0xA1u, 0x02u, 0x80u,
+        0xA1u, 0x02u, 0x00u,
+        0x40u
+    };
+
+    TEST_LOG("  [Skipped signature headers]\n");
+
+    (void)XMEMSET(&ctx, 0, sizeof(ctx));
+    ctx.cbuf = signature;
+    ctx.bufSz = sizeof(signature);
+    ret = wolfCose_DecodeSkippedSignature(&ctx);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "skipped signature ignores header policy errors");
+    TEST_ASSERT(ctx.idx == sizeof(signature),
+                "skipped signature consumes complete entry");
+}
+#endif /* WOLFCOSE_SIGN_VERIFY */
 
 #if defined(WOLFCOSE_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
 static void test_multi_sign_mldsa65_roundtrip(void)
@@ -25798,7 +25841,9 @@ static void test_cose_countersignatures(void)
         { encryptNullRecipientTarget, sizeof(encryptNullRecipientTarget) },
         { macTarget, sizeof(macTarget) },
         { signTarget, sizeof(signTarget) },
-        { textHeaderTarget, sizeof(textHeaderTarget) }
+        { textHeaderTarget, sizeof(textHeaderTarget) },
+        { protectedNestedCounterTarget,
+          sizeof(protectedNestedCounterTarget) }
     };
     static const struct {
         const uint8_t* message;
@@ -25806,8 +25851,6 @@ static void test_cose_countersignatures(void)
     } malformedAggregateTargets[] = {
         { emptySignaturesTarget, sizeof(emptySignaturesTarget) },
         { malformedSignatureTarget, sizeof(malformedSignatureTarget) },
-        { protectedNestedCounterTarget,
-          sizeof(protectedNestedCounterTarget) },
         { emptyRecipientsTarget, sizeof(emptyRecipientsTarget) },
         { malformedRecipientTarget, sizeof(malformedRecipientTarget) },
         { emptyNestedRecipientsTarget, sizeof(emptyNestedRecipientsTarget) }
@@ -27336,6 +27379,9 @@ int test_cose(void)
 #endif
 #if defined(WOLFCOSE_ENCRYPT_DECRYPT) || defined(WOLFCOSE_MAC_VERIFY)
     test_skipped_recipient_tstr_alg();
+#endif
+#if defined(WOLFCOSE_SIGN_VERIFY)
+    test_skipped_signature_headers();
 #endif
 #if defined(WOLFCOSE_HAVE_MLDSA) && defined(WOLFCOSE_SIGN)
     test_multi_sign_mldsa65_roundtrip();
