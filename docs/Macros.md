@@ -63,7 +63,7 @@ Per-algorithm opt-outs for the default (non-lean) build. Each also has a `WOLFCO
 | `WOLFCOSE_NO_EDDSA` | Ed25519 | `HAVE_ED25519` |
 | `WOLFCOSE_NO_ED448` | Ed448 | `HAVE_ED448` |
 | `WOLFCOSE_NO_RSAPSS` | RSA-PSS (PS256/384/512) | `WC_RSA_PSS` |
-| `WOLFCOSE_NO_MLDSA` | ML-DSA (FIPS 204) | `WOLFSSL_HAVE_MLDSA` |
+| `WOLFCOSE_NO_MLDSA` | ML-DSA (FIPS 204) | `WOLFSSL_HAVE_MLDSA` (wolfSSL newer than 5.9.1) |
 | `WOLFCOSE_NO_LMS` | HSS/LMS (RFC 8778) | `WOLFSSL_HAVE_LMS` (wolfSSL 5.9.2+) |
 | `WOLFCOSE_NO_AESGCM` | AES-GCM | `HAVE_AESGCM` |
 | `WOLFCOSE_NO_AESCCM` | AES-CCM | `HAVE_AESCCM` |
@@ -268,6 +268,10 @@ Two limits worth knowing before designing around this:
 | `WOLFCOSE_NO_KEY_ENCODE` | Disable COSE_Key encoding | - |
 | `WOLFCOSE_KEY_DECODE` | Enable COSE_Key decoding | Enabled |
 | `WOLFCOSE_NO_KEY_DECODE` | Disable COSE_Key decoding | - |
+
+Private RSA `COSE_Key` serialization requires wolfSSL 5.9.2 or later. Define
+`WOLFCOSE_RSA_PUBLIC_ONLY` to retain RSA-PSS and public-key encoding on an older
+wolfSSL release.
 
 ---
 

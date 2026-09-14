@@ -227,28 +227,40 @@ extern "C" {
 
 /* ML-DSA (44/65/87) — extension */
 #if defined(WOLFCOSE_ENABLE_MLDSA)
-    #ifndef WOLFSSL_HAVE_MLDSA
+    #if !defined(WOLFSSL_HAVE_MLDSA)
         #error "WOLFCOSE_ENABLE_MLDSA requires wolfSSL WOLFSSL_HAVE_MLDSA"
+    #elif LIBWOLFSSL_VERSION_HEX < 0x05009002
+        #error "wolfCOSE ML-DSA requires wolfSSL newer than 5.9.1"
+    #else
+        #define WOLFCOSE_HAVE_MLDSA
     #endif
-    #define WOLFCOSE_HAVE_MLDSA
-#elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_MLDSA) && defined(WOLFSSL_HAVE_MLDSA)
-    #define WOLFCOSE_HAVE_MLDSA
+#elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_MLDSA) && \
+      defined(WOLFSSL_HAVE_MLDSA)
+    #if LIBWOLFSSL_VERSION_HEX < 0x05009002
+        #error "wolfCOSE ML-DSA requires wolfSSL newer than 5.9.1"
+    #else
+        #define WOLFCOSE_HAVE_MLDSA
+    #endif
 #endif
 
 /* HSS/LMS (RFC 8778) — extension */
 /* wc_LmsKey_ImportPubRaw() derives the parameter set from the key bytes only
  * from wolfSSL 5.9.2; earlier releases dereference unset parameters. */
 #if defined(WOLFCOSE_ENABLE_LMS)
-    #ifndef WOLFSSL_HAVE_LMS
+    #if !defined(WOLFSSL_HAVE_LMS)
         #error "WOLFCOSE_ENABLE_LMS requires wolfSSL WOLFSSL_HAVE_LMS"
-    #endif
-    #if LIBWOLFSSL_VERSION_HEX < 0x05009002
+    #elif LIBWOLFSSL_VERSION_HEX < 0x05009002
         #error "WOLFCOSE_ENABLE_LMS requires wolfSSL 5.9.2 or later"
+    #else
+        #define WOLFCOSE_HAVE_LMS
     #endif
-    #define WOLFCOSE_HAVE_LMS
 #elif !defined(WOLFCOSE_LEAN) && !defined(WOLFCOSE_NO_LMS) && \
-      defined(WOLFSSL_HAVE_LMS) && (LIBWOLFSSL_VERSION_HEX >= 0x05009002)
-    #define WOLFCOSE_HAVE_LMS
+      defined(WOLFSSL_HAVE_LMS)
+    #if LIBWOLFSSL_VERSION_HEX < 0x05009002
+        #error "wolfCOSE HSS/LMS requires wolfSSL 5.9.2 or later"
+    #else
+        #define WOLFCOSE_HAVE_LMS
+    #endif
 #endif
 
 /* RSA-PSS (PS256/384/512) — extension */
@@ -278,11 +290,31 @@ extern "C" {
     defined(WOLFCOSE_HAVE_PS512)
     #define WOLFCOSE_HAVE_RSAPSS
 #endif
-/* Private RSA round-trip needs wc_export_int + RsaKey.u; else public-only. */
+/* Private-capable RSA builds enable private serialization with key encoding.
+ * Do not silently downgrade that configuration on an older backend. */
 #if defined(WOLFCOSE_HAVE_RSAPSS) && !defined(WOLFCOSE_RSA_PUBLIC_ONLY) && \
     !defined(WOLFSSL_RSA_PUBLIC_ONLY) && \
+    !defined(WOLFCOSE_NO_KEY_ENCODE) && \
     (defined(HAVE_ECC) || defined(WOLFSSL_EXPORT_INT)) && \
-    (defined(WOLFSSL_KEY_GEN) || defined(OPENSSL_EXTRA) || !defined(RSA_LOW_MEM))
+    (defined(WOLFSSL_KEY_GEN) || defined(OPENSSL_EXTRA) || \
+     !defined(RSA_LOW_MEM)) && \
+    (LIBWOLFSSL_VERSION_HEX < 0x05009002)
+    #error "Private RSA serialization requires wolfSSL 5.9.2 or later"
+#endif
+/* Private RSA decoding requires wolfSSL's hardened raw decoder from 5.9.0.
+ * Older backends explicitly reject private components. */
+#if defined(WOLFCOSE_HAVE_RSAPSS) && !defined(WOLFCOSE_RSA_PUBLIC_ONLY) && \
+    !defined(WOLFSSL_RSA_PUBLIC_ONLY) && \
+    (LIBWOLFSSL_VERSION_HEX >= 0x05009000)
+    #define WOLFCOSE_HAVE_RSA_PRIVATE_KEY_DECODE
+#endif
+/* Private RSA serialization additionally needs wc_export_int + RsaKey.u and
+ * wolfSSL 5.9.2's bounds-checked fixed-width export. */
+#if defined(WOLFCOSE_HAVE_RSA_PRIVATE_KEY_DECODE) && \
+    (defined(HAVE_ECC) || defined(WOLFSSL_EXPORT_INT)) && \
+    (defined(WOLFSSL_KEY_GEN) || defined(OPENSSL_EXTRA) || \
+     !defined(RSA_LOW_MEM)) && \
+    (LIBWOLFSSL_VERSION_HEX >= 0x05009002)
     #define WOLFCOSE_HAVE_RSA_PRIVATE_KEY
 #endif
 #if defined(WOLFCOSE_HAVE_ECDSA) || defined(WOLFCOSE_HAVE_EDDSA) || \
