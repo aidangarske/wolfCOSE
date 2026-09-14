@@ -743,10 +743,11 @@ typedef struct WOLFCOSE_CBOR_LABEL {
 /**
  * \brief Decode a map label that may be an integer or a text string.
  *
- * Consumes exactly one item. Major types 0 and 1 populate label->val with
- * isText 0; major type 3 populates label->text / label->textLen with isText 1
- * and no copy. Invalid UTF-8 returns WOLFCOSE_E_CBOR_MALFORMED. Anything else
- * is WOLFCOSE_E_CBOR_TYPE with the item consumed.
+ * Consumes one CBOR head. Major types 0 and 1 populate label->val with isText
+ * 0; major type 3 consumes the text and populates label->text / label->textLen
+ * with isText 1 and no copy. A byte string is fully consumed and rejected with
+ * WOLFCOSE_E_CBOR_TYPE. For a tag or container, only its head is consumed; use
+ * wc_CBOR_Skip() instead when the complete item must be skipped.
  *
  * \param ctx    Decoder context.
  * \param label  Output: decoded label.
@@ -1078,6 +1079,8 @@ WOLFCOSE_API int wc_CoseKey_PeekInfo(const uint8_t* in, size_t inSz,
  *        For ECC/Ed25519, caller must attach a key struct via
  *        wc_CoseKey_SetEcc()/SetEd25519()/SetEd448()/SetRsa()/SetMlDsa();
  *        assigning key.* directly records no type and imports nothing.
+ *        Only attachments recorded by a wc_CoseKey_Set*() API are preserved
+ *        across decode; an untyped key union is cleared before parsing.
  *        A decoded kty/crv that does not match the attached type returns
  *        WOLFCOSE_E_COSE_KEY_TYPE before any import runs.
  *        Keys containing key_ops return WOLFCOSE_E_UNSUPPORTED before any
@@ -1298,8 +1301,8 @@ WOLFCOSE_API int wc_Cose_VerifyCounterSignature0(
  * \param alg             Algorithm (WOLFCOSE_ALG_A128GCM/A192GCM/A256GCM).
  * \param iv              Initialization vector (12 bytes for AES-GCM).
  * \param ivLen           IV length.
- * \param payload         Plaintext payload (NULL if detached).
- * \param payloadLen      Payload length (0 if detached).
+ * \param payload         Plaintext payload to encrypt.
+ * \param payloadLen      Plaintext payload length.
  * \param detachedPayload Detached ciphertext destination (NULL if attached).
  *                        If non-NULL, ciphertext is stored here, message has nil.
  * \param detachedSz      Detached buffer size.
@@ -1450,7 +1453,8 @@ WOLFCOSE_API int wc_CoseMac0_Verify(const WOLFCOSE_KEY* key,
  * \param out             Output buffer.
  * \param outSz           Output buffer size.
  * \param outLen          Output: bytes written to out.
- * \param rng             Initialized WC_RNG.
+ * \param rng             Initialized WC_RNG for any local signer. May be NULL
+ *                        when every signer uses an external signing callback.
  * \return WOLFCOSE_SUCCESS or negative error code.
  */
 WOLFCOSE_API int wc_CoseSign_Sign(const WOLFCOSE_SIGNATURE* signers,

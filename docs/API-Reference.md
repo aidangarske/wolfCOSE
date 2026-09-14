@@ -506,7 +506,9 @@ Decode a COSE key from CBOR format.
 Attach the wolfCrypt key with `wc_CoseKey_SetEcc()`, `wc_CoseKey_SetEd25519()`,
 `wc_CoseKey_SetEd448()`, `wc_CoseKey_SetRsa()`, `wc_CoseKey_SetMlDsa()`, or
 `wc_CoseKey_SetSymmetric()`. These record which wolfCrypt object is attached;
-assigning the `key.*` union directly does not, and no key material is imported.
+assigning the `key.*` union directly does not. Only attachments recorded by a
+setter are preserved across decode; an untyped `key.*` union is cleared before
+parsing, and no key material is imported.
 
 The decoded `kty`/`crv` must name the attached key type or
 `WOLFCOSE_E_COSE_KEY_TYPE` is returned before any importer runs. To learn which
@@ -1277,13 +1279,18 @@ int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label,
 
 RFC 9052 defines `label = int / tstr`, and real COSE and CTAP2 maps use both
 spellings for the same field (`3` vs `"alg"`, `1` vs `"type"`, `2` vs `"id"`).
-`wc_CBOR_DecodeLabel()` consumes one item and reports whichever form it found,
-so a parser writes the dispatch once instead of duplicating a
+`wc_CBOR_DecodeLabel()` consumes one CBOR head. Major types 0 and 1 fill `val`
+with `isText == 0`; major type 3 consumes the text and fills
+`text`/`textLen` with `isText == 1` and no copy. A byte string is fully
+consumed and rejected with `WOLFCOSE_E_CBOR_TYPE`. For a tag, array, or map,
+only the head is consumed. Use `wc_CBOR_Skip()` instead when the complete
+unsupported item must be skipped.
+A parser can therefore write the dispatch once instead of duplicating a
 `wc_CBOR_PeekType()` branch at every map.
 
-Major types 0 and 1 fill `val` with `isText == 0`; major type 3 validates
-UTF-8 and, when valid, fills `text`/`textLen` with `isText == 1` and no copy.
-Invalid UTF-8 returns `WOLFCOSE_E_CBOR_MALFORMED`; any other major type returns
+Major type 3 validates UTF-8 and, when valid, fills `text`/`textLen` with
+`isText == 1` and no copy. Invalid UTF-8 returns
+`WOLFCOSE_E_CBOR_MALFORMED`; any other major type returns
 `WOLFCOSE_E_CBOR_TYPE`.
 
 `wc_CBOR_LabelIsInt()` and `wc_CBOR_LabelIsText()` return 1 on match and 0

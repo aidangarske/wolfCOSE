@@ -645,6 +645,12 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
             ret = WOLFCOSE_E_COSE_BAD_HDR;
         }
 
+        if (ret == WOLFCOSE_SUCCESS) {
+            /* Cross-bucket checks above already consumed every unprotected
+             * label. Only supported-label presence is needed by callers, so
+             * do not retain unknown labels and double the state size. */
+            hdrState->labelBits |= unprotState.labelBits;
+        }
     }
     return ret;
 }
@@ -734,7 +740,7 @@ int wolfCose_DecodeSkippedRecipient(WOLFCOSE_CBOR_CTX* ctx,
     int ret;
     size_t remaining = 1u;
     size_t stack[WOLFCOSE_CBOR_MAX_DEPTH];
-    unsigned int depth = 0u;
+    size_t depth = 0u;
     int firstRecipient = 1;
 
     if ((ctx == NULL) || (recipientAlg == NULL)) {
@@ -765,8 +771,8 @@ int wolfCose_DecodeSkippedRecipient(WOLFCOSE_CBOR_CTX* ctx,
                 ((nestedCount == 0u) || (nestedCount > ctx->bufSz))) {
                 ret = WOLFCOSE_E_CBOR_MALFORMED;
             }
-            if ((ret == WOLFCOSE_SUCCESS) && (depth >=
-                    (unsigned int)WOLFCOSE_CBOR_MAX_DEPTH)) {
+            if ((ret == WOLFCOSE_SUCCESS) &&
+                (depth >= (size_t)WOLFCOSE_CBOR_MAX_DEPTH)) {
                 ret = WOLFCOSE_E_CBOR_DEPTH;
             }
             if (ret == WOLFCOSE_SUCCESS) {
