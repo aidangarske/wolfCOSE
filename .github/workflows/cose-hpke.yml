@@ -11,13 +11,24 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  discover:
+    uses: ./.github/workflows/_resolve-wolfssl.yml
+
   cose-hpke:
-    name: HPKE P0 unit, example, CLI, and ASan coverage
+    name: HPKE P0 (${{ matrix.wolfssl-ref }})
+    needs: discover
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        wolfssl-ref: ${{ fromJson(needs.discover.outputs.refs) }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
     - name: Install dependencies
       run: |
@@ -26,7 +37,8 @@ jobs:
 
     - name: Build HPKE-enabled wolfSSL
       run: |
-        git clone --depth 1 https://github.com/wolfSSL/wolfssl.git "$HOME/wolfssl"
+        git clone --depth 1 --branch "${{ matrix.wolfssl-ref }}" \
+          https://github.com/wolfSSL/wolfssl.git "$HOME/wolfssl"
         cd "$HOME/wolfssl"
         ./autogen.sh
         CFLAGS="-fsanitize=address -fno-omit-frame-pointer -g" \

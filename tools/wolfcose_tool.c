@@ -781,6 +781,7 @@ static int tool_hpke_load_key(const char* path, int32_t alg,
 
     ret = read_file(path, keyBuf, sizeof(keyBuf), &keyLen);
     if (ret != 0) {
+        tool_force_zero(keyBuf, sizeof(keyBuf));
         return ret;
     }
     wc_CoseKey_Init(coseKey);
