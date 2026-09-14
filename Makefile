@@ -74,6 +74,10 @@ LIB_SO    = libwolfcose.so
 # configuration hash at parse time and force a core-object rebuild only when
 # the effective compiler or wolfSSL configuration changes.
 BUILD_CONFIG = .wolfcose-build-config
+# Interop objects are built with the deprecated RFC 9053 IDs enabled (the pinned
+# peers still emit them); its value is part of the rebuild hash below.
+INTEROP_COSE_CFLAGS = -DWOLFCOSE_ENABLE_DEPRECATED_ALGS
+
 BUILD_CONFIG_VALUE := $(shell { \
     printf '%s\n' 'CC=$(CC)'; \
     printf '%s\n' 'CFLAGS=$(CFLAGS)'; \
@@ -84,6 +88,7 @@ BUILD_CONFIG_VALUE := $(shell { \
     printf '%s\n' 'WOLFSSL_PREFIX=$(WOLFSSL_PREFIX)'; \
     printf '%s\n' 'WOLFSSL_CFLAGS=$(WOLFSSL_CFLAGS)'; \
     printf '%s\n' 'WOLFSSL_LIBS=$(WOLFSSL_LIBS)'; \
+    printf '%s\n' 'INTEROP_COSE_CFLAGS=$(INTEROP_COSE_CFLAGS)'; \
 } | cksum)
 BUILD_CONFIG_SAVED := $(shell test -f $(BUILD_CONFIG) && cat $(BUILD_CONFIG))
 ifneq ($(strip $(BUILD_CONFIG_VALUE)),$(strip $(BUILD_CONFIG_SAVED)))
@@ -155,7 +160,7 @@ SCEN_IOTFLEET    = examples/scenarios/iot_fleet_config
 SCEN_SENSOR      = examples/scenarios/sensor_attestation
 SCEN_BROADCAST   = examples/scenarios/group_broadcast_mac
 
-.PHONY: all shared test pkg-config-test ecdsa-policy-test rsapss-policy-test countersign-config-test zero-alloc-check zeroize-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage eat-psa-test eat-psa-float-test eat-psa-min-buffers-test eat-psa-claim-limits-test eat-psa-profile-test eat-psa-config-check eat-psa-ext-sign-test eat-psa-ext-sign-force-failure eat-psa-coverage eat-psa-coverage-force-failure generic-reduced-alg-test tool tool-test cmdline-test demo demos hpke-demo lean-verify psa-eat-lean-verify psa-eat-demo mldsa-demo mldsa-verify lms-demo lms-verify comprehensive scenarios interop-tcose tcose-upstream interop-go-cose interop-python-cwt interop-rust-coset c99-check c99-check-lms c99-hpke-check experimental-check clean FORCE
+.PHONY: all shared test pkg-config-test ecdsa-policy-test rsapss-policy-test countersign-config-test zero-alloc-check zeroize-test deprecated-algs-test ecc-import-policy-test ext-sign-test ext-sign-demo ext-sign-force-failure coverage eat-psa-test eat-psa-float-test eat-psa-min-buffers-test eat-psa-claim-limits-test eat-psa-profile-test eat-psa-config-check eat-psa-ext-sign-test eat-psa-ext-sign-force-failure eat-psa-coverage eat-psa-coverage-force-failure generic-reduced-alg-test tool tool-test cmdline-test demo demos hpke-demo lean-verify psa-eat-lean-verify psa-eat-demo mldsa-demo mldsa-verify lms-demo lms-verify comprehensive scenarios interop-tcose tcose-upstream interop-go-cose interop-python-cwt interop-rust-coset c99-check c99-check-lms c99-hpke-check experimental-check clean FORCE
 
 # --- Core library ---
 all: $(LIB_A)
@@ -786,6 +791,12 @@ eat-psa-ext-sign-test:
 	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(LDFLAGS) $(LDLIBS)
 	./$(TEST_BIN)
 
+# --- Deprecated RFC 9053 alg IDs (ES256/ES384/ES512/EdDSA), opt-in ---
+deprecated-algs-test:
+	$(CC) $(CFLAGS) -DWOLFCOSE_ENABLE_DEPRECATED_ALGS \
+	    -o $(TEST_BIN) $(SRC) $(TEST_SRC) $(LDFLAGS) $(LDLIBS)
+	./$(TEST_BIN)
+
 # --- Coverage ---
 coverage: clean
 	@set -e; for f in $(SRC); do \
@@ -855,9 +866,9 @@ tool: $(LIB_A)
 
 # --- Round-trip proof: keygen -> sign -> verify in one command ---
 tool-test: tool
-	./$(TOOL_BIN) keygen -a ES256 -o /tmp/wolfcose_test.key
+	./$(TOOL_BIN) keygen -a ESP256 -o /tmp/wolfcose_test.key
 	echo "hello wolfCOSE" > /tmp/wolfcose_test.dat
-	./$(TOOL_BIN) sign -k /tmp/wolfcose_test.key -a ES256 \
+	./$(TOOL_BIN) sign -k /tmp/wolfcose_test.key -a ESP256 \
 	    -i /tmp/wolfcose_test.dat -o /tmp/wolfcose_test.cose
 	./$(TOOL_BIN) verify -k /tmp/wolfcose_test.key \
 	    -i /tmp/wolfcose_test.cose
@@ -1006,15 +1017,29 @@ TCOSE_CRYPTO_INC ?=
 TCOSE_CRYPTO_LIB ?= -lcrypto
 INTEROP_DIR       = tests/interop/t_cose
 INTEROP_BIN       = $(INTEROP_DIR)/interop_tcose
-INTEROP_CFLAGS    = $(CFLAGS) -std=c99 -I$(TCOSE_DIR)/inc -I$(QCBOR_DIR)/inc
+# The pinned peers still emit the RFC 9053 ES*/EdDSA IDs that RFC 9864
+# deprecates, so wire interop links a wolfCOSE with those IDs enabled.
+# INTEROP_COSE_CFLAGS is defined near BUILD_CONFIG_VALUE so its value is part
+# of the rebuild hash.
+INTEROP_LIB_DIR   = tests/interop
+INTEROP_LIB_A     = $(INTEROP_LIB_DIR)/libwolfcose_interop.a
+INTEROP_LIB_OBJ   = $(patsubst src/%.c,$(INTEROP_LIB_DIR)/%.o,$(SRC))
+INTEROP_CFLAGS    = $(CFLAGS) $(INTEROP_COSE_CFLAGS) -std=c99 -I$(TCOSE_DIR)/inc -I$(QCBOR_DIR)/inc
 
-interop-tcose:
+$(INTEROP_LIB_DIR)/%.o: src/%.c src/wolfcose_internal.h \
+    include/wolfcose/wolfcose.h $(BUILD_CONFIG_CHANGED) $(BUILD_CONFIG)
+	$(CC) $(CFLAGS) $(EAT_PSA_FULL_FLAGS) $(INTEROP_COSE_CFLAGS) -c $< -o $@
+
+$(INTEROP_LIB_A): $(INTEROP_LIB_OBJ)
+	rm -f $(INTEROP_LIB_A)
+	$(AR) rcs $(INTEROP_LIB_A) $(INTEROP_LIB_OBJ)
+
+interop-tcose: $(INTEROP_LIB_A)
 	$(CC) $(INTEROP_CFLAGS) $(EAT_PSA_FULL_FLAGS) -DT_COSE_USE_OPENSSL_CRYPTO -c $(INTEROP_DIR)/interop_tcose.c -o $(INTEROP_DIR)/interop_tcose.o
 	$(CC) -std=c99 -Wall -Wextra -I$(TCOSE_DIR)/inc -I$(QCBOR_DIR)/inc $(TCOSE_CRYPTO_INC) \
 	      -c $(INTEROP_DIR)/interop_key_ossl.c -o $(INTEROP_DIR)/interop_key.o
-	$(CC) $(CFLAGS) $(EAT_PSA_FULL_FLAGS) -o $(INTEROP_BIN) $(CORE_SRC) $(EAT_PSA_SRC) \
-	      $(INTEROP_DIR)/interop_tcose.o $(INTEROP_DIR)/interop_key.o \
-	      $(TCOSE_DIR)/libt_cose.a $(QCBOR_DIR)/libqcbor.a \
+	$(CC) -o $(INTEROP_BIN) $(INTEROP_DIR)/interop_tcose.o $(INTEROP_DIR)/interop_key.o \
+	      $(INTEROP_LIB_A) $(TCOSE_DIR)/libt_cose.a $(QCBOR_DIR)/libqcbor.a \
 	      $(TCOSE_CRYPTO_LIB) $(LDFLAGS) $(LDLIBS) -lm
 	./$(INTEROP_BIN)
 
@@ -1035,9 +1060,9 @@ GO_COSE_ORACLE   = $(GO_COSE_DIR)/go_cose_oracle
 GO_COSE_C_SRC    = $(GO_COSE_DIR)/interop_go_cose.c
 GO_COSE_CASES   ?= es256 es384 es512 ps256 ps384 ps512 ed25519 es256-aad es256-untagged
 
-interop-go-cose: $(LIB_A)
-	$(CC) $(CFLAGS) -std=c99 -o $(GO_COSE_BIN) \
-	      $(GO_COSE_DIR)/interop_go_cose.c $(LIB_A) $(LDFLAGS) $(LDLIBS)
+interop-go-cose: $(INTEROP_LIB_A)
+	$(CC) $(CFLAGS) $(INTEROP_COSE_CFLAGS) -std=c99 -o $(GO_COSE_BIN) \
+	      $(GO_COSE_DIR)/interop_go_cose.c $(INTEROP_LIB_A) $(LDFLAGS) $(LDLIBS)
 	$(GO) -C $(GO_COSE_DIR) build -o go_cose_oracle main.go
 	@for test_case in $(GO_COSE_CASES); do \
 	    bash -o pipefail -c '$(GO_COSE_BIN) sign "$$1" | $(GO_COSE_ORACLE) verify "$$1"' \
@@ -1062,9 +1087,9 @@ PYTHON_CWT_C_SRC         = $(PYTHON_CWT_DIR)/interop_python_cwt.c
 PYTHON_CWT_CASES        ?= encrypt-direct encrypt-ecdh-es mac-direct encrypt-a128kw
 PYTHON_CWT_TO_WOLFCOSE_CASES ?=
 
-interop-python-cwt: $(LIB_A)
-	$(CC) $(CFLAGS) -std=c99 -o $(PYTHON_CWT_BIN) \
-	      $(PYTHON_CWT_C_SRC) $(LIB_A) $(LDFLAGS) $(LDLIBS)
+interop-python-cwt: $(INTEROP_LIB_A)
+	$(CC) $(CFLAGS) $(INTEROP_COSE_CFLAGS) -std=c99 -o $(PYTHON_CWT_BIN) \
+	      $(PYTHON_CWT_C_SRC) $(INTEROP_LIB_A) $(LDFLAGS) $(LDLIBS)
 	@for test_case in $(PYTHON_CWT_CASES); do \
 	    bash -o pipefail -c '$(PYTHON_CWT_BIN) sign "$$1" | $(PYTHON_CWT_ORACLE) verify "$$1"' \
 	        bash "$$test_case" || exit $$?; \
@@ -1089,9 +1114,9 @@ RUST_COSET_C_BIN        = $(RUST_COSET_DIR)/interop_rust_coset
 RUST_COSET_C_SRC        = $(RUST_COSET_DIR)/interop_rust_coset.c
 RUST_COSET_CASES       ?= es256 ed25519 es256-aad es256-untagged es256-detached
 
-interop-rust-coset: $(LIB_A)
-	$(CC) $(CFLAGS) -std=c99 -o $(RUST_COSET_C_BIN) \
-	      $(RUST_COSET_C_SRC) $(LIB_A) $(LDFLAGS) $(LDLIBS)
+interop-rust-coset: $(INTEROP_LIB_A)
+	$(CC) $(CFLAGS) $(INTEROP_COSE_CFLAGS) -std=c99 -o $(RUST_COSET_C_BIN) \
+	      $(RUST_COSET_C_SRC) $(INTEROP_LIB_A) $(LDFLAGS) $(LDLIBS)
 	$(CARGO) build --manifest-path $(RUST_COSET_DIR)/Cargo.toml --locked
 	@for test_case in $(RUST_COSET_CASES); do \
 	    bash -o pipefail -c '$(RUST_COSET_C_BIN) sign "$$1" | $(RUST_COSET_BIN) verify "$$1"' \
@@ -1119,10 +1144,14 @@ C99_SRC   = $(SRC) $(TEST_SRC) $(TOOL_SRC) $(DEMO_SRC) \
             $(SCEN_SENSOR).c $(SCEN_BROADCAST).c $(EXTSIGN_DEMO).c \
             $(GO_COSE_C_SRC) $(PYTHON_CWT_C_SRC) $(RUST_COSET_C_SRC)
 # Default features plus the opt-in paths (WOLFCOSE_FLOAT, delegated signing,
-# and delegated signing without EdDSA), so the gate judges every
+# delegated signing without EdDSA, and the deprecated RFC 9053 alg IDs alone
+# and combined with delegated signing), so the gate judges every
 # conditionally-compiled translation unit, not just the default subset.
 C99_CONFIGS = "" "-DWOLFCOSE_FLOAT" "-DWOLFCOSE_ENABLE_EXT_SIGN" \
-    "-DWOLFCOSE_ENABLE_EXT_SIGN -DWOLFCOSE_NO_EDDSA -DWOLFCOSE_NO_ED448"
+    "-DWOLFCOSE_ENABLE_EXT_SIGN -DWOLFCOSE_NO_EDDSA -DWOLFCOSE_NO_ED448" \
+    "-DWOLFCOSE_ENABLE_DEPRECATED_ALGS" \
+    "-DWOLFCOSE_ENABLE_DEPRECATED_ALGS -DWOLFCOSE_ENABLE_EXT_SIGN" \
+    "-DWOLFCOSE_ENABLE_DEPRECATED_ALGS -DWOLFCOSE_NO_EDDSA"
 HPKE_C99_CONFIG = -DWOLFCOSE_EXPERIMENTAL -DWOLFCOSE_BUILD_TOOL \
     -DWOLFCOSE_ENABLE_HPKE_0_ENCRYPT \
     -DWOLFCOSE_ENABLE_HPKE_0_DECRYPT \
@@ -1270,6 +1299,7 @@ clean:
 	    $(COMP_SIGN) $(COMP_ENCRYPT) $(COMP_MAC) $(COMP_ERRORS) \
 	    $(SCEN_FIRMWARE) $(SCEN_MULTIPARTY) $(SCEN_IOTFLEET) $(SCEN_SENSOR) $(SCEN_BROADCAST) \
 	    $(INTEROP_DIR)/*.o $(INTEROP_DIR)/*.su $(INTEROP_BIN) \
+	    $(INTEROP_LIB_OBJ) $(INTEROP_LIB_DIR)/*.su $(INTEROP_LIB_A) \
 	    $(GO_COSE_BIN) $(GO_COSE_ORACLE) \
 	    $(PYTHON_CWT_BIN) \
 	    $(RUST_COSET_C_BIN) $(RUST_COSET_BIN) \

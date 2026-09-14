@@ -28,7 +28,7 @@ wc_InitRng(&rng);
 wc_CoseKey_Init(&key);
 wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &eccPriv);
 
-int ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
+int ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ESP256,
                             payload, payloadLen,
                             NULL, 0,            /* no detached payload */
                             NULL, 0,            /* no external AAD */
@@ -43,7 +43,7 @@ int ret = wc_CoseSign1_Sign(&key, WOLFCOSE_ALG_ES256,
 
 ```c
 WOLFCOSE_SIGNATURE signers[2] = {
-    { .algId = WOLFCOSE_ALG_ES256,
+    { .algId = WOLFCOSE_ALG_ESP256,
       .key   = &vendorKey,
       .kid   = (const uint8_t*)"vendor-2026", .kidLen = 11 },
     { .algId = WOLFCOSE_ALG_ML_DSA_65,        /* hybrid: classical + PQC */

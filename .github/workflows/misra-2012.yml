@@ -97,6 +97,7 @@ jobs:
            -DWOLFCOSE_ENABLE_EAT_PSA_LEGACY \
            -DWOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER \
            -DWOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR \
+           -DWOLFCOSE_ENABLE_DEPRECATED_ALGS \
            -I include -I "$HOME/wolfssl-install/include" \
            -fsyntax-only src/wolfcose_eat_psa.c tests/misra_consumer.c
 
@@ -141,6 +142,7 @@ jobs:
                  -DWOLFCOSE_ENABLE_HPKE_0_DECRYPT \
                  -DWOLFCOSE_ENABLE_HPKE_0_KE_ENCRYPT \
                  -DWOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT \
+                 -DWOLFCOSE_ENABLE_DEPRECATED_ALGS \
                  -I include -I src -I $HOME/wolfssl-install/include \
                  src/*.c \
                  tests/misra_consumer.c \
