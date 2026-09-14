@@ -715,9 +715,13 @@ static int wolfCose_DecodeSkippedHdrAlg(WOLFCOSE_CBOR_CTX* ctx,
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
         if (hpkeEkFound != NULL) {
             *hpkeEkFound = 0;
         }
+#else
+        (void)hpkeEkFound;
+#endif
         ret = wc_CBOR_DecodeMapStart(ctx, &mapCount);
     }
     if ((ret == WOLFCOSE_SUCCESS) && (mapCount > ctx->bufSz)) {
@@ -803,9 +807,11 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
         if (algFoundOut != NULL) {
             *algFoundOut = 0;
         }
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
         if (hpkeEkFound != NULL) {
             *hpkeEkFound = 0;
         }
+#endif
         ret = wc_CBOR_DecodeArrayStart(ctx, arrayCount);
     }
     if ((ret == WOLFCOSE_SUCCESS) &&
@@ -914,8 +920,8 @@ int wolfCose_DecodeSkippedRecipient(WOLFCOSE_CBOR_CTX* ctx,
     while ((ret == WOLFCOSE_SUCCESS) && (remaining > 0u)) {
         size_t arrayCount = 0u;
         int32_t decodedAlg = WOLFCOSE_ALG_UNSET;
-#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
         int algFound = 0;
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
         int hpkeEkFound = 0;
 #endif
 
@@ -924,7 +930,7 @@ int wolfCose_DecodeSkippedRecipient(WOLFCOSE_CBOR_CTX* ctx,
 #if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
                                                  &algFound, &hpkeEkFound);
 #else
-                                                 NULL, NULL);
+                                                 &algFound, NULL);
 #endif
         remaining--;
 #if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
