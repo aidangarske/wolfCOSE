@@ -11093,6 +11093,51 @@ static int test_cose_hpke_ciphertext_len(const uint8_t* encoded,
 #endif
 
 #if defined(WOLFCOSE_HPKE_0_ENCRYPT) && defined(WOLFCOSE_HPKE_0_DECRYPT)
+static void test_cose_hpke_key_validation(const WOLFCOSE_KEY* validKey)
+{
+    WOLFCOSE_KEY invalidKey;
+    ecc_key incompleteEcc;
+    int incompleteEccInited = 0;
+    int ret;
+
+    invalidKey = *validKey;
+    invalidKey.attachedType = WOLFCOSE_ATT_NONE;
+    ret = wolfCose_Hpke0ValidateKey(&invalidKey, WOLFCOSE_ALG_HPKE_0, 0);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "hpke encrypt key attachment type rejected");
+    invalidKey.hasPrivate = 1u;
+    ret = wolfCose_Hpke0ValidateKey(&invalidKey, WOLFCOSE_ALG_HPKE_0, 1);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                "hpke decrypt key attachment type rejected");
+
+    (void)XMEMSET(&incompleteEcc, 0, sizeof(incompleteEcc));
+    ret = wc_ecc_init(&incompleteEcc);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                "hpke incomplete key initializes");
+    if (ret == WOLFCOSE_SUCCESS) {
+        incompleteEccInited = 1;
+        ret = wc_ecc_set_curve(&incompleteEcc, 32, ECC_SECP256R1);
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
+                    "hpke incomplete key selects P-256");
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        invalidKey = *validKey;
+        invalidKey.key.ecc = &incompleteEcc;
+        ret = wolfCose_Hpke0ValidateKey(&invalidKey,
+            WOLFCOSE_ALG_HPKE_0, 0);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "hpke incomplete public key rejected");
+        invalidKey.hasPrivate = 1u;
+        ret = wolfCose_Hpke0ValidateKey(&invalidKey,
+            WOLFCOSE_ALG_HPKE_0, 1);
+        TEST_ASSERT(ret == WOLFCOSE_E_COSE_KEY_TYPE,
+                    "hpke incomplete private key rejected");
+    }
+    if (incompleteEccInited != 0) {
+        (void)wc_ecc_free(&incompleteEcc);
+    }
+}
+
 static void test_cose_hpke_encrypt0(void)
 {
     WOLFCOSE_KEY recipientKey;
@@ -11174,6 +11219,7 @@ static void test_cose_hpke_encrypt0(void)
     if (ret == WOLFCOSE_SUCCESS) {
         recipientKey.alg = WOLFCOSE_ALG_HPKE_0;
         recipientKey.hasPrivate = 0u;
+        test_cose_hpke_key_validation(&recipientKey);
         ret = wc_CoseKey_Init(&wrongKey);
         TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "hpke encrypt0 wrong key init");
     }
@@ -11211,6 +11257,7 @@ static void test_cose_hpke_encrypt0(void)
              * when caller metadata claims P-256 for a 32-byte Koblitz key. */
             nonP256Key.kty = WOLFCOSE_KTY_EC2;
             nonP256Key.crv = WOLFCOSE_CRV_P256;
+            nonP256Key.attachedType = WOLFCOSE_ATT_ECC;
             nonP256Key.key.ecc = &nonP256Ecc;
             nonP256Key.hasPrivate = 0u;
             nonP256Key.alg = WOLFCOSE_ALG_HPKE_0;

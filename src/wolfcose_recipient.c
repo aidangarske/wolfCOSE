@@ -992,6 +992,9 @@ int wolfCose_Hpke0ValidateKey(const WOLFCOSE_KEY* key,
     if (key == NULL) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
+    else if (key->attachedType != WOLFCOSE_ATT_ECC) {
+        ret = WOLFCOSE_E_COSE_KEY_TYPE;
+    }
     else {
         eccKey = key->key.ecc;
         if ((key->kty != WOLFCOSE_KTY_EC2) ||
@@ -1002,6 +1005,9 @@ int wolfCose_Hpke0ValidateKey(const WOLFCOSE_KEY* key,
         }
         else if (wolfCose_EccKeyCheckCurve(WOLFCOSE_CRV_P256,
                                             eccKey) != WOLFCOSE_SUCCESS) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
+        else if (wc_ecc_check_key(eccKey) != 0) {
             ret = WOLFCOSE_E_COSE_KEY_TYPE;
         }
         else if ((key->alg != WOLFCOSE_ALG_UNSET) && (key->alg != alg)) {

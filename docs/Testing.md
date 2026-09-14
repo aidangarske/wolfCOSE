@@ -56,6 +56,8 @@ focused `test -a` round trip for each construction. The dedicated strict C99
 target compiles every HPKE-gated library, test, tool, and example path under
 each one-way operation gate, both convenience gates, the complete P0
 configuration, and wolfSSL's `NO_ECC256` plus `HAVE_ALL_CURVES` configuration.
+It also rejects HPKE when `NO_ECC_SECP` or an `ECC_MIN_KEY_SZ` above 256 makes
+P-256 unavailable.
 Every enabled configuration also supplies `WOLFCOSE_EXPERIMENTAL`; the regular
 `make experimental-check` target verifies that an HPKE operation selected
 without that acknowledgement is rejected at compile time.
