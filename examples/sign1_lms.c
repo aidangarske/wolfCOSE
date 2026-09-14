@@ -45,9 +45,9 @@ static const char PAYLOAD[] = "wolfCOSE HSS-LMS payload";
 #endif
 
 /* LMS signatures run ~1.5KB for L1/H10/W8; keep buffers off the stack. */
-static unsigned char gScratch[8192];
-static unsigned char gMsg[4096];
-static unsigned char gPrivStore[HSS_MAX_PRIVATE_KEY_LEN];
+static uint8_t gScratch[8192];
+static uint8_t gMsg[4096];
+static uint8_t gPrivStore[HSS_MAX_PRIVATE_KEY_LEN];
 
 static int lms_write_cb(const byte* priv, word32 privSz, void* context)
 {
