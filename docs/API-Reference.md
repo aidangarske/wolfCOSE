@@ -480,11 +480,13 @@ Decode a COSE key from CBOR format.
 **Returns:** `WOLFCOSE_SUCCESS` or error code
 
 Attach a wolfCrypt key with `wc_CoseKey_SetEcc()`, `wc_CoseKey_SetEd25519()`,
-`wc_CoseKey_SetEd448()`, `wc_CoseKey_SetRsa()`, or `wc_CoseKey_SetMlDsa()` when
-asymmetric key material should be imported. Without an attachment, supported
-asymmetric metadata is still validated and returned, but key material is not
-imported. Assigning the `key.*` union directly records no attached type and
-imports nothing.
+`wc_CoseKey_SetEd448()`, `wc_CoseKey_SetRsa()`, `wc_CoseKey_SetMlDsa()`, or
+`wc_CoseKey_SetSymmetric()`. These record which wolfCrypt object is attached.
+Without an attachment, supported asymmetric metadata is still validated and
+returned, but key material is not imported. Assigning the `key.*` union
+directly records no attached type and imports nothing. Only attachments
+recorded by a setter are preserved across decode; an untyped `key.*` union is
+cleared before parsing.
 
 When a key is attached, the decoded `kty`/`crv` must name that key type or
 `WOLFCOSE_E_COSE_KEY_TYPE` is returned before any importer runs. To learn which
@@ -1159,13 +1161,14 @@ int wc_CBOR_LabelIsText(const WOLFCOSE_CBOR_LABEL* label,
 
 RFC 9052 defines `label = int / tstr`, and real COSE and CTAP2 maps use both
 spellings for the same field (`3` vs `"alg"`, `1` vs `"type"`, `2` vs `"id"`).
-`wc_CBOR_DecodeLabel()` consumes one item and reports whichever form it found,
-so a parser writes the dispatch once instead of duplicating a
+`wc_CBOR_DecodeLabel()` consumes one CBOR head. Major types 0 and 1 fill `val`
+with `isText == 0`; major type 3 consumes the text and fills
+`text`/`textLen` with `isText == 1` and no copy. A byte string is fully
+consumed and rejected with `WOLFCOSE_E_CBOR_TYPE`. For a tag, array, or map,
+only the head is consumed. Use `wc_CBOR_Skip()` instead when the complete
+unsupported item must be skipped.
+A parser can therefore write the dispatch once instead of duplicating a
 `wc_CBOR_PeekType()` branch at every map.
-
-Major types 0 and 1 fill `val` with `isText == 0`; major type 3 fills
-`text`/`textLen` with `isText == 1` and no copy. Anything else returns
-`WOLFCOSE_E_CBOR_TYPE`.
 
 `wc_CBOR_LabelIsInt()` and `wc_CBOR_LabelIsText()` return 1 on match and 0
 otherwise, including for a `NULL` label. Text comparison is byte-exact: no

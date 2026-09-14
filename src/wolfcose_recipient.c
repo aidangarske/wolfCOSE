@@ -371,6 +371,7 @@ int wolfCose_EcdhEsDirect(int32_t alg,
 
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((recipientPub->kty != WOLFCOSE_KTY_EC2) ||
+         (recipientPub->attachedType != WOLFCOSE_ATT_ECC) ||
          (recipientPub->key.ecc == NULL))) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;
     }
@@ -378,6 +379,13 @@ int wolfCose_EcdhEsDirect(int32_t alg,
     if (ret == WOLFCOSE_SUCCESS) {
         ret = wolfCose_EccKeyCheckCurve(recipientPub->crv,
                                          recipientPub->key.ecc);
+    }
+    if (ret == WOLFCOSE_SUCCESS) {
+        int eccRet = wc_ecc_check_key(recipientPub->key.ecc);
+
+        if (eccRet != 0) {
+            ret = WOLFCOSE_E_COSE_KEY_TYPE;
+        }
     }
 
     /* Determine hash type from algorithm */
@@ -563,6 +571,7 @@ int wolfCose_EcdhEsDirectRecv(int32_t alg,
 
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((recipientKey->kty != WOLFCOSE_KTY_EC2) ||
+         (recipientKey->attachedType != WOLFCOSE_ATT_ECC) ||
          (recipientKey->key.ecc == NULL) ||
          (recipientKey->hasPrivate != 1u))) {
         ret = WOLFCOSE_E_COSE_KEY_TYPE;

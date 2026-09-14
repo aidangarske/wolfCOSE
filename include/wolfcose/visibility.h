@@ -22,7 +22,8 @@
 #define WOLFCOSE_VISIBILITY_H
 
 /* WOLFCOSE_API: marks symbols exported from the shared library.
- * WOLFCOSE_LOCAL: marks symbols hidden (internal linkage in shared builds). */
+ * WOLFCOSE_LOCAL: applies hidden visibility on supported GNU builds. It does
+ * not provide C internal linkage and is empty on other supported builds. */
 
 #if defined(_WIN32) || defined(__CYGWIN__)
     #ifdef BUILDING_WOLFCOSE

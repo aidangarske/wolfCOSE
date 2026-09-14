@@ -134,7 +134,7 @@ WOLFCOSE_LOCAL int wolfCose_CBOR_EncodeHead(WOLFCOSE_CBOR_CTX* ctx,
 
 /**
  * \brief Decode a CBOR initial byte + argument. Sets item fields.
- * For bstr/tstr: item->data points into ctx->buf, item->dataLen set.
+ * For bstr/tstr: item->data points into ctx->cbuf, item->dataLen set.
  */
 WOLFCOSE_LOCAL int wolfCose_CBOR_DecodeHead(WOLFCOSE_CBOR_CTX* ctx,
                                              WOLFCOSE_CBOR_ITEM* item);
@@ -180,6 +180,8 @@ WOLFCOSE_LOCAL int wolfCose_DecodeProtectedHdr(const uint8_t* data,
  * \brief Decode an unprotected header map from the decoder context.
  * \param ctx  Decoder context positioned at the map.
  * \param hdr  Output: parsed header fields (merged with protected).
+ * \param hdrState Protected-label state used for cross-bucket duplicate
+ *                 checks. Supported unprotected labels are merged on return.
  */
 WOLFCOSE_LOCAL int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx,
                                                   WOLFCOSE_HDR* hdr,
