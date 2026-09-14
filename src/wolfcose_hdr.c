@@ -61,19 +61,20 @@ int wolfCose_InInt32Range(int64_t val)
 static uint32_t wolfCose_LabelBit(int64_t label)
 {
     uint32_t bit;
-    uint32_t shift;
-    int64_t shift64;
+    uint32_t shift = 32u;
 
     if ((label >= 1) && (label <= 16)) {
-        shift64 = label;
-        shift64--;
-        shift = (uint32_t)shift64;
-        bit = ((uint32_t)1u) << shift;
+        shift = (uint32_t)label;
+        shift--;
     }
     else if ((label <= -1) && (label >= -16)) {
-        shift64 = -label;
-        shift = (uint32_t)shift64;
+        shift = (uint32_t)(-label);
         shift += 15u;
+    }
+    else {
+        /* No tracked bit. */
+    }
+    if (shift < 32u) {
         bit = ((uint32_t)1u) << shift;
     }
     else {
