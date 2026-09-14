@@ -65,8 +65,8 @@ X25519; PSK mode; authenticated HPKE mode; and an application-controlled HPKE
 
 ### Build Selection
 
-Build wolfSSL with HPKE, ECC P-256, AES-GCM, SHA-256, and key generation, then
-select only the wolfCOSE directions the product needs:
+Build wolfSSL with HPKE, ECC P-256, AES-128-GCM, SHA-256, and key generation,
+then select only the wolfCOSE directions the product needs:
 
 ```bash
 # Integrated Encrypt0, send and receive.

@@ -702,7 +702,8 @@ HPKE_C99_CONFIGS = \
     "-DWOLFCOSE_EXPERIMENTAL -DWOLFCOSE_BUILD_TOOL -DWOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT" \
     "$(HPKE_C99_CONFIG)" \
     "$(HPKE_C99_CONFIG) -DNO_ECC256 -DHAVE_ALL_CURVES -DHAVE_ECC_KOBLITZ"
-HPKE_C99_INVALID_CONFIGS = "-DNO_ECC_SECP" "-DECC_MIN_KEY_SZ=384"
+HPKE_C99_INVALID_CONFIGS = "-DNO_ECC_SECP" "-DECC_MIN_KEY_SZ=384" \
+    "-DNO_AES_128"
 # Prefer the explicitly selected HPKE backend over an unrelated host install.
 # Treat backend headers as system headers so this gate judges gated wolfCOSE
 # syntax, including when the selected wolfSSL version uses C11 extensions.
@@ -802,10 +803,10 @@ c99-hpke-check:
 	  done; \
 	done
 	@for cfg in $(HPKE_C99_INVALID_CONFIGS); do \
-	  echo "  C99 HPKE unavailable P-256 $$cfg (expect error)"; \
+	  echo "  C99 HPKE missing suite prerequisite $$cfg (expect error)"; \
 	  if $(EXP_TU) | $(CC) $(HPKE_C99_FLAGS) $(HPKE_C99_CONFIG) $$cfg \
 	      -fsyntax-only -x c - 2>experimental-check.err; then \
-	    echo "FAIL: HPKE compiled without an available P-256 curve"; \
+	    echo "FAIL: HPKE compiled without a required suite primitive"; \
 	    rm -f experimental-check.err; exit 1; \
 	  fi; \
 	  grep -q "HPKE-0 requires" experimental-check.err || exit 1; \

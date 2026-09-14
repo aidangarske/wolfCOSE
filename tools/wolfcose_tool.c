@@ -2110,9 +2110,11 @@ static int tool_info(const char* inPath)
 
     printf("COSE message: %zu bytes\n", msgLen);
 
-    ctx.buf = msgBuf;
-    ctx.bufSz = msgLen;
-    ctx.idx = 0;
+    ret = wc_CBOR_DecoderInit(&ctx, msgBuf, msgLen);
+    if (ret != 0) {
+        fprintf(stderr, "CBOR decoder initialization failed: %d\n", ret);
+        return EXIT_CRYPTO;
+    }
 
     while (ctx.idx < ctx.bufSz) {
         size_t pos = ctx.idx;
