@@ -334,7 +334,8 @@ static int read_file(const char* path, uint8_t* buf, size_t bufSz,
     }
     if (extra != EOF) {
         fclose(f);
-        fprintf(stderr, "Input too large: %s\n", path);
+        fprintf(stderr, "File too large (limit %zu bytes): %s\n",
+                bufSz, path);
         return EXIT_IO;
     }
     fclose(f);
@@ -606,36 +607,41 @@ static int tool_hpke_write_key_pair(const char* privatePath,
     publicTemporary[0] = '\0';
     if (tool_hpke_canonical_output_path(privatePath, privateCanonical,
                                         sizeof(privateCanonical)) != 0) {
-        goto exit;
+        ret = EXIT_IO;
     }
-    if ((publicPath != NULL) &&
+    else {
+        ret = 0;
+    }
+    if ((ret == 0) && (publicPath != NULL) &&
         (tool_hpke_canonical_output_path(publicPath, publicCanonical,
                                          sizeof(publicCanonical)) != 0)) {
-        goto exit;
+        ret = EXIT_IO;
     }
-    if (tool_hpke_stage_key(privateCanonical, privateBuf, privateLen,
-                            privateTemporary, sizeof(privateTemporary)) != 0) {
-        goto exit;
+    if ((ret == 0) &&
+        (tool_hpke_stage_key(privateCanonical, privateBuf, privateLen,
+                             privateTemporary,
+                             sizeof(privateTemporary)) != 0)) {
+        ret = EXIT_IO;
     }
-    if ((publicPath != NULL) &&
+    if ((ret == 0) && (publicPath != NULL) &&
         (tool_hpke_stage_key(publicCanonical, publicBuf, publicLen,
                              publicTemporary, sizeof(publicTemporary)) != 0)) {
-        goto exit;
+        ret = EXIT_IO;
     }
-    if (link(privateTemporary, privateCanonical) != 0) {
-        goto exit;
+    if ((ret == 0) && (link(privateTemporary, privateCanonical) != 0)) {
+        ret = EXIT_IO;
     }
-    privateInstalled = 1;
-    if ((publicPath != NULL) &&
+    if (ret == 0) {
+        privateInstalled = 1;
+    }
+    if ((ret == 0) && (publicPath != NULL) &&
         (link(publicTemporary, publicCanonical) != 0)) {
-        goto exit;
+        ret = EXIT_IO;
     }
-    if (publicPath != NULL) {
+    if ((ret == 0) && (publicPath != NULL)) {
         publicInstalled = 1;
     }
-    ret = 0;
 
-exit:
     if ((ret != 0) && (publicInstalled != 0)) {
         (void)unlink(publicCanonical);
     }
@@ -1787,28 +1793,27 @@ static int tool_hpke0_enc(const char* keyPath, const char* inPath,
     }
     eccLoaded = 1;
     ret = read_file(inPath, msgBuf, sizeof(msgBuf), &msgLen);
-    if (ret != 0) {
-        goto exit;
-    }
-    ret = wc_InitRng(&rng);
     if (ret == 0) {
-        rngInit = 1;
-        ret = wc_CoseHpkeEncrypt0_Encrypt(&recipientKey, NULL, 0u, msgBuf,
-            msgLen, NULL, 0u, NULL, NULL, 0u, scratch, sizeof(scratch),
-            outBuf, sizeof(outBuf), &outLen, &rng);
+        ret = wc_InitRng(&rng);
+        if (ret == 0) {
+            rngInit = 1;
+            ret = wc_CoseHpkeEncrypt0_Encrypt(&recipientKey, NULL, 0u,
+                msgBuf, msgLen, NULL, 0u, NULL, NULL, 0u, scratch,
+                sizeof(scratch), outBuf, sizeof(outBuf), &outLen, &rng);
+        }
+        if (ret != 0) {
+            fprintf(stderr, "HPKE-0 encrypt failed: %d\n", ret);
+            ret = EXIT_CRYPTO;
+        }
     }
-    if (ret != 0) {
-        fprintf(stderr, "HPKE-0 encrypt failed: %d\n", ret);
-        ret = EXIT_CRYPTO;
-        goto exit;
+    if (ret == 0) {
+        ret = write_file(outPath, outBuf, outLen);
     }
-    ret = write_file(outPath, outBuf, outLen);
     if (ret == 0) {
         printf("HPKE-0 encrypted: %zu byte plaintext -> %zu byte "
                "COSE_Encrypt0\n", msgLen, outLen);
     }
 
-exit:
     if (rngInit != 0) {
         wc_FreeRng(&rng);
     }
@@ -1842,24 +1847,23 @@ static int tool_hpke0_dec(const char* keyPath, const char* inPath,
     }
     eccLoaded = 1;
     ret = read_file(inPath, msgBuf, sizeof(msgBuf), &msgLen);
-    if (ret != 0) {
-        goto exit;
+    if (ret == 0) {
+        ret = wc_CoseHpkeEncrypt0_Decrypt(&recipientKey, msgBuf, msgLen,
+            NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plainBuf,
+            sizeof(plainBuf), &plainLen);
+        if (ret != 0) {
+            fprintf(stderr, "HPKE-0 decrypt failed: %d\n", ret);
+            ret = EXIT_CRYPTO;
+        }
     }
-    ret = wc_CoseHpkeEncrypt0_Decrypt(&recipientKey, msgBuf, msgLen, NULL,
-        0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plainBuf,
-        sizeof(plainBuf), &plainLen);
-    if (ret != 0) {
-        fprintf(stderr, "HPKE-0 decrypt failed: %d\n", ret);
-        ret = EXIT_CRYPTO;
-        goto exit;
+    if (ret == 0) {
+        ret = write_file(outPath, plainBuf, plainLen);
     }
-    ret = write_file(outPath, plainBuf, plainLen);
     if (ret == 0) {
         printf("HPKE-0 decrypted: %zu byte COSE_Encrypt0 -> %zu byte "
                "plaintext\n", msgLen, plainLen);
     }
 
-exit:
     if (eccLoaded != 0) {
         wc_ecc_free(&recipientEcc);
     }
@@ -1928,15 +1932,15 @@ static int tool_hpke_ke_enc(const char* const* keyPaths, size_t keyCount,
     if (ret != 0) {
         fprintf(stderr, "HPKE-0-KE encrypt failed: %d\n", ret);
         ret = EXIT_CRYPTO;
-        goto exit;
     }
-    ret = write_file(outPath, outBuf, outLen);
+    else {
+        ret = write_file(outPath, outBuf, outLen);
+    }
     if (ret == 0) {
         printf("HPKE-0-KE encrypted: %zu byte plaintext -> %zu byte "
                "COSE_Encrypt (%zu recipients)\n", msgLen, outLen, keyCount);
     }
 
-exit:
     if (rngInit != 0) {
         wc_FreeRng(&rng);
     }
@@ -1972,27 +1976,26 @@ static int tool_hpke_ke_dec(const char* keyPath, size_t recipientIndex,
     }
     eccLoaded = 1;
     ret = read_file(inPath, msgBuf, sizeof(msgBuf), &msgLen);
-    if (ret != 0) {
-        goto exit;
+    if (ret == 0) {
+        (void)memset(&recipient, 0, sizeof(recipient));
+        recipient.algId = WOLFCOSE_ALG_HPKE_0_KE;
+        recipient.key = &recipientKey;
+        ret = wc_CoseEncrypt_Decrypt(&recipient, recipientIndex, msgBuf,
+            msgLen, NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr,
+            plainBuf, sizeof(plainBuf), &plainLen);
+        if (ret != 0) {
+            fprintf(stderr, "HPKE-0-KE decrypt failed: %d\n", ret);
+            ret = EXIT_CRYPTO;
+        }
     }
-    (void)memset(&recipient, 0, sizeof(recipient));
-    recipient.algId = WOLFCOSE_ALG_HPKE_0_KE;
-    recipient.key = &recipientKey;
-    ret = wc_CoseEncrypt_Decrypt(&recipient, recipientIndex, msgBuf, msgLen,
-        NULL, 0u, NULL, 0u, scratch, sizeof(scratch), &hdr, plainBuf,
-        sizeof(plainBuf), &plainLen);
-    if (ret != 0) {
-        fprintf(stderr, "HPKE-0-KE decrypt failed: %d\n", ret);
-        ret = EXIT_CRYPTO;
-        goto exit;
+    if (ret == 0) {
+        ret = write_file(outPath, plainBuf, plainLen);
     }
-    ret = write_file(outPath, plainBuf, plainLen);
     if (ret == 0) {
         printf("HPKE-0-KE decrypted recipient %zu: %zu byte COSE_Encrypt -> "
                "%zu byte plaintext\n", recipientIndex, msgLen, plainLen);
     }
 
-exit:
     if (eccLoaded != 0) {
         wc_ecc_free(&recipientEcc);
     }
