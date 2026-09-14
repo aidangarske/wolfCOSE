@@ -130,10 +130,20 @@ jobs:
         make -j$(nproc)
         make install
 
+    - name: Select wolfCOSE compatibility flags
+      run: |
+        VERSION_HEX=$(awk '/^#define LIBWOLFSSL_VERSION_HEX/{print $3}' \
+                          ~/wolfssl-install/include/wolfssl/version.h)
+        if (( VERSION_HEX < 0x05009002 )); then
+          echo "WOLFCOSE_COMPAT_FLAGS=-DWOLFCOSE_RSA_PUBLIC_ONLY -DWOLFCOSE_NO_MLDSA -DWOLFCOSE_NO_LMS" >> "$GITHUB_ENV"
+        else
+          echo "WOLFCOSE_COMPAT_FLAGS=" >> "$GITHUB_ENV"
+        fi
+
     - name: Build wolfCOSE
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
-        make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
+        make CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion $WOLFCOSE_COMPAT_FLAGS -I./include -isystem $WOLFSSL_DIR/include" \
              LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Verify legacy AES Key Wrap rejection
@@ -168,14 +178,14 @@ jobs:
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
+        make test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion $WOLFCOSE_COMPAT_FLAGS -I./include -isystem $WOLFSSL_DIR/include" \
                   LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     - name: Run tool round-trip test
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make tool-test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
+        make tool-test CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion $WOLFCOSE_COMPAT_FLAGS -I./include -isystem $WOLFSSL_DIR/include" \
                        LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
     # ML-DSA / PQC-specific coverage: CLI keygen->sign->verify for all three
