@@ -308,7 +308,7 @@ static void test_cose_countersign_ecdsa_curves(void)
         }
         TEST_ASSERT(ret == 0, "ES512 countersign key");
         if (ret == 0) {
-            ret = test_cose_countersign_roundtrip(&signKey, &signKey,
+            (void)test_cose_countersign_roundtrip(&signKey, &signKey,
                 WOLFCOSE_ALG_ES512, &rng, "ES512");
             wc_CoseKey_Free(&signKey);
         }
@@ -5921,7 +5921,6 @@ static void test_cose_mac_multi_per_recipient(void)
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                     "mac rejects later mixed recipient mode");
         out[algOffsets[1]] = 0x25u; /* direct */
-        ret = WOLFCOSE_SUCCESS;
         out[algOffsets[0]] = 0x22u; /* A128KW */
         ret = wc_CoseMac_Verify(&recipients[1], 1, out, outLen,
             NULL, 0, NULL, 0, scratch, sizeof(scratch),
@@ -6591,7 +6590,7 @@ static void test_cose_key_ed25519_public_only(void)
     {
         /* Build a minimal OKP key with only x (public) */
         uint8_t pubBuf[256];
-        WOLFCOSE_CBOR_CTX enc;
+        WOLFCOSE_CBOR_CTX enc = { 0 };
         uint8_t xBuf[32];
         word32 xSz = sizeof(xBuf);
         ed25519_key edKey3;
@@ -6599,7 +6598,7 @@ static void test_cose_key_ed25519_public_only(void)
         wc_ed25519_init(&edKey3);
         wc_ed25519_export_public(&edKey, xBuf, &xSz);
 
-        enc.buf = pubBuf; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
+        enc.buf = pubBuf; enc.cbuf = NULL; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
         wc_CBOR_EncodeMapStart(&enc, 3);
         wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
         wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
@@ -6632,7 +6631,7 @@ static void test_cose_key_ed25519_public_only(void)
 static size_t typeconf_key_blob(uint8_t* out, size_t outSz, int64_t kty,
                                 int64_t crv, size_t partLen)
 {
-    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX enc = { 0 };
     uint8_t part[64];
 
     if (partLen > sizeof(part)) {
@@ -6640,7 +6639,7 @@ static size_t typeconf_key_blob(uint8_t* out, size_t outSz, int64_t kty,
     }
 
     (void)XMEMSET(part, 0x41, sizeof(part));
-    enc.buf = out;
+    enc.buf = out; enc.cbuf = NULL;
     enc.bufSz = outSz;
     enc.idx = 0;
 
@@ -6676,7 +6675,7 @@ static void test_cose_key_decode_type_confusion(void)
     wc_MlDsaKey dlKey;
 #endif
     static const uint8_t symmData[32] = { 0x5au };
-    WOLFCOSE_CBOR_CTX symmEnc;
+    WOLFCOSE_CBOR_CTX symmEnc = { 0 };
     uint8_t blob[256];
     size_t blobLen;
     int ret;
@@ -6846,7 +6845,7 @@ static void test_cose_key_decode_type_confusion(void)
 
     /* Matching symmetric decode through the setter still imports. RFC 9053
      * carries the symmetric value in k (label -1), not in x/d. */
-    symmEnc.buf = blob;
+    symmEnc.buf = blob; symmEnc.cbuf = NULL;
     symmEnc.bufSz = sizeof(blob);
     symmEnc.idx = 0;
     (void)wc_CBOR_EncodeMapStart(&symmEnc, 2);
@@ -6890,7 +6889,7 @@ static void test_cose_key_ed448_public_only(void)
     ed448_key edKey, edKey2;
     WC_RNG rng;
     uint8_t pubBuf[256];
-    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX enc = { 0 };
     uint8_t xBuf[57];
     word32 xSz = sizeof(xBuf);
     int ret;
@@ -6904,7 +6903,7 @@ static void test_cose_key_ed448_public_only(void)
     wc_ed448_export_public(&edKey, xBuf, &xSz);
 
     /* Build a public-only OKP key (no d label) */
-    enc.buf = pubBuf; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
+    enc.buf = pubBuf; enc.cbuf = NULL; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
     wc_CBOR_EncodeMapStart(&enc, 3);
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
     wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
@@ -6944,8 +6943,8 @@ static void test_cose_key_decode_private_only(void)
         word32 ySz = sizeof(yBuf);
         uint8_t keyBuf[128];
         uint8_t fullKeyBuf[256];
-        WOLFCOSE_CBOR_CTX enc;
-        WOLFCOSE_CBOR_CTX fullEnc;
+        WOLFCOSE_CBOR_CTX enc = { 0 };
+        WOLFCOSE_CBOR_CTX fullEnc = { 0 };
 #ifndef WOLFCOSE_ECC_PRIVATE_IMPORT_ALWAYS_UNSUPPORTED
         uint8_t hash[32];
         uint8_t sig[80];
@@ -6978,7 +6977,7 @@ static void test_cose_key_decode_private_only(void)
                     "ec private import export public");
 
         /* Build {kty: EC2, crv: P-256, d: <32>} with no x/y. */
-        enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
+        enc.buf = keyBuf; enc.cbuf = NULL; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
         wc_CBOR_EncodeMapStart(&enc, 3);
         wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
         wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
@@ -7375,7 +7374,7 @@ static void test_cose_key_decode_private_only(void)
         uint8_t dBuf[ED25519_KEY_SIZE];
         word32 dSz = sizeof(dBuf);
         uint8_t keyBuf[128];
-        WOLFCOSE_CBOR_CTX enc;
+        WOLFCOSE_CBOR_CTX enc = { 0 };
         uint8_t msg[16];
         uint8_t sig[ED25519_SIG_SIZE];
         word32 sigLen = sizeof(sig);
@@ -7399,7 +7398,7 @@ static void test_cose_key_decode_private_only(void)
         TEST_ASSERT(ret == 0 && dSz == sizeof(dBuf), "ed priv-only export d");
 
         /* Build {kty: OKP, crv: Ed25519, d: <32>} with no x. */
-        enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
+        enc.buf = keyBuf; enc.cbuf = NULL; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
         wc_CBOR_EncodeMapStart(&enc, 3);
         wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
         wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
@@ -7437,7 +7436,7 @@ static void test_cose_key_decode_private_only(void)
         uint8_t dBuf[ED448_KEY_SIZE];
         word32 dSz = sizeof(dBuf);
         uint8_t keyBuf[160];
-        WOLFCOSE_CBOR_CTX enc;
+        WOLFCOSE_CBOR_CTX enc = { 0 };
         uint8_t msg[16];
         uint8_t sig[ED448_SIG_SIZE];
         word32 sigLen = sizeof(sig);
@@ -7461,7 +7460,7 @@ static void test_cose_key_decode_private_only(void)
         TEST_ASSERT(ret == 0 && dSz == sizeof(dBuf), "ed448 priv-only export d");
 
         /* Build {kty: OKP, crv: Ed448, d: <57>} with no x. */
-        enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
+        enc.buf = keyBuf; enc.cbuf = NULL; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
         wc_CBOR_EncodeMapStart(&enc, 3);
         wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
         wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_OKP);
@@ -7505,7 +7504,7 @@ static void test_cose_key_rsa_public_decode(void)
     word32 nSz = sizeof(nBuf);
     word32 eSz = sizeof(eBuf);
     uint8_t keyBuf[400];
-    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX enc = { 0 };
     int ret;
 
     TEST_LOG("  [Key RSA public-only decode]\n");
@@ -7522,7 +7521,7 @@ static void test_cose_key_rsa_public_decode(void)
     TEST_ASSERT(ret == 0, "rsa pub flatten");
 
     /* Build {kty: RSA, -1: n, -2: e} with no private components. */
-    enc.buf = keyBuf; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
+    enc.buf = keyBuf; enc.cbuf = NULL; enc.bufSz = sizeof(keyBuf); enc.idx = 0;
     wc_CBOR_EncodeMapStart(&enc, 3);
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
     wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_RSA);
@@ -7551,7 +7550,7 @@ static void test_cose_key_mldsa_public_only(void)
     wc_MlDsaKey dlKey, dlKey2;
     WC_RNG rng;
     uint8_t pubBuf[2048];
-    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX enc = { 0 };
     uint8_t xBuf[1312]; /* ML-DSA-44 pub key size */
     word32 xSz = sizeof(xBuf);
     int ret;
@@ -7566,7 +7565,7 @@ static void test_cose_key_mldsa_public_only(void)
     wc_MlDsaKey_ExportPubRaw(&dlKey, xBuf, &xSz);
 
     /* Build a public-only AKP key (RFC 9964): kty=AKP, required alg, pub(-1) */
-    enc.buf = pubBuf; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
+    enc.buf = pubBuf; enc.cbuf = NULL; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
     wc_CBOR_EncodeMapStart(&enc, 3);
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
     wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
@@ -7630,7 +7629,7 @@ static void test_cose_key_mldsa_negative(void)
     uint8_t buf[2048];
     uint8_t outBuf[8192];
     size_t outLen;
-    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX enc = { 0 };
     int ret;
 #if !defined(WOLFSSL_MLDSA_DYNAMIC_KEYS) && \
     !defined(WOLFSSL_MLDSA_VERIFY_ONLY)
@@ -7679,7 +7678,7 @@ static void test_cose_key_mldsa_negative(void)
                 "dl public-only decode has no private");
 
     /* Decode: AKP private key with no pub is rejected. */
-    enc.buf = buf; enc.bufSz = sizeof(buf); enc.idx = 0;
+    enc.buf = buf; enc.cbuf = NULL; enc.bufSz = sizeof(buf); enc.idx = 0;
     wc_CBOR_EncodeMapStart(&enc, 3);
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
     wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_AKP);
@@ -7859,7 +7858,7 @@ static void test_cose_key_ecc_public_only(void)
     ecc_key eccKey, eccKey2;
     WC_RNG rng;
     uint8_t pubBuf[256];
-    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX enc = { 0 };
     uint8_t xBuf[32], yBuf[32];
     word32 xLen = sizeof(xBuf), yLen = sizeof(yBuf);
     int ret;
@@ -7873,7 +7872,7 @@ static void test_cose_key_ecc_public_only(void)
     wc_ecc_export_public_raw(&eccKey, xBuf, &xLen, yBuf, &yLen);
 
     /* Build a public-only EC2 key (no d label) */
-    enc.buf = pubBuf; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
+    enc.buf = pubBuf; enc.cbuf = NULL; enc.bufSz = sizeof(pubBuf); enc.idx = 0;
     wc_CBOR_EncodeMapStart(&enc, 4);
     wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
     wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
@@ -7901,7 +7900,7 @@ static void test_cose_key_decode_optional_labels(void)
 {
     WOLFCOSE_KEY key;
     uint8_t buf[128];
-    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX enc = { 0 };
     const uint8_t kidVal[] = "sensor-01";
     const uint8_t symmKey[] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
     int ret;
@@ -7909,7 +7908,7 @@ static void test_cose_key_decode_optional_labels(void)
     TEST_LOG("  [Key Decode Optional Labels]\n");
 
     /* Build a symmetric key with kid(2), alg(3), and an unknown label(99) */
-    enc.buf = buf; enc.bufSz = sizeof(buf); enc.idx = 0;
+    enc.buf = buf; enc.cbuf = NULL; enc.bufSz = sizeof(buf); enc.idx = 0;
     wc_CBOR_EncodeMapStart(&enc, 5);
 
     /* kty = 4 (Symmetric) */
@@ -8831,7 +8830,7 @@ static void test_cose_key_encode_rsa_short_d(void)
 {
     RsaKey rsaKey;
     WOLFCOSE_KEY key;
-    WOLFCOSE_CBOR_CTX dec;
+    WOLFCOSE_CBOR_CTX dec = { 0 };
     uint8_t out[2048];
     const uint8_t* dBytes = NULL;
     size_t outLen = 0;
@@ -8984,7 +8983,7 @@ static void test_cose_key_peek_info(void)
     /* Unknown labels are skipped, not fatal. */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
-        WOLFCOSE_CBOR_CTX enc;
+        WOLFCOSE_CBOR_CTX enc = { 0 };
 
         (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
         (void)wc_CBOR_EncodeMapStart(&enc, 3);
@@ -9006,7 +9005,7 @@ static void test_cose_key_peek_info(void)
     /* Error cases */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
-        WOLFCOSE_CBOR_CTX enc;
+        WOLFCOSE_CBOR_CTX enc = { 0 };
         static const uint8_t notAMap[] = {0x01};
 
         TEST_ASSERT(wc_CoseKey_PeekInfo(NULL, 4, &info) ==
@@ -9046,13 +9045,70 @@ static void test_cose_key_peek_info(void)
         TEST_ASSERT(wc_CoseKey_PeekInfo(buf, enc.idx, &info) ==
                     WOLFCOSE_E_CBOR_MALFORMED, "peek trailing bytes");
 
-        /* Text label */
+        /* A text label named "kty" is never the registered integer kty. */
         (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
         (void)wc_CBOR_EncodeMapStart(&enc, 1);
         (void)wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"kty", 3);
         (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
         TEST_ASSERT(wc_CoseKey_PeekInfo(buf, enc.idx, &info) ==
-                    WOLFCOSE_E_CBOR_MALFORMED, "peek text label rejected");
+                    WOLFCOSE_E_CBOR_MALFORMED,
+                    "peek rejects text label in key map");
+
+        /* Text labels are not accepted in COSE_Key maps. */
+        (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+        (void)wc_CBOR_EncodeMapStart(&enc, 2);
+        (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+        (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_EC2);
+        (void)wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"vendor", 6);
+        (void)wc_CBOR_EncodeUint(&enc, 0u);
+        ret = wc_CoseKey_PeekInfo(buf, enc.idx, &info);
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                    "peek rejects unknown text-label key extension");
+
+        /* Exercise a complete key through both public parsers. */
+        /* empty-brace-scan: allow - test-local temporary scope */
+        {
+            WOLFCOSE_KEY key;
+            static const uint8_t symBytes[16] = {0};
+
+            (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+            (void)wc_CBOR_EncodeMapStart(&enc, 3);
+            (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+            (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_SYMMETRIC);
+            (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_K);
+            (void)wc_CBOR_EncodeBstr(&enc, symBytes, sizeof(symBytes));
+            (void)wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"vendor", 6);
+            (void)wc_CBOR_EncodeUint(&enc, 0u);
+
+            ret = wc_CoseKey_PeekInfo(buf, enc.idx, &info);
+            TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                        "peek rejects complete key with text extension");
+            (void)wc_CoseKey_Init(&key);
+            ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                        "decode rejects complete key with text extension");
+            wc_CoseKey_Free(&key);
+
+            (void)wc_CBOR_EncoderInit(&enc, buf, sizeof(buf));
+            (void)wc_CBOR_EncodeMapStart(&enc, 4);
+            (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_KTY);
+            (void)wc_CBOR_EncodeUint(&enc, WOLFCOSE_KTY_SYMMETRIC);
+            (void)wc_CBOR_EncodeInt(&enc, WOLFCOSE_KEY_LABEL_K);
+            (void)wc_CBOR_EncodeBstr(&enc, symBytes, sizeof(symBytes));
+            (void)wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"vendor", 6);
+            (void)wc_CBOR_EncodeUint(&enc, 0u);
+            (void)wc_CBOR_EncodeTstr(&enc, (const uint8_t*)"vendor", 6);
+            (void)wc_CBOR_EncodeUint(&enc, 1u);
+
+            ret = wc_CoseKey_PeekInfo(buf, enc.idx, &info);
+            TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                        "peek rejects duplicate text extension");
+            (void)wc_CoseKey_Init(&key);
+            ret = wc_CoseKey_Decode(&key, buf, enc.idx);
+            TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                        "decode rejects duplicate text extension");
+            wc_CoseKey_Free(&key);
+        }
     }
 }
 
@@ -9062,7 +9118,7 @@ static void test_cose_key_peek_info(void)
 static void test_cose_key_peek_info_alg(void)
 {
     WOLFCOSE_KEY_INFO info;
-    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX enc = { 0 };
     uint8_t buf[64];
     int ret;
 
@@ -9866,7 +9922,7 @@ static void test_cose_mac0_aes_cbc_mac_detached(void)
 
 static int mac0_tag_len(const uint8_t* msg, size_t msgLen, size_t* tagLen)
 {
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     const uint8_t* p;
     size_t n;
     uint64_t t;
@@ -10841,7 +10897,7 @@ static int mutate_first_recipient_alg(uint8_t* msg, size_t msgLen,
     uint8_t algByte)
 {
     int ret = -1;
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     uint64_t tagVal = 0;
     size_t count = 0;
     const uint8_t* protectedData = NULL;
@@ -13303,7 +13359,52 @@ static void test_cose_secret_zeroize(void)
 }
 #endif /* ZEROIZE_HOOK && ECDH_ES_DIRECT && ES256 && HKDF */
 
-#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && defined(HAVE_HKDF)
+#if defined(WOLFCOSE_ECDH_ES_DIRECT) && defined(WOLFCOSE_HAVE_ES256) && \
+    defined(HAVE_HKDF)
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
+static int test_cose_add_vendor_entries(const uint8_t* in, size_t inLen,
+    size_t mapPos, size_t entryCount, uint8_t* out, size_t outSz,
+    size_t* outLen)
+{
+    static const uint8_t entry[] = {
+        0x66u, 'v', 'e', 'n', 'd', 'o', 'r', 0x00u
+    };
+    size_t insertLen;
+    size_t i;
+    int ret = WOLFCOSE_SUCCESS;
+
+    if (outLen != NULL) {
+        *outLen = 0u;
+    }
+    if ((in == NULL) || (out == NULL) || (outLen == NULL) ||
+        (mapPos >= inLen) || (entryCount == 0u) || (entryCount > 2u)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
+    else if (((in[mapPos] & 0xE0u) != 0xA0u) ||
+             ((in[mapPos] & 0x1Fu) > (23u - entryCount))) {
+        ret = WOLFCOSE_E_CBOR_MALFORMED;
+    }
+    else if ((outSz < inLen) ||
+             (entryCount > ((outSz - inLen) / sizeof(entry)))) {
+        ret = WOLFCOSE_E_BUFFER_TOO_SMALL;
+    }
+    else {
+        insertLen = entryCount * sizeof(entry);
+        (void)memcpy(out, in, mapPos);
+        out[mapPos] = (uint8_t)(in[mapPos] + (uint8_t)entryCount);
+        for (i = 0u; i < entryCount; i++) {
+            (void)memcpy(&out[mapPos + 1u + (i * sizeof(entry))], entry,
+                sizeof(entry));
+        }
+        (void)memcpy(&out[mapPos + 1u + insertLen], &in[mapPos + 1u],
+            inLen - mapPos - 1u);
+        *outLen = inLen + insertLen;
+    }
+
+    return ret;
+}
+#endif /* WOLFCOSE_COSE_TEXT_LABELS */
+
 /**
  * Test ECDH-ES (Ephemeral-Static) encryption and decryption.
  * - Encrypt with recipient's EC public key
@@ -13503,6 +13604,122 @@ static void test_cose_encrypt_ecdh_es_ephemeral_crv_narrowing(void)
     (void)wc_ecc_free(&recipientEcc);
     (void)wc_FreeRng(&rng);
 }
+
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
+static void test_cose_encrypt_ecdh_es_text_extensions(void)
+{
+    WOLFCOSE_KEY recipientKey;
+    WOLFCOSE_RECIPIENT recipient;
+    WOLFCOSE_HDR hdr;
+    ecc_key recipientEcc;
+    WC_RNG rng;
+    uint8_t out[1024];
+    uint8_t modified[1056];
+    uint8_t scratch[1024];
+    uint8_t plaintext[128];
+    uint8_t iv[12];
+    const uint8_t payload[] = "ECDH-ES text extensions";
+    size_t outLen = 0u;
+    size_t modifiedLen = 0u;
+    size_t plaintextLen = 0u;
+    size_t recipientMapPos = 0u;
+    size_t ephemMapPos = 0u;
+    size_t i;
+    int found = 0;
+    int ret;
+    static const uint8_t anchor[] = {
+        0xA1u, 0x20u, 0xA4u, 0x01u, 0x02u, 0x20u, 0x01u, 0x21u
+    };
+
+    TEST_LOG("  [Encrypt ECDH-ES text extensions]\n");
+
+    ret = wc_InitRng(&rng);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "ecdh text rng");
+    ret = wc_ecc_init(&recipientEcc);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "ecdh text ecc init");
+    ret = wc_ecc_make_key(&rng, 32, &recipientEcc);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "ecdh text keygen");
+
+    (void)wc_CoseKey_Init(&recipientKey);
+    ret = wc_CoseKey_SetEcc(&recipientKey, WOLFCOSE_CRV_P256, &recipientEcc);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "ecdh text set key");
+    recipientKey.hasPrivate = 0u;
+    recipient.algId = WOLFCOSE_ALG_ECDH_ES_HKDF_256;
+    recipient.key = &recipientKey;
+    recipient.kid = NULL;
+    recipient.kidLen = 0u;
+
+    ret = wc_RNG_GenerateBlock(&rng, iv, sizeof(iv));
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "ecdh text iv");
+    ret = wc_CoseEncrypt_Encrypt(&recipient, 1u, WOLFCOSE_ALG_A128GCM,
+        iv, sizeof(iv), payload, sizeof(payload) - 1u, NULL, 0u, NULL, 0u,
+        scratch, sizeof(scratch), out, sizeof(out), &outLen, &rng);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS, "ecdh text encrypt");
+
+    for (i = 0u; (found == 0) && (outLen >= sizeof(anchor)) &&
+                (i <= (outLen - sizeof(anchor))); i++) {
+        if (memcmp(&out[i], anchor, sizeof(anchor)) == 0) {
+            recipientMapPos = i;
+            ephemMapPos = i + 2u;
+            found = 1;
+        }
+    }
+    TEST_ASSERT(found == 1, "ecdh text maps located");
+    recipientKey.hasPrivate = 1u;
+
+    if (found == 1) {
+        ret = test_cose_add_vendor_entries(out, outLen, recipientMapPos, 1u,
+            modified, sizeof(modified), &modifiedLen);
+        if (ret == WOLFCOSE_SUCCESS) {
+            (void)memset(&hdr, 0, sizeof(hdr));
+            ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, modified,
+                modifiedLen, NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+                &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+        }
+        TEST_ASSERT(ret == WOLFCOSE_SUCCESS &&
+                    plaintextLen == (sizeof(payload) - 1u) &&
+                    memcmp(plaintext, payload, plaintextLen) == 0,
+            "ECDH recipient accepts unknown text extension");
+
+        ret = test_cose_add_vendor_entries(out, outLen, recipientMapPos, 2u,
+            modified, sizeof(modified), &modifiedLen);
+        if (ret == WOLFCOSE_SUCCESS) {
+            (void)memset(&hdr, 0, sizeof(hdr));
+            ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, modified,
+                modifiedLen, NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+                &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+        }
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+            "ECDH recipient rejects duplicate text extension");
+
+        ret = test_cose_add_vendor_entries(out, outLen, ephemMapPos, 1u,
+            modified, sizeof(modified), &modifiedLen);
+        if (ret == WOLFCOSE_SUCCESS) {
+            (void)memset(&hdr, 0, sizeof(hdr));
+            ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, modified,
+                modifiedLen, NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+                &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+        }
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+            "ECDH ephemeral key rejects unknown text extension");
+
+        ret = test_cose_add_vendor_entries(out, outLen, ephemMapPos, 2u,
+            modified, sizeof(modified), &modifiedLen);
+        if (ret == WOLFCOSE_SUCCESS) {
+            (void)memset(&hdr, 0, sizeof(hdr));
+            ret = wc_CoseEncrypt_Decrypt(&recipient, 0u, modified,
+                modifiedLen, NULL, 0u, NULL, 0u, scratch, sizeof(scratch),
+                &hdr, plaintext, sizeof(plaintext), &plaintextLen);
+        }
+        TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+            "ECDH ephemeral key rejects duplicate text extension");
+    }
+
+    wc_CoseKey_Free(&recipientKey);
+    (void)wc_ecc_free(&recipientEcc);
+    (void)wc_FreeRng(&rng);
+}
+#endif /* WOLFCOSE_COSE_TEXT_LABELS */
 
 static void test_cose_encrypt_ecdh_es_malformed_ephemeral_point(void)
 {
@@ -15670,7 +15887,7 @@ static void test_cose_mac_multi_recipient_direct_empty_protected(void)
 {
     WOLFCOSE_KEY key1, key2;
     WOLFCOSE_RECIPIENT recipients[2];
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     int ret;
     uint8_t out[512];
     size_t outLen = 0;
@@ -18537,7 +18754,7 @@ static void test_cose_mac0_key_sizes(void)
 /* Test CBOR encoding edge cases for higher coverage */
 static void test_cbor_edge_cases(void)
 {
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     uint8_t buf[256];
     int ret;
     uint64_t u64Val;
@@ -18548,50 +18765,56 @@ static void test_cbor_edge_cases(void)
     TEST_LOG("  [CBOR Edge Cases]\n");
 
     /* Test encoding/decoding large uint (> 255) */
-    ctx.buf = buf;
-    ctx.bufSz = sizeof(buf);
-    ctx.idx = 0;
+    ret = wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "init uint encoder");
     ret = wc_CBOR_EncodeUint(&ctx, 1000);  /* > 255, needs 2 bytes */
     TEST_ASSERT(ret == 0, "encode uint 1000");
 
-    ctx.cbuf = buf;
-    ctx.idx = 0;
+    ret = wc_CBOR_DecoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "init uint decoder");
     ret = wc_CBOR_DecodeUint(&ctx, &u64Val);
     TEST_ASSERT(ret == 0, "decode uint 1000");
     TEST_ASSERT(u64Val == 1000, "uint 1000 value");
 
     /* Test encoding/decoding 4-byte uint */
-    ctx.idx = 0;
+    ret = wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "reinit uint encoder");
     ret = wc_CBOR_EncodeUint(&ctx, 100000);  /* needs 4 bytes */
     TEST_ASSERT(ret == 0, "encode uint 100000");
 
-    ctx.idx = 0;
+    ret = wc_CBOR_DecoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "reinit uint decoder");
     ret = wc_CBOR_DecodeUint(&ctx, &u64Val);
     TEST_ASSERT(ret == 0, "decode uint 100000");
     TEST_ASSERT(u64Val == 100000, "uint 100000 value");
 
     /* Test negative integer encoding */
-    ctx.idx = 0;
+    ret = wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "reinit int encoder");
     ret = wc_CBOR_EncodeInt(&ctx, -100);
     TEST_ASSERT(ret == 0, "encode int -100");
 
-    ctx.idx = 0;
+    ret = wc_CBOR_DecoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "reinit int decoder");
     ret = wc_CBOR_DecodeInt(&ctx, &i64Val);
     TEST_ASSERT(ret == 0, "decode int -100");
     TEST_ASSERT(i64Val == -100, "int -100 value");
 
     /* Test large negative integer */
-    ctx.idx = 0;
+    ret = wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "reinit negative-int encoder");
     ret = wc_CBOR_EncodeInt(&ctx, -1000);
     TEST_ASSERT(ret == 0, "encode int -1000");
 
-    ctx.idx = 0;
+    ret = wc_CBOR_DecoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "reinit negative-int decoder");
     ret = wc_CBOR_DecodeInt(&ctx, &i64Val);
     TEST_ASSERT(ret == 0, "decode int -1000");
     TEST_ASSERT(i64Val == -1000, "int -1000 value");
 
     /* Test bstr boundary (24 bytes) */
-    ctx.idx = 0;
+    ret = wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "reinit bstr encoder");
     ret = wc_CBOR_EncodeBstr(&ctx, buf, 24);
     TEST_ASSERT(ret == 0, "encode bstr 24");
 
@@ -18600,8 +18823,8 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t largeBuf[512];
         const uint8_t bigData[260] = {0};
-        WOLFCOSE_CBOR_CTX bigCtx;
-        bigCtx.buf = largeBuf;
+        WOLFCOSE_CBOR_CTX bigCtx = { 0 };
+        bigCtx.buf = largeBuf; bigCtx.cbuf = NULL;
         bigCtx.bufSz = sizeof(largeBuf);
         bigCtx.idx = 0;
         ret = wc_CBOR_EncodeBstr(&bigCtx, bigData, 256);
@@ -18621,8 +18844,8 @@ static void test_cbor_edge_cases(void)
     ret = wc_CBOR_EncodeBstr(&ctx, testBytes, sizeof(testBytes));
     TEST_ASSERT(ret == 0, "encode map val bstr");
 
-    ctx.cbuf = buf;
-    ctx.idx = 0;
+    ret = wc_CBOR_DecoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "init map decoder");
     ret = wc_CBOR_DecodeMapStart(&ctx, &count);
     TEST_ASSERT(ret == 0, "decode map start");
     TEST_ASSERT(count == 2, "map count 2");
@@ -18634,8 +18857,8 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tiny[2];
-        WOLFCOSE_CBOR_CTX tinyCtx;
-        tinyCtx.buf = tiny;
+        WOLFCOSE_CBOR_CTX tinyCtx = { 0 };
+        tinyCtx.buf = tiny; tinyCtx.cbuf = NULL;
         tinyCtx.bufSz = sizeof(tiny);
         tinyCtx.idx = 0;
         ret = wc_CBOR_EncodeUint(&tinyCtx, 0xFFFFFFFFu);  /* needs 5 bytes */
@@ -18646,8 +18869,8 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t tiny[4];
-        WOLFCOSE_CBOR_CTX tinyCtx;
-        tinyCtx.buf = tiny;
+        WOLFCOSE_CBOR_CTX tinyCtx = { 0 };
+        tinyCtx.buf = tiny; tinyCtx.cbuf = NULL;
         tinyCtx.bufSz = sizeof(tiny);
         tinyCtx.idx = 0;
         ret = wc_CBOR_EncodeUint(&tinyCtx, 0xFFFFFFFFFFFFFFFFULL);
@@ -18659,8 +18882,8 @@ static void test_cbor_edge_cases(void)
     {
         uint8_t tiny[5];
         uint8_t data[10] = {0};
-        WOLFCOSE_CBOR_CTX tinyCtx;
-        tinyCtx.buf = tiny;
+        WOLFCOSE_CBOR_CTX tinyCtx = { 0 };
+        tinyCtx.buf = tiny; tinyCtx.cbuf = NULL;
         tinyCtx.bufSz = sizeof(tiny);
         tinyCtx.idx = 0;
         ret = wc_CBOR_EncodeBstr(&tinyCtx, data, sizeof(data));
@@ -18726,7 +18949,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t empty[1] = {0};
-        WOLFCOSE_CBOR_CTX emptyCtx;
+        WOLFCOSE_CBOR_CTX emptyCtx = { 0 };
         emptyCtx.cbuf = empty;
         emptyCtx.bufSz = 0;  /* Empty buffer */
         emptyCtx.idx = 0;
@@ -18738,7 +18961,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t truncated[] = {0x19, 0x01};  /* uint16 header, only 1 data byte */
-        WOLFCOSE_CBOR_CTX truncCtx;
+        WOLFCOSE_CBOR_CTX truncCtx = { 0 };
         truncCtx.cbuf = truncated;
         truncCtx.bufSz = sizeof(truncated);
         truncCtx.idx = 0;
@@ -18750,7 +18973,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t truncated[] = {0x1A, 0x01, 0x02};  /* uint32 header, only 2 data bytes */
-        WOLFCOSE_CBOR_CTX truncCtx;
+        WOLFCOSE_CBOR_CTX truncCtx = { 0 };
         truncCtx.cbuf = truncated;
         truncCtx.bufSz = sizeof(truncated);
         truncCtx.idx = 0;
@@ -18762,7 +18985,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t truncated[] = {0x1B, 0x01, 0x02, 0x03, 0x04};  /* uint64 header, only 4 data bytes */
-        WOLFCOSE_CBOR_CTX truncCtx;
+        WOLFCOSE_CBOR_CTX truncCtx = { 0 };
         truncCtx.cbuf = truncated;
         truncCtx.bufSz = sizeof(truncated);
         truncCtx.idx = 0;
@@ -18774,7 +18997,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t reserved[] = {0x1C};  /* AI=28 is reserved */
-        WOLFCOSE_CBOR_CTX resCtx;
+        WOLFCOSE_CBOR_CTX resCtx = { 0 };
         resCtx.cbuf = reserved;
         resCtx.bufSz = sizeof(reserved);
         resCtx.idx = 0;
@@ -18786,7 +19009,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t indef[] = {0x5F};  /* bstr indefinite */
-        WOLFCOSE_CBOR_CTX indefCtx;
+        WOLFCOSE_CBOR_CTX indefCtx = { 0 };
         indefCtx.cbuf = indef;
         indefCtx.bufSz = sizeof(indef);
         indefCtx.idx = 0;
@@ -18800,7 +19023,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t truncBstr[] = {0x45, 'a', 'b'};  /* bstr of 5 bytes, only 2 provided */
-        WOLFCOSE_CBOR_CTX truncCtx;
+        WOLFCOSE_CBOR_CTX truncCtx = { 0 };
         truncCtx.cbuf = truncBstr;
         truncCtx.bufSz = sizeof(truncBstr);
         truncCtx.idx = 0;
@@ -18817,7 +19040,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};  /* bstr of 3 bytes */
-        WOLFCOSE_CBOR_CTX bstrCtx;
+        WOLFCOSE_CBOR_CTX bstrCtx = { 0 };
         bstrCtx.cbuf = bstr;
         bstrCtx.bufSz = sizeof(bstr);
         bstrCtx.idx = 0;
@@ -18829,7 +19052,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t uintData[] = {0x18, 0x64};  /* uint 100 */
-        WOLFCOSE_CBOR_CTX uintCtx;
+        WOLFCOSE_CBOR_CTX uintCtx = { 0 };
         uintCtx.cbuf = uintData;
         uintCtx.bufSz = sizeof(uintData);
         uintCtx.idx = 0;
@@ -18843,7 +19066,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};
-        WOLFCOSE_CBOR_CTX bstrCtx;
+        WOLFCOSE_CBOR_CTX bstrCtx = { 0 };
         bstrCtx.cbuf = bstr;
         bstrCtx.bufSz = sizeof(bstr);
         bstrCtx.idx = 0;
@@ -18855,7 +19078,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t arr[] = {0x82, 0x01, 0x02};  /* array of 2 elements */
-        WOLFCOSE_CBOR_CTX arrCtx;
+        WOLFCOSE_CBOR_CTX arrCtx = { 0 };
         arrCtx.cbuf = arr;
         arrCtx.bufSz = sizeof(arr);
         arrCtx.idx = 0;
@@ -18867,7 +19090,7 @@ static void test_cbor_edge_cases(void)
     /* empty-brace-scan: allow - test-local temporary scope */
     {
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};
-        WOLFCOSE_CBOR_CTX bstrCtx;
+        WOLFCOSE_CBOR_CTX bstrCtx = { 0 };
         bstrCtx.cbuf = bstr;
         bstrCtx.bufSz = sizeof(bstr);
         bstrCtx.idx = 0;
@@ -18883,7 +19106,7 @@ static void test_cbor_edge_cases(void)
     {
         /* Encode 0x8000000000000000 (> INT64_MAX) */
         uint8_t bigUint[] = {0x1B, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-        WOLFCOSE_CBOR_CTX bigCtx;
+        WOLFCOSE_CBOR_CTX bigCtx = { 0 };
         bigCtx.cbuf = bigUint;
         bigCtx.bufSz = sizeof(bigUint);
         bigCtx.idx = 0;
@@ -18896,7 +19119,7 @@ static void test_cbor_edge_cases(void)
     {
         /* CBOR negative: -1 - 0x8000000000000000 would overflow */
         uint8_t bigNeg[] = {0x3B, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-        WOLFCOSE_CBOR_CTX bigCtx;
+        WOLFCOSE_CBOR_CTX bigCtx = { 0 };
         bigCtx.cbuf = bigNeg;
         bigCtx.bufSz = sizeof(bigNeg);
         bigCtx.idx = 0;
@@ -18910,19 +19133,20 @@ static void test_cbor_edge_cases(void)
     {
         uint64_t tag;
         /* Encode a tag and decode it */
-        ctx.idx = 0;
+        ret = wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+        TEST_ASSERT(ret == 0, "reinit tag encoder");
         ret = wc_CBOR_EncodeTag(&ctx, 18);  /* COSE_Sign1 tag */
         TEST_ASSERT(ret == 0, "encode tag 18");
 
-        ctx.cbuf = buf;
-        ctx.idx = 0;
+        ret = wc_CBOR_DecoderInit(&ctx, buf, sizeof(buf));
+        TEST_ASSERT(ret == 0, "init tag decoder");
         ret = wc_CBOR_DecodeTag(&ctx, &tag);
         TEST_ASSERT(ret == 0, "decode tag");
         TEST_ASSERT(tag == 18, "tag value 18");
 
         /* Tag with wrong type */
         uint8_t notTag[] = {0x01};  /* uint 1 */
-        WOLFCOSE_CBOR_CTX notTagCtx;
+        WOLFCOSE_CBOR_CTX notTagCtx = { 0 };
         notTagCtx.cbuf = notTag;
         notTagCtx.bufSz = sizeof(notTag);
         notTagCtx.idx = 0;
@@ -18942,7 +19166,8 @@ static void test_cbor_edge_cases(void)
     TEST_LOG("  [CBOR Encode Boundaries]\n");
 
     /* Encode value 23 (max single-byte) */
-    ctx.idx = 0;
+    ret = wc_CBOR_EncoderInit(&ctx, buf, sizeof(buf));
+    TEST_ASSERT(ret == 0, "reinit boundary encoder");
     ret = wc_CBOR_EncodeUint(&ctx, 23);
     TEST_ASSERT(ret == 0, "encode uint 23");
 
@@ -19000,8 +19225,8 @@ static void test_cbor_edge_cases(void)
     /* Simple value encode with buffer too small */
     /* empty-brace-scan: allow - test-local temporary scope */
     {
-        WOLFCOSE_CBOR_CTX tinyCtx;
-        tinyCtx.buf = buf;  /* Use valid buf but 0 size */
+        WOLFCOSE_CBOR_CTX tinyCtx = { 0 };
+        tinyCtx.buf = buf; tinyCtx.cbuf = NULL;  /* Use valid buf but 0 size */
         tinyCtx.bufSz = 0;
         tinyCtx.idx = 0;
         ret = wc_CBOR_EncodeTrue(&tinyCtx);
@@ -19021,8 +19246,8 @@ static void test_cbor_edge_cases(void)
         ret = wc_CBOR_EncodeTstr(&ctx, helloTstr, sizeof(helloTstr));
         TEST_ASSERT(ret == 0, "encode tstr");
 
-        ctx.cbuf = buf;
-        ctx.idx = 0;
+        ret = wc_CBOR_DecoderInit(&ctx, buf, sizeof(buf));
+        TEST_ASSERT(ret == 0, "init tstr decoder");
         ret = wc_CBOR_DecodeTstr(&ctx, &str, &strLen);
         TEST_ASSERT(ret == 0, "decode tstr");
         TEST_ASSERT(strLen == 5, "tstr len");
@@ -19030,7 +19255,7 @@ static void test_cbor_edge_cases(void)
 
         /* Type mismatch: decode bstr as tstr */
         uint8_t bstr[] = {0x43, 'a', 'b', 'c'};  /* bstr */
-        WOLFCOSE_CBOR_CTX bstrCtx;
+        WOLFCOSE_CBOR_CTX bstrCtx = { 0 };
         bstrCtx.cbuf = bstr;
         bstrCtx.bufSz = sizeof(bstr);
         bstrCtx.idx = 0;
@@ -19042,8 +19267,8 @@ static void test_cbor_edge_cases(void)
     TEST_LOG("  [CBOR NULL Buffer]\n");
     /* empty-brace-scan: allow - test-local temporary scope */
     {
-        WOLFCOSE_CBOR_CTX nullBufCtx;
-        nullBufCtx.buf = NULL;
+        WOLFCOSE_CBOR_CTX nullBufCtx = { 0 };
+        nullBufCtx.buf = NULL; nullBufCtx.cbuf = NULL;
         nullBufCtx.bufSz = 256;
         nullBufCtx.idx = 0;
 
@@ -19075,10 +19300,16 @@ static void test_cose_protected_hdr_empty_map(void)
                                       &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS,
                 "DecodeProtectedHdr accepts serialized empty map");
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
     TEST_ASSERT((hdrState.labelBits == 0u) &&
                 (hdrState.extraIntegerCount == 0u) &&
                 (hdrState.extraTextCount == 0u),
                 "DecodeProtectedHdr empty map state");
+#else
+    TEST_ASSERT((hdrState.labelBits == 0u) &&
+                (hdrState.extraIntegerCount == 0u),
+                "DecodeProtectedHdr empty map state");
+#endif
 }
 
 static void test_cose_protected_hdr_trailing(void)
@@ -19560,7 +19791,7 @@ static void test_cose_encrypt_direct_empty_protected(void)
     WOLFCOSE_KEY key;
     WOLFCOSE_RECIPIENT recipient;
     WOLFCOSE_HDR hdr;
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     WC_RNG rng;
     int ret;
     int rngInited = 0;
@@ -19976,7 +20207,6 @@ static void test_cose_encrypt_multi_per_recipient(void)
         TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_ALG,
                     "encrypt rejects later mixed recipient mode");
         out[algOffsets[1]] = 0x25u; /* direct */
-        ret = WOLFCOSE_SUCCESS;
         out[algOffsets[0]] = 0x22u; /* A128KW */
         ret = wc_CoseEncrypt_Decrypt(&recipients[1], 1, out, outLen,
             NULL, 0, NULL, 0, scratch, sizeof(scratch), &hdr,
@@ -19987,6 +20217,38 @@ static void test_cose_encrypt_multi_per_recipient(void)
     }
 }
 #endif /* WOLFCOSE_ENCRYPT && WOLFCOSE_HAVE_AESGCM */
+
+#if !defined(WOLFCOSE_EAT_PSA) && \
+    (defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_MAC0_VERIFY))
+static void test_cose_default_rejects_profile_decode_flags(void)
+{
+    WOLFCOSE_KEY key;
+    WOLFCOSE_HDR hdr;
+    const uint8_t input[] = {0x00u};
+    const uint8_t* payload = NULL;
+    uint8_t scratch[1] = {0u};
+    size_t payloadLen = 0u;
+    int ret;
+
+    TEST_LOG("  [Default build: private profile decode flags]\n");
+    XMEMSET(&key, 0, sizeof(key));
+    XMEMSET(&hdr, 0, sizeof(hdr));
+#if defined(WOLFCOSE_SIGN1_VERIFY)
+    ret = wolfCose_Sign1_Verify_ex(&key, input, sizeof(input), NULL, 0u,
+        NULL, 0u, scratch, sizeof(scratch), &hdr, &payload, &payloadLen,
+        WOLFCOSE_COSE_DECODE_ALLOW_NONPREFERRED);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+        "default Sign1 verifier rejects private PSA/EAT decode flag");
+#endif
+#if defined(WOLFCOSE_MAC0_VERIFY)
+    ret = wolfCose_Mac0_Verify_ex(&key, input, sizeof(input), NULL, 0u,
+        NULL, 0u, scratch, sizeof(scratch), &hdr, &payload, &payloadLen,
+        WOLFCOSE_COSE_DECODE_ALLOW_NONPREFERRED);
+    TEST_ASSERT(ret == WOLFCOSE_E_INVALID_ARG,
+        "default Mac0 verifier rejects private PSA/EAT decode flag");
+#endif
+}
+#endif
 
 static void test_cose_protected_hdr_content_type(void)
 {
@@ -20069,24 +20331,45 @@ static void test_cose_protected_hdr_tstr_label(void)
     int ret;
     WOLFCOSE_HDR hdr;
     WOLFCOSE_HDR_STATE hdrState;
+    /* {1: -7, "x": 0} : alg ES256, plus an unknown tstr label */
+    uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
     WOLFCOSE_CBOR_CTX enc;
     uint8_t labelData[256];
     uint8_t dupBoundary[600];
     static const size_t boundaryLen[] = {0u, 23u, 24u, 255u, 256u};
     size_t i;
-    /* {1: -7, "x": 0} : alg ES256, plus an unknown tstr label */
-    uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
     /* {"x": 0, "x": 1} */
     uint8_t dupTstrLabel[] = {
         0xA2u, 0x61u, 'x', 0x00u, 0x61u, 'x', 0x01u
     };
+    /* Same map, with tstr length one encoded non-preferred. */
+    uint8_t nonPreferred[] = {
+        0xA2u, 0x01u, 0x26u, 0x78u, 0x01u, 'x', 0x00u
+    };
+#endif
 
     TEST_LOG("  [Protected Header: tstr-labeled entry]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(tstrLabel, sizeof(tstrLabel), &hdr,
                                       &hdrState);
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
     TEST_ASSERT(ret == WOLFCOSE_SUCCESS && hdr.alg == WOLFCOSE_ALG_ES256,
                 "DecodeProtectedHdr preserves unknown tstr label");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(nonPreferred, sizeof(nonPreferred),
+                                      &hdr, &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "strict protected header rejects non-preferred tstr label");
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr_ex(nonPreferred, sizeof(nonPreferred),
+                                         &hdr, &hdrState,
+                                         WOLFCOSE_COSE_DECODE_ALLOW_NONPREFERRED);
+    TEST_ASSERT(ret == WOLFCOSE_SUCCESS && hdr.alg == WOLFCOSE_ALG_ES256,
+                "PSA/EAT header accepts non-preferred tstr label");
+#endif
 
     XMEMSET(&hdr, 0, sizeof(hdr));
     ret = wolfCose_DecodeProtectedHdr(dupTstrLabel, sizeof(dupTstrLabel),
@@ -20120,6 +20403,10 @@ static void test_cose_protected_hdr_tstr_label(void)
         TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                     "reject duplicate tstr label at CBOR length boundary");
     }
+#else
+    TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
+                "DecodeProtectedHdr rejects disabled tstr labels");
+#endif
 }
 
 static void test_cose_protected_hdr_dup_label(void)
@@ -20169,6 +20456,10 @@ static void test_cose_protected_hdr_crit(void)
     uint8_t critTstrContentType[] = {
         0xA2u, 0x02u, 0x81u, 0x03u, 0x03u, 0x61u, 'x'
     };
+    /* {1: -7, 2: ["alg"]} : numeric-label crit cannot contain a tstr */
+    uint8_t critText[] = {
+        0xA2u, 0x01u, 0x26u, 0x02u, 0x81u, 0x63u, 'a', 'l', 'g'
+    };
 
     TEST_LOG("  [Protected Header: crit]\n");
     XMEMSET(&hdr, 0, sizeof(hdr));
@@ -20200,6 +20491,20 @@ static void test_cose_protected_hdr_crit(void)
         sizeof(critTstrContentType), &hdr, &hdrState);
     TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
                 "DecodeProtectedHdr rejects critical tstr content-type");
+
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr(critText, sizeof(critText), &hdr,
+                                      &hdrState);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "DecodeProtectedHdr numeric crit rejects text label");
+
+#if defined(WOLFCOSE_EAT_PSA_VERIFY)
+    XMEMSET(&hdr, 0, sizeof(hdr));
+    ret = wolfCose_DecodeProtectedHdr_ex(critText, sizeof(critText), &hdr,
+        &hdrState, WOLFCOSE_COSE_DECODE_ALLOW_NONPREFERRED);
+    TEST_ASSERT(ret == WOLFCOSE_E_COSE_BAD_HDR,
+                "tolerant DecodeProtectedHdr numeric crit rejects text label");
+#endif
 }
 
 static void test_cose_cross_bucket_dup(void)
@@ -20207,7 +20512,7 @@ static void test_cose_cross_bucket_dup(void)
     int ret;
     WOLFCOSE_HDR hdr;
     WOLFCOSE_HDR_STATE hdrState;
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     uint8_t protAlg[] = {0xA1u, 0x01u, 0x26u};
     uint8_t unprotAlg[] = {0xA1u, 0x01u, 0x26u};
 
@@ -20231,7 +20536,7 @@ static void test_cose_crit_in_unprotected(void)
     int ret;
     WOLFCOSE_HDR hdr;
     WOLFCOSE_HDR_STATE hdrState;
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     /* {2: [1]} : crit in unprotected bucket - RFC 9052 forbids this. */
     uint8_t critUnprot[] = {0xA1u, 0x02u, 0x81u, 0x01u};
 
@@ -20251,7 +20556,7 @@ static void test_cose_iv_partial_iv(void)
     int ret;
     WOLFCOSE_HDR hdr;
     WOLFCOSE_HDR_STATE hdrState;
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     /* {5: h'01', 6: h'02'} : IV and Partial IV both present */
     uint8_t ivPiv[] = {0xA2u, 0x05u, 0x41u, 0x01u, 0x06u, 0x41u, 0x02u};
     /* {5: h'01020304'} : IV only (protected, valid) */
@@ -21516,7 +21821,7 @@ static void test_cose_decode_tstr_alg_values(void)
     int ret;
     WOLFCOSE_HDR hdr;
     WOLFCOSE_HDR_STATE hdrState;
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     /* Protected hdr {1: "X"} — tstr alg */
     uint8_t protTstrAlg[] = {0xA1u, 0x01u, 0x61u, 'X'};
     /* Unprotected hdr {1: "X"} */
@@ -21540,12 +21845,13 @@ static void test_cose_decode_tstr_alg_values(void)
                 "DecodeUnprotectedHdr tolerates tstr alg");
 }
 
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
 static void test_cose_decode_unprotected_tstr_label(void)
 {
     int ret;
     WOLFCOSE_HDR hdr;
     WOLFCOSE_HDR_STATE hdrState;
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     /* {1: -7, "x": 0} */
     uint8_t tstrLabel[] = {0xA2u, 0x01u, 0x26u, 0x61u, 'x', 0x00u};
     /* {"x": 0} */
@@ -21577,12 +21883,13 @@ static void test_cose_decode_unprotected_tstr_label(void)
     TEST_ASSERT(ret == WOLFCOSE_E_CBOR_MALFORMED,
                 "DecodeUnprotectedHdr rejects cross-bucket tstr duplicate");
 }
+#endif /* WOLFCOSE_COSE_TEXT_LABELS */
 
 static void test_cose_key_decode_tstr_alg_rejected(void)
 {
     WOLFCOSE_KEY key;
     uint8_t buf[128];
-    WOLFCOSE_CBOR_CTX enc;
+    WOLFCOSE_CBOR_CTX enc = { 0 };
     const uint8_t symmKey[] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
     static const uint8_t hs256Tstr[] = {
         0x48u, 0x53u, 0x32u, 0x35u, 0x36u
@@ -21591,7 +21898,7 @@ static void test_cose_key_decode_tstr_alg_rejected(void)
 
     TEST_LOG("  [COSE_Key decode tstr alg rejected]\n");
 
-    enc.buf = buf;
+    enc.buf = buf; enc.cbuf = NULL;
     enc.bufSz = sizeof(buf);
     enc.idx = 0;
     ret = wc_CBOR_EncodeMapStart(&enc, 3);
@@ -22843,7 +23150,7 @@ static void test_internal_helpers(void)
     TEST_LOG("  [Header Decode Edge Cases]\n");
     /* empty-brace-scan: allow - test-local temporary scope */
     {
-        WOLFCOSE_CBOR_CTX ctx;
+        WOLFCOSE_CBOR_CTX ctx = { 0 };
         WOLFCOSE_HDR hdr;
         WOLFCOSE_HDR_STATE hdrState;
 
@@ -26715,7 +27022,7 @@ static void test_ecdh_es_multi_recipient_decrypt_rejected(void)
     WOLFCOSE_HDR hdr;
     ecc_key recipientEcc;
     WC_RNG rng;
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     int ret;
     size_t outerCount = 0;
     size_t recipPos = 0;
@@ -26804,7 +27111,7 @@ static void test_ecdh_es_recipient_protected_bound(void)
     WOLFCOSE_HDR hdr;
     ecc_key recipientEcc;
     WC_RNG rng;
-    WOLFCOSE_CBOR_CTX ctx;
+    WOLFCOSE_CBOR_CTX ctx = { 0 };
     int ret;
     size_t n = 0;
     size_t i;
@@ -27573,10 +27880,12 @@ static void test_cose_countersignatures(void)
         0xD8u, 0x62u, 0x84u, 0x40u, 0xA0u, 0x42u, 0x01u, 0x02u,
         0x81u, 0x83u, 0x40u, 0xA0u, 0x41u, 0x03u
     };
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
     static const uint8_t textHeaderTarget[] = {
         0xD2u, 0x84u, 0x44u, 0xA1u, 0x61u, 'x', 0x00u,
         0xA1u, 0x61u, 'y', 0x01u, 0x41u, 0x01u, 0x41u, 0x02u
     };
+#endif
     static const uint8_t duplicateHeaderTarget[] = {
         0xD2u, 0x84u, 0x40u, 0xA2u, 0x01u, 0x26u, 0x01u, 0x26u,
         0x41u, 0x01u, 0x41u, 0x02u
@@ -27655,7 +27964,9 @@ static void test_cose_countersignatures(void)
         { encryptTarget, sizeof(encryptTarget) },
         { macTarget, sizeof(macTarget) },
         { signTarget, sizeof(signTarget) },
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
         { textHeaderTarget, sizeof(textHeaderTarget) },
+#endif
         { protectedNestedCounterTarget,
           sizeof(protectedNestedCounterTarget) }
     };
@@ -28426,6 +28737,10 @@ int test_cose(void)
     /* Internal helper tests */
     test_cose_hdr_abi_layout();
     test_wolfcose_force_zero();
+#if !defined(WOLFCOSE_EAT_PSA) && \
+    (defined(WOLFCOSE_SIGN1_VERIFY) || defined(WOLFCOSE_MAC0_VERIFY))
+    test_cose_default_rejects_profile_decode_flags();
+#endif
 #if defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_SIGN1_SIGN)
     test_cose_sign1_size_and_untagged();
 #endif
@@ -28691,6 +29006,9 @@ int test_cose(void)
     test_cose_encrypt_ecdh_es_kid_and_alg_pin();
     test_cose_encrypt_ecdh_es_ephemeral_crv_narrowing();
     test_cose_encrypt_ecdh_es_malformed_ephemeral_point();
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
+    test_cose_encrypt_ecdh_es_text_extensions();
+#endif
     test_cose_encrypt_ecdh_es_hkdf_256();
     test_cose_encrypt_ecdh_es_long_recipient_protected();
     test_cose_encrypt_ecdh_es_wrong_key();
@@ -28907,7 +29225,9 @@ int test_cose(void)
     defined(WOLFCOSE_HAVE_ES256) && defined(WOLFSSL_KEY_GEN)
     test_cose_sign_multi_wrong_kty_for_pss();
 #endif
+#if defined(WOLFCOSE_COSE_TEXT_LABELS)
     test_cose_decode_unprotected_tstr_label();
+#endif
     test_cose_sigsize_known_algs();
     test_cose_decode_tstr_alg_values();
     test_cose_key_decode_tstr_alg_rejected();

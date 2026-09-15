@@ -28,5 +28,7 @@ int test_cose(void);
 int test_interop(void);
 int test_cose_examples(void);
 int test_psa_attestation(void);
+int test_eat_psa(void);
+int test_eat_psa_profiles(void);
 
 #endif /* WOLFCOSE_TEST_SUITE_H */

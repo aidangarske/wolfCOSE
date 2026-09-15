@@ -47,6 +47,10 @@ int main(void)
     printf("\n--- PSA Attestation Token Tests ---\n");
     failures += test_psa_attestation();
 
+    printf("\n--- PSA/EAT Tests ---\n");
+    failures += test_eat_psa();
+    failures += test_eat_psa_profiles();
+
     printf("\n=== Results: %s ===\n",
            (failures == 0) ? "ALL PASSED" : "FAILURES");
 

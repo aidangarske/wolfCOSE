@@ -7,6 +7,7 @@
 - [[API Reference]]
 - [[Macros]]
 - [[Experimental]]
+- [[PSA-EAT]]
 - [[Footprint]]
 - [[Testing]]
 - [[MISRA Compliance]]

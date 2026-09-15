@@ -1,6 +1,6 @@
 # wolfCOSE
 
-wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.rfc-editor.org/rfc/rfc8949), [COSE (RFC 9052/9053)](https://www.rfc-editor.org/rfc/rfc9052), [COSE countersignatures (RFC 9338)](https://www.rfc-editor.org/rfc/rfc9338), and post-quantum [ML-DSA for COSE (RFC 9964)](https://www.rfc-editor.org/rfc/rfc9964) and [HSS/LMS for COSE (RFC 8778)](https://www.rfc-editor.org/rfc/rfc8778) using [wolfSSL](https://www.wolfssl.com/) as the crypto backend.
+wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.rfc-editor.org/rfc/rfc8949), [COSE (RFC 9052/9053)](https://www.rfc-editor.org/rfc/rfc9052), [COSE countersignatures (RFC 9338)](https://www.rfc-editor.org/rfc/rfc9338), post-quantum [ML-DSA for COSE (RFC 9964)](https://www.rfc-editor.org/rfc/rfc9964), [HSS/LMS for COSE (RFC 8778)](https://www.rfc-editor.org/rfc/rfc8778), and the [PSA Attestation Token profile of EAT (RFC 9783)](https://www.rfc-editor.org/rfc/rfc9783) using [wolfSSL](https://www.wolfssl.com/) as the crypto backend.
 
 ## Main Features
 
@@ -13,6 +13,9 @@ wolfCOSE is a lightweight C library implementing [CBOR (RFC 8949)](https://www.r
 - **Post-quantum signing**: ML-DSA (FIPS 204) at all three security levels, with RFC 9964 `COSE_Key` (AKP key type, seed-based private keys)
 - **Stateful hash-based signing**: HSS/LMS (RFC 8778, NIST SP 800-208) with `COSE_Key` type 5 — the CNSA 2.0 algorithm for firmware and software signing, verify-only friendly for constrained devices
 - **41 algorithms** across signing, encryption, MAC, and key distribution
+- **PSA attestation**: optional EAT / PSA Token consumption and current-profile
+  issuance, with Sign1, Mac0, legacy-token compatibility, and delegated PSA/HSM
+  signing
 - **Zero dynamic allocation**: heap-allocation-free and non-recursive. Every operation runs on caller-provided buffers 
    within a bounded, target-customizable stack ceiling (nothing on the heap, zero `.data`/`.bss`)
 - **Tiny footprint**: ES256 `COSE_Sign1` wolfCOSE (COSE + CBOR engine) **~5.1 KB** verify-only and **~6.8 KB** sign + verify.
@@ -147,6 +150,12 @@ make demo
 | `make all` | Build `libwolfcose.a` (core library only) |
 | `make shared` | Build `libwolfcose.so` |
 | `make test` | Build + run CBOR and COSE unit tests |
+| `make pkg-config-test` | Verify wolfSSL package discovery and overrides |
+| `make eat-psa-test` | Build + run the explicit full RFC 9783 PSA/EAT conformance suite |
+| `make eat-psa-min-buffers-test` | Run the full PSA/EAT suite with `WOLFCOSE_MIN_BUFFERS` constrained-target limits |
+| `make eat-psa-config-check` | Verify PSA/EAT is absent by default and validate feature-gate combinations |
+| `make psa-eat-lean-verify` | Build + run the full `#tfm` verify-only PSA/EAT RFC vector example |
+| `make psa-eat-demo` | Issue, verify, and appraise a current RFC 9783 device-onboarding token |
 | `make tool` | Build CLI tool (`tools/wolfcose_tool`) |
 | `make tool-test` | Round-trip self-test for all 17 algorithms |
 | `make demo` | Build + run lifecycle demo (11 algorithms) |
@@ -161,6 +170,8 @@ See `examples/` for complete working code:
 - `lifecycle_demo.c`: full edge-to-cloud workflow
 - `comprehensive/`: algorithm matrix tests
 - `scenarios/`: firmware signing, attestation, fleet config
+- `psa_eat_demo.c`: RFC 9783 device onboarding with measurement appraisal
+- `psa_eat_verify_lean.c`: RFC 9783 current-profile Sign1 verification in a lean build
 
 ## CI / Testing
 
@@ -204,6 +215,7 @@ Full documentation is available in the [Wiki](https://github.com/wolfSSL/wolfCOS
 - [Algorithms](https://github.com/wolfSSL/wolfCOSE/wiki/Algorithms): Complete list of 41 supported algorithms with COSE IDs
 - [API Reference](https://github.com/wolfSSL/wolfCOSE/wiki/API-Reference): Function signatures, data structures, error codes
 - [Macros](https://github.com/wolfSSL/wolfCOSE/wiki/Macros): Compile-time configuration, size tuning, and ECDSA nonce policy
+- [PSA-EAT](https://github.com/wolfSSL/wolfCOSE/wiki/PSA-EAT): RFC 9783 PSA token profiles, APIs, macros, and security guidance
 - [Footprint](https://github.com/wolfSSL/wolfCOSE/wiki/Footprint): Size and speed numbers, desktop and on-device
 - [Testing](https://github.com/wolfSSL/wolfCOSE/wiki/Testing): Test infrastructure, coverage, and failure injection
 - [MISRA Compliance](https://github.com/wolfSSL/wolfCOSE/wiki/MISRA-Compliance): MISRA C:2012 and C:2023 compliance status and deviation rationale

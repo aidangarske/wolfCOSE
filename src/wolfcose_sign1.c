@@ -1055,13 +1055,14 @@ int wc_CoseSign1_Sign_ex(WOLFCOSE_KEY* key, int32_t alg,
 #endif /* WOLFCOSE_SIGN1_SIGN */
 
 #if defined(WOLFCOSE_SIGN1_VERIFY)
-int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
+int wolfCose_Sign1_Verify_ex(const WOLFCOSE_KEY* key,
     const uint8_t* in, size_t inSz,
     const uint8_t* detachedPayload, size_t detachedLen,
     const uint8_t* extAad, size_t extAadLen,
     uint8_t* scratch, size_t scratchSz,
     WOLFCOSE_HDR* hdr,
-    const uint8_t** payload, size_t* payloadLen)
+    const uint8_t** payload, size_t* payloadLen,
+    uint32_t flags)
 {
     int ret = WOLFCOSE_SUCCESS;
     WOLFCOSE_CBOR_CTX ctx;
@@ -1085,6 +1086,10 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
         (payload == NULL) || (payloadLen == NULL)) {
         ret = WOLFCOSE_E_INVALID_ARG;
     }
+    if ((ret == WOLFCOSE_SUCCESS) &&
+        (WOLFCOSE_COSE_DECODE_FLAGS_VALID(flags) == 0)) {
+        ret = WOLFCOSE_E_INVALID_ARG;
+    }
 #ifdef WOLFCOSE_CHECK_WORD32_LEN
     if ((ret == WOLFCOSE_SUCCESS) &&
         ((wolfCose_LenFitsWord32(inSz) == 0) ||
@@ -1098,14 +1103,12 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     if (ret == WOLFCOSE_SUCCESS) {
         (void)XMEMSET(hdr, 0, sizeof(WOLFCOSE_HDR));
 
-        ctx.cbuf = in;
-        ctx.bufSz = inSz;
-        ctx.idx = 0;
+        ret = wc_CBOR_DecoderInit(&ctx, in, inSz);
 
         /* Optional Tag(18) */
-        if ((ctx.idx < ctx.bufSz) &&
+        if ((ret == WOLFCOSE_SUCCESS) && (ctx.idx < ctx.bufSz) &&
             (wc_CBOR_PeekType(&ctx) == WOLFCOSE_CBOR_TAG)) {
-            ret = wc_CBOR_DecodeTag(&ctx, &tag);
+            ret = wolfCose_CBOR_DecodeTag_ex(&ctx, &tag, flags);
             if ((ret == WOLFCOSE_SUCCESS) && (tag != WOLFCOSE_TAG_SIGN1)) {
                 ret = WOLFCOSE_E_COSE_BAD_TAG;
             }
@@ -1114,7 +1117,7 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
 
     /* Array of 4 elements */
     if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_DecodeArrayStart(&ctx, &arrayCount);
+        ret = wolfCose_CBOR_DecodeArrayStart_ex(&ctx, &arrayCount, flags);
         if ((ret == WOLFCOSE_SUCCESS) && (arrayCount != 4u)) {
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
@@ -1122,13 +1125,14 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
 
     /* 1. Protected headers (bstr) */
     if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_DecodeBstr(&ctx, &protectedData, &protectedLen);
+        ret = wolfCose_CBOR_DecodeBstr_ex(&ctx, &protectedData, &protectedLen,
+            flags);
     }
 
     /* Parse protected headers */
     if (ret == WOLFCOSE_SUCCESS) {
-        ret = wolfCose_DecodeProtectedHdr(protectedData, protectedLen, hdr,
-                                          &hdrState);
+        ret = wolfCose_DecodeProtectedHdr_ex(protectedData, protectedLen, hdr,
+                                             &hdrState, flags);
         if (ret == WOLFCOSE_SUCCESS) {
             algProtected = wolfCose_HdrStateContains(&hdrState,
                                                       WOLFCOSE_HDR_ALG);
@@ -1137,7 +1141,7 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
 
     /* 2. Unprotected headers (map) */
     if (ret == WOLFCOSE_SUCCESS) {
-        ret = wolfCose_DecodeUnprotectedHdr(&ctx, hdr, &hdrState);
+        ret = wolfCose_DecodeUnprotectedHdr_ex(&ctx, hdr, &hdrState, flags);
     }
 
     /* 3. Payload (bstr or null if detached) */
@@ -1159,7 +1163,8 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
             }
         }
         else {
-            ret = wc_CBOR_DecodeBstr(&ctx, &payloadData, &payloadDataLen);
+            ret = wolfCose_CBOR_DecodeBstr_ex(&ctx, &payloadData,
+                &payloadDataLen, flags);
             if (ret == WOLFCOSE_SUCCESS) {
                 verifyPayload = payloadData;
                 verifyPayloadLen = payloadDataLen;
@@ -1169,7 +1174,7 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
 
     /* 4. Signature (bstr) */
     if (ret == WOLFCOSE_SUCCESS) {
-        ret = wc_CBOR_DecodeBstr(&ctx, &sigData, &sigDataLen);
+        ret = wolfCose_CBOR_DecodeBstr_ex(&ctx, &sigData, &sigDataLen, flags);
     }
 
     /* RFC 8949 Section 5.3.1: reject trailing data after the COSE object. */
@@ -1476,6 +1481,18 @@ int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
     }
 
     return ret;
+}
+
+int wc_CoseSign1_Verify(const WOLFCOSE_KEY* key,
+    const uint8_t* in, size_t inSz,
+    const uint8_t* detachedPayload, size_t detachedLen,
+    const uint8_t* extAad, size_t extAadLen,
+    uint8_t* scratch, size_t scratchSz,
+    WOLFCOSE_HDR* hdr,
+    const uint8_t** payload, size_t* payloadLen)
+{
+    return wolfCose_Sign1_Verify_ex(key, in, inSz, detachedPayload, detachedLen,
+        extAad, extAadLen, scratch, scratchSz, hdr, payload, payloadLen, 0u);
 }
 #endif /* WOLFCOSE_SIGN1_VERIFY */
 

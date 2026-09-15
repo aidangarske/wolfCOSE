@@ -2131,7 +2131,7 @@ static int tool_info(const char* inPath)
         ret = wc_CBOR_DecodeHead(&ctx, &item);
         if (ret != 0) {
             printf("  [decode error at offset %zu: %d]\n", pos, ret);
-            break;
+            return EXIT_CRYPTO;
         }
 
         for (i = 0; i < (size_t)indent; i++) printf("  ");

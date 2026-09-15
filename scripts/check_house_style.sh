@@ -9,6 +9,7 @@
 
 status=0
 PATHS='*.c *.h :(exclude)lightpanda/'
+LIB_PATHS='src include'
 tab=$(printf '\t')
 
 report() {
@@ -37,6 +38,15 @@ git grep -nE "$tab" -- $PATHS | report "tabs are banned in C sources; use spaces
 
 # No trailing whitespace.
 git grep -nE ' +$' -- $PATHS | report "trailing whitespace"
+
+# Library code uses wolfSSL portability wrappers for memory and string calls.
+git grep -nE \
+    -e '(^|[^[:alnum:]_])(memcpy|memset|memmove|memcmp)[[:space:]]*\(' \
+    -e '(^|[^[:alnum:]_])(malloc|calloc|realloc|free)[[:space:]]*\(' \
+    -e '(^|[^[:alnum:]_])(strcpy|strncpy|strcat|strncat)[[:space:]]*\(' \
+    -e '(^|[^[:alnum:]_])(strlen|strcmp|strncmp)[[:space:]]*\(' \
+    -- $LIB_PATHS | \
+    report "raw memory/string calls are banned in library code; use wolfSSL X* wrappers"
 
 # Examples follow the documented explicit-precedence style: each operand in a
 # logical-AND condition is parenthesized independently.
