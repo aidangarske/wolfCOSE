@@ -89,7 +89,7 @@ jobs:
     - name: Run command-line tool test with deprecated alg names
       env:
         EXPECT_PQC: ${{ matrix.pqc }}
-        SIGN_ALGS: "ES256 EdDSA Ed448 ESP256 Ed25519"
+        SIGN_ALGS: "ES256 ES384 ES512 EdDSA Ed448 ESP256 ESP384 ESP512 Ed25519"
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib

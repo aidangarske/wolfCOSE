@@ -54,7 +54,7 @@ hpke_keygen_or() {
 }
 
 # Names exactly as wolfcose_tool's parser accepts them.
-SIGN_ALGS="${SIGN_ALGS:-ESP256 Ed25519 Ed448 ML-DSA-44 ML-DSA-65 ML-DSA-87}"
+SIGN_ALGS="${SIGN_ALGS:-ESP256 ESP384 ESP512 Ed25519 Ed448 ML-DSA-44 ML-DSA-65 ML-DSA-87}"
 ENC_ALGS="A128GCM A192GCM A256GCM ChaCha20 AES-CCM"
 MAC_ALGS="HMAC256 HMAC384 HMAC512"
 
@@ -63,6 +63,7 @@ for A in $SIGN_ALGS; do
     K="$WORK/sig.key"; C="$WORK/sig.cose"
     case "$A" in
         ML-DSA-*) [ "$EXPECT_PQC" = "true" ] && OPT=0 || OPT=1 ;;
+        ESP384|ESP512) OPT=1 ;;
         *)        OPT=0 ;;
     esac
     if ! keygen_or "$A" "$K" "$OPT"; then continue; fi
@@ -116,6 +117,23 @@ if "$TOOL" keygen -a ESP256 -o "$PK" >/dev/null 2>&1 && \
 else
     skip "countersignature (ESP256)"
 fi
+
+for A in ESP384 ESP512; do
+    EK="$WORK/$A-counter.key"; EC="$WORK/$A-counter.cose"
+    if [ -f "$BASE" ] && "$TOOL" keygen -a "$A" -o "$EK" \
+        >/dev/null 2>&1; then
+        if "$TOOL" countersign -k "$EK" -a "$A" -i "$BASE" \
+            -o "$EC" >/dev/null 2>&1 && \
+           "$TOOL" counterverify -k "$EK" -i "$EC" >/dev/null 2>&1 && \
+           "$TOOL" verify -k "$PK" -i "$EC" >/dev/null 2>&1; then
+            ok "$A countersign and verify both layers"
+        else
+            bad "$A countersign round-trip"
+        fi
+    else
+        skip "countersignature ($A)"
+    fi
+done
 
 # Public-only RSA builds can't sign a decoded key, so skip; the self-test
 # still covers RSA signing.

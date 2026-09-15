@@ -215,9 +215,11 @@ static void usage(void)
         "  test    [--all | -a <alg>]   Round-trip self-test\n"
         "\nCountersign options: -p <detached_payload> --aad <aad_file>\n"
         "\n"
-        "Algorithms: ESP256, Ed25519, Ed448, PS256, PS384, PS512,\n"
+        "Algorithms: ESP256, ESP384, ESP512, Ed25519, Ed448,\n"
+        "            PS256, PS384, PS512,\n"
         "            ML-DSA-44, ML-DSA-65, ML-DSA-87,\n"
-        "            (ES256, EdDSA with WOLFCOSE_ENABLE_DEPRECATED_ALGS)\n"
+        "            (ES256, ES384, ES512, EdDSA with"
+        " WOLFCOSE_ENABLE_DEPRECATED_ALGS)\n"
         "            A128GCM, A192GCM, A256GCM, ChaCha20, AES-CCM,\n"
 #if defined(WOLFCOSE_HPKE_0_ENCRYPT) || defined(WOLFCOSE_HPKE_0_DECRYPT)
         "            HPKE-0,\n"
@@ -235,6 +237,16 @@ static int parse_alg(const char* name, int32_t* alg)
     if (strcmp(name, "ESP256") == 0) {
         *alg = WOLFCOSE_ALG_ESP256;
     }
+#ifdef WOLFCOSE_HAVE_ES384
+    else if (strcmp(name, "ESP384") == 0) {
+        *alg = WOLFCOSE_ALG_ESP384;
+    }
+#endif
+#ifdef WOLFCOSE_HAVE_ES512
+    else if (strcmp(name, "ESP512") == 0) {
+        *alg = WOLFCOSE_ALG_ESP512;
+    }
+#endif
     else if (strcmp(name, "Ed25519") == 0) {
         *alg = WOLFCOSE_ALG_ED25519;
     }
@@ -247,12 +259,25 @@ static int parse_alg(const char* name, int32_t* alg)
     else if (strcmp(name, "ES256") == 0) {
         *alg = WOLFCOSE_ALG_ES256;
     }
+#ifdef WOLFCOSE_HAVE_ES384
+    else if (strcmp(name, "ES384") == 0) {
+        *alg = WOLFCOSE_ALG_ES384;
+    }
+#endif
+#ifdef WOLFCOSE_HAVE_ES512
+    else if (strcmp(name, "ES512") == 0) {
+        *alg = WOLFCOSE_ALG_ES512;
+    }
+#endif
     else if (strcmp(name, "EdDSA") == 0) {
         *alg = WOLFCOSE_ALG_EDDSA;
     }
 #else
-    else if ((strcmp(name, "ES256") == 0) || (strcmp(name, "EdDSA") == 0)) {
-        fprintf(stderr, "%s is deprecated by RFC 9864; use ESP256 or Ed25519, "
+    else if ((strcmp(name, "ES256") == 0) ||
+             (strcmp(name, "ES384") == 0) ||
+             (strcmp(name, "ES512") == 0) ||
+             (strcmp(name, "EdDSA") == 0)) {
+        fprintf(stderr, "%s is deprecated by RFC 9864; use an ESP or Ed ID, "
                         "or rebuild with WOLFCOSE_ENABLE_DEPRECATED_ALGS.\n",
                 name);
         return -1;
@@ -329,6 +354,44 @@ static int parse_alg(const char* name, int32_t* alg)
     }
     return 0;
 }
+
+#ifdef WOLFCOSE_HAVE_ECDSA
+/* Keep CLI key generation and signing on the curve required by each ID. */
+static int tool_ecc_alg_params(int32_t alg, int32_t* crv, int* keySz)
+{
+    switch (alg) {
+#ifdef WOLFCOSE_HAVE_ES256
+        case WOLFCOSE_ALG_ESP256:
+#ifdef WOLFCOSE_HAVE_DEPRECATED_ALGS
+        case WOLFCOSE_ALG_ES256:
+#endif
+            *crv = WOLFCOSE_CRV_P256;
+            if (keySz != NULL) *keySz = 32;
+            return 0;
+#endif
+#ifdef WOLFCOSE_HAVE_ES384
+        case WOLFCOSE_ALG_ESP384:
+#ifdef WOLFCOSE_HAVE_DEPRECATED_ALGS
+        case WOLFCOSE_ALG_ES384:
+#endif
+            *crv = WOLFCOSE_CRV_P384;
+            if (keySz != NULL) *keySz = 48;
+            return 0;
+#endif
+#ifdef WOLFCOSE_HAVE_ES512
+        case WOLFCOSE_ALG_ESP512:
+#ifdef WOLFCOSE_HAVE_DEPRECATED_ALGS
+        case WOLFCOSE_ALG_ES512:
+#endif
+            *crv = WOLFCOSE_CRV_P521;
+            if (keySz != NULL) *keySz = 66;
+            return 0;
+#endif
+        default:
+            return -1;
+    }
+}
+#endif
 
 /* Read an entire file into buffer, rejecting data beyond the caller's bound. */
 static int read_file(const char* path, uint8_t* buf, size_t bufSz,
@@ -862,6 +925,10 @@ static int tool_content_nonce_len(int32_t alg, size_t* nonceLen)
 static int tool_keygen(int32_t alg, const char* outPath)
 {
     int ret;
+#ifdef WOLFCOSE_HAVE_ECDSA
+    int32_t eccCrv = 0;
+    int eccKeySz = 0;
+#endif
     WC_RNG rng;
     WOLFCOSE_KEY coseKey;
     uint8_t keyBuf[WOLFCOSE_TOOL_MAX_KEY];
@@ -875,19 +942,21 @@ static int tool_keygen(int32_t alg, const char* outPath)
 
     wc_CoseKey_Init(&coseKey);
 
-#ifdef WOLFCOSE_HAVE_ES256
-    if ((alg == WOLFCOSE_ALG_ESP256) || (alg == WOLFCOSE_ALG_ES256)) {
+#ifdef WOLFCOSE_HAVE_ECDSA
+    if (tool_ecc_alg_params(alg, &eccCrv, &eccKeySz) == 0) {
         ecc_key ecc;
         wc_ecc_init(&ecc);
-        ret = wc_ecc_make_key(&rng, 32, &ecc);
+        ret = wc_ecc_make_key(&rng, eccKeySz, &ecc);
         if (ret != 0) {
             fprintf(stderr, "ECC keygen failed: %d\n", ret);
             wc_ecc_free(&ecc);
             wc_FreeRng(&rng);
             return EXIT_CRYPTO;
         }
-        wc_CoseKey_SetEcc(&coseKey, WOLFCOSE_CRV_P256, &ecc);
-        ret = wc_CoseKey_Encode(&coseKey, keyBuf, sizeof(keyBuf), &keyLen);
+        ret = wc_CoseKey_SetEcc(&coseKey, eccCrv, &ecc);
+        if (ret == 0) {
+            ret = wc_CoseKey_Encode(&coseKey, keyBuf, sizeof(keyBuf), &keyLen);
+        }
         wc_ecc_free(&ecc);
     }
     else
@@ -1056,6 +1125,9 @@ static int tool_sign(const char* keyPath, int32_t alg,
                      const char* inPath, const char* outPath)
 {
     int ret;
+#ifdef WOLFCOSE_HAVE_ECDSA
+    int32_t eccCrv = 0;
+#endif
     uint8_t keyBuf[WOLFCOSE_TOOL_MAX_KEY];
     size_t keyLen = 0;
     uint8_t msgBuf[WOLFCOSE_TOOL_MAX_MSG];
@@ -1089,11 +1161,11 @@ static int tool_sign(const char* keyPath, int32_t alg,
     wc_CoseKey_Init(&coseKey);
 
 #ifdef WOLFCOSE_HAVE_ECDSA
-    if (alg == WOLFCOSE_ALG_ESP256 || alg == WOLFCOSE_ALG_ES256) {
+    if (tool_ecc_alg_params(alg, &eccCrv, NULL) == 0) {
         ecc_key ecc;
         wc_ecc_init(&ecc);
         /* Attach curve is a placeholder; decode takes crv from the key file. */
-        ret = wc_CoseKey_SetEcc(&coseKey, WOLFCOSE_CRV_P256, &ecc);
+        ret = wc_CoseKey_SetEcc(&coseKey, eccCrv, &ecc);
         if (ret == 0) {
             ret = wc_CoseKey_Decode(&coseKey, keyBuf, keyLen);
         }
@@ -2213,10 +2285,12 @@ static int tool_info(const char* inPath)
 /* ----- test: in-memory round-trip self-tests for all algorithms ----- */
 
 /* Sign round-trip: keygen -> sign -> verify -> check payload */
-#ifdef WOLFCOSE_HAVE_ES256
-static int test_sign_es256(const char* name, int32_t alg)
+#ifdef WOLFCOSE_HAVE_ECDSA
+static int test_sign_ecc(const char* name, int32_t alg)
 {
     int ret = 0;
+    int32_t crv = 0;
+    int keySz = 0;
     WC_RNG rng;
     ecc_key ecc;
     WOLFCOSE_KEY key;
@@ -2231,23 +2305,28 @@ static int test_sign_es256(const char* name, int32_t alg)
 
     printf("  %-12s sign/verify ... ", name);
 
-    ret = wc_InitRng(&rng);
+    ret = tool_ecc_alg_params(alg, &crv, &keySz);
+    if (ret == 0) {
+        ret = wc_InitRng(&rng);
+    }
     if (ret == 0) {
         rngInit = 1;
         ret = wc_ecc_init(&ecc);
     }
     if (ret == 0) {
         eccInit = 1;
-        ret = wc_ecc_make_key(&rng, 32, &ecc);
+        ret = wc_ecc_make_key(&rng, keySz, &ecc);
     }
     if (ret == 0) {
         wc_CoseKey_Init(&key);
-        wc_CoseKey_SetEcc(&key, WOLFCOSE_CRV_P256, &ecc);
+        ret = wc_CoseKey_SetEcc(&key, crv, &ecc);
 
-        ret = wc_CoseSign1_Sign(&key, alg, NULL, 0,
-            payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
-            scratch, sizeof(scratch),
-            out, sizeof(out), &outLen, &rng);
+        if (ret == 0) {
+            ret = wc_CoseSign1_Sign(&key, alg, NULL, 0,
+                payload, sizeof(payload) - 1, NULL, 0, NULL, 0,
+                scratch, sizeof(scratch),
+                out, sizeof(out), &outLen, &rng);
+        }
     }
     if (ret == 0) {
         ret = wc_CoseSign1_Verify(&key, out, outLen, NULL, 0, NULL, 0,
@@ -2255,7 +2334,7 @@ static int test_sign_es256(const char* name, int32_t alg)
             &hdr, &decoded, &decodedLen);
     }
     if (ret == 0) {
-        if (decodedLen != sizeof(payload) - 1 ||
+        if (hdr.alg != alg || decodedLen != sizeof(payload) - 1 ||
             memcmp(decoded, payload, decodedLen) != 0) {
             ret = -1;
         }
@@ -2790,12 +2869,36 @@ static int tool_test(const char* filter)
 #ifdef WOLFCOSE_HAVE_ES256
     if (all || strcmp(filter, "ESP256") == 0) {
         tests++;
-        if (test_sign_es256("ESP256", WOLFCOSE_ALG_ESP256) != 0) failures++;
+        if (test_sign_ecc("ESP256", WOLFCOSE_ALG_ESP256) != 0) failures++;
     }
 #ifdef WOLFCOSE_HAVE_DEPRECATED_ALGS
     if (all || strcmp(filter, "ES256") == 0) {
         tests++;
-        if (test_sign_es256("ES256", WOLFCOSE_ALG_ES256) != 0) failures++;
+        if (test_sign_ecc("ES256", WOLFCOSE_ALG_ES256) != 0) failures++;
+    }
+#endif
+#endif
+#ifdef WOLFCOSE_HAVE_ES384
+    if (all || strcmp(filter, "ESP384") == 0) {
+        tests++;
+        if (test_sign_ecc("ESP384", WOLFCOSE_ALG_ESP384) != 0) failures++;
+    }
+#ifdef WOLFCOSE_HAVE_DEPRECATED_ALGS
+    if (all || strcmp(filter, "ES384") == 0) {
+        tests++;
+        if (test_sign_ecc("ES384", WOLFCOSE_ALG_ES384) != 0) failures++;
+    }
+#endif
+#endif
+#ifdef WOLFCOSE_HAVE_ES512
+    if (all || strcmp(filter, "ESP512") == 0) {
+        tests++;
+        if (test_sign_ecc("ESP512", WOLFCOSE_ALG_ESP512) != 0) failures++;
+    }
+#ifdef WOLFCOSE_HAVE_DEPRECATED_ALGS
+    if (all || strcmp(filter, "ES512") == 0) {
+        tests++;
+        if (test_sign_ecc("ES512", WOLFCOSE_ALG_ES512) != 0) failures++;
     }
 #endif
 #endif
