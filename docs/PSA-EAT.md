@@ -37,6 +37,11 @@ lean build, or remove any supported algorithm with its `WOLFCOSE_NO_*` macro.
 The PSA/EAT code has no algorithm fallback: a disabled algorithm is rejected
 before claims are used.
 
+RFC 9783 Sign1 tokens use the RFC 9053 ES256/ES384/ES512 IDs. Define
+`WOLFCOSE_ENABLE_DEPRECATED_ALGS` for a Sign1 receiver or issuer; it is also
+required for the derived full `#tfm` receiver capability. Without it, those
+token algorithms are rejected.
+
 The consume and issue directions are independent. An attester can select the
 common issue gate and one issue envelope without selecting either consumption
 gate. Such a build contains no PSA/EAT verifier symbol. A claim-encoder-only
@@ -47,6 +52,7 @@ Minimal current Sign1 verifier:
 
 ```text
 -DWOLFCOSE_LEAN_VERIFY
+-DWOLFCOSE_ENABLE_DEPRECATED_ALGS
 -DWOLFCOSE_ENABLE_EAT_PSA
 -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT
 -DWOLFCOSE_ENABLE_EAT_PSA_SIGN1
@@ -70,6 +76,7 @@ Current ES256 Sign1 issuer without the PSA/EAT verifier:
 -DWOLFCOSE_NO_MAC0_VERIFY
 -DWOLFCOSE_NO_KEY_DECODE
 -DWOLFCOSE_NO_CBOR_DECODE
+-DWOLFCOSE_ENABLE_DEPRECATED_ALGS
 -DWOLFCOSE_ENABLE_EAT_PSA
 -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT
 -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE

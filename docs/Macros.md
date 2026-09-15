@@ -80,7 +80,7 @@ and verifiers. The two claim-map limits exist only in verifier builds.
 | `WOLFCOSE_ENABLE_EAT_PSA_LEGACY` | Legacy `PSA_IOT_PROFILE_1` consumption | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER` | UEID-selected key lookup helper | off |
 | `WOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR` | Zero-copy component callback helper | off |
-| `WOLFCOSE_EAT_PSA_TFM_FULL` | Derived: all RFC 9783 `#tfm` receiver algorithms/envelopes are present; do not define manually | derived |
+| `WOLFCOSE_EAT_PSA_TFM_FULL` | Derived: all RFC 9783 `#tfm` receiver algorithms/envelopes and the deprecated RFC 9053 ECDSA IDs are enabled; do not define manually | derived |
 | `WOLFCOSE_EAT_PSA_MAX_COMPONENTS` | Maximum accepted software-component maps | 32 |
 | `WOLFCOSE_EAT_PSA_MAX_CLAIMS` | Verifier-only maximum claim-map entries, including extensions | 64 |
 | `WOLFCOSE_EAT_PSA_MAX_COMPONENT_CLAIMS` | Verifier-only maximum entries in each component map | 16 |

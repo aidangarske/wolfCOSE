@@ -23,6 +23,11 @@
     #endif
 #endif
 
+#if defined(WOLFCOSE_TEST_NO_DEPRECATED_ALGS) && \
+    defined(WOLFCOSE_EAT_PSA_TFM_FULL)
+    #error "RFC 9783 #tfm receiver needs the RFC 9053 signature IDs"
+#endif
+
 int test_eat_psa_derived_gate(void)
 {
     return 0;

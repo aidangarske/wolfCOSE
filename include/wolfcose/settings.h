@@ -915,6 +915,7 @@ extern "C" {
 
 #if defined(WOLFCOSE_EAT_PSA_CURRENT) && \
     defined(WOLFCOSE_EAT_PSA_SIGN1) && defined(WOLFCOSE_EAT_PSA_MAC0) && \
+    defined(WOLFCOSE_HAVE_DEPRECATED_ALGS) && \
     defined(WOLFCOSE_HAVE_ES256) && defined(WOLFCOSE_HAVE_ES384) && \
     defined(WOLFCOSE_HAVE_ES512) && defined(WOLFCOSE_HAVE_HMAC256) && \
     defined(WOLFCOSE_HAVE_HMAC384) && defined(WOLFCOSE_HAVE_HMAC512)
