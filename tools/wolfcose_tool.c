@@ -218,8 +218,12 @@ static void usage(void)
         "Algorithms: ES256, EdDSA, Ed448, PS256, PS384, PS512,\n"
         "            ML-DSA-44, ML-DSA-65, ML-DSA-87,\n"
         "            A128GCM, A192GCM, A256GCM, ChaCha20, AES-CCM,\n"
-#if defined(WOLFCOSE_HAVE_HPKE_0)
-        "            HPKE-0, HPKE-0-KE,\n"
+#if defined(WOLFCOSE_HPKE_0_ENCRYPT) || defined(WOLFCOSE_HPKE_0_DECRYPT)
+        "            HPKE-0,\n"
+#endif
+#if defined(WOLFCOSE_HPKE_0_KE_ENCRYPT) || \
+    defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+        "            HPKE-0-KE,\n"
 #endif
         "            HMAC256, HMAC384, HMAC512\n");
 }
@@ -1821,6 +1825,7 @@ static int tool_hpke0_enc(const char* keyPath, const char* inPath,
     if (eccLoaded != 0) {
         wc_ecc_free(&recipientEcc);
     }
+    tool_force_zero(msgBuf, sizeof(msgBuf));
     return ret;
 }
 #endif /* WOLFCOSE_HPKE_0_ENCRYPT */
@@ -1868,6 +1873,7 @@ static int tool_hpke0_dec(const char* keyPath, const char* inPath,
     if (eccLoaded != 0) {
         wc_ecc_free(&recipientEcc);
     }
+    tool_force_zero(plainBuf, sizeof(plainBuf));
     return ret;
 }
 #endif /* WOLFCOSE_HPKE_0_DECRYPT */
@@ -1906,9 +1912,10 @@ static int tool_hpke_ke_enc(const char* const* keyPaths, size_t keyCount,
     }
     ret = read_file(inPath, msgBuf, sizeof(msgBuf), &msgLen);
     if (ret != 0) {
+        tool_force_zero(msgBuf, sizeof(msgBuf));
         return ret;
     }
-    (void)memset(recipients, 0, sizeof(recipients));
+    (void)XMEMSET(recipients, 0, sizeof(recipients));
     for (i = 0u; (ret == 0) && (i < keyCount); i++) {
         ret = tool_hpke_load_key(keyPaths[i], WOLFCOSE_ALG_HPKE_0_KE,
                                  &recipientKey[i], &recipientEcc[i]);
@@ -1953,6 +1960,7 @@ static int tool_hpke_ke_enc(const char* const* keyPaths, size_t keyCount,
         eccCount--;
         wc_ecc_free(&recipientEcc[eccCount]);
     }
+    tool_force_zero(msgBuf, sizeof(msgBuf));
     return ret;
 }
 #endif /* WOLFCOSE_HPKE_0_KE_ENCRYPT */
@@ -1982,7 +1990,7 @@ static int tool_hpke_ke_dec(const char* keyPath, size_t recipientIndex,
     eccLoaded = 1;
     ret = read_file(inPath, msgBuf, sizeof(msgBuf), &msgLen);
     if (ret == 0) {
-        (void)memset(&recipient, 0, sizeof(recipient));
+        (void)XMEMSET(&recipient, 0, sizeof(recipient));
         recipient.algId = WOLFCOSE_ALG_HPKE_0_KE;
         recipient.key = &recipientKey;
         ret = wc_CoseEncrypt_Decrypt(&recipient, recipientIndex, msgBuf,
@@ -2004,6 +2012,7 @@ static int tool_hpke_ke_dec(const char* keyPath, size_t recipientIndex,
     if (eccLoaded != 0) {
         wc_ecc_free(&recipientEcc);
     }
+    tool_force_zero(plainBuf, sizeof(plainBuf));
     return ret;
 }
 #endif /* WOLFCOSE_HPKE_0_KE_DECRYPT */

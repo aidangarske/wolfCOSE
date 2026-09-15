@@ -703,7 +703,9 @@ HPKE_C99_CONFIGS = \
     "$(HPKE_C99_CONFIG)" \
     "$(HPKE_C99_CONFIG) -DNO_ECC256 -DHAVE_ALL_CURVES -DHAVE_ECC_KOBLITZ"
 HPKE_C99_INVALID_CONFIGS = "-DNO_ECC_SECP" "-DECC_MIN_KEY_SZ=384" \
-    "-DNO_AES_128"
+    "-DNO_AES_128" \
+    "-DWOLFSSL_USER_SETTINGS -Itests/config/hpke_prereqs -DWOLFCOSE_TEST_NO_HKDF" \
+    "-DWOLFSSL_USER_SETTINGS -Itests/config/hpke_prereqs -DWOLFCOSE_TEST_NO_ECC_DHE"
 # Prefer the explicitly selected HPKE backend over an unrelated host install.
 # Treat backend headers as system headers so this gate judges gated wolfCOSE
 # syntax, including when the selected wolfSSL version uses C11 extensions.

@@ -690,11 +690,12 @@ extern "C" {
     defined(WOLFCOSE_ENABLE_HPKE_0_KE_ENCRYPT) || \
     defined(WOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT)
     #if !defined(HAVE_HPKE) || !defined(HAVE_ECC) || \
+        !defined(HAVE_HKDF) || !defined(HAVE_ECC_DHE) || \
         !defined(HAVE_AESGCM) || !defined(WOLFSSL_AES_128) || \
         defined(NO_SHA256) || defined(NO_ECC_SECP) || \
         (defined(NO_ECC256) && !defined(HAVE_ALL_CURVES)) || \
         (defined(ECC_MIN_KEY_SZ) && (ECC_MIN_KEY_SZ > 256))
-        #error "HPKE-0 requires HPKE, ECC P-256, SHA-256, AES-GCM, and AES-128"
+        #error "HPKE-0 requires HPKE, ECC P-256 ECDH, HKDF-SHA256, SHA-256, AES-GCM, and AES-128"
     #endif
     #define WOLFCOSE_HAVE_HPKE_0
 #endif
