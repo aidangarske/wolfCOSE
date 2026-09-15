@@ -10,6 +10,8 @@ experimental-check.err
 
 # Binaries
 tests/test_wolfcose
+tests/test_wolfcose_eat_psa
+tests/test_wolfcose_eat_psa_limits
 tools/wolfcose_tool
 examples/lifecycle_demo
 tests/interop/t_cose/interop_tcose
@@ -27,6 +29,8 @@ examples/ext_sign_demo
 examples/sign1_verify_mldsa
 examples/sign1_lms
 examples/sign1_verify_lms
+examples/psa_eat_demo
+examples/psa_eat_verify_lean
 
 # Editor / OS
 *.swp

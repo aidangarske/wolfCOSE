@@ -61,66 +61,15 @@ jobs:
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
-        make coverage-force-failure CC=gcc \
-          CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include" \
-          LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+        COV_CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -Wpedantic -Wshadow -Wconversion -I./include -isystem $WOLFSSL_DIR/include"
+        COV_LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+        # Default build first: it covers the generic paths the PSA build
+        # compiles out, such as the verifiers rejecting private PSA/EAT decode
+        # flags. Check it before the PSA build's clean wipes its gcov data.
+        make coverage-force-failure CC=gcc CFLAGS="$COV_CFLAGS" LDFLAGS="$COV_LDFLAGS"
+        sh scripts/check_coverage.sh
+        # PSA/EAT build: adds wolfcose_eat_psa.c and the PSA-enabled branches.
+        make eat-psa-coverage-force-failure CC=gcc CFLAGS="$COV_CFLAGS" LDFLAGS="$COV_LDFLAGS"
 
     - name: Check coverage thresholds
-      run: |
-        echo "=============================================="
-        echo "         wolfCOSE Coverage Report"
-        echo "=============================================="
-        echo ""
-
-        # Every wolfCOSE source file must have 100% line coverage.
-
-        FAILED=0
-
-        GCOV_OUTPUT=$(gcov src/*.c 2>&1)
-        echo "$GCOV_OUTPUT"
-        echo ""
-
-        for f in src/*.c; do
-          BASE=$(basename "$f")
-          PCT=$(echo "$GCOV_OUTPUT" | grep -A1 "File '$f'" | grep "Lines executed" | sed "s/.*:\([0-9.]*\)%.*/\1/")
-          UNCOV=$(grep -c "#####" "$BASE.gcov" 2>/dev/null || echo "0")
-
-          if [ -z "$PCT" ]; then
-            FAILED=1
-            echo ">>> FAILED: no gcov result for $BASE <<<"
-            continue
-          fi
-
-          echo "$BASE:"
-          echo "  Coverage: ${PCT}%"
-          echo "  Threshold: 100%"
-          echo "  Uncovered lines: ${UNCOV}"
-
-          if awk "BEGIN {exit !($PCT < 100)}"; then
-            FAILED=1
-            echo ">>> FAILED: $BASE coverage is below 100%! <<<"
-            echo ""
-            echo "Uncovered lines in $BASE:"
-            echo "------------------------------"
-            grep -n "#####" "$BASE.gcov" | head -50
-          else
-            echo ">>> PASSED: $BASE meets 100% threshold <<<"
-          fi
-          echo ""
-        done
-
-        echo "=============================================="
-
-        if [ "$FAILED" -eq 1 ]; then
-          echo ""
-          echo "  Looks like you need more tests!"
-          echo ""
-          echo "  Add tests to tests/test_cose.c to cover the"
-          echo "  uncovered lines shown above."
-          echo ""
-          echo "=============================================="
-          exit 1
-        fi
-
-        echo "  All coverage thresholds passed!"
-        echo "=============================================="
+      run: sh scripts/check_coverage.sh wolfcose_eat_psa.c

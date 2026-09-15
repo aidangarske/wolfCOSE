@@ -87,8 +87,18 @@ jobs:
            -DWOLFCOSE_ENABLE_HPKE_0_DECRYPT \
            -DWOLFCOSE_ENABLE_HPKE_0_KE_ENCRYPT \
            -DWOLFCOSE_ENABLE_HPKE_0_KE_DECRYPT \
+           -DWOLFCOSE_ENABLE_EAT_PSA \
+           -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
+           -DWOLFCOSE_ENABLE_EAT_PSA_SIGN1 \
+           -DWOLFCOSE_ENABLE_EAT_PSA_MAC0 \
+           -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+           -DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE \
+           -DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE \
+           -DWOLFCOSE_ENABLE_EAT_PSA_LEGACY \
+           -DWOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER \
+           -DWOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR \
            -I include -I "$HOME/wolfssl-install/include" \
-           -fsyntax-only tests/misra_consumer.c
+           -fsyntax-only src/wolfcose_eat_psa.c tests/misra_consumer.c
 
         set +e
         cppcheck --addon=misra \
@@ -114,6 +124,16 @@ jobs:
                  -DHAVE_HKDF \
                  -DHAVE_AES_CBC \
                  -DHAVE_HPKE \
+                 -DWOLFCOSE_ENABLE_EAT_PSA \
+                 -DWOLFCOSE_ENABLE_EAT_PSA_CURRENT \
+                 -DWOLFCOSE_ENABLE_EAT_PSA_SIGN1 \
+                 -DWOLFCOSE_ENABLE_EAT_PSA_MAC0 \
+                 -DWOLFCOSE_ENABLE_EAT_PSA_ISSUE \
+                 -DWOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE \
+                 -DWOLFCOSE_ENABLE_EAT_PSA_MAC0_ISSUE \
+                 -DWOLFCOSE_ENABLE_EAT_PSA_LEGACY \
+                 -DWOLFCOSE_ENABLE_EAT_PSA_UEID_RESOLVER \
+                 -DWOLFCOSE_ENABLE_EAT_PSA_COMPONENT_ITERATOR \
                  -DWOLFCOSE_FLOAT \
                  -DWOLFCOSE_ENABLE_EXT_SIGN \
                  -DWOLFCOSE_EXPERIMENTAL \

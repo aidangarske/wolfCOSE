@@ -23,7 +23,7 @@ jobs:
     uses: ./.github/workflows/_resolve-wolfssl.yml
 
   interop:
-    name: COSE interoperability (OpenSSL, wolfSSL ${{ matrix.wolfssl-version }})
+    name: COSE and PSA/EAT interoperability (OpenSSL, wolfSSL ${{ matrix.wolfssl-version }})
     needs: discover
     runs-on: ubuntu-latest
     # All external peers share this job and its wolfSSL build. Keeping them
@@ -112,7 +112,15 @@ jobs:
         make WOLFSSL_CFLAGS="-isystem $WOLFSSL_DIR/include" \
              WOLFSSL_LIBS="-L$WOLFSSL_DIR/lib -lwolfssl"
 
-    - name: Run t_cose interop
+    - name: Verify RFC 9783 Appendix A PSA/EAT vectors
+      run: |
+        export WOLFSSL_DIR=$HOME/wolfssl-install
+        export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
+        make eat-psa-test \
+             CFLAGS="-std=c99 -DHAVE_ANONYMOUS_INLINE_AGGREGATES=1 -Os -Wall -Wextra -I./include -isystem $WOLFSSL_DIR/include" \
+             LDFLAGS="-L$WOLFSSL_DIR/lib -lwolfssl"
+
+    - name: Run t_cose and PSA/EAT profile interop
       run: |
         export WOLFSSL_DIR=$HOME/wolfssl-install
         export LD_LIBRARY_PATH=$WOLFSSL_DIR/lib
