@@ -24,13 +24,13 @@
  * Simulates a produce -> transport -> consume lifecycle for all COSE
  * message types:
  *
- *   COSE_Sign1:    ES256, EdDSA, PS256, ML-DSA-44
+ *   COSE_Sign1:    ESP256, Ed25519, PS256, ML-DSA-44
  *   COSE_Encrypt0: A128GCM, A256GCM, ChaCha20, AES-CCM
  *   COSE_Mac0:     HMAC256, HMAC384, HMAC512
  *
  * Usage:
  *   ./lifecycle_demo              Run all available algorithms
- *   ./lifecycle_demo -a ES256     Run only ES256
+ *   ./lifecycle_demo -a ESP256    Run only ESP256
  *   ./lifecycle_demo -a HMAC256   Run only HMAC-256
  *   ./lifecycle_demo -a all       Run all available algorithms
  *

@@ -43,7 +43,7 @@ int wolfCOSETest(void)
     int keyInited = 0;
     int ret;
 
-    printf("Running wolfCOSE test (COSE_Sign1 ES256)...\n");
+    printf("Running wolfCOSE test (COSE_Sign1 ESP256)...\n");
 
     ret = wc_InitRng(&rng);
     if (ret == 0) {
@@ -96,8 +96,8 @@ int wolfCOSETest(void)
     }
     return ret;
 #else
-    /* ES256 COSE_Sign1 not compiled in; report not run so it is not read as pass */
-    printf("wolfCOSE test: needs ES256 with COSE_Sign1 sign and verify\n");
+    /* ESP256 COSE_Sign1 not compiled in; report not run so it is not read as pass */
+    printf("wolfCOSE test: needs ESP256 with COSE_Sign1 sign and verify\n");
     return -1;
 #endif
 }

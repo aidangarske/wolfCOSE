@@ -1041,6 +1041,8 @@ INTEROP_LIB_A     = $(INTEROP_LIB_DIR)/libwolfcose_interop.a
 INTEROP_LIB_OBJ   = $(patsubst src/%.c,$(INTEROP_LIB_DIR)/%.o,$(SRC))
 INTEROP_CFLAGS    = $(CFLAGS) $(INTEROP_COSE_CFLAGS) -std=c99 -I$(TCOSE_DIR)/inc -I$(QCBOR_DIR)/inc
 
+$(INTEROP_LIB_DIR)/wolfcose_eat_psa.o: include/wolfcose/eat_psa.h
+
 $(INTEROP_LIB_DIR)/%.o: src/%.c src/wolfcose_internal.h \
     include/wolfcose/wolfcose.h $(BUILD_CONFIG_CHANGED) $(BUILD_CONFIG)
 	$(CC) $(CFLAGS) $(EAT_PSA_FULL_FLAGS) $(INTEROP_COSE_CFLAGS) -c $< -o $@
