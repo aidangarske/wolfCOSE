@@ -533,8 +533,14 @@ int wolfCose_DecodeProtectedHdr(const uint8_t* data, size_t dataLen,
     return ret;
 }
 
-int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
-    WOLFCOSE_HDR_STATE* hdrState)
+#if defined(WOLFCOSE_HAVE_HPKE_0)
+int wolfCose_DecodeUnprotectedHdrEx(WOLFCOSE_CBOR_CTX* ctx,
+    WOLFCOSE_HDR* hdr, WOLFCOSE_HDR_STATE* hdrState,
+    WOLFCOSE_HPKE_HDR* hpkeHdr)
+#else
+static int wolfCose_DecodeUnprotectedHdrEx(WOLFCOSE_CBOR_CTX* ctx,
+    WOLFCOSE_HDR* hdr, WOLFCOSE_HDR_STATE* hdrState)
+#endif
 {
     int ret;
     size_t mapCount = 0;
@@ -606,6 +612,23 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
                     hdr->partialIvLen = bstrLen;
                 }
             }
+#if defined(WOLFCOSE_HAVE_HPKE_0)
+            else if ((ret == WOLFCOSE_SUCCESS) &&
+                     (wc_CBOR_LabelIsInt(&label,
+                         WOLFCOSE_HDR_HPKE_EK) != 0)) {
+                if (hpkeHdr == NULL) {
+                    ret = wc_CBOR_Skip(ctx);
+                }
+                else {
+                    ret = wc_CBOR_DecodeBstr(ctx, &bstrData, &bstrLen);
+                    if (ret == WOLFCOSE_SUCCESS) {
+                        hpkeHdr->ek = bstrData;
+                        hpkeHdr->ekLen = bstrLen;
+                        hpkeHdr->hasEk = 1;
+                    }
+                }
+            }
+#endif
             else if ((ret == WOLFCOSE_SUCCESS) &&
                      (wc_CBOR_LabelIsInt(&label, WOLFCOSE_HDR_ALG) != 0)) {
                 if ((ctx->idx < ctx->bufSz) &&
@@ -667,12 +690,22 @@ int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx, WOLFCOSE_HDR* hdr,
     return ret;
 }
 
+int wolfCose_DecodeUnprotectedHdr(WOLFCOSE_CBOR_CTX* ctx,
+    WOLFCOSE_HDR* hdr, WOLFCOSE_HDR_STATE* hdrState)
+{
+#if defined(WOLFCOSE_HAVE_HPKE_0)
+    return wolfCose_DecodeUnprotectedHdrEx(ctx, hdr, hdrState, NULL);
+#else
+    return wolfCose_DecodeUnprotectedHdrEx(ctx, hdr, hdrState);
+#endif
+}
+
 #if defined(WOLFCOSE_SIGN_VERIFY) || defined(WOLFCOSE_ENCRYPT_DECRYPT) || \
     defined(WOLFCOSE_MAC_VERIFY) || defined(WOLFCOSE_COUNTERSIGN)
 /* Decode only the algorithm from an unselected header map. Other labels and
  * values are intentionally left to the application that selected the entry. */
 static int wolfCose_DecodeSkippedHdrAlg(WOLFCOSE_CBOR_CTX* ctx,
-    int32_t* alg, int* algFound)
+    int32_t* alg, int* algFound, int* hpkeEkFound)
 {
     int ret;
     size_t mapCount = 0u;
@@ -682,6 +715,13 @@ static int wolfCose_DecodeSkippedHdrAlg(WOLFCOSE_CBOR_CTX* ctx,
         ret = WOLFCOSE_E_INVALID_ARG;
     }
     else {
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+        if (hpkeEkFound != NULL) {
+            *hpkeEkFound = 0;
+        }
+#else
+        (void)hpkeEkFound;
+#endif
         ret = wc_CBOR_DecodeMapStart(ctx, &mapCount);
     }
     if ((ret == WOLFCOSE_SUCCESS) && (mapCount > ctx->bufSz)) {
@@ -717,6 +757,20 @@ static int wolfCose_DecodeSkippedHdrAlg(WOLFCOSE_CBOR_CTX* ctx,
                 }
             }
         }
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+        else if ((ret == WOLFCOSE_SUCCESS) &&
+                 (wc_CBOR_LabelIsInt(&label, WOLFCOSE_HDR_HPKE_EK) != 0)) {
+            if ((hpkeEkFound != NULL) && (*hpkeEkFound != 0)) {
+                ret = WOLFCOSE_E_CBOR_MALFORMED;
+            }
+            else {
+                if (hpkeEkFound != NULL) {
+                    *hpkeEkFound = 1;
+                }
+                ret = wc_CBOR_Skip(ctx);
+            }
+        }
+#endif
         else if (ret == WOLFCOSE_SUCCESS) {
             ret = wc_CBOR_Skip(ctx);
         }
@@ -733,7 +787,7 @@ static int wolfCose_DecodeSkippedHdrAlg(WOLFCOSE_CBOR_CTX* ctx,
  * bstr or null value and may have a fourth nested-recipients field. */
 static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
     size_t maxArrayCount, size_t* arrayCount, int32_t* alg,
-    uint8_t isSignature)
+    uint8_t isSignature, int* algFoundOut, int* hpkeEkFound)
 {
     int ret;
     const uint8_t* protectedData = NULL;
@@ -750,6 +804,14 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
         if (alg != NULL) {
             *alg = WOLFCOSE_ALG_UNSET;
         }
+        if (algFoundOut != NULL) {
+            *algFoundOut = 0;
+        }
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+        if (hpkeEkFound != NULL) {
+            *hpkeEkFound = 0;
+        }
+#endif
         ret = wc_CBOR_DecodeArrayStart(ctx, arrayCount);
     }
     if ((ret == WOLFCOSE_SUCCESS) &&
@@ -766,14 +828,16 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
         (void)XMEMSET(&protectedCtx, 0, sizeof(protectedCtx));
         protectedCtx.cbuf = protectedData;
         protectedCtx.bufSz = protectedLen;
-        ret = wolfCose_DecodeSkippedHdrAlg(&protectedCtx, alg, &algFound);
+        ret = wolfCose_DecodeSkippedHdrAlg(&protectedCtx, alg, &algFound,
+                                           NULL);
         if ((ret == WOLFCOSE_SUCCESS) &&
             (protectedCtx.idx != protectedCtx.bufSz)) {
             ret = WOLFCOSE_E_CBOR_MALFORMED;
         }
     }
     if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL)) {
-        ret = wolfCose_DecodeSkippedHdrAlg(ctx, alg, &algFound);
+        ret = wolfCose_DecodeSkippedHdrAlg(ctx, alg, &algFound,
+                                           hpkeEkFound);
     }
     else if (ret == WOLFCOSE_SUCCESS) {
         ret = wc_CBOR_Skip(ctx);
@@ -786,6 +850,9 @@ static int wolfCose_DecodeSkippedHeaderEntry(WOLFCOSE_CBOR_CTX* ctx,
     if ((ret == WOLFCOSE_SUCCESS) && (alg != NULL) &&
         (*alg == WOLFCOSE_ALG_DIRECT) && (protectedLen != 0u)) {
         ret = WOLFCOSE_E_COSE_BAD_HDR;
+    }
+    if ((ret == WOLFCOSE_SUCCESS) && (algFoundOut != NULL)) {
+        *algFoundOut = algFound;
     }
     if ((ret == WOLFCOSE_SUCCESS) && (isSignature != 0u)) {
         ret = wc_CBOR_DecodeBstr(ctx, &valueData, &valueLen);
@@ -824,7 +891,8 @@ int wolfCose_DecodeSkippedSignature(WOLFCOSE_CBOR_CTX* ctx)
 {
     size_t arrayCount = 0u;
 
-    return wolfCose_DecodeSkippedHeaderEntry(ctx, 3u, &arrayCount, NULL, 1u);
+    return wolfCose_DecodeSkippedHeaderEntry(ctx, 3u, &arrayCount, NULL, 1u,
+                                             NULL, NULL);
 }
 #endif
 
@@ -852,10 +920,25 @@ int wolfCose_DecodeSkippedRecipient(WOLFCOSE_CBOR_CTX* ctx,
     while ((ret == WOLFCOSE_SUCCESS) && (remaining > 0u)) {
         size_t arrayCount = 0u;
         int32_t decodedAlg = WOLFCOSE_ALG_UNSET;
+        int algFound = 0;
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+        int hpkeEkFound = 0;
+#endif
 
         ret = wolfCose_DecodeSkippedHeaderEntry(ctx, 4u, &arrayCount,
-                                                 &decodedAlg, 0u);
+                                                 &decodedAlg, 0u,
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+                                                 &algFound, &hpkeEkFound);
+#else
+                                                 &algFound, NULL);
+#endif
         remaining--;
+#if defined(WOLFCOSE_HPKE_0_KE_DECRYPT)
+        if ((ret == WOLFCOSE_SUCCESS) &&
+            (algFound == 0) && (hpkeEkFound != 0)) {
+            decodedAlg = WOLFCOSE_ALG_HPKE_0_KE;
+        }
+#endif
         if ((ret == WOLFCOSE_SUCCESS) && (arrayCount == 4u) &&
             (decodedAlg == WOLFCOSE_ALG_DIRECT)) {
             ret = WOLFCOSE_E_COSE_BAD_HDR;
