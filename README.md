@@ -47,12 +47,12 @@ wolfCOSE is a lightweight and fast C library implementing core CBOR and COSE sta
 
 ## Performance & Footprint
 
-| Metric | wolfCOSE Engine | Total Flash (with wolfCrypt) | Performance (x86_64 `sp_256` asm) |
+| Metric | wolfCOSE Engine | Total Flash (with wolfCrypt) | Throughput (Intel i9, x86_64) |
 | :--- | :--- | :--- | :--- |
-| **ES256 (`COSE_Sign1`)** | **~5.1 KB** (Verify) / **~6.8 KB** (Sign+Verify) | **~26.2 KB** (Verify) / **~34.6 KB** (Sign+Verify) | **66,538** sign/s · **26,437** verify/s |
-| **ML-DSA-44 (PQC)** | **~4.6 KB** (Verify) / **~6.6 KB** (Sign+Verify) | **~20.8 KB** (Verify) / **~35.8 KB** (Sign+Verify) | Not measured here |
+| **ES256 (`COSE_Sign1`)** | **~5.1 KB** (Verify) / **~6.8 KB** (Sign+Verify) | **~26.2 KB** (Verify) / **~34.6 KB** (Sign+Verify) | COSE: **66,538** sign/s, **26,437** verify/s |
+| **ML-DSA-44 (PQC)** | **~4.6 KB** (Verify) / **~6.6 KB** (Sign+Verify) | **~20.8 KB** (Verify) / **~35.8 KB** (Sign+Verify) | wolfCrypt: **18,642** sign/s, **51,645** verify/s |
 
-*Post-quantum ML-DSA comes at nearly the same engine cost (~1 KB delta). See [wolfCOSE vs. The Field](https://www.wolfssl.com/wolfcose-vs-the-field-the-smallest-and-fastest-cose-library-now-with-post-quantum-ml-dsa-at-the-same-cost/) and the full [Footprint Breakdown](https://github.com/wolfSSL/wolfCOSE/wiki/Footprint).*
+*ES256 throughput is end-to-end `COSE_Sign1` with wolfCrypt `sp_256` assembly; ML-DSA-44 throughput measures wolfCrypt only with AVX2. The rates are not directly comparable. ML-DSA has a similar wolfCOSE engine footprint. See [wolfCOSE vs. The Field](https://www.wolfssl.com/wolfcose-vs-the-field-the-smallest-and-fastest-cose-library-now-with-post-quantum-ml-dsa-at-the-same-cost/) and the full [Footprint Breakdown](https://github.com/wolfSSL/wolfCOSE/wiki/Footprint).*
 
 ## COSE Message Types (RFC 9052)
 
