@@ -1,6 +1,6 @@
 # Footprint and Performance
 
-This page reports build-profile footprint for ES256 `COSE_Sign1` and ML-DSA, end-to-end ES256 throughput, and wolfCrypt-only ML-DSA throughput.
+This page reports build-profile footprint for ES256 `COSE_Sign1` and ML-DSA, end-to-end ES256 throughput, and published ML-DSA throughput whose COSE scope is unverified.
 
 **Size method.** One fixed key and payload. Built `-ffunction-sections -fdata-sections` and linked `-Wl,--gc-sections`, so unreached functions are dropped; this is the real flash cost, not the whole-archive size. Sizes are code + rodata. Two numbers are reported: **glue** is the wolfCOSE COSE + CBOR engine alone (independent of the crypto backend); **total** is glue plus the minimal wolfCrypt build pulled in. Desktop: x86_64 Intel i9-11950H, GCC 14.2. On-device: NUCLEO-H563ZI (STM32H563ZI, Cortex-M33 @ 250 MHz). June 2026.
 
@@ -48,15 +48,15 @@ Post-quantum sign + verify lands within ~1 KB of classical ES256, and verify-onl
 
 ## Speed (Intel i9-11950H, x86_64)
 
-ES256 rates are end-to-end `COSE_Sign1` with wolfCrypt `sp_256` assembly. ML-DSA rates measure wolfCrypt only with AVX2 and exclude COSE processing, so the rates are not directly comparable. See the [published measurements](https://www.wolfssl.com/wolfcose-vs-the-field-the-smallest-and-fastest-cose-library-now-with-post-quantum-ml-dsa-at-the-same-cost/).
+ES256 rates are end-to-end `COSE_Sign1` with wolfCrypt `sp_256` assembly. The published ML-DSA chart calls its AVX2 rates wolfCrypt throughput, but its benchmark harness is not available to establish whether COSE processing was included. Do not treat these rates as interchangeable end-to-end measurements. See the [published measurements](https://www.wolfssl.com/wolfcose-vs-the-field-the-smallest-and-fastest-cose-library-now-with-post-quantum-ml-dsa-at-the-same-cost/).
 
 | Operation | Scope | Ops/s |
 |-----------|-------|-------|
 | ES256 verify | End-to-end `COSE_Sign1` | 26,437 |
 | ES256 sign | End-to-end `COSE_Sign1` | 66,538 |
-| ML-DSA-44 verify | wolfCrypt only | 51,645 |
-| ML-DSA-44 sign | wolfCrypt only | 18,642 |
-| ML-DSA-87 verify | wolfCrypt only | 20,849 |
+| ML-DSA-44 verify | Published as wolfCrypt; COSE scope unverified | 51,645 |
+| ML-DSA-44 sign | Published as wolfCrypt; COSE scope unverified | 18,642 |
+| ML-DSA-87 verify | Published as wolfCrypt; COSE scope unverified | 20,849 |
 
 ## On a real MCU: STM32H563 (Cortex-M33 @ 250 MHz)
 
@@ -75,7 +75,7 @@ The verify path allocates nothing, using only caller-provided buffers, so the en
 
 ## Method and versions
 
-Desktop: x86_64 Intel i9-11950H, GCC 14.2, June 2026. On-device: NUCLEO-H563ZI (STM32H563ZI, Cortex-M33 @ 250 MHz), arm-none-eabi-gcc 13.2, DWT cycle counter. ES256 throughput measures `COSE_Sign1`; ML-DSA throughput measures wolfCrypt only. wolfCOSE 8c6209e, wolfSSL master 4c0c093.
+Desktop: x86_64 Intel i9-11950H, GCC 14.2, June 2026. On-device: NUCLEO-H563ZI (STM32H563ZI, Cortex-M33 @ 250 MHz), arm-none-eabi-gcc 13.2, DWT cycle counter. ES256 throughput measures `COSE_Sign1`; the published ML-DSA rates lack a verifiable COSE benchmark scope. wolfCOSE 8c6209e, wolfSSL master 4c0c093.
 
 ## See Also
 

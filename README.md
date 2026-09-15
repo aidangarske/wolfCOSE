@@ -53,7 +53,7 @@ wolfCOSE is a lightweight and fast C library implementing core CBOR and COSE sta
 | **ES256 (`COSE_Sign1`)** | **~5.1 KB** (Verify) / **~6.8 KB** (Sign+Verify) | **~26.2 KB** (Verify) / **~34.6 KB** (Sign+Verify) | COSE: **66,538** sign/s, **26,437** verify/s |
 | **ML-DSA-44 (PQC)** | **~4.6 KB** (Verify) / **~6.6 KB** (Sign+Verify) | **~20.8 KB** (Verify) / **~35.8 KB** (Sign+Verify) | wolfCrypt: **18,642** sign/s, **51,645** verify/s |
 
-*ES256 throughput is end-to-end `COSE_Sign1` with wolfCrypt `sp_256` assembly; ML-DSA-44 throughput measures wolfCrypt only with AVX2. The rates are not directly comparable. ML-DSA has a similar wolfCOSE engine footprint. See [wolfCOSE vs. The Field](https://www.wolfssl.com/wolfcose-vs-the-field-the-smallest-and-fastest-cose-library-now-with-post-quantum-ml-dsa-at-the-same-cost/) and the full [Footprint Breakdown](docs/Footprint.md).*
+*ES256 throughput is measured end-to-end for `COSE_Sign1` with wolfCrypt `sp_256` assembly. The published ML-DSA-44 rates are labeled wolfCrypt throughput with AVX2, but the benchmark harness is not available to confirm whether they include COSE processing. Treat their end-to-end scope as unverified, not interchangeable with the ES256 rates. ML-DSA has a similar wolfCOSE engine footprint. See [wolfCOSE vs. The Field](https://www.wolfssl.com/wolfcose-vs-the-field-the-smallest-and-fastest-cose-library-now-with-post-quantum-ml-dsa-at-the-same-cost/) and the full [Footprint Breakdown](https://github.com/wolfSSL/wolfCOSE/wiki/Footprint).*
 
 ## COSE Message Types (RFC 9052)
 
@@ -220,7 +220,7 @@ make coverage-force-failure    # Include crypto failure path testing
 
 ## Documentation
 
-Full documentation is available in the [Wiki](https://github.com/wolfSSL/wolfCOSE/wiki) and [docs](docs/README.md):
+Full documentation is available in the [Wiki](https://github.com/wolfSSL/wolfCOSE/wiki):
 
 - [Getting Started](https://github.com/wolfSSL/wolfCOSE/wiki/Getting-Started): Build instructions and first steps
 - [Message Types](https://github.com/wolfSSL/wolfCOSE/wiki/Message-Types): All six RFC 9052 messages (Sign1, Sign, Encrypt0, Encrypt, Mac0, Mac) and RFC 9338 countersignatures with code samples
@@ -228,7 +228,7 @@ Full documentation is available in the [Wiki](https://github.com/wolfSSL/wolfCOS
 - [API Reference](https://github.com/wolfSSL/wolfCOSE/wiki/API-Reference): Function signatures, data structures, error codes
 - [Macros](https://github.com/wolfSSL/wolfCOSE/wiki/Macros): Compile-time configuration, size tuning, and ECDSA nonce policy
 - [PSA-EAT](https://github.com/wolfSSL/wolfCOSE/wiki/PSA-EAT): RFC 9783 PSA token profiles, APIs, macros, and security guidance
-- [Footprint](docs/Footprint.md): Size and speed numbers, desktop and on-device
+- [Footprint](https://github.com/wolfSSL/wolfCOSE/wiki/Footprint): Size and speed numbers, desktop and on-device
 - [Testing](https://github.com/wolfSSL/wolfCOSE/wiki/Testing): Test infrastructure, coverage, and failure injection
 - [MISRA Compliance](https://github.com/wolfSSL/wolfCOSE/wiki/MISRA-Compliance): MISRA C:2012 and C:2023 compliance status and deviation rationale
 - [Project Structure](https://github.com/wolfSSL/wolfCOSE/wiki/Project-Structure): Source file layout
