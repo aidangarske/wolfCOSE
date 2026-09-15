@@ -98,8 +98,8 @@ The generic operation and algorithm gates remain authoritative:
 
 | PSA/EAT path | Required generic operation | Algorithm selection |
 |--------------|----------------------------|---------------------|
-| Sign1 consume | `WOLFCOSE_SIGN1_VERIFY` | ES256, ES384, and/or ES512 |
-| Sign1 issue | `WOLFCOSE_SIGN1_SIGN` | ES256, ES384, and/or ES512 |
+| Sign1 consume | `WOLFCOSE_SIGN1_VERIFY` | `WOLFCOSE_ENABLE_DEPRECATED_ALGS` plus ES256, ES384, and/or ES512 |
+| Sign1 issue | `WOLFCOSE_SIGN1_SIGN` | `WOLFCOSE_ENABLE_DEPRECATED_ALGS` plus ES256, ES384, and/or ES512 |
 | Mac0 consume | `WOLFCOSE_MAC0_VERIFY` | HMAC256, HMAC384, and/or HMAC512 |
 | Mac0 issue | `WOLFCOSE_MAC0_CREATE` | HMAC256, HMAC384, and/or HMAC512 |
 

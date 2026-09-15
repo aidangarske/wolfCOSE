@@ -833,9 +833,10 @@ extern "C" {
 #if defined(WOLFCOSE_ENABLE_EAT_PSA_SIGN1)
     #if !defined(WOLFCOSE_EAT_PSA) || !defined(WOLFCOSE_SIGN1_VERIFY) || \
         !defined(WOLFCOSE_CBOR_DECODE) || \
+        !defined(WOLFCOSE_HAVE_DEPRECATED_ALGS) || \
         (!defined(WOLFCOSE_HAVE_ES256) && !defined(WOLFCOSE_HAVE_ES384) && \
          !defined(WOLFCOSE_HAVE_ES512))
-        #error "WOLFCOSE_ENABLE_EAT_PSA_SIGN1 requires EAT_PSA and an ECDSA COSE Sign1 verifier"
+        #error "WOLFCOSE_ENABLE_EAT_PSA_SIGN1 requires EAT_PSA, deprecated IDs, and an ECDSA COSE Sign1 verifier"
     #endif
     #define WOLFCOSE_EAT_PSA_SIGN1
 #endif
@@ -851,9 +852,10 @@ extern "C" {
 #if defined(WOLFCOSE_ENABLE_EAT_PSA_SIGN1_ISSUE)
     #if !defined(WOLFCOSE_EAT_PSA_ISSUE) || \
         !defined(WOLFCOSE_SIGN1_SIGN) || \
+        !defined(WOLFCOSE_HAVE_DEPRECATED_ALGS) || \
         (!defined(WOLFCOSE_HAVE_ES256) && !defined(WOLFCOSE_HAVE_ES384) && \
          !defined(WOLFCOSE_HAVE_ES512))
-        #error "EAT_PSA_SIGN1_ISSUE needs EAT_PSA_ISSUE and ECDSA Sign1 signing"
+        #error "EAT_PSA_SIGN1_ISSUE needs EAT_PSA_ISSUE, deprecated IDs, and ECDSA Sign1 signing"
     #endif
     #define WOLFCOSE_EAT_PSA_SIGN1_ISSUE
 #endif

@@ -34,6 +34,8 @@ and at least one consume or issue operation after it.
 The generic wolfCOSE algorithm gates remain authoritative. Select ES384,
 ES512, HMAC384, and HMAC512 with their normal `WOLFCOSE_ENABLE_*` macros in a
 lean build, or remove any supported algorithm with its `WOLFCOSE_NO_*` macro.
+Sign1 consumption and issuance require `WOLFCOSE_ENABLE_DEPRECATED_ALGS`
+because RFC 9783 Table 4 uses the RFC 9053 ES256/384/512 IDs.
 The PSA/EAT code has no algorithm fallback: a disabled algorithm is rejected
 before claims are used.
 
