@@ -910,10 +910,10 @@ static int tool_keygen(int32_t alg, const char* outPath)
     else
 #endif
 #ifdef WOLFCOSE_HAVE_ED448
-    if ((alg == WOLFCOSE_ALG_ED448)
+    if (alg == WOLFCOSE_ALG_ED448
 #if defined(WOLFCOSE_HAVE_DEPRECATED_ALGS) && \
     !defined(WOLFCOSE_HAVE_EDDSA)
-        || (alg == WOLFCOSE_ALG_EDDSA)
+        || alg == WOLFCOSE_ALG_EDDSA
 #endif
         ) {
         ed448_key ed;
