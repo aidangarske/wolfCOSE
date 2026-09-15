@@ -308,7 +308,7 @@ static void test_cose_countersign_ecdsa_curves(void)
         }
         TEST_ASSERT(ret == 0, "ES512 countersign key");
         if (ret == 0) {
-            ret = test_cose_countersign_roundtrip(&signKey, &signKey,
+            (void)test_cose_countersign_roundtrip(&signKey, &signKey,
                 WOLFCOSE_ALG_ESP512, &rng, "ESP512");
             wc_CoseKey_Free(&signKey);
         }
@@ -21742,7 +21742,6 @@ static void test_cose_esp_verify_kat(const char* tag, int wcCurve,
                 scratch, sizeof(scratch), &hdr, &decPayload, &decPayloadLen);
             TEST_ASSERT(ret != 0, "KAT ECDSA rejects tampered signature");
         }
-        ret = 0;
     }
     else {
         TEST_ASSERT(0, "KAT ECDSA public import");
@@ -22098,8 +22097,8 @@ static void test_cose_rfc9864_deprecated_es384_es512(void)
         TEST_ASSERT((ret == 0) && (hdr.alg == WOLFCOSE_ALG_ES512),
                     "Verify ES512");
     }
-    if (keyInited != 0) { wc_CoseKey_Free(&key); keyInited = 0; }
-    if (eccInited != 0) { (void)wc_ecc_free(&eccKey); eccInited = 0; }
+    if (keyInited != 0) { wc_CoseKey_Free(&key); }
+    if (eccInited != 0) { (void)wc_ecc_free(&eccKey); }
 #endif /* WOLFCOSE_HAVE_ES512 */
 
     if (rngInited != 0) { (void)wc_FreeRng(&rng); }
