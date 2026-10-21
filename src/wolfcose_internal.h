@@ -44,7 +44,7 @@
  * incompatible math layout or cannot roll back accepted or provisioned key
  * material. */
 #if defined(HAVE_ECC) && defined(WOLFCOSE_KEY_DECODE) && \
-    (defined(WOLFSSL_CRYPTOCELL) || defined(WOLFSSL_QNX_CAAM) || \
+    (defined(WOLFSSL_QNX_CAAM) || \
      defined(WOLFSSL_IMXRT1170_CAAM) || \
      defined(WOLFSSL_SILABS_SE_ACCEL) || \
      defined(WOLFSSL_MAXQ10XX_CRYPTO) || \

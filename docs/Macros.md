@@ -201,7 +201,7 @@ the policy probe include, for example with
 wolfCOSE also rejects local signing through wolfSSL dispatchers that do not
 consume the key's deterministic nonce state: crypto callbacks that always
 search or require callback-only ECC, STM32 PKA signing, ATECC508A/608A,
-Microchip TA100, Pluton, CryptoCell, Silicon Labs SE acceleration, KCAPI,
+Microchip TA100, Pluton, Silicon Labs SE acceleration, KCAPI,
 SE050, and Cavium/Intel async ECC when the feature is enabled. A plain
 crypto-callback build may use the software fallback, but a device-bound key is
 rejected at runtime. The Xilinx Versal path remains permitted because wolfSSL

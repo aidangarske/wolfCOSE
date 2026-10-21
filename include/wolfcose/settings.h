@@ -558,7 +558,7 @@ extern "C" {
          !defined(WC_STM32_PKA_VERIFY_ONLY)) || \
         defined(WOLFSSL_ATECC508A) || defined(WOLFSSL_ATECC608A) || \
         defined(WOLFSSL_MICROCHIP_TA100) || defined(PLUTON_CRYPTO_ECC) || \
-        defined(WOLFSSL_CRYPTOCELL) || defined(WOLFSSL_SILABS_SE_ACCEL) || \
+        defined(WOLFSSL_SILABS_SE_ACCEL) || \
         defined(WOLFSSL_KCAPI_ECC) || \
         (defined(WOLFSSL_SE050) && \
          !defined(WOLFSSL_SE050_ONLY_KEY_ID)) || \
