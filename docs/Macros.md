@@ -198,14 +198,9 @@ chooses its own nonce policy. For a `WOLFSSL_USER_SETTINGS` test build, override
 the policy probe include, for example with
 `ECDSA_POLICY_OPTS='-DWOLFSSL_USER_SETTINGS -Ipath/to/settings'`.
 
-wolfCOSE also rejects local signing through wolfSSL dispatchers that do not
-consume the key's deterministic nonce state: crypto callbacks that always
-search or require callback-only ECC, STM32 PKA signing, ATECC508A/608A,
-Microchip TA100, Pluton, Silicon Labs SE acceleration, KCAPI,
-SE050, and Cavium/Intel async ECC when the feature is enabled. A plain
-crypto-callback build may use the software fallback, but a device-bound key is
-rejected at runtime. The Xilinx Versal path remains permitted because wolfSSL
-passes its RFC 6979-derived nonce to that hardware signer.
+The wolfSSL build must provide deterministic-signing backend enforcement.
+wolfSSL rejects signing when the selected backend cannot honor the requested
+nonce policy, while permitting software fallback and compatible hardware.
 
 Without `WOLFSSL_NO_MALLOC`, wolfSSL may allocate a temporary deterministic
 nonce object per signature. In an ES256-only x86_64 macOS link, deterministic

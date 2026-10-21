@@ -77,23 +77,9 @@ int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
 #ifdef WOLFCOSE_HAVE_DETERMINISTIC_ECDSA
         savedDeterministic = (byte)eccKey->deterministic;
         savedHashType = eccKey->hashType;
-#if defined(WOLF_CRYPTO_CB) && !defined(WOLF_CRYPTO_CB_FIND)
-        if (eccKey->devId != INVALID_DEVID) {
-            ret = WOLFCOSE_E_UNSUPPORTED;
-        }
-        else
-#endif
-#if defined(WOLFSSL_SE050) && defined(WOLFSSL_SE050_ONLY_KEY_ID)
-        if (eccKey->keyIdSet != 0) {
-            ret = WOLFCOSE_E_UNSUPPORTED;
-        }
-        else
-#endif
-        {
-            ret = wc_ecc_set_deterministic_ex(eccKey, 1u, hashType);
-            if (ret != 0) {
-                ret = WOLFCOSE_E_CRYPTO;
-            }
+        ret = wc_ecc_set_deterministic_ex(eccKey, 1u, hashType);
+        if (ret != 0) {
+            ret = WOLFCOSE_E_CRYPTO;
         }
 #else
         (void)hashType;
@@ -143,8 +129,8 @@ int wolfCose_EccSignRaw(const uint8_t* hash, size_t hashLen,
         }
         (void)wolfCose_ForceZero(derSig, sizeof(derSig));
 #ifdef WOLFCOSE_HAVE_DETERMINISTIC_ECDSA
-        eccKey->deterministic = savedDeterministic;
-        eccKey->hashType = savedHashType;
+        (void)wc_ecc_set_deterministic_ex(eccKey, savedDeterministic,
+                                           savedHashType);
 #endif
     }
     return ret;

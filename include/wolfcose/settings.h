@@ -547,25 +547,6 @@ extern "C" {
     #endif
 
     #define WOLFCOSE_HAVE_DETERMINISTIC_ECDSA
-
-    /* These wolfSSL sign dispatchers do not consume the key's deterministic
-     * nonce state. Fail closed rather than silently bypassing the policy. The
-     * Xilinx Versal path is not listed because it passes the derived nonce to
-     * its hardware signer. */
-    #if (defined(WOLF_CRYPTO_CB) && defined(WOLF_CRYPTO_CB_FIND)) || \
-        defined(WOLF_CRYPTO_CB_ONLY_ECC) || \
-        (defined(WOLFSSL_STM32_PKA) && \
-         !defined(WC_STM32_PKA_VERIFY_ONLY)) || \
-        defined(WOLFSSL_ATECC508A) || defined(WOLFSSL_ATECC608A) || \
-        defined(WOLFSSL_MICROCHIP_TA100) || defined(PLUTON_CRYPTO_ECC) || \
-        defined(WOLFSSL_SILABS_SE_ACCEL) || \
-        defined(WOLFSSL_KCAPI_ECC) || \
-        (defined(WOLFSSL_SE050) && \
-         !defined(WOLFSSL_SE050_ONLY_KEY_ID)) || \
-        (defined(WOLFSSL_ASYNC_CRYPT) && defined(WC_ASYNC_ENABLE_ECC) && \
-         (defined(HAVE_CAVIUM_V) || defined(HAVE_INTEL_QA)))
-        #error "ECDSA backend does not support deterministic signing"
-    #endif
 #endif
 
 /* COSE_Encrypt multi-recipient — extension */
